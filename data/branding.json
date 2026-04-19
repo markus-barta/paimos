@@ -1,0 +1,26 @@
+{
+  "name": "PAIMOS",
+  "company": "",
+  "product": "PAIMOS",
+  "tagline": "Your Professional & Personal AI Project OS",
+  "website": "https://paimos.com",
+  "logo": "/logo.svg",
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#2e6da4",
+    "primaryDark": "#1f4d75",
+    "primaryLight": "#4a8fc2",
+    "primaryPale": "#dce9f4",
+    "accent": "#16a34a",
+    "sidebarBg": "#1a2d42",
+    "sidebarText": "#c8d5e2",
+    "loginBg": "#1a2d42",
+    "loginPattern": "#243650",
+    "typeEpic": "#5e35b1",
+    "typeTicket": "#1f4d75",
+    "typeTask": "#2e7d32",
+    "tableRowBorder": "#e8eaed",
+    "tableRowAlt": "#f8f9fa"
+  },
+  "pageTitle": "PAIMOS"
+}

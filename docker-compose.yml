@@ -1,0 +1,13 @@
+services:
+  paimos:
+    build: .
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=8888
+      - INSTANCE_LABEL=${INSTANCE_LABEL:-}
+      # Set COOKIE_SECURE=true on live (HTTPS). Leave unset for staging/local (HTTP).
+      # Set INSTANCE_LABEL=STAGING on staging to show a red banner in the sidebar.
+    restart: unless-stopped

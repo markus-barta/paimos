@@ -1,0 +1,36 @@
+{
+  "name": "paimos-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.3",
+    "lucide-vue-next": "^0.577.0",
+    "marked": "^17.0.4",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.0",
+    "vue-i18n": "^11.3.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "happy-dom": "^20.9.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^2.2.0"
+  },
+  "overrides": {
+    "picomatch": ">=4.0.4"
+  }
+}

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Pre-commit hook — runs maintainer-local checks if present.
+# Enable once per clone: git config core.hooksPath .githooks
+set -e
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+# Optional maintainer-local scan (gitignored; absent in fresh clones).
+if [ -x "$repo_root/scripts/brand-scan.sh" ]; then
+  bash "$repo_root/scripts/brand-scan.sh"
+fi

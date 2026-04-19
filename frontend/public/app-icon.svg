@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PAIMOS — AGPL-3.0-or-later. See LICENSE in the PAIMOS repo. -->
+<!-- Identical geometry to mark.svg; only the viewBox differs (80×80 square with ~15% padding for PWA / Apple touch icon / GHCR avatar). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12.5 -10 80 80" fill="currentColor">
+  <title>PAIMOS</title>
+  <rect x="0" y="0" width="8" height="60"/>
+  <rect x="16" y="0" width="8" height="60"/>
+  <rect x="32" y="0" width="8" height="60"/>
+  <path d="M40 0 A15 15 0 0 1 40 30 L40 22 A7 7 0 0 0 40 8 Z"/>
+</svg>

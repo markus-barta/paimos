@@ -1,0 +1,101 @@
+name: ci
+
+# Test on every push and PR. Build + publish the Docker image only on
+# pushes to `main` and on tag pushes `v*`. The image is tagged:
+#   - `latest` on main
+#   - `1.2.3` on tag `v1.2.3` (semver, v-prefix stripped)
+#   - `sha-abcdef0` on every push (short commit SHA for pinning)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Backend — go vet + tests
+        working-directory: backend
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+
+      - name: Frontend — install + typecheck + tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Frontend — production build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Backend — cross-compile for linux/amd64
+        working-directory: backend
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: go build -ldflags='-s -w' -o ../dist/paimos .
+
+      - name: Stage static assets for Dockerfile
+        run: cp -R frontend/dist dist/static
+
+      - name: Set up Docker Buildx
+        if: github.event_name == 'push'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata (tags + labels)
+        if: github.event_name == 'push'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,format=short
+
+      - name: Build + push image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

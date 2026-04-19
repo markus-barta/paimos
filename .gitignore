@@ -1,0 +1,118 @@
+# ── Build artifacts ───────────────────────────────────────────────────────────
+/dist/
+/backend/paimos
+/backend/tmp/
+
+# ── Maintainer-local (not for contributors) ──────────────────────────────────
+/scripts/brand-scan.sh
+/BRANDING_GUARD.md
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# ── Data (SQLite) ─────────────────────────────────────────────────────────────
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.db-shm
+data/*.db-wal
+# Local dev DB accumulates in backend/data/ when running `go run .` from
+# the backend dir — pattern above is anchored to repo root, this catches it.
+backend/data/
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.env
+secrets/
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+# SSH private keys
+id_rsa
+id_ecdsa
+id_ed25519
+# API tokens / credential files
+*_token
+*_credentials*
+credentials.json
+service-account*.json
+
+# ── Nix / devenv ──────────────────────────────────────────────────────────────
+.devenv/
+.devenv.flake.nix
+devenv.lock
+.direnv/
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ── IDE & editors ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ── OS / misc ─────────────────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Runbooks (private ops docs) ───────────────────────────────────────────────
+docs/RUNBOOK.md
+
+# ── AI agent tools ────────────────────────────────────────────────────────────
+.opencode/node_modules/
+.opencode/package.json
+.opencode/bun.lock
+.opencode/.gitignore
+.opencode/.DS_Store
+.cursor/.DS_Store
+# Claude Code per-ticket worktrees (nested git clones of this repo, not
+# meant to ship — `git add -A` otherwise tries to embed them).
+.claude/worktrees/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+.docker/
