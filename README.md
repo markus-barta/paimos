@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/brand/mark.svg" alt="PAIMOS" height="80">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/mark-dark.svg">
+    <img src="docs/brand/mark-light.svg" alt="PAIMOS" height="96">
+  </picture>
 </p>
 
 <h1 align="center">PAIMOS</h1>
@@ -9,9 +12,10 @@
 </p>
 
 <p align="center">
+  <a href="https://paimos.com">paimos.com</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/CONFIGURATION.md">Configuration</a> ·
-  <a href="#features">Features</a> ·
+  <a href="#highlights">Features</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="LICENSE">License (AGPL-3.0)</a>
 </p>
