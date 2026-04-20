@@ -1,11 +1,21 @@
-# Runtime-only image. Build artifacts first:
-#   cd backend  && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ../dist/paimos .
-#   cd frontend && npm ci && npm run build && cp -R dist ../dist/static
-#   docker build -t paimos:local .
+FROM golang:1.25-alpine AS go-build
+WORKDIR /src
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /paimos .
+
+FROM node:22-alpine AS spa-build
+WORKDIR /src
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend/ ./
+RUN npm run build
+
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
-COPY dist/paimos /usr/local/bin/paimos
-COPY dist/static /app/static
+COPY --from=go-build /paimos /usr/local/bin/paimos
+COPY --from=spa-build /src/dist /app/static
 RUN mkdir -p /app/data
 VOLUME /app/data
 ENV PORT=8888

@@ -78,7 +78,17 @@ of this README.
 
 ## Quick start
 
-### Docker (fastest)
+```bash
+git clone https://github.com/markus-barta/paimos.git
+cd paimos
+docker build -t paimos:local .
+docker run -p 8888:8888 -v paimos-data:/app/data paimos:local
+```
+
+Open <http://localhost:8888> — default admin login: `admin` / `admin`
+(change immediately after first login).
+
+### Docker Compose
 
 ```bash
 git clone https://github.com/markus-barta/paimos.git
