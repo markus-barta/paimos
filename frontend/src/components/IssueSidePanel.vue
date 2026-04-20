@@ -291,6 +291,32 @@ async function cloneIssue() {
 
 function togglePin() { emit('update:pinned', !props.pinned) }
 
+// Forward wheel events from the transparent full-viewport backdrop to whatever
+// scroll container sits beneath, so the list stays scrollable while the panel
+// is open in unpinned mode. Without this, wheel events land on the backdrop
+// (position: fixed), the scroll chain walks the containing-block chain to the
+// viewport (overflow: visible), and nothing scrolls. PAI-16.
+function onBackdropWheel(e: WheelEvent) {
+  if (e.ctrlKey) return  // let browser zoom work
+  const backdrop = e.currentTarget as HTMLElement
+  // Temporarily disable backdrop's hit-testing so elementFromPoint returns the
+  // element visually underneath it. Restored immediately, synchronously.
+  const prevPE = backdrop.style.pointerEvents
+  backdrop.style.pointerEvents = 'none'
+  const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+  backdrop.style.pointerEvents = prevPE
+  if (!hit) return
+  let el: HTMLElement | null = hit
+  while (el && el !== document.body) {
+    const cs = getComputedStyle(el)
+    const scrollableY = (cs.overflowY === 'auto' || cs.overflowY === 'scroll') && el.scrollHeight > el.clientHeight
+    const scrollableX = (cs.overflowX === 'auto' || cs.overflowX === 'scroll') && el.scrollWidth > el.clientWidth
+    if (scrollableY && e.deltaY) { el.scrollTop += e.deltaY; return }
+    if (scrollableX && e.deltaX) { el.scrollLeft += e.deltaX; return }
+    el = el.parentElement
+  }
+}
+
 // Type icon SVG lookup
 const typeIcon = computed(() => {
   if (!issue.value) return ''
@@ -423,7 +449,9 @@ async function deleteTimeEntry(entry: TimeEntry) {
   <Transition name="sidepanel">
     <aside v-if="issueId" :class="['side-panel', { 'side-panel--pinned': pinned, 'side-panel--resizing': resizing }]"
       :style="{ width: sidebarWidth + 'px' }">
-      <div v-if="!pinned" class="sp-backdrop" @click="guardAction(() => $emit('close'))" />
+      <div v-if="!pinned" class="sp-backdrop"
+           @click="guardAction(() => $emit('close'))"
+           @wheel.passive="onBackdropWheel" />
       <div class="sp-resize-handle" @mousedown="onResizeStart" @dblclick="resetWidth" title="Drag to resize · double-click to reset" />
       <div class="sp-content">
         <!-- Header -->
