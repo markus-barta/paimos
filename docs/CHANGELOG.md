@@ -5,7 +5,27 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.2] — 2026-04-20
+## [1.2.1] — 2026-04-20
+
+### Fixed
+
+- **Issue-list scroll containment** — PAI-16. Two related scroll bugs
+  in the issue list are gone:
+  - In **tree view**, `AppFooter` no longer bleeds into the last rows.
+    `<IssueTreeView>` now lives in a `.issue-tree-wrap` scroll container
+    mirroring the flat table's `.issue-table-wrap` pattern; the
+    `.tree-active` `overflow: visible` opt-out rules on
+    `.issue-list-root` / `.issue-list-main` are dropped.
+  - With the **side panel open in unpinned (floating) mode**, the list
+    behind the panel stays scrollable via wheel / trackpad. Previously
+    the transparent full-viewport `.sp-backdrop` intercepted wheel
+    events and — being `position: fixed` — terminated the scroll chain
+    at the viewport (`<html>` is `overflow: visible`). Now a
+    `@wheel.passive` handler on the backdrop forwards the scroll to
+    the element visually beneath it, preserving the existing
+    click-to-close behaviour.
+
+## [1.2.0] — 2026-04-20
 
 ### Added
 
