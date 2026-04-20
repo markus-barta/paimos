@@ -82,6 +82,13 @@ func checkPortalAccess(r *http.Request, projectID int64) bool {
 	return auth.HasProjectAccess(r, projectID)
 }
 
+// checkPortalEdit gates portal mutations (accept / reject / undo). Viewers
+// may browse a project through the portal but cannot mutate issue status —
+// that capability requires editor access.
+func checkPortalEdit(r *http.Request, projectID int64) bool {
+	return auth.CanEditProject(r, projectID)
+}
+
 // computeEur calculates EUR from hours/lp and the project's cost-unit rates.
 // For portal display, we use the rate_hourly and rate_lp from the issue's
 // parent epic or cost_unit. As a simpler approach, we compute from the issue
@@ -390,7 +397,7 @@ func PortalAcceptIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	if !checkPortalAccess(r, projectID) {
+	if !checkPortalEdit(r, projectID) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -456,7 +463,7 @@ func PortalRejectIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	if !checkPortalAccess(r, projectID) {
+	if !checkPortalEdit(r, projectID) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -512,7 +519,7 @@ func PortalUndoAccept(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	if !checkPortalAccess(r, projectID) {
+	if !checkPortalEdit(r, projectID) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -552,7 +559,7 @@ func PortalUndoReject(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	if !checkPortalAccess(r, projectID) {
+	if !checkPortalEdit(r, projectID) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}

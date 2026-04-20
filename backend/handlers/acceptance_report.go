@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 )
 
@@ -35,6 +36,15 @@ func AcceptanceReport(w http.ResponseWriter, r *http.Request) {
 	projectID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	// The portal route reaches this handler without a project-view
+	// middleware, so re-check view access here. The internal route
+	// already gates via RequireProjectView and this call is a cheap
+	// cache hit, so there's no reason to skip it there.
+	if !auth.CanViewProject(r, projectID) {
+		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
 

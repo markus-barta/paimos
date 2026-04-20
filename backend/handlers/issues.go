@@ -1791,6 +1791,24 @@ func ListIssuesByRelation(w http.ResponseWriter, r *http.Request) {
 	}
 	issues = enrichIssues(issues)
 
+	// Orphan sprints span projects, so their members can live in any
+	// project the caller may not have access to. Post-filter by the
+	// caller's accessible project set so cross-project members never
+	// leak through the sprint endpoint.
+	if accessibleIDs := auth.AccessibleProjectIDs(r); accessibleIDs != nil {
+		allowed := make(map[int64]bool, len(accessibleIDs))
+		for _, pid := range accessibleIDs {
+			allowed[pid] = true
+		}
+		filtered := issues[:0]
+		for _, iss := range issues {
+			if iss.ProjectID == nil || allowed[*iss.ProjectID] {
+				filtered = append(filtered, iss)
+			}
+		}
+		issues = filtered
+	}
+
 	// Apply rate cascade for sprint members so reporting gets resolved rates.
 	if relType == "sprint" {
 		for idx := range issues {
@@ -1835,7 +1853,13 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sum estimate/AR across group members (issue_relations type='groups', source=container)
+	// Sum estimate/AR across group members (issue_relations type='groups', source=container).
+	// Members of a cross-project container (e.g. an orphan sprint) can live
+	// in any project. Filter the members by the caller's accessible project
+	// set so totals never leak hours/amounts from projects the caller
+	// cannot view.
+	aggAccessFilter, aggAccessArgs := projectIDFilter(r, "i.project_id", true)
+	aggArgs := append([]any{id}, aggAccessArgs...)
 	var agg IssueAggregation
 	err = db.DB.QueryRow(`
 		SELECT COUNT(*),
@@ -1843,8 +1867,8 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		       SUM(i.ar_hours), SUM(i.ar_lp)
 		FROM issues i
 		JOIN issue_relations ir ON ir.target_id = i.id
-		WHERE ir.source_id = ? AND ir.type = 'groups'
-	`, id).Scan(&agg.MemberCount, &agg.EstimateHours, &agg.EstimateLp, &agg.ArHours, &agg.ArLp)
+		WHERE ir.source_id = ? AND ir.type = 'groups'`+aggAccessFilter,
+		aggArgs...).Scan(&agg.MemberCount, &agg.EstimateHours, &agg.EstimateLp, &agg.ArHours, &agg.ArLp)
 	if err != nil {
 		jsonError(w, "aggregation query failed", http.StatusInternalServerError)
 		return
@@ -1883,7 +1907,11 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		agg.ArEur = &v
 	}
 
-	// Sum actuals from time_entries on member issues + the container itself
+	// Sum actuals from time_entries on member issues + the container itself.
+	// The same cross-project leak applies here as in the estimate aggregation,
+	// so filter the members subquery by the caller's accessible projects.
+	actArgs := append([]any{id}, aggAccessArgs...)
+	actArgs = append(actArgs, id)
 	var actualHours, actualInternalCost *float64
 	err = db.DB.QueryRow(`
 		SELECT SUM(
@@ -1904,11 +1932,12 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		)
 		FROM time_entries te
 		WHERE te.issue_id IN (
-			SELECT ir.target_id FROM issue_relations ir
-			WHERE ir.source_id = ? AND ir.type = 'groups'
+			SELECT i.id FROM issue_relations ir
+			JOIN issues i ON i.id = ir.target_id
+			WHERE ir.source_id = ? AND ir.type = 'groups'`+aggAccessFilter+`
 			UNION ALL SELECT ?
 		)
-	`, id, id).Scan(&actualHours, &actualInternalCost)
+	`, actArgs...).Scan(&actualHours, &actualInternalCost)
 	if err == nil {
 		agg.ActualHours = actualHours
 		agg.ActualInternalCost = actualInternalCost

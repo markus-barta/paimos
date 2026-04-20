@@ -396,10 +396,20 @@ func LinkAttachments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify issue exists
-	var exists int
-	if err := db.DB.QueryRow("SELECT 1 FROM issues WHERE id=?", body.IssueID).Scan(&exists); err != nil {
+	// Resolve the owning project and gate on edit access. Orphan sprint
+	// issues have no project — linking attachments to an orphan makes no
+	// sense (orphans don't support attachments), so reject that case too.
+	pid, found, orphan := auth.ProjectIDForIssue(body.IssueID)
+	if !found || orphan {
 		jsonError(w, "issue not found", http.StatusNotFound)
+		return
+	}
+	if !auth.CanEditProject(r, pid) {
+		if auth.CanViewProject(r, pid) {
+			jsonError(w, "forbidden", http.StatusForbidden)
+		} else {
+			jsonError(w, "issue not found", http.StatusNotFound)
+		}
 		return
 	}
 

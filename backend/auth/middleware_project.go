@@ -92,10 +92,12 @@ func RequireProjectEdit(next http.Handler) http.Handler {
 // project for an entity via lookupFn(entityID), then enforces view (if
 // editRequired=false) or edit (if editRequired=true) access. Entities with
 // a nil project (e.g. orphan sprint issues) are allowed through for any
-// authenticated user — cross-project global objects aren't scoped.
+// authenticated user — cross-project global objects aren't scoped. A
+// missing row (or DB error) fails closed with 404 so unauthenticated
+// enumeration can't tell existing IDs from bogus ones.
 func entityAccessMiddleware(
 	paramName string,
-	lookupFn func(int64) (int64, bool),
+	lookupFn func(int64) (int64, bool, bool),
 	editRequired bool,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -106,16 +108,15 @@ func entityAccessMiddleware(
 				http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
 				return
 			}
-			pid, ok := lookupFn(id)
-			if !ok {
-				// The row exists but has a NULL project_id (orphan sprint
-				// issue, for example). Allow the request through — the
-				// handler itself is responsible for orphan-specific rules.
-				next.ServeHTTP(w, r)
+			pid, found, orphan := lookupFn(id)
+			if !found {
+				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 				return
 			}
-			if pid == 0 {
-				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			if orphan {
+				// Cross-project orphan (e.g. sprint issue). Handler is
+				// responsible for orphan-specific rules.
+				next.ServeHTTP(w, r)
 				return
 			}
 			if editRequired {

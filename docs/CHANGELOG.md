@@ -36,7 +36,7 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
-- `/auth/login`, `/auth/me`, and `/auth/totp/verify` now return a
+- `/api/auth/login`, `/api/auth/me`, and `/api/auth/totp/verify` now return a
   `{ "user": {...}, "access": {...} }` envelope. The `access` field
   hydrates the frontend's per-project permission cache in a single
   round-trip.

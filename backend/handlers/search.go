@@ -247,6 +247,30 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	dedup := &issueDedup{}
 
+	// The lookupIssueByKey / lookupIssuesByProjKey / lookupIssuesByKeyPrefix
+	// helpers don't apply the accessible-project filter themselves, so any
+	// early return from the key-lookup paths below must scrub unauthorized
+	// hits before responding. filterDedup drops issues whose project is not
+	// in the caller's accessible set; nil means "admin, no filter".
+	accessibleIDs := auth.AccessibleProjectIDs(r)
+	filterDedup := func() {
+		if accessibleIDs == nil || len(dedup.list) == 0 {
+			return
+		}
+		allowed := make(map[int64]bool, len(accessibleIDs))
+		for _, pid := range accessibleIDs {
+			allowed[pid] = true
+		}
+		filtered := dedup.list[:0]
+		for _, iss := range dedup.list {
+			if iss.ProjectID != nil && !allowed[*iss.ProjectID] {
+				continue
+			}
+			filtered = append(filtered, iss)
+		}
+		dedup.list = filtered
+	}
+
 	// ── Issue key lookup (bypasses FTS — keys are computed, not indexed) ──────
 	qUpper := strings.ToUpper(q)
 
@@ -258,6 +282,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 		// Partial key prefix matches (e.g. "ACME-1" also finds ACME-1, ACME-1)
 		dedup.addAll(lookupIssuesByKeyPrefix(m[1], m[2]))
+		filterDedup()
 		if len(dedup.list) > 0 {
 			results.Issues, results.HasMore = dedup.result(offset, limit)
 			jsonOK(w, results)
@@ -280,9 +305,12 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	if m := projKeyPattern.FindStringSubmatch(qUpper); m != nil {
 		if issues := lookupIssuesByProjKey(m[1]); len(issues) > 0 {
 			dedup.addAll(issues)
-			results.Issues, results.HasMore = dedup.result(offset, limit)
-			jsonOK(w, results)
-			return
+			filterDedup()
+			if len(dedup.list) > 0 {
+				results.Issues, results.HasMore = dedup.result(offset, limit)
+				jsonOK(w, results)
+				return
+			}
 		}
 	}
 

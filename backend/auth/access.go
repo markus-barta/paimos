@@ -382,60 +382,91 @@ func int64ToString(n int64) string {
 	return formatInt64(n)
 }
 
-// ProjectIDForIssue returns the project_id for an issue, or (0, false) if
-// the issue doesn't exist or is an orphan (NULL project_id, e.g. a sprint).
-// Used by the issue/attachment/comment/time-entry middlewares to resolve
-// the owning project before running an access check.
-func ProjectIDForIssue(issueID int64) (int64, bool) {
+// ProjectIDForIssue returns the project_id for an issue. The boolean
+// returns distinguish the three outcomes the middleware needs:
+//
+//   - found=true,  orphan=false → projectID is valid; run access check
+//   - found=true,  orphan=true  → the row exists but has NULL project_id
+//     (e.g. a sprint); caller may pass the request through
+//   - found=false                → row missing or DB error; fail closed (404)
+func ProjectIDForIssue(issueID int64) (projectID int64, found bool, orphan bool) {
 	var pid sql.NullInt64
 	err := db.DB.QueryRow("SELECT project_id FROM issues WHERE id=?", issueID).Scan(&pid)
-	if err != nil || !pid.Valid {
-		return 0, pid.Valid && err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, false
 	}
-	return pid.Int64, true
+	if err != nil {
+		log.Printf("ProjectIDForIssue: id=%d: %v", issueID, err)
+		return 0, false, false
+	}
+	if !pid.Valid {
+		return 0, true, true
+	}
+	return pid.Int64, true, false
 }
 
 // ProjectIDForAttachment returns the project_id for an attachment, via the
-// owning issue. Returns (0, false) if the chain is broken.
-func ProjectIDForAttachment(attachmentID int64) (int64, bool) {
+// owning issue. See ProjectIDForIssue for the (found, orphan) contract.
+func ProjectIDForAttachment(attachmentID int64) (projectID int64, found bool, orphan bool) {
 	var pid sql.NullInt64
 	err := db.DB.QueryRow(`
 		SELECT i.project_id FROM attachments a
 		LEFT JOIN issues i ON i.id = a.issue_id
 		WHERE a.id = ?
 	`, attachmentID).Scan(&pid)
-	if err != nil || !pid.Valid {
-		return 0, pid.Valid && err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, false
 	}
-	return pid.Int64, true
+	if err != nil {
+		log.Printf("ProjectIDForAttachment: id=%d: %v", attachmentID, err)
+		return 0, false, false
+	}
+	if !pid.Valid {
+		return 0, true, true
+	}
+	return pid.Int64, true, false
 }
 
 // ProjectIDForTimeEntry returns the project_id for a time entry, via the
-// owning issue.
-func ProjectIDForTimeEntry(timeEntryID int64) (int64, bool) {
+// owning issue. See ProjectIDForIssue for the (found, orphan) contract.
+func ProjectIDForTimeEntry(timeEntryID int64) (projectID int64, found bool, orphan bool) {
 	var pid sql.NullInt64
 	err := db.DB.QueryRow(`
 		SELECT i.project_id FROM time_entries te
 		JOIN issues i ON i.id = te.issue_id
 		WHERE te.id = ?
 	`, timeEntryID).Scan(&pid)
-	if err != nil || !pid.Valid {
-		return 0, pid.Valid && err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, false
 	}
-	return pid.Int64, true
+	if err != nil {
+		log.Printf("ProjectIDForTimeEntry: id=%d: %v", timeEntryID, err)
+		return 0, false, false
+	}
+	if !pid.Valid {
+		return 0, true, true
+	}
+	return pid.Int64, true, false
 }
 
 // ProjectIDForComment returns the project_id for a comment, via the owning
-// issue.
-func ProjectIDForComment(commentID int64) (int64, bool) {
+// issue. See ProjectIDForIssue for the (found, orphan) contract.
+func ProjectIDForComment(commentID int64) (projectID int64, found bool, orphan bool) {
 	var pid sql.NullInt64
 	err := db.DB.QueryRow(`
 		SELECT i.project_id FROM comments c
 		JOIN issues i ON i.id = c.issue_id
 		WHERE c.id = ?
 	`, commentID).Scan(&pid)
-	if err != nil || !pid.Valid {
-		return 0, pid.Valid && err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, false
 	}
-	return pid.Int64, true
+	if err != nil {
+		log.Printf("ProjectIDForComment: id=%d: %v", commentID, err)
+		return 0, false, false
+	}
+	if !pid.Valid {
+		return 0, true, true
+	}
+	return pid.Int64, true, false
 }

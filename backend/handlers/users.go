@@ -132,6 +132,16 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture the current role up front so we can detect a role change
+	// and sync project_members accordingly. Role transitions change the
+	// user's access model (member default-editor vs. external no-default),
+	// so a bare UPDATE isn't enough.
+	var oldRole string
+	if err := db.DB.QueryRow("SELECT role FROM users WHERE id=?", id).Scan(&oldRole); err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
 	if body.Username != nil || body.Role != nil || body.Status != nil || body.Nickname != nil || body.Email != nil || body.InternalRateHourly != nil || body.Locale != nil {
 		_, err = db.DB.Exec(`
 			UPDATE users SET
@@ -146,6 +156,80 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		`, body.Username, body.Role, body.Status, body.Nickname, body.Email, body.InternalRateHourly, body.Locale, id)
 		if handleDBError(w, err, "user") {
 			return
+		}
+	}
+
+	// Sync project_members to the new role when it changed.
+	//
+	// member/admin → external: the user loses their default editor access
+	// on every project. Strip the seeded 'editor' rows so they fall back to
+	// "no access unless explicitly granted".
+	//
+	// external → member/admin: seed editor rows so the user regains the
+	// default internal access on non-deleted projects.
+	if body.Role != nil && *body.Role != oldRole {
+		newRole := *body.Role
+		actor := auth.GetUser(r)
+		var actorID int64
+		if actor != nil {
+			actorID = actor.ID
+		}
+		wasInternal := oldRole == "admin" || oldRole == "member"
+		nowInternal := newRole == "admin" || newRole == "member"
+		ctx := r.Context()
+		switch {
+		case wasInternal && !nowInternal:
+			// Demotion: drop the auto-seeded editor rows. Emit audit rows
+			// per revoked project so the change is traceable.
+			rows, qErr := db.DB.Query(
+				"SELECT project_id FROM project_members WHERE user_id=? AND access_level='editor'", id,
+			)
+			if qErr == nil {
+				var revoked []int64
+				for rows.Next() {
+					var pid int64
+					if err := rows.Scan(&pid); err == nil {
+						revoked = append(revoked, pid)
+					}
+				}
+				rows.Close()
+				if _, err := db.DB.Exec(
+					"DELETE FROM project_members WHERE user_id=? AND access_level='editor'", id,
+				); err != nil {
+					log.Printf("UpdateUser: demote cleanup user=%d: %v", id, err)
+				}
+				for _, pid := range revoked {
+					auth.RecordAccessChange(ctx, nil, pid, id, auth.AuditActionRevoke, auth.AccessEditor, auth.AccessNone, actorID)
+				}
+			}
+			auth.SeedAccessForUser(id, newRole)
+		case !wasInternal && nowInternal:
+			// Promotion: seed editor rows. SeedAccessForUser uses
+			// INSERT OR IGNORE, so existing explicit grants are preserved.
+			// We read the set of projects that will receive a new row so
+			// we can emit audit entries for each grant.
+			rows, qErr := db.DB.Query(`
+				SELECT p.id FROM projects p
+				WHERE p.status != 'deleted'
+				  AND NOT EXISTS (
+				    SELECT 1 FROM project_members pm
+				    WHERE pm.user_id = ? AND pm.project_id = p.id
+				  )
+			`, id)
+			var granted []int64
+			if qErr == nil {
+				for rows.Next() {
+					var pid int64
+					if err := rows.Scan(&pid); err == nil {
+						granted = append(granted, pid)
+					}
+				}
+				rows.Close()
+			}
+			auth.SeedAccessForUser(id, newRole)
+			for _, pid := range granted {
+				auth.RecordAccessChange(ctx, nil, pid, id, auth.AuditActionGrant, auth.AccessNone, auth.AccessEditor, actorID)
+			}
 		}
 	}
 

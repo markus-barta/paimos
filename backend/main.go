@@ -173,7 +173,7 @@ func main() {
 			r.With(auth.RequireAdmin).Post("/sprints/batch", handlers.CreateSprintsBatch)
 			r.With(auth.RequireAdmin).Put("/sprints/{id}", handlers.UpdateSprint)
 			r.With(auth.RequireAdmin).Post("/sprints/{id}/move-incomplete", handlers.MoveIncompleteToNextSprint)
-			r.Put("/sprints/{id}/reorder", handlers.ReorderSprintMembers)
+			r.With(auth.RequireAdmin).Put("/sprints/{id}/reorder", handlers.ReorderSprintMembers)
 			// Cross-project distinct values
 			r.Get("/cost-units", handlers.ListAllCostUnits)
 			r.Get("/releases", handlers.ListAllReleases)
