@@ -5,6 +5,56 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-04-20
+
+### Added
+
+- **Per-project access control.** Every user now has a per-project
+  access level (`viewer`, `editor`, or `none`) stored in a new
+  `project_members` table. Admins bypass. Members default to editor on
+  every non-deleted project. External users get no access until granted
+  explicitly. Access changes are written to a new `access_audit` log.
+- **Settings → Permissions** tab renders the capability matrix
+  (viewer vs. editor vs. admin) straight from the backend, so the
+  documentation stays in lockstep with the code.
+- **Settings → Users → Access** button opens a per-project matrix
+  editor (`viewer` / `editor` / `none`) for any user, backed by the new
+  `GET/PUT/DELETE /api/users/{id}/memberships` endpoints.
+- `GET /api/permissions/matrix` — public to logged-in users for UI
+  rendering.
+- `GET /api/access-audit` — admin-only audit trail of grant / update /
+  revoke events.
+- Backend helpers: `auth.CanViewProject`, `auth.CanEditProject`,
+  `auth.AccessibleProjectIDs`, `auth.WithAccessCache`. Frontend store
+  exposes `canView()` and `canEdit()` helpers plus a hydrated
+  `accessibleProjects` map.
+- Per-project chi middlewares: `RequireProjectView`,
+  `RequireProjectEdit`, `RequireIssueAccess`, `RequireAttachmentAccess`,
+  `RequireTimeEntryAccess`, `RequireCommentAccess` (and their `Edit`
+  counterparts). 404 on no-view; 403 on view-only; bypasses for
+  orphan sprints.
+
+### Changed
+
+- `/auth/login`, `/auth/me`, and `/auth/totp/verify` now return a
+  `{ "user": {...}, "access": {...} }` envelope. The `access` field
+  hydrates the frontend's per-project permission cache in a single
+  round-trip.
+- `CreateUser` (internal roles) and `CreateProject` auto-seed editor
+  rows in `project_members` so internal users never lose visibility on
+  projects they didn't pre-exist.
+- Cross-cutting list endpoints (`/api/projects`, `/api/issues`,
+  `/api/issues/recent`, `/api/cost-units`, `/api/releases`,
+  `/api/search`, `/api/users/me/recent-projects`) are now filtered by
+  the caller's accessible project set.
+- `ListIssueRelations` redacts the target title/key (`"RESTRICTED"`)
+  when the relation's target lives in a project the caller can't view.
+
+### Removed
+
+- `user_project_access` table. Migration 65 drops it after a
+  safety re-insert into `project_members`.
+
 ## [1.0.0] — 2026-04-19
 
 ### Initial release

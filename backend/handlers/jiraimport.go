@@ -269,6 +269,7 @@ func ImportFromJira(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.TargetProjectID, _ = res.LastInsertId()
+		auth.SeedAccessForProject(req.TargetProjectID)
 	}
 
 	actor := auth.GetUser(r)

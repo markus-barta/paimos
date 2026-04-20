@@ -20,6 +20,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/markus-barta/paimos/backend/auth"
 )
 
 func jsonOK(w http.ResponseWriter, v any) {
@@ -46,4 +48,37 @@ func handleDBError(w http.ResponseWriter, err error, entity string) bool {
 	log.Printf("%s DB error: %v", entity, err)
 	jsonError(w, "internal error", http.StatusInternalServerError)
 	return true
+}
+
+// projectIDFilter returns a SQL fragment and matching args that restrict
+// a query to the set of projects the current user can view. The returned
+// clause begins with " AND " (so it can be appended to a WHERE clause).
+// column is the fully qualified column name of the project ID (e.g.
+// "p.id", "i.project_id"). If allowOrphans is true, rows with NULL in
+// that column also pass (used for issue lists that include orphan sprints).
+//
+// For admins, the returned clause is empty — no filtering needed.
+// For other users with no accessible projects, the clause evaluates to
+// an always-false predicate so the query returns zero rows.
+func projectIDFilter(r *http.Request, column string, allowOrphans bool) (string, []any) {
+	ids := auth.AccessibleProjectIDs(r)
+	if ids == nil {
+		return "", nil // admin — no filter
+	}
+	if len(ids) == 0 {
+		if allowOrphans {
+			return " AND " + column + " IS NULL", nil
+		}
+		return " AND 1=0", nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	if allowOrphans {
+		return " AND (" + column + " IS NULL OR " + column + " IN (" + placeholders + "))", args
+	}
+	return " AND " + column + " IN (" + placeholders + ")", args
 }

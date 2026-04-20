@@ -18,6 +18,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+// Route meta shape. `projectIdParam` names the URL param that holds the
+// project ID — the beforeEach guard uses it to enforce per-project view
+// access before the component mounts.
+declare module 'vue-router' {
+  interface RouteMeta {
+    public?: boolean
+    adminOnly?: boolean
+    portal?: boolean
+    projectIdParam?: string
+  }
+}
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -27,8 +39,8 @@ const router = createRouter({
     { path: '/',         component: () => import('@/views/DashboardView.vue') },
     { path: '/projects', component: () => import('@/views/ProjectsView.vue') },
     { path: '/projects/accruals/print', component: () => import('@/views/AccrualsPrintView.vue'), meta: { adminOnly: true } },
-    { path: '/projects/:id', component: () => import('@/views/ProjectDetailView.vue') },
-    { path: '/projects/:id/issues/:issueId', component: () => import('@/views/IssueDetailView.vue') },
+    { path: '/projects/:id', component: () => import('@/views/ProjectDetailView.vue'), meta: { projectIdParam: 'id' } },
+    { path: '/projects/:id/issues/:issueId', component: () => import('@/views/IssueDetailView.vue'), meta: { projectIdParam: 'id' } },
     { path: '/issues',   component: () => import('@/views/IssuesView.vue') },
     { path: '/sprints',       redirect: '/sprint-board' },
     { path: '/sprint-board', component: () => import('@/views/SprintBoardView.vue') },
@@ -64,6 +76,18 @@ router.beforeEach(async (to) => {
   // Internal users accessing portal (admins can, members redirect home)
   if (auth.user && auth.user.role === 'member' && to.meta.portal) {
     return '/'
+  }
+  // Per-project view access. Routes opt in by setting meta.projectIdParam
+  // to the URL parameter that carries the project ID. If the param is
+  // missing or not numeric, fall through — the underlying handler will
+  // produce the 404 instead.
+  const pidParam = to.meta.projectIdParam
+  if (pidParam && auth.user) {
+    const raw = to.params[pidParam]
+    const pid = Array.isArray(raw) ? Number(raw[0]) : Number(raw)
+    if (!Number.isNaN(pid) && pid > 0 && !auth.canView(pid)) {
+      return '/'
+    }
   }
 })
 

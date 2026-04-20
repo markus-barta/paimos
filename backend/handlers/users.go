@@ -87,6 +87,9 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	// Seed editor access on all active projects for internal roles. External
+	// users are not seeded — they must be granted access explicitly.
+	auth.SeedAccessForUser(id, body.Role)
 	var u models.User
 	scanUser(db.DB.QueryRow("SELECT "+userSelectCols+" FROM users WHERE id=?", id), &u)
 	w.WriteHeader(http.StatusCreated)

@@ -33,6 +33,9 @@ const auth      = useAuthStore()
 const search    = useSearchStore()
 const isAdmin   = computed(() => auth.user?.role === 'admin')
 const projectId = computed(() => Number(route.params.id))
+// Whether the current user can edit inside this project — admins and
+// project editors pass, viewers fall through to read-only rendering.
+const canEditProject = computed(() => auth.canEdit(projectId.value))
 const initialPanelIssueId = computed(() => {
   const p = route.query.panel
   return p ? Number(p) : undefined
@@ -513,11 +516,11 @@ const lastChanged = computed(() => {
           <AppIcon v-if="!exporting" name="download" :size="14" />
           <AppIcon v-else name="loader" :size="14" class="spin" />
         </button>
-        <button v-if="isAdmin" class="btn btn-ghost btn-sm icon-only" @click="triggerImport" :disabled="importing" title="Import CSV">
+        <button v-if="isAdmin && canEditProject" class="btn btn-ghost btn-sm icon-only" @click="triggerImport" :disabled="importing" title="Import CSV">
           <AppIcon name="upload" :size="14" />
         </button>
         <input ref="importInputRef" type="file" accept=".csv" style="display:none" @change="onImportFile" />
-        <button v-if="isAdmin" class="btn btn-ghost btn-sm" @click="openEdit">Edit</button>
+        <button v-if="isAdmin && canEditProject" class="btn btn-ghost btn-sm" @click="openEdit">Edit</button>
       </Teleport>
 
       <!-- Export error banner -->

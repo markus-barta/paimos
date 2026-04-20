@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/models"
 )
@@ -41,6 +42,9 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 		status = "active"
 	}
 
+	filter, filterArgs := projectIDFilter(r, "p.id", false)
+	args := append([]any{status}, filterArgs...)
+
 	rows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status,
 		       p.product_owner, p.customer_id,
@@ -54,10 +58,10 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 		       p.rate_hourly, p.rate_lp
 		FROM projects p
 		LEFT JOIN issues i ON i.project_id = p.id
-		WHERE p.status = ?
+		WHERE p.status = ?`+filter+`
 		GROUP BY p.id
 		ORDER BY last_activity DESC, p.updated_at DESC
-	`, status)
+	`, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -111,6 +115,9 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	// Seed editor access for all current admin/member users so they don't
+	// suddenly lose visibility into a new project.
+	auth.SeedAccessForProject(id)
 	p := getProjectByID(id)
 	if p == nil {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)

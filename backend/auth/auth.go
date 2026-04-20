@@ -78,6 +78,7 @@ func Middleware(next http.Handler) http.Handler {
 				return
 			}
 			ctx := context.WithValue(r.Context(), UserKey, user)
+			ctx = WithAccessCache(ctx)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -94,6 +95,7 @@ func Middleware(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), UserKey, user)
+		ctx = WithAccessCache(ctx)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -236,7 +238,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("audit: login_ok username=%q ip=%s", body.Username, clientIP(r))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(loginUser)
+	json.NewEncoder(w).Encode(MeResponse{
+		User:   &loginUser,
+		Access: BuildAccessResponse(&loginUser),
+	})
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -256,10 +261,22 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// MeResponse wraps the authenticated user and their per-project access
+// summary. Returned by /auth/me, /auth/login (on success), and
+// /auth/totp/verify so the client can hydrate its access cache in one
+// round-trip instead of issuing a separate request per project.
+type MeResponse struct {
+	User   *models.User   `json:"user"`
+	Access AccessResponse `json:"access"`
+}
+
 func MeHandler(w http.ResponseWriter, r *http.Request) {
 	user := GetUser(r)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(MeResponse{
+		User:   user,
+		Access: BuildAccessResponse(user),
+	})
 }
 
 // ChangePassword — authenticated user changes their own password.
@@ -349,48 +366,20 @@ func RequirePortalAccess(next http.Handler) http.Handler {
 	})
 }
 
-// GetAccessibleProjectIDs returns the project IDs an external user can access.
-// Returns nil for admin/member (meaning all projects).
+// GetAccessibleProjectIDs returns the project IDs the user can at least
+// view. Returns nil for admins (meaning all projects). Backed by the
+// project_members table (see access.go).
+//
+// Deprecated: prefer AccessibleProjectIDs — kept for backwards compatibility
+// with portal code.
 func GetAccessibleProjectIDs(r *http.Request) []int64 {
-	user := GetUser(r)
-	if user == nil || user.Role != "external" {
-		return nil // admin/member = all projects
-	}
-	rows, err := db.DB.Query("SELECT project_id FROM user_project_access WHERE user_id=?", user.ID)
-	if err != nil {
-		return []int64{}
-	}
-	defer rows.Close()
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			log.Printf("scan error: %v", err)
-			continue
-		}
-		ids = append(ids, id)
-	}
-	if ids == nil {
-		ids = []int64{}
-	}
-	return ids
+	return AccessibleProjectIDs(r)
 }
 
-// HasProjectAccess checks if the current user has access to a specific project.
-// Admin/member always has access. External users need user_project_access entry.
+// HasProjectAccess reports whether the user can at least view projectID.
+// Backed by project_members via CanViewProject.
+//
+// Deprecated: prefer CanViewProject / CanEditProject.
 func HasProjectAccess(r *http.Request, projectID int64) bool {
-	user := GetUser(r)
-	if user == nil {
-		return false
-	}
-	if user.Role != "external" {
-		return true
-	}
-	var count int
-	if err := db.DB.QueryRow("SELECT COUNT(*) FROM user_project_access WHERE user_id=? AND project_id=?",
-		user.ID, projectID).Scan(&count); err != nil {
-		log.Printf("HasProjectAccess: scan error: %v", err)
-		return false
-	}
-	return count > 0
+	return CanViewProject(r, projectID)
 }

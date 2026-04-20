@@ -62,6 +62,10 @@ func GetRecentProjects(w http.ResponseWriter, r *http.Request) {
 		limit = 3
 	}
 
+	filter, filterArgs := projectIDFilter(r, "p.id", false)
+	args := []any{user.ID}
+	args = append(args, filterArgs...)
+	args = append(args, limit)
 	rows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status,
 		       p.product_owner, p.customer_id,
@@ -69,10 +73,10 @@ func GetRecentProjects(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(p.logo_path, '')
 		FROM user_recent_projects urp
 		JOIN projects p ON p.id = urp.project_id
-		WHERE urp.user_id = ? AND p.status != 'deleted'
+		WHERE urp.user_id = ? AND p.status != 'deleted'`+filter+`
 		ORDER BY urp.visited_at DESC
 		LIMIT ?
-	`, user.ID, limit)
+	`, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return

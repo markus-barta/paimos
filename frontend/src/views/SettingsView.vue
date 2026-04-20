@@ -12,6 +12,7 @@ import SettingsViewsTab from '@/components/settings/SettingsViewsTab.vue'
 import SettingsSprintsTab from '@/components/settings/SettingsSprintsTab.vue'
 import SettingsDevelopmentTab from '@/components/settings/SettingsDevelopmentTab.vue'
 import SettingsTrashTab from '@/components/settings/SettingsTrashTab.vue'
+import SettingsPermissionsTab from '@/components/settings/SettingsPermissionsTab.vue'
 
 const auth    = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'admin')
@@ -19,7 +20,7 @@ const route   = useRoute()
 const router  = useRouter()
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-type Tab = 'account' | 'tags' | 'appearance' | 'branding' | 'users' | 'sprints' | 'views' | 'development' | 'trash'
+type Tab = 'account' | 'tags' | 'appearance' | 'branding' | 'users' | 'permissions' | 'sprints' | 'views' | 'development' | 'trash'
 
 const ALL_TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
   { id: 'account',      label: 'Account' },
@@ -27,6 +28,7 @@ const ALL_TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
   { id: 'appearance',   label: 'Appearance' },
   { id: 'branding',     label: 'Branding',     adminOnly: true },
   { id: 'users',        label: 'Users',        adminOnly: true },
+  { id: 'permissions',  label: 'Permissions',  adminOnly: true },
   { id: 'sprints',      label: 'Sprints',      adminOnly: true },
   { id: 'views',        label: 'Views',        adminOnly: true },
   { id: 'development',  label: 'Development',  adminOnly: true },
@@ -66,6 +68,7 @@ function setTab(tab: Tab) {
   <div class="tab-content">
     <SettingsAccountTab     v-if="activeTab === 'account'" />
     <SettingsUsersTab       v-else-if="activeTab === 'users' && isAdmin" />
+    <SettingsPermissionsTab v-else-if="activeTab === 'permissions' && isAdmin" />
     <SettingsTagsTab        v-else-if="activeTab === 'tags'" />
     <SettingsAppearanceTab  v-else-if="activeTab === 'appearance'" />
     <SettingsBrandingTab    v-else-if="activeTab === 'branding' && isAdmin" />

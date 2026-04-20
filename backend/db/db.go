@@ -3104,6 +3104,67 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_prt_expires ON password_reset_tokens(expires_at)`,
 	}},
+	// M64: per-project access control (project_members + access_audit).
+	// Replaces user_project_access with a richer model that supports three
+	// access levels — 'viewer' (read-only), 'editor' (read+write), and
+	// 'none' (explicit denial, overrides the default member-has-all-access).
+	// Backfills: existing user_project_access rows become 'viewer' grants
+	// (they were read-only portal access); all active admin+member users
+	// are seeded as 'editor' for every non-deleted project.
+	{64, []string{
+		`CREATE TABLE IF NOT EXISTS project_members (
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			project_id   INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			access_level TEXT NOT NULL DEFAULT 'editor'
+			             CHECK(access_level IN ('none','viewer','editor')),
+			created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (user_id, project_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_members_user    ON project_members(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_members_level   ON project_members(access_level)`,
+
+		`CREATE TABLE IF NOT EXISTS access_audit (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			user_id    INTEGER REFERENCES users(id)    ON DELETE SET NULL,
+			actor_id   INTEGER REFERENCES users(id)    ON DELETE SET NULL,
+			action     TEXT NOT NULL,
+			old_level  TEXT NOT NULL DEFAULT '',
+			new_level  TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_access_audit_project ON access_audit(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_access_audit_user    ON access_audit(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_access_audit_created ON access_audit(created_at)`,
+
+		// Backfill: existing portal grants become 'viewer' rows.
+		`INSERT OR IGNORE INTO project_members(user_id, project_id, access_level)
+		 SELECT user_id, project_id, 'viewer' FROM user_project_access`,
+
+		// Seed editor access for every current admin/member on every
+		// non-deleted project. External users are NOT auto-seeded — they
+		// must be granted per-project access explicitly.
+		`INSERT OR IGNORE INTO project_members(user_id, project_id, access_level)
+		 SELECT u.id, p.id, 'editor'
+		 FROM users u
+		 CROSS JOIN projects p
+		 WHERE u.role IN ('admin','member')
+		   AND u.status = 'active'
+		   AND p.status != 'deleted'`,
+	}},
+
+	// M65: drop the obsolete user_project_access table. Safety re-insert
+	// covers rows added between M64 being applied and this migration
+	// running (unlikely in practice — both ship together — but cheap
+	// to do before dropping the source table).
+	{65, []string{
+		`INSERT OR IGNORE INTO project_members(user_id, project_id, access_level)
+		 SELECT user_id, project_id, 'viewer' FROM user_project_access`,
+		`DROP INDEX IF EXISTS idx_upa_user`,
+		`DROP TABLE IF EXISTS user_project_access`,
+	}},
 	}
 
 	for _, m := range migrations {

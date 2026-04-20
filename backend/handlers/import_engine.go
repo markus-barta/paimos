@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 )
 
@@ -145,7 +146,11 @@ func EnsureProjectExists(projectKey, projectName string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("create project: %w", err)
 	}
-	return res.LastInsertId()
+	newID, err := res.LastInsertId()
+	if err == nil {
+		auth.SeedAccessForProject(newID)
+	}
+	return newID, err
 }
 
 // RunImport inserts/updates/skips rows according to strategy.

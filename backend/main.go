@@ -130,33 +130,33 @@ func main() {
 			// Projects
 			r.Get("/projects", handlers.ListProjects)
 			r.With(auth.RequireAdmin).Post("/projects", handlers.CreateProject)
-			r.Get("/projects/{id}", handlers.GetProject)
-			r.With(auth.RequireAdmin).Put("/projects/{id}", handlers.UpdateProject)
-			r.With(auth.RequireAdmin).Delete("/projects/{id}", handlers.DeleteProject)
-			r.With(auth.RequireAdmin).Post("/projects/{id}/logo", handlers.UploadProjectLogo)
-			r.With(auth.RequireAdmin).Delete("/projects/{id}/logo", handlers.DeleteProjectLogo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}", handlers.GetProject)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}", handlers.UpdateProject)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}", handlers.DeleteProject)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/logo", handlers.UploadProjectLogo)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/logo", handlers.DeleteProjectLogo)
 
 			// Project key suggestion
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
 
 			// Issues nested under project
-			r.Get("/projects/{id}/issues", handlers.ListIssues)
-			r.Post("/projects/{id}/issues", handlers.CreateIssue)
-			r.Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
-			r.Get("/projects/{id}/cost-units", handlers.ListCostUnits)
-			r.Get("/projects/{id}/releases", handlers.ListReleases)
-			r.Get("/projects/{id}/export/csv", handlers.ExportCSV)
-			r.Get("/projects/{id}/acceptance-log", handlers.AcceptanceLog)
-			r.Get("/projects/{id}/acceptance-report", handlers.AcceptanceReport)
-			r.Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
-			r.Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/issues", handlers.CreateIssue)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/cost-units", handlers.ListCostUnits)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/releases", handlers.ListReleases)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/export/csv", handlers.ExportCSV)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-log", handlers.AcceptanceLog)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-report", handlers.AcceptanceReport)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
 			// Project accruals (Vorräte) — admin only
 			r.With(auth.RequireAdmin).Get("/reports/accruals", handlers.GetAccruals)
-			r.With(auth.RequireAdmin).Post("/projects/{id}/import/csv/preflight", handlers.ImportCSVPreflight)
-			r.With(auth.RequireAdmin).Post("/projects/{id}/import/csv", handlers.ImportCSV)
-			r.With(auth.RequireAdmin).Get("/projects/{id}/time-entries/users", handlers.PurgeUsers)
-			r.With(auth.RequireAdmin).Post("/projects/{id}/time-entries/purge-preview", handlers.PurgePreview)
-			r.With(auth.RequireAdmin).Post("/projects/{id}/time-entries/purge", handlers.PurgeTimeEntries)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv/preflight", handlers.ImportCSVPreflight)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv", handlers.ImportCSV)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/projects/{id}/time-entries/users", handlers.PurgeUsers)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/time-entries/purge-preview", handlers.PurgePreview)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/time-entries/purge", handlers.PurgeTimeEntries)
 			r.With(auth.RequireAdmin).Post("/import/csv/preflight", handlers.ImportCSVGlobalPreflight)
 			r.With(auth.RequireAdmin).Post("/import/csv", handlers.ImportCSVGlobal)
 
@@ -179,35 +179,35 @@ func main() {
 			r.Get("/releases", handlers.ListAllReleases)
 
 			// Issues by ID
-			r.Get("/issues/{id}", handlers.GetIssue)
-			r.Put("/issues/{id}", handlers.UpdateIssue)
-			r.With(auth.RequireAdmin).Delete("/issues/{id}", handlers.DeleteIssue)
-			r.With(auth.RequireAdmin).Patch("/issues/{id}/archive", handlers.ArchiveIssue)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
+			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
+			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}", handlers.DeleteIssue)
+			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Patch("/issues/{id}/archive", handlers.ArchiveIssue)
 			// Attachments
-			r.Get("/issues/{id}/attachments", handlers.ListAttachments)
-			r.Post("/issues/{id}/attachments", handlers.UploadAttachment)
-			r.Get("/attachments/{id}", handlers.GetAttachmentFile)
-			r.Delete("/attachments/{id}", handlers.DeleteAttachment)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/attachments", handlers.ListAttachments)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/attachments", handlers.UploadAttachment)
+			r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}", handlers.GetAttachmentFile)
+			r.With(auth.RequireAttachmentEdit).Delete("/attachments/{id}", handlers.DeleteAttachment)
 			r.Post("/attachments", handlers.UploadPendingAttachment)
 			r.Patch("/attachments/link", handlers.LinkAttachments)
 
-			r.Post("/issues/{id}/clone", handlers.CloneIssue)
-			r.Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
-			r.Get("/issues/{id}/children", handlers.GetIssueChildren)
-			r.Get("/issues/{id}/history", handlers.GetIssueHistory)
-			r.Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/clone", handlers.CloneIssue)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)
-			r.Get("/issues/{id}/relations", handlers.ListIssueRelations)
-			r.Post("/issues/{id}/relations", handlers.CreateIssueRelation)
-			r.With(auth.RequireAdmin).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
-			r.Get("/issues/{id}/members", handlers.ListIssuesByRelation)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/relations", handlers.ListIssueRelations)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/relations", handlers.CreateIssueRelation)
+			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/members", handlers.ListIssuesByRelation)
 
 			// Time entries (v2)
-			r.Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
-			r.Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
-			r.Put("/time-entries/{id}", handlers.UpdateTimeEntry)
-			r.Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
+			r.With(auth.RequireTimeEntryEdit).Put("/time-entries/{id}", handlers.UpdateTimeEntry)
+			r.With(auth.RequireTimeEntryEdit).Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
 			r.Get("/time-entries/running", handlers.GetRunningTimers)
 			r.Get("/time-entries/recent", handlers.GetRecentTimers)
 
@@ -227,10 +227,23 @@ func main() {
 			r.With(auth.RequireAdmin).Delete("/users/{id}", handlers.DeleteUser)
 			r.With(auth.RequireAdmin).Post("/users/{id}/reset-totp", handlers.ResetUserTOTP)
 
-			// User project access (admin only)
+			// User project access (admin only). The legacy /users/{id}/projects
+			// endpoints drive the external-portal grants page; the new
+			// /users/{id}/memberships endpoints drive the full matrix editor
+			// (with viewer/editor/none levels). Both write the same table.
 			r.With(auth.RequireAdmin).Get("/users/{id}/projects", handlers.ListUserProjects)
 			r.With(auth.RequireAdmin).Post("/users/{id}/projects", handlers.AddUserProject)
 			r.With(auth.RequireAdmin).Delete("/users/{id}/projects/{projectId}", handlers.RemoveUserProject)
+			r.With(auth.RequireAdmin).Get("/users/{id}/memberships", handlers.ListUserMemberships)
+			r.With(auth.RequireAdmin).Put("/users/{id}/memberships/{projectId}", handlers.UpsertUserMembership)
+			r.With(auth.RequireAdmin).Delete("/users/{id}/memberships/{projectId}", handlers.DeleteUserMembership)
+
+			// Permissions matrix (read-only; any authenticated internal user
+			// may view it, but the settings page is admin-gated on the UI side).
+			r.Get("/permissions/matrix", handlers.GetPermissionsMatrix)
+
+			// Access-change audit log (admin only).
+			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
 
 			// Tags (admin only for write)
 			r.Get("/tags", handlers.ListTags)
@@ -239,15 +252,15 @@ func main() {
 			r.With(auth.RequireAdmin).Delete("/tags/{id}", handlers.DeleteTag)
 
 			// Tag associations
-			r.Post("/issues/{id}/tags", handlers.AddTagToIssue)
-			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
-			r.Post("/projects/{id}/tags", handlers.AddTagToProject)
-			r.Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/tags", handlers.AddTagToIssue)
+			r.With(auth.RequireIssueEdit).Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)
+			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
 
 			// Comments
-			r.Get("/issues/{id}/comments", handlers.ListComments)
-			r.Post("/issues/{id}/comments", handlers.CreateComment)
-			r.Delete("/comments/{id}", handlers.DeleteComment)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/comments", handlers.CreateComment)
+			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
 
 			// Branding write endpoints (admin only). GET /api/branding stays
 			// public (see the public group above) because the login page needs

@@ -133,7 +133,7 @@ func PortalListProjects(w http.ResponseWriter, r *http.Request) {
 			       COUNT(i.id) as issue_count,
 			       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count
 			FROM projects p
-			JOIN user_project_access upa ON upa.project_id = p.id AND upa.user_id = ?
+			JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ? AND pm.access_level IN ('viewer','editor')
 			LEFT JOIN issues i ON i.project_id = p.id
 			WHERE p.status = 'active'
 			GROUP BY p.id

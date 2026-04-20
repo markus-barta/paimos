@@ -112,6 +112,61 @@ async function removeUserProject(projectId: number) {
   } catch { /* ignore */ }
 }
 
+// ── Membership matrix editor (all users, all projects, viewer/editor/none) ─
+
+type AccessLevel = 'none' | 'viewer' | 'editor'
+interface MembershipRow {
+  project_id: number
+  project_key: string
+  project_name: string
+  access_level: AccessLevel
+}
+
+const membershipsTarget = ref<User | null>(null)
+const memberships = ref<MembershipRow[]>([])
+const membershipsLoading = ref(false)
+const ACCESS_LEVELS: { value: AccessLevel; label: string }[] = [
+  { value: 'none',   label: 'None'   },
+  { value: 'viewer', label: 'Viewer' },
+  { value: 'editor', label: 'Editor' },
+]
+
+async function openMemberships(u: User) {
+  membershipsTarget.value = u
+  membershipsLoading.value = true
+  memberships.value = []
+  try {
+    memberships.value = await api.get<MembershipRow[]>(`/users/${u.id}/memberships`)
+  } catch { /* ignore */ }
+  membershipsLoading.value = false
+}
+
+async function setMembership(row: MembershipRow, lvl: AccessLevel) {
+  if (!membershipsTarget.value) return
+  const uid = membershipsTarget.value.id
+  const prev = row.access_level
+  row.access_level = lvl // optimistic
+  try {
+    await api.put(`/users/${uid}/memberships/${row.project_id}`, { access_level: lvl })
+  } catch {
+    row.access_level = prev
+  }
+}
+
+async function resetMembership(row: MembershipRow) {
+  if (!membershipsTarget.value) return
+  const uid = membershipsTarget.value.id
+  const prev = row.access_level
+  try {
+    await api.delete(`/users/${uid}/memberships/${row.project_id}`)
+    // After deleting the explicit row, the backend falls back to the
+    // role default. Re-read memberships for accuracy.
+    memberships.value = await api.get<MembershipRow[]>(`/users/${uid}/memberships`)
+  } catch {
+    row.access_level = prev
+  }
+}
+
 async function loadUsers() {
   if (usersLoaded.value) return
   users.value = await api.get<User[]>('/users')
@@ -261,6 +316,7 @@ loadUsers()
             <td class="actions-cell">
               <button class="btn btn-ghost btn-sm" @click="openEditUser(u)">Edit</button>
               <button v-if="u.role === 'external'" class="btn btn-ghost btn-sm" @click="openUserProjects(u)" title="Manage project access">Projects</button>
+              <button v-if="!isSelf(u)" class="btn btn-ghost btn-sm" @click="openMemberships(u)" title="Per-project access levels">Access</button>
               <template v-if="!isSelf(u)">
                 <button v-if="u.status === 'active'" class="btn btn-ghost btn-sm" @click="disableUserTarget=u" title="Disable account">Disable</button>
                 <button v-if="u.status === 'inactive'" class="btn btn-ghost btn-sm" @click="enableUser(u)" title="Re-enable account">Enable</button>
@@ -353,6 +409,53 @@ loadUsers()
     </form>
   </AppModal>
 
+  <!-- Per-project access matrix (viewer/editor/none for every project) -->
+  <AppModal :title="`Access: ${membershipsTarget?.username}`" :open="!!membershipsTarget" @close="membershipsTarget=null">
+    <div v-if="membershipsLoading" style="padding:1rem;color:var(--text-muted)">Loading...</div>
+    <div v-else class="form">
+      <p class="empty-hint" style="margin-bottom:.75rem">
+        Pick an access level per project. <strong>None</strong> blocks view and edit; <strong>Viewer</strong> allows read-only; <strong>Editor</strong> allows full write.
+        Use <em>Reset</em> to revert to the user's role default (members are editors by default).
+      </p>
+      <div class="memb-table-wrap">
+        <table class="settings-table memb-table">
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Access</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in memberships" :key="row.project_id">
+              <td>
+                <span class="project-access-key">{{ row.project_key }}</span>
+                <span class="project-access-name">{{ row.project_name }}</span>
+              </td>
+              <td>
+                <div class="memb-lvl-group">
+                  <button
+                    v-for="lvl in ACCESS_LEVELS" :key="lvl.value"
+                    type="button"
+                    class="btn btn-sm"
+                    :class="row.access_level === lvl.value ? 'btn-primary' : 'btn-ghost'"
+                    @click="setMembership(row, lvl.value)"
+                  >{{ lvl.label }}</button>
+                </div>
+              </td>
+              <td>
+                <button class="btn btn-ghost btn-sm" @click="resetMembership(row)" title="Revert to role default">Reset</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" @click="membershipsTarget=null">Close</button>
+      </div>
+    </div>
+  </AppModal>
+
   <AppModal :title="`Project Access: ${userProjectsTarget?.username}`" :open="!!userProjectsTarget" @close="userProjectsTarget=null">
     <div v-if="projectsLoading" style="padding:1rem;color:var(--text-muted)">Loading...</div>
     <div v-else class="form">
@@ -412,6 +515,12 @@ loadUsers()
 .row-muted td { opacity: .65; }
 .row-muted:hover td { opacity: .85; }
 .badge-active   { background: #d4edda; color: #155724; }
+.memb-table-wrap { max-height: 60vh; overflow-y: auto; margin-bottom: .75rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.memb-table { margin: 0; }
+.memb-table td { padding: .45rem .6rem; }
+.memb-lvl-group { display: inline-flex; gap: .25rem; }
+.project-access-key  { font-family: monospace; font-weight: 600; font-size: 12px; color: var(--text-muted); margin-right: .5rem; }
+.project-access-name { font-weight: 600; font-size: 13px; }
 
 /* ── Project access modal ────────────────────────────────────────────── */
 .project-access-list { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .75rem; }

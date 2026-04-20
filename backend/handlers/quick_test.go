@@ -46,16 +46,24 @@ func Test_Auth(t *testing.T) {
 	t.Run("me returns current user", func(t *testing.T) {
 		resp := ts.get(t, "/api/auth/me", ts.adminCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var u struct {
-			Username string `json:"username"`
-			Role     string `json:"role"`
+		var env struct {
+			User struct {
+				Username string `json:"username"`
+				Role     string `json:"role"`
+			} `json:"user"`
+			Access struct {
+				AllProjects bool `json:"all_projects"`
+			} `json:"access"`
 		}
-		decode(t, resp, &u)
-		if u.Username != "admin" {
-			t.Errorf("me: username = %q, want %q", u.Username, "admin")
+		decode(t, resp, &env)
+		if env.User.Username != "admin" {
+			t.Errorf("me: username = %q, want %q", env.User.Username, "admin")
 		}
-		if u.Role != "admin" {
-			t.Errorf("me: role = %q, want %q", u.Role, "admin")
+		if env.User.Role != "admin" {
+			t.Errorf("me: role = %q, want %q", env.User.Role, "admin")
+		}
+		if !env.Access.AllProjects {
+			t.Errorf("me: admin should have access.all_projects=true")
 		}
 	})
 
@@ -67,12 +75,14 @@ func Test_Auth(t *testing.T) {
 	t.Run("login response includes all profile fields", func(t *testing.T) {
 		resp := ts.post(t, "/api/auth/login", "", map[string]string{"username": "admin", "password": "adminpass"})
 		assertStatus(t, resp, http.StatusOK)
-		// Decode into a map to check for presence of preference fields
-		var result map[string]interface{}
-		decode(t, resp, &result)
+		// Login now returns an envelope: { "user": {...}, "access": {...} }.
+		var env struct {
+			User map[string]interface{} `json:"user"`
+		}
+		decode(t, resp, &env)
 		for _, key := range []string{"id", "username", "role", "status", "markdown_default", "monospace_fields", "recent_projects_limit", "locale"} {
-			if _, ok := result[key]; !ok {
-				t.Errorf("login response missing field %q", key)
+			if _, ok := env.User[key]; !ok {
+				t.Errorf("login response missing user.%q", key)
 			}
 		}
 	})

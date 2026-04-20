@@ -503,6 +503,12 @@ function onChildDeleted(id: number) { children.value = children.value.filter(c =
 
 const { showTypeIcon, showTypeText } = useIssueDisplay()
 const authStore = useAuthStore()
+// Per-project edit flag for the current user. Consumed by templates to
+// hide edit affordances when the caller only has viewer access.
+const canEditThisProject = computed(() => {
+  const pid = issue.value?.project_id ?? projectId.value
+  return authStore.canEdit(pid)
+})
 const validParents = computed(() => {
   const currentId = issue.value?.id
   const t = form.value.type

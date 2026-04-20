@@ -31,12 +31,14 @@ func TestQuick_ExternalUserBlocked(t *testing.T) {
 	t.Run("external user can call /auth/me", func(t *testing.T) {
 		resp := ts.get(t, "/api/auth/me", ts.externalCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var u struct {
-			Role string `json:"role"`
+		var env struct {
+			User struct {
+				Role string `json:"role"`
+			} `json:"user"`
 		}
-		decode(t, resp, &u)
-		if u.Role != "external" {
-			t.Errorf("role = %q, want external", u.Role)
+		decode(t, resp, &env)
+		if env.User.Role != "external" {
+			t.Errorf("role = %q, want external", env.User.Role)
 		}
 	})
 

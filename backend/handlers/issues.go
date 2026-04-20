@@ -1218,6 +1218,14 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	query := issueSelectCore + ` WHERE 1=1`
 	args := []any{}
 
+	// Scope by per-project access (admins pass through with empty filter).
+	// Orphan issues (NULL project_id — sprints) are cross-project and
+	// remain visible to every authenticated internal user.
+	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
+		query += accessFilter
+		args = append(args, accessArgs...)
+	}
+
 	// Apply shared filters (status, priority, type, assignee, cost_unit, release, tags, sprints)
 	query, args = applyIssueFilters(query, args, q)
 
@@ -1294,6 +1302,10 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	// Build count query with same filters
 	countQuery := `SELECT COUNT(*) FROM issues i WHERE 1=1`
 	countArgs := []any{}
+	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
+		countQuery += accessFilter
+		countArgs = append(countArgs, accessArgs...)
+	}
 	countQuery, countArgs = applyIssueFilters(countQuery, countArgs, q)
 	if pids := q.Get("project_ids"); pids != "" {
 		wantNull := false
@@ -1414,7 +1426,14 @@ func splitCSV(s string) []string {
 }
 
 func RecentIssues(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.DB.Query(issueSelectCore + ` ORDER BY i.updated_at DESC LIMIT 20`)
+	query := issueSelectCore + ` WHERE 1=1`
+	args := []any{}
+	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
+		query += accessFilter
+		args = append(args, accessArgs...)
+	}
+	query += ` ORDER BY i.updated_at DESC LIMIT 20`
+	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -1486,9 +1505,14 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 
 // ListAllCostUnits returns distinct cost_unit values across all projects.
 func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.DB.Query(
-		`SELECT DISTINCT cost_unit FROM issues WHERE cost_unit != '' ORDER BY cost_unit`,
-	)
+	query := `SELECT DISTINCT cost_unit FROM issues i WHERE cost_unit != ''`
+	args := []any{}
+	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
+		query += f
+		args = append(args, a...)
+	}
+	query += ` ORDER BY cost_unit`
+	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -1508,9 +1532,14 @@ func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
 
 // ListAllReleases returns distinct release values across all projects.
 func ListAllReleases(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.DB.Query(
-		`SELECT DISTINCT release FROM issues WHERE release != '' ORDER BY release`,
-	)
+	query := `SELECT DISTINCT release FROM issues i WHERE release != ''`
+	args := []any{}
+	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
+		query += f
+		args = append(args, a...)
+	}
+	query += ` ORDER BY release`
+	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -1599,7 +1628,8 @@ func ListIssueRelations(w http.ResponseWriter, r *http.Request) {
 		SELECT ir.source_id, ir.target_id, ir.type,
 		       CASE WHEN p.key IS NOT NULL THEN p.key || '-' || i2.issue_number
 		            ELSE 'SPRINT-' || i2.id END,
-		       i2.title
+		       i2.title,
+		       i2.project_id
 		FROM issue_relations ir
 		JOIN issues i2 ON i2.id = CASE WHEN ir.source_id = ? THEN ir.target_id ELSE ir.source_id END
 		LEFT JOIN projects p ON p.id = i2.project_id
@@ -1622,8 +1652,16 @@ func ListIssueRelations(w http.ResponseWriter, r *http.Request) {
 	relations := []models.IssueRelation{}
 	for rows.Next() {
 		var rel models.IssueRelation
-		if err := rows.Scan(&rel.SourceID, &rel.TargetID, &rel.Type, &rel.TargetKey, &rel.TargetTitle); err != nil {
+		var targetProjectID sql.NullInt64
+		if err := rows.Scan(&rel.SourceID, &rel.TargetID, &rel.Type, &rel.TargetKey, &rel.TargetTitle, &targetProjectID); err != nil {
 			continue
+		}
+		// Restrict: if the relation's target issue lives in a project
+		// the caller can't view, keep the relation visible (so tooling
+		// that counts them still works) but redact the title and key.
+		if targetProjectID.Valid && !auth.CanViewProject(r, targetProjectID.Int64) {
+			rel.TargetKey = "RESTRICTED"
+			rel.TargetTitle = "Restricted"
 		}
 		relations = append(relations, rel)
 	}

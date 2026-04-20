@@ -91,6 +91,71 @@ scripts/               maintenance helpers
   see caveats in `CONFIGURATION.md`).
 - See [`DATA_MODEL_v2.md`](DATA_MODEL_v2.md) for the full schema.
 
+## 4a. Access model (per-project)
+
+PAIMOS uses a three-level per-project access model, stored in the
+`project_members` table:
+
+| Level   | Read | Write | Notes                                           |
+| ------- | ---- | ----- | ----------------------------------------------- |
+| `none`  | no   | no    | Explicit denial; overrides the member default. |
+| `viewer`| yes  | no    | Read-only access to the project and its issues.|
+| `editor`| yes  | yes   | Full read + write within the project.          |
+
+**Role defaults** (applied when no `project_members` row exists):
+
+- **admin** — always bypasses per-project checks (effectively editor
+  everywhere).
+- **member** — default `editor` on every non-deleted project.
+- **external** — default `none`; must be granted explicitly.
+
+Seeding is automatic:
+
+- `CreateUser` (for admin/member roles) seeds `editor` rows for every
+  non-deleted project.
+- `CreateProject` seeds `editor` rows for every active admin/member.
+- Migration 64 backfills existing portal grants as `viewer` and seeds
+  admin/member editors on pre-existing projects.
+
+**API surface**:
+
+- `GET  /api/permissions/matrix` — capabilities × levels matrix for UI.
+- `GET  /api/users/{id}/memberships` — per-project effective level.
+- `PUT  /api/users/{id}/memberships/{projectId}` — upsert a grant.
+- `DELETE /api/users/{id}/memberships/{projectId}` — revert to default.
+- `GET  /api/access-audit` — admin-only audit trail.
+
+**Go helpers** (in `backend/auth/access.go`):
+
+- `auth.CanViewProject(r, projectID) bool`
+- `auth.CanEditProject(r, projectID) bool`
+- `auth.ProjectAccessLevel(r, projectID) AccessLevel`
+- `auth.AccessibleProjectIDs(r) []int64` (returns nil for admin)
+- `auth.WithAccessCache(ctx)` — attaches a per-request memoization cache
+  that batches the lookup; already applied by `auth.Middleware`.
+
+**Middleware** (in `backend/auth/middleware_project.go`):
+
+- `RequireProjectView` / `RequireProjectEdit` — gates a chi route with
+  a `{id}` (or `{projectId}`) param on view or edit access.
+- `RequireIssueAccess` / `RequireIssueEdit` — resolves the project via
+  `issues.project_id`; orphan sprint issues pass through.
+- `RequireAttachmentAccess` / `RequireAttachmentEdit`
+- `RequireTimeEntryAccess` / `RequireTimeEntryEdit`
+- `RequireCommentAccess` / `RequireCommentEdit`
+
+Response convention: 404 on no-view access (no existence oracle), 403
+on view-only-when-edit-required.
+
+**Frontend access**:
+
+`/auth/login`, `/auth/me`, and `/auth/totp/verify` return an envelope
+`{ user, access }`. `access = { all_projects, levels: { [pid]: "viewer"|"editor" } }`.
+The Pinia store (`stores/auth.ts`) exposes `canView(pid)` and
+`canEdit(pid)` plus a hydrated `accessibleProjects` Map. Router routes
+opt in to per-project guarding by setting
+`meta.projectIdParam: 'id'`.
+
 ## 5. Frontend conventions
 
 - **Vue 3 + `<script setup lang="ts">`** for all new components.

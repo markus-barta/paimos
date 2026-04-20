@@ -66,13 +66,23 @@ func newTestServer(t *testing.T) *testServer {
 
 	// Seed admin user.
 	adminHash, _ := auth.HashPassword("adminpass")
-	db.DB.Exec("INSERT INTO users(username,password,role,status) VALUES(?,?,?,?)", "admin", adminHash, "admin", "active")
+	adminRes, _ := db.DB.Exec("INSERT INTO users(username,password,role,status) VALUES(?,?,?,?)", "admin", adminHash, "admin", "active")
+	if adminRes != nil {
+		if id, _ := adminRes.LastInsertId(); id > 0 {
+			auth.SeedAccessForUser(id, "admin")
+		}
+	}
 
 	// Seed member user.
 	memberHash, _ := auth.HashPassword("memberpass")
-	db.DB.Exec("INSERT INTO users(username,password,role,status) VALUES(?,?,?,?)", "member", memberHash, "member", "active")
+	memberRes, _ := db.DB.Exec("INSERT INTO users(username,password,role,status) VALUES(?,?,?,?)", "member", memberHash, "member", "active")
+	if memberRes != nil {
+		if id, _ := memberRes.LastInsertId(); id > 0 {
+			auth.SeedAccessForUser(id, "member")
+		}
+	}
 
-	// Seed external user.
+	// Seed external user. Externals are not auto-seeded — access is granted per-project.
 	externalHash, _ := auth.HashPassword("externalpass")
 	db.DB.Exec("INSERT INTO users(username,password,role,status) VALUES(?,?,?,?)", "external", externalHash, "external", "active")
 
@@ -189,10 +199,15 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/users", handlers.CreateUser)
 			r.With(auth.RequireAdmin).Put("/users/{id}", handlers.UpdateUser)
 
-			// User project access
+			// User project access + membership matrix
 			r.With(auth.RequireAdmin).Get("/users/{id}/projects", handlers.ListUserProjects)
 			r.With(auth.RequireAdmin).Post("/users/{id}/projects", handlers.AddUserProject)
 			r.With(auth.RequireAdmin).Delete("/users/{id}/projects/{projectId}", handlers.RemoveUserProject)
+			r.With(auth.RequireAdmin).Get("/users/{id}/memberships", handlers.ListUserMemberships)
+			r.With(auth.RequireAdmin).Put("/users/{id}/memberships/{projectId}", handlers.UpsertUserMembership)
+			r.With(auth.RequireAdmin).Delete("/users/{id}/memberships/{projectId}", handlers.DeleteUserMembership)
+			r.Get("/permissions/matrix", handlers.GetPermissionsMatrix)
+			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
 
 			r.Get("/auth/api-keys", handlers.ListAPIKeys)
 			r.Post("/auth/api-keys", handlers.CreateAPIKey)

@@ -58,20 +58,72 @@ export interface User {
   accruals_extra_statuses: string
 }
 
+// AccessLevel mirrors backend auth.AccessLevel.
+export type AccessLevel = 'viewer' | 'editor'
+
+// AccessResponse is the `access` field on the login / totp / me responses.
+// AllProjects=true is the admin shortcut; otherwise `levels` lists every
+// project the user has at least viewer access on.
+export interface AccessResponse {
+  all_projects: boolean
+  levels: Record<string, AccessLevel>
+}
+
+// MeResponse is the envelope returned by /auth/login, /auth/totp/verify,
+// and /auth/me. Parsed once to hydrate the access Map.
+export interface MeResponse {
+  user: User
+  access: AccessResponse
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const checked = ref(false)
   const totpEnabled = ref(false)
   const totpChecked = ref(false)
 
+  // accessibleProjects maps project ID (number) → access level. Admins
+  // get an empty map and `allProjects=true` — the helpers below handle
+  // both branches.
+  const accessibleProjects = ref<Map<number, AccessLevel>>(new Map())
+  const allProjects = ref(false)
+
+  function hydrateAccess(access: AccessResponse | undefined | null) {
+    const m = new Map<number, AccessLevel>()
+    allProjects.value = !!access?.all_projects
+    if (access?.levels) {
+      for (const [k, v] of Object.entries(access.levels)) {
+        const id = Number(k)
+        if (!Number.isNaN(id)) m.set(id, v)
+      }
+    }
+    accessibleProjects.value = m
+  }
+
+  function canView(projectId: number | null | undefined): boolean {
+    if (projectId == null) return true // orphan / no project — show
+    if (allProjects.value) return true
+    return accessibleProjects.value.has(projectId)
+  }
+
+  function canEdit(projectId: number | null | undefined): boolean {
+    if (projectId == null) return true
+    if (allProjects.value) return true
+    return accessibleProjects.value.get(projectId) === 'editor'
+  }
+
   async function fetchMe() {
     try {
-      user.value = await api.get<User>('/auth/me')
+      const resp = await api.get<MeResponse>('/auth/me')
+      user.value = resp.user
+      hydrateAccess(resp.access)
       if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
       setDisplayTimezone(user.value?.timezone)
       await fetchTOTPStatus()
     } catch {
       user.value = null
+      allProjects.value = false
+      accessibleProjects.value = new Map()
       totpEnabled.value = false
       totpChecked.value = false
     } finally {
@@ -80,7 +132,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(username: string, password: string) {
-    user.value = await api.post<User>('/auth/login', { username, password })
+    const resp = await api.post<MeResponse>('/auth/login', { username, password })
+    user.value = resp.user
+    hydrateAccess(resp.access)
     if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
     checked.value = true
     await fetchTOTPStatus()
@@ -116,18 +170,41 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     try { await api.post('/auth/logout', {}) } catch { /* ignore */ }
     user.value = null
+    allProjects.value = false
+    accessibleProjects.value = new Map()
     totpEnabled.value = false
     totpChecked.value = false
     checked.value = true
     router.push('/login')
   }
 
-  // Re-fetch /auth/me and update user state — used after profile/avatar changes.
+  // Re-fetch /auth/me and update user + access state — used after
+  // profile/avatar changes and after permission edits that should apply
+  // immediately without a page reload.
   async function refreshMe() {
     try {
-      user.value = await api.get<User>('/auth/me')
+      const resp = await api.get<MeResponse>('/auth/me')
+      user.value = resp.user
+      hydrateAccess(resp.access)
     } catch { /* ignore */ }
   }
 
-  return { user, checked, totpEnabled, totpChecked, fetchMe, login, setUser, fetchTOTPStatus, setTOTPEnabled, logout, refreshMe }
+  return {
+    user,
+    checked,
+    totpEnabled,
+    totpChecked,
+    accessibleProjects,
+    allProjects,
+    fetchMe,
+    login,
+    setUser,
+    hydrateAccess,
+    canView,
+    canEdit,
+    fetchTOTPStatus,
+    setTOTPEnabled,
+    logout,
+    refreshMe,
+  }
 })

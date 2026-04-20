@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/models"
 )
@@ -288,15 +289,22 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// FTS5 prefix query
 	ftsQuery := q + "*"
 
+	// Per-user access filter applied to project- and issue-returning
+	// queries below. For admins `accessFilter` is empty and no args
+	// are added; for restricted users it narrows results.
+	accessProjectFilter, accessProjectArgs := projectIDFilter(r, "p.id", false)
+	accessIssueFilter, accessIssueArgs := projectIDFilter(r, "i.project_id", true)
+
 	// ── Projects ─────────────────────────────────────────────────────────────
+	projArgs := append([]any{ftsQuery}, accessProjectArgs...)
 	projRows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status
 		FROM search_index si
 		JOIN projects p ON p.id = si.entity_id
 		WHERE si.entity_type = 'project'
-		  AND search_index MATCH ?
+		  AND search_index MATCH ?`+accessProjectFilter+`
 		LIMIT 5
-	`, ftsQuery)
+	`, projArgs...)
 	if err == nil {
 		defer projRows.Close()
 		for projRows.Next() {
@@ -309,6 +317,8 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Issues (FTS content match) ────────────────────────────────────────────
+	issArgs := append([]any{ftsQuery}, accessIssueArgs...)
+	issArgs = append(issArgs, limit+1)
 	issRows, err := db.DB.Query(`
 		SELECT `+issueSelectCols+`
 		FROM search_index si
@@ -316,9 +326,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'issue'
-		  AND search_index MATCH ?
+		  AND search_index MATCH ?`+accessIssueFilter+`
 		LIMIT ?
-	`, ftsQuery, limit+1)
+	`, issArgs...)
 	if err == nil {
 		dedup.addAll(scanIssueRows(issRows))
 	}
@@ -398,14 +408,16 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		tiArgs := append(tagIDs, limit+1)
+		tiArgs := append([]any{}, tagIDs...)
+		tiArgs = append(tiArgs, accessIssueArgs...)
+		tiArgs = append(tiArgs, limit+1)
 		tiRows, err := db.DB.Query(`
 			SELECT DISTINCT `+issueSelectCols+`
 			FROM issue_tags it
 			JOIN issues i ON i.id = it.issue_id
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE it.tag_id IN (`+ph+`)
+			WHERE it.tag_id IN (`+ph+`)`+accessIssueFilter+`
 			LIMIT ?
 		`, tiArgs...)
 		if err == nil {
@@ -421,13 +433,15 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 		ph := buildPlaceholders(len(userIDs))
 
-		aiArgs := append(userIDs, limit+1)
+		aiArgs := append([]any{}, userIDs...)
+		aiArgs = append(aiArgs, accessIssueArgs...)
+		aiArgs = append(aiArgs, limit+1)
 		aiRows, err := db.DB.Query(`
 			SELECT `+issueSelectCols+`
 			FROM issues i
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE i.assignee_id IN (`+ph+`)
+			WHERE i.assignee_id IN (`+ph+`)`+accessIssueFilter+`
 			ORDER BY i.updated_at DESC
 			LIMIT ?
 		`, aiArgs...)
@@ -437,21 +451,27 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Issues via issue_key LIKE match ──────────────────────────────────────
+	keyArgs := []any{"%" + q + "%"}
+	keyArgs = append(keyArgs, accessIssueArgs...)
+	keyArgs = append(keyArgs, limit+1)
 	keyLikeRows, err := db.DB.Query(`
 		SELECT `+issueSelectCols+`
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ?
+		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ?`+accessIssueFilter+`
 		ORDER BY i.updated_at DESC
 		LIMIT ?
-	`, "%"+q+"%", limit+1)
+	`, keyArgs...)
 	if err == nil {
 		dedup.addAll(scanIssueRows(keyLikeRows))
 	}
 
 	// ── Issues via comment match ──────────────────────────────────────────────
 	// Comments are indexed as entity_type='comment'; we join back to the parent issue.
+	cmtArgs := []any{ftsQuery}
+	cmtArgs = append(cmtArgs, accessIssueArgs...)
+	cmtArgs = append(cmtArgs, limit+1)
 	commentIssRows, err := db.DB.Query(`
 		SELECT DISTINCT `+issueSelectCols+`
 		FROM search_index si
@@ -460,11 +480,36 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'comment'
-		  AND search_index MATCH ?
+		  AND search_index MATCH ?`+accessIssueFilter+`
 		LIMIT ?
-	`, ftsQuery, limit+1)
+	`, cmtArgs...)
 	if err == nil {
 		dedup.addAll(scanIssueRows(commentIssRows))
+	}
+
+	// Defence-in-depth: the key-lookup paths above (lookupIssueByKey,
+	// lookupIssuesByProjKey, lookupIssuesByKeyPrefix) don't apply the
+	// access filter, so drop any issues the caller can't view before
+	// paginating.
+	if len(dedup.list) > 0 {
+		filtered := dedup.list[:0]
+		for _, iss := range dedup.list {
+			if iss.ProjectID != nil && !auth.CanViewProject(r, *iss.ProjectID) {
+				continue
+			}
+			filtered = append(filtered, iss)
+		}
+		dedup.list = filtered
+	}
+	if len(results.Projects) > 0 {
+		filtered := results.Projects[:0]
+		for _, p := range results.Projects {
+			if !auth.CanViewProject(r, p.ID) {
+				continue
+			}
+			filtered = append(filtered, p)
+		}
+		results.Projects = filtered
 	}
 
 	results.Issues, results.HasMore = dedup.result(offset, limit)
