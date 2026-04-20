@@ -3173,6 +3173,17 @@ func migrate(db *sql.DB) error {
 		`DROP INDEX IF EXISTS idx_upa_user`,
 		`DROP TABLE IF EXISTS user_project_access`,
 	}},
+
+	// M66: soft-delete for issues. NULL = live, non-NULL = trashed.
+	// deleted_by tracks who moved it to trash; stays as a plain INTEGER
+	// (no FK constraint can be added via ALTER TABLE on a populated
+	// table in SQLite — a stale user id after a user purge is
+	// acceptable, the field is used for display only).
+	{66, []string{
+		`ALTER TABLE issues ADD COLUMN deleted_at TEXT`,
+		`ALTER TABLE issues ADD COLUMN deleted_by INTEGER`,
+		`CREATE INDEX IF NOT EXISTS idx_issues_deleted_at ON issues(deleted_at)`,
+	}},
 	}
 
 	for _, m := range migrations {

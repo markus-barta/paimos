@@ -78,7 +78,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 
 	// Build query
 	args := []any{projectID}
-	where := []string{"i.project_id = ?", "i.type IN ('ticket','task')"}
+	where := []string{"i.project_id = ?", "i.type IN ('ticket','task')", "i.deleted_at IS NULL"}
 
 	switch scope {
 	case "sprint":

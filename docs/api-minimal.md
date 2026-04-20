@@ -37,7 +37,10 @@ POST   /issues                      orphan (no project) issue
 GET    /issues/recent               dashboard feed
 GET    /issues/:id
 PUT    /issues/:id                  partial update
-DELETE /issues/:id                  admin only
+DELETE /issues/:id                  admin only — moves to Trash (soft-delete; cascades to child tasks)
+POST   /issues/:id/restore          admin only — clears deleted_at
+DELETE /issues/:id/purge            admin only — hard delete (must be in Trash first)
+GET    /issues/trash                admin only — list soft-deleted issues
 PATCH  /issues/:id/archive          {archived: bool} — admin only
 POST   /issues/:id/clone            {...field map}
 POST   /issues/:id/complete-epic    bulk-transition children

@@ -84,7 +84,7 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN issues p   ON p.id = i.parent_id
 		LEFT JOIN users u    ON u.id = i.assignee_id
 		LEFT JOIN projects proj ON proj.id = i.project_id
-		WHERE i.project_id = ?`
+		WHERE i.project_id = ? AND i.deleted_at IS NULL`
 	args := []any{projectID}
 
 	if idsParam := r.URL.Query().Get("ids"); idsParam != "" {

@@ -73,6 +73,10 @@ type Issue struct {
 	AcceptedBy    *int64  `json:"accepted_by"`
 	InvoicedAt    *string `json:"invoiced_at"`
 	InvoiceNumber string  `json:"invoice_number"`
+	// soft-delete: non-NULL on issues that live in the Trash.
+	DeletedAt     *string `json:"deleted_at,omitempty"`
+	DeletedBy     *int64  `json:"deleted_by,omitempty"`
+	DeletedByName string  `json:"deleted_by_name,omitempty"`
 	// computed: SUM of time entry hours (override or stopped_at - started_at)
 	BookedHours float64 `json:"booked_hours"`
 	// computed: budget in hours (estimate_hours or estimate_lp * rate conversion)

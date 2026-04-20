@@ -162,6 +162,8 @@ func main() {
 
 			// Dashboard recent activity (must be before /issues/{id})
 			r.Get("/issues/recent", handlers.RecentIssues)
+			// Trash (soft-deleted issues) — admin-only (must be before /issues/{id})
+			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
 			// Cross-project issue list + orphan sprint creation (must be before /issues/{id})
 			r.Get("/issues", handlers.ListAllIssues)
 			r.Post("/issues", handlers.CreateOrphanIssue)
@@ -182,6 +184,8 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
 			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}", handlers.DeleteIssue)
+			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Post("/issues/{id}/restore", handlers.RestoreIssue)
+			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/purge", handlers.PurgeIssue)
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Patch("/issues/{id}/archive", handlers.ArchiveIssue)
 			// Attachments
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/attachments", handlers.ListAttachments)

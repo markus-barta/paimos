@@ -50,7 +50,7 @@ func ListSprints(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT id, title, start_date, end_date, archived, sprint_state, target_ar
 		FROM issues
-		WHERE type = 'sprint'`
+		WHERE type = 'sprint' AND deleted_at IS NULL`
 	if !includeArchived {
 		query += ` AND archived = 0`
 	}
@@ -437,7 +437,7 @@ func ListSprintsByYear(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.DB.Query(`
 		SELECT id, title, start_date, end_date, archived, sprint_state, target_ar
 		FROM issues
-		WHERE type = 'sprint'
+		WHERE type = 'sprint' AND deleted_at IS NULL
 		  AND (start_date LIKE ? OR title LIKE ?)
 		ORDER BY start_date ASC, title ASC
 	`, year+"%", "%"+year)
@@ -466,7 +466,7 @@ func ListSprintYears(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.DB.Query(`
 		SELECT DISTINCT CAST(strftime('%Y', start_date) AS INTEGER) AS yr
 		FROM issues
-		WHERE type = 'sprint' AND start_date != ''
+		WHERE type = 'sprint' AND start_date != '' AND deleted_at IS NULL
 		ORDER BY yr DESC
 	`)
 	if err != nil {

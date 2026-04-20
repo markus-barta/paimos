@@ -147,6 +147,22 @@ Tasks always have exactly one ticket parent. This stays on `issues.parent_id`, u
 
 title, description, acceptance_criteria, notes, priority, assignee_id, created_at, updated_at, issue_number/issue_key.
 
+### Soft-delete (`deleted_at` / `deleted_by`) — added in v1.1.2
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `deleted_at` | TEXT NULL | ISO timestamp. `NULL` = live, non-NULL = in the Trash. |
+| `deleted_by` | INTEGER NULL | `users.id` of whoever moved the row to Trash (plain integer, no FK — stale id after a user purge is acceptable; shown for display only). |
+
+Index: `idx_issues_deleted_at` on `deleted_at`.
+
+**Semantics:**
+- `DELETE /api/issues/{id}` stamps `deleted_at` + `deleted_by` and cascades the stamp to every descendant reachable via `parent_id` (so tasks under a trashed ticket disappear alongside the ticket).
+- `issue_relations` rows are **not** touched on soft-delete — a trashed ticket keeps its `groups` / `sprint` / `depends_on` / `impacts` links, so restoring re-attaches automatically.
+- Every user-facing list / search / tree / report query filters `deleted_at IS NULL`. Trashed rows only appear via `GET /api/issues/trash` (admin-only).
+- `POST /api/issues/{id}/restore` clears `deleted_at` on that row alone — cascaded children stay trashed (restore is deliberately explicit).
+- `DELETE /api/issues/{id}/purge` hard-deletes a trashed row (and its cascade-bound rows: comments, history, tags, time_entries, attachments, issue_relations). Only works when already trashed, so the UI flow is always two-step.
+
 ### `parent_id` behavior change
 
 | Relationship | Before (v1) | After (v2) |

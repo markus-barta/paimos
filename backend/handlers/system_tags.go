@@ -123,6 +123,7 @@ func batchReEvaluateSystemTags() {
 		SELECT id FROM issues
 		WHERE (estimate_hours IS NOT NULL OR estimate_lp IS NOT NULL)
 		  AND type IN ('ticket','task')
+		  AND deleted_at IS NULL
 	`)
 	if err != nil {
 		return
@@ -152,10 +153,10 @@ func EvaluateSystemTags(issueID int64) {
 		return
 	}
 
-	// Verify the issue exists before doing anything
+	// Verify the issue exists and is live before doing anything
 	var exists int
-	if err := db.DB.QueryRow(`SELECT 1 FROM issues WHERE id=?`, issueID).Scan(&exists); err != nil {
-		return // issue doesn't exist (deleted) — nothing to evaluate
+	if err := db.DB.QueryRow(`SELECT 1 FROM issues WHERE id=? AND deleted_at IS NULL`, issueID).Scan(&exists); err != nil {
+		return // issue doesn't exist, or is in the Trash — nothing to evaluate
 	}
 
 	// Load all budget_threshold rules

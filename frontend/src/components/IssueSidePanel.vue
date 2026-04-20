@@ -374,10 +374,14 @@ async function toggleTimer() {
   }
 }
 
-// Delete issue
+// Move to trash (soft-delete — recoverable from Settings → Trash)
 async function deleteIssue() {
   if (!issue.value) return
-  if (!await confirm({ message: `Delete ${issue.value.issue_key} "${issue.value.title}"?`, confirmLabel: 'Delete', danger: true })) return
+  if (!await confirm({
+    message: `Move ${issue.value.issue_key} "${issue.value.title}" to Trash? Any child tasks will be moved too. You can restore from Settings → Trash.`,
+    confirmLabel: 'Move to trash',
+    danger: true,
+  })) return
   try {
     await api.delete(`/issues/${issue.value.id}`)
     emit('deleted', issue.value.id)

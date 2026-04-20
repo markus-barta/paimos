@@ -214,7 +214,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
-	where := "WHERE i.project_id = ?"
+	where := "WHERE i.project_id = ? AND i.deleted_at IS NULL"
 	args := []any{projectID}
 
 	if v := q.Get("status"); v != "" {
@@ -310,7 +310,7 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 		       i.created_at, i.updated_at
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
-		WHERE i.id = ? AND i.project_id = ?
+		WHERE i.id = ? AND i.project_id = ? AND i.deleted_at IS NULL
 	`, issueID, projectID).Scan(&pi.ID, &pi.IssueKey,
 		&pi.Title, &pi.Description, &pi.AcceptanceCriteria,
 		&pi.Status, &pi.Priority, &pi.Type,
@@ -392,7 +392,7 @@ func PortalAcceptIssue(w http.ResponseWriter, r *http.Request) {
 	// Verify issue exists and is done, and user has project access
 	var projectID int64
 	var status string
-	err = db.DB.QueryRow("SELECT project_id, status FROM issues WHERE id=?", issueID).Scan(&projectID, &status)
+	err = db.DB.QueryRow("SELECT project_id, status FROM issues WHERE id=? AND deleted_at IS NULL", issueID).Scan(&projectID, &status)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -458,7 +458,7 @@ func PortalRejectIssue(w http.ResponseWriter, r *http.Request) {
 	var projectID int64
 	var status, priority string
 	var assigneeID *int64
-	err = db.DB.QueryRow("SELECT project_id, status, priority, assignee_id FROM issues WHERE id=?", issueID).Scan(&projectID, &status, &priority, &assigneeID)
+	err = db.DB.QueryRow("SELECT project_id, status, priority, assignee_id FROM issues WHERE id=? AND deleted_at IS NULL", issueID).Scan(&projectID, &status, &priority, &assigneeID)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -514,7 +514,7 @@ func PortalUndoAccept(w http.ResponseWriter, r *http.Request) {
 	var projectID int64
 	var status string
 	var acceptedAt *string
-	err = db.DB.QueryRow("SELECT project_id, status, accepted_at FROM issues WHERE id=?", issueID).Scan(&projectID, &status, &acceptedAt)
+	err = db.DB.QueryRow("SELECT project_id, status, accepted_at FROM issues WHERE id=? AND deleted_at IS NULL", issueID).Scan(&projectID, &status, &acceptedAt)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -554,7 +554,7 @@ func PortalUndoReject(w http.ResponseWriter, r *http.Request) {
 
 	var projectID int64
 	var status string
-	err = db.DB.QueryRow("SELECT project_id, status FROM issues WHERE id=?", issueID).Scan(&projectID, &status)
+	err = db.DB.QueryRow("SELECT project_id, status FROM issues WHERE id=? AND deleted_at IS NULL", issueID).Scan(&projectID, &status)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -622,7 +622,7 @@ func AcceptanceLog(w http.ResponseWriter, r *http.Request) {
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.accepted_by
-		WHERE i.project_id = ? AND i.accepted_at IS NOT NULL
+		WHERE i.project_id = ? AND i.accepted_at IS NOT NULL AND i.deleted_at IS NULL
 		ORDER BY i.accepted_at DESC
 	`, projectID)
 	if err != nil {
@@ -660,7 +660,7 @@ func AcceptanceLog(w http.ResponseWriter, r *http.Request) {
 		JOIN issues parent ON parent.id = i.parent_id
 		LEFT JOIN projects pp ON pp.id = i.project_id
 		LEFT JOIN users u ON u.id = i.created_by
-		WHERE i.project_id = ? AND i.notes = '[portal rejection]'
+		WHERE i.project_id = ? AND i.notes = '[portal rejection]' AND i.deleted_at IS NULL
 		ORDER BY i.created_at DESC
 	`, projectID)
 	if err == nil {
@@ -711,7 +711,7 @@ func PortalProjectSummary(w http.ResponseWriter, r *http.Request) {
 		       SUM(COALESCE(estimate_hours, 0) * COALESCE(rate_hourly, 0) + COALESCE(estimate_lp, 0) * COALESCE(rate_lp, 0)),
 		       SUM(COALESCE(ar_hours, 0) * COALESCE(rate_hourly, 0) + COALESCE(ar_lp, 0) * COALESCE(rate_lp, 0))
 		FROM issues
-		WHERE project_id = ?
+		WHERE project_id = ? AND deleted_at IS NULL
 		GROUP BY status
 	`, projectID)
 	if err != nil {

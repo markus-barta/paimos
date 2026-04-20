@@ -5,6 +5,45 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] — 2026-04-20
+
+### Added
+
+- **Soft-delete (Trash) for issues** — PMO26-639. `DELETE /api/issues/{id}`
+  now moves the issue to a Trash instead of hard-deleting. Child tasks
+  cascade into the Trash too; `issue_relations` (groups / sprint /
+  depends_on / impacts) stay intact so a later Restore re-attaches them
+  automatically.
+- `POST /api/issues/{id}/restore` — admin-only; clears `deleted_at` on
+  one issue. Children stay in Trash — restore is deliberately explicit.
+- `DELETE /api/issues/{id}/purge` — admin-only; hard-deletes a trashed
+  issue (cascades comments, history, tags, time_entries, attachments,
+  issue_relations). Two-step flow: must be in Trash first.
+- `GET /api/issues/trash` — admin-only list of soft-deleted issues.
+- **Settings → Trash** now lists deleted issues alongside deleted users
+  and projects, with Restore and "Delete forever" buttons.
+- `issues.deleted_at` (TEXT NULL) and `issues.deleted_by` (INTEGER NULL)
+  columns with an `idx_issues_deleted_at` index (migration 66).
+- 9 handler tests covering delete / restore / purge / cascade / relation
+  survival / cross-project leak protection.
+
+### Changed
+
+- Every user-facing issue query (list, tree, recent, search, sprint,
+  reports, aggregation, CSV export, cross-project list, distinct
+  cost_unit / release, FTS, portal) now filters `deleted_at IS NULL`.
+  Trashed issues only appear via the Trash endpoint.
+- `GET /api/issues/{id}` and `PUT /api/issues/{id}` return `404` for
+  trashed issues — restore first, then edit.
+- Issue delete confirmation dialogs now say "Move to trash" and mention
+  that child tasks are moved too and the action is recoverable from
+  Settings → Trash.
+
+### Notes
+
+- Protection applies to **new** deletions only. Any issue hard-deleted
+  before this release remains unrecoverable.
+
 ## [1.1.1] — 2026-04-20
 
 This release bundles the per-project access-control feature with the
