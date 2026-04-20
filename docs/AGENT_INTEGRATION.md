@@ -147,13 +147,23 @@ An agent does not have a separate identity class. It authenticates
 **as a user account** via an API key, and whatever that user can see
 and do, the agent can see and do.
 
-- **Admin** agents see every project and can create/delete projects,
-  users, tags, and sprints.
-- **Member** agents see only the projects their user account is
-  assigned to, and cannot perform admin-only actions (project CRUD,
-  user CRUD, some delete paths, etc.).
-- **External** agents use the portal-only route surface (read-only
-  issues + accept/reject).
+PAIMOS uses two orthogonal layers:
+
+1. **Role** (`admin` / `member` / `external`) — gates admin-only
+   actions (project CRUD, user CRUD, some delete paths).
+2. **Per-project access level** (`none` / `viewer` / `editor`) — gates
+   read and write on individual projects and their issues.
+
+- **Admin** agents bypass per-project checks — effectively editor on
+  every project, plus admin-only surface.
+- **Member** agents default to `editor` on every non-deleted project
+  (seeded at user creation); individual projects can be downgraded to
+  `viewer` or `none`.
+- **External** agents default to `none` and must be granted `viewer`
+  or `editor` per project explicitly; portal endpoints still apply.
+
+404 is returned for projects/issues the agent can't view (no
+existence oracle); 403 when a viewer tries to edit.
 
 **Recommendation**: create a dedicated user account for each agent
 (e.g. `ci-bot`, `triage-agent`, `release-agent`) with the minimum role
@@ -170,8 +180,11 @@ key should never disrupt an unrelated workflow.
    prose so cross-linking from another issue picks them up. The web UI
    autolinks them.
 3. **Follow the status lifecycle.**
-   `backlog → open → in-progress → done`. Avoid jumping straight to
-   `closed` — that bypasses the review/accept stage humans expect.
+   Typical flow: `new → backlog → in-progress → qa → done → delivered
+   → accepted → invoiced`. `cancelled` is a terminal off-ramp at any
+   point. Avoid jumping straight to `done` (skips QA) or setting
+   `accepted`/`invoiced` programmatically — those are usually human
+   decisions. See `docs/DATA_MODEL_v2.md` for the full enum.
 4. **Partial updates.** `PUT /api/issues/{id}` is partial. Send only
    the fields you want to change; everything else is preserved.
 5. **Be reasonable about rate.** There is no hard rate limit on API
@@ -193,9 +206,11 @@ key should never disrupt an unrelated workflow.
 - **Compact API reference**: [`api-minimal.md`](api-minimal.md) — every
   route the web SPA uses, in one page.
 - **Permissions and role matrix**: see the *Access model* section above
-  and the `role` / `user_project_access` tables in
-  [`DATA_MODEL.md`](DATA_MODEL.md). Admin-gated routes are marked with
-  `auth.RequireAdmin` in `backend/main.go`.
+  and the per-project `project_members` / `access_audit` model in
+  [`DATA_MODEL_v2.md`](DATA_MODEL_v2.md) and
+  [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md) §4a. Admin-gated routes
+  are marked with `auth.RequireAdmin`; per-project view/edit gates
+  live in `backend/auth/middleware_project.go`.
 
 ---
 

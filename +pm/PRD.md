@@ -1,8 +1,8 @@
 # PRD: PAIMOS Project Management Online
 
 **Created**: 2026-02-09
-**Updated to match current codebase reality**: 2026-03-06
-**Version**: 0.4.0
+**Updated to match current codebase reality**: 2026-04-20
+**Version**: 1.1.1
 
 ---
 
@@ -64,7 +64,9 @@ PAIMOS Project Management Online is a minimal self-hosted PM tool with project t
 
 ### Issues
 
-- Hierarchical issue model: `epic`, `ticket`, `task`
+- Mixed issue model: group types (`epic`, `cost_unit`, `release`),
+  `sprint`, `ticket`, `task`. Group↔ticket and sprint↔ticket are M:N
+  via `issue_relations`; ticket→task stays strict 1:1 via `parent_id`.
 - Create, edit, delete issues inside projects
 - Computed issue keys from project key + issue number
 - Fields include:
@@ -72,13 +74,14 @@ PAIMOS Project Management Online is a minimal self-hosted PM tool with project t
   - description
   - acceptance criteria
   - notes
-  - status (`open`, `in-progress`, `done`, `closed`)
+  - status (full billing lifecycle: `new`, `backlog`, `in-progress`,
+    `qa`, `done`, `delivered`, `accepted`, `invoiced`, `cancelled`)
   - priority (`low`, `medium`, `high`)
   - assignee
-  - cost unit
-  - release
-  - `depends_on`
-  - `impacts`
+  - budget / rate / estimate fields on group-level types
+  - sprint state + date range on sprints
+  - release state on releases
+- Dependency / impact links via `issue_relations` (typed graph, not free text)
 - Tree view and child issue lookups
 - Recent issues endpoint
 - Issue history snapshots on save
@@ -92,7 +95,15 @@ PAIMOS Project Management Online is a minimal self-hosted PM tool with project t
 ### Users & Auth
 
 - Username/password login with session cookies
-- Roles: `admin`, `member`
+- Roles: `admin`, `member`, `external`
+- **Per-project access control** (`none` / `viewer` / `editor`)
+  layered on top of roles; stored in `project_members`, audited in
+  `access_audit`. Admins bypass. Members default to editor on every
+  non-deleted project. External users start with no access and must
+  be granted explicitly.
+- Admin UI: Settings → Users → **Access** button opens a per-project
+  matrix editor; Settings → **Permissions** tab renders the capability
+  matrix straight from the backend.
 - First-run admin seeding only when `ADMIN_PASSWORD` is explicitly set
 - Basic in-memory rate limiting on login and TOTP verification
 - Password change for authenticated users
@@ -122,13 +133,13 @@ PAIMOS Project Management Online is a minimal self-hosted PM tool with project t
 These are still not part of the current product based on code review:
 
 - Real-time collaboration / websockets
-- File attachments
-- Time tracking
 - Gantt charts
-- Email notifications
 - Mobile app
 - OIDC / ID Austria authentication
 - Public external API contract with versioning guarantees
+
+(File attachments, time tracking, sprints, and basic SMTP password-reset
+emails are all shipped as of v1.0.0.)
 
 ---
 
@@ -231,16 +242,24 @@ Notes:
   - users
   - sessions
   - projects
-  - issues
+  - project_members (per-project access level)
+  - access_audit (grant / update / revoke log)
+  - issues (all types: epic / cost_unit / release / sprint / ticket / task)
+  - issue_relations (typed graph: groups / sprint / depends_on / impacts)
   - tags
   - issue_tags
   - project_tags
   - issue_history
-  - api_keys
-  - integrations
+  - time_entries
+  - attachments
   - comments
+  - api_keys
+  - integrations (Jira, Mite)
   - totp_pending
   - search_index (FTS5)
+
+See `docs/DATA_MODEL_v2.md` for the full schema; `docs/DATA_MODEL.md` is the
+legacy v0.3.5 snapshot kept for archival reference.
 
 ---
 

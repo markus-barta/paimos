@@ -5,7 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] — 2026-04-20
+## [1.1.1] — 2026-04-20
+
+This release bundles the per-project access-control feature with the
+follow-on audit fixes and Docker/CI repairs. No `v1.1.0` tag was cut —
+the feature landed on `main` and shipped together with the hotfixes
+under `v1.1.1`.
 
 ### Added
 
@@ -54,6 +59,17 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - `user_project_access` table. Migration 65 drops it after a
   safety re-insert into `project_members`.
+
+### Fixed
+
+- 10 critical audit findings around access control enforcement
+  (PAI-6..PAI-15) — see commit `899dd09`.
+- Test suite green after audit fixes; migration test suite sped up.
+- Dockerfile: copy `VERSION` and `docs/` into the SPA build stage so
+  `__APP_VERSION__` and in-app docs links resolve in the built image.
+- CI: sync `VERSION` from the git ref before the docker build so
+  tagged images (`v1.1.1` → `1.1.1`) and main-branch images
+  (`<base>-dev+<sha>`) have accurate version strings.
 
 ## [1.0.0] — 2026-04-19
 
