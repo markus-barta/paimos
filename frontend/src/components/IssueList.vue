@@ -779,12 +779,12 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 </script>
 
 <template>
-  <div :class="['issue-list-root', { 'tree-active': treeView && !compact }]" :style="sidePanelPinned && sidePanelIssueId ? { marginRight: sidePanelWidth + 'px' } : {}">
+  <div class="issue-list-root" :style="sidePanelPinned && sidePanelIssueId ? { marginRight: sidePanelWidth + 'px' } : {}">
   <!-- Transient flash toast (copy-to-clipboard, view saved, …) -->
   <Transition name="flash-toast">
     <div v-if="flashToast" class="flash-toast">{{ flashToast }}</div>
   </Transition>
-  <div :class="['issue-list-main', { 'tree-active': treeView && !compact }]">
+  <div class="issue-list-main">
 
     <!-- Section title (compact mode) -->
     <div v-if="compact && title" class="compact-header">
@@ -1056,24 +1056,28 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       <div v-if="hasMore" ref="scrollSentinel" class="scroll-sentinel">Loading more...</div>
     </div>
 
-    <!-- TREE VIEW (full mode only) -->
-    <IssueTreeView
-      v-else
-      :issue-tree="issueTree"
-      :selection-mode="selectionMode"
-      :selected-ids="selectedIds"
-      :tree-expanded="treeExpanded"
-      :is-admin="isAdmin"
-      :side-panel-issue-id="sidePanelIssueId"
-      @toggle-tree-node="toggleTreeNode"
-      @toggle-tree-select="toggleTreeSelect"
-      @toggle-select="toggleSelect"
-      @navigate-to="navigateTo"
-      @copy-key="(key, event) => copyKey(key, event)"
-      @open-create="(issue) => openCreate(issue)"
-      @open-side-panel="(issue, edit) => openSidePanel(issue, edit)"
-      @delete-row="deleteRow"
-    />
+    <!-- TREE VIEW (full mode only) — wrapped in a scrollable flex child so
+         the tree owns its own overflow, keeping AppFooter in flow beneath the
+         list instead of being pushed below the viewport. Mirrors the flat
+         .issue-table-wrap pattern. -->
+    <div v-else class="issue-tree-wrap">
+      <IssueTreeView
+        :issue-tree="issueTree"
+        :selection-mode="selectionMode"
+        :selected-ids="selectedIds"
+        :tree-expanded="treeExpanded"
+        :is-admin="isAdmin"
+        :side-panel-issue-id="sidePanelIssueId"
+        @toggle-tree-node="toggleTreeNode"
+        @toggle-tree-select="toggleTreeSelect"
+        @toggle-select="toggleSelect"
+        @navigate-to="navigateTo"
+        @copy-key="(key, event) => copyKey(key, event)"
+        @open-create="(issue) => openCreate(issue)"
+        @open-side-panel="(issue, edit) => openSidePanel(issue, edit)"
+        @delete-row="deleteRow"
+      />
+    </div>
 
     <!-- Create modal -->
     <CreateIssueModal
@@ -1196,9 +1200,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
 <style scoped>
 .issue-list-root { display: flex; flex-direction: column; gap: 0; flex: 1; min-height: 0; overflow: hidden; }
-.issue-list-root.tree-active { overflow: visible; }
 .issue-list-main { display: flex; flex-direction: column; gap: 0; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-.issue-list-main.tree-active { overflow: visible; }
 
 .compact-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
 .compact-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); }
@@ -1236,6 +1238,12 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
 .issue-table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); margin-top: 1.25rem; overflow: auto; flex: 1; min-height: 0; }
 .issue-table-wrap.compact { box-shadow: none; margin-top: 0; overflow: hidden; max-height: none; }
+
+/* Tree-view scroll container — mirrors .issue-table-wrap's flex-child scroll
+   pattern so tree rows stay contained within the issue-list area and AppFooter
+   is never overlapped. Without this wrapper, .tree-wrap had no scroll and rows
+   overflowed .main-content. */
+.issue-tree-wrap { overflow: auto; flex: 1; min-height: 0; margin-top: 1.25rem; }
 
 .table-borders :deep(.issue-table tbody tr.issue-row td) { border-bottom: 1px solid var(--table-row-border); }
 .table-borders :deep(.issue-table tbody tr.issue-row:last-child td) { border-bottom: none; }
