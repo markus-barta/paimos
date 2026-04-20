@@ -34,14 +34,10 @@ func setupAccessTestDB(t *testing.T) {
 	// t.Setenv auto-restores on cleanup and t.TempDir auto-deletes, so each
 	// test gets a fresh DB file that the next test can't contaminate.
 	t.Setenv("DATA_DIR", t.TempDir())
+	// PAIMOS_TEST_MODE also speeds up the migration run inside db.Open().
+	t.Setenv("PAIMOS_TEST_MODE", "1")
 	if err := db.Open(); err != nil {
 		t.Fatalf("db.Open: %v", err)
-	}
-	// Tests don't need crash-durability — disabling fsync cuts write cost
-	// dramatically for the seeded rows each test creates post-migration.
-	// (Migrations themselves run before we get here; their cost is fixed.)
-	if _, err := db.DB.Exec("PRAGMA synchronous=OFF"); err != nil {
-		t.Logf("synchronous=OFF: %v", err)
 	}
 	t.Cleanup(func() {
 		if db.DB != nil {

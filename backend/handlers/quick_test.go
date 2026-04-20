@@ -289,12 +289,14 @@ func Test_APIKeyAuth(t *testing.T) {
 		}
 		resp := ts.getBearer(t, "/api/auth/me", rawKey)
 		assertStatus(t, resp, http.StatusOK)
-		var u struct {
-			Username string `json:"username"`
+		var me struct {
+			User struct {
+				Username string `json:"username"`
+			} `json:"user"`
 		}
-		decode(t, resp, &u)
-		if u.Username != "member" {
-			t.Errorf("api key me: username = %q, want %q", u.Username, "member")
+		decode(t, resp, &me)
+		if me.User.Username != "member" {
+			t.Errorf("api key me: username = %q, want %q", me.User.Username, "member")
 		}
 	})
 

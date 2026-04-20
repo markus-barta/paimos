@@ -53,6 +53,8 @@ func newTestServer(t *testing.T) *testServer {
 
 	// Point db package at a fresh in-memory DB.
 	os.Setenv("DATA_DIR", t.TempDir())
+	// Speed up migrations (applied inside db.Open before we can set them here).
+	t.Setenv("PAIMOS_TEST_MODE", "1")
 
 	if err := db.Open(); err != nil {
 		t.Fatalf("db.Open: %v", err)

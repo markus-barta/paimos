@@ -189,7 +189,19 @@ func TestQuick_Portal(t *testing.T) {
 		}
 	})
 
-	t.Run("external user accepts done issue", func(t *testing.T) {
+	t.Run("external viewer cannot accept done issue", func(t *testing.T) {
+		resp := ts.post(t, fmt.Sprintf("/api/portal/issues/%d/accept", issueID), ts.externalCookie, nil)
+		assertStatus(t, resp, http.StatusForbidden)
+	})
+
+	t.Run("admin grants editor access to external user", func(t *testing.T) {
+		resp := ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extUserID, projectID), ts.adminCookie, map[string]string{
+			"access_level": "editor",
+		})
+		assertStatus(t, resp, http.StatusOK)
+	})
+
+	t.Run("external editor accepts done issue", func(t *testing.T) {
 		resp := ts.post(t, fmt.Sprintf("/api/portal/issues/%d/accept", issueID), ts.externalCookie, nil)
 		assertStatus(t, resp, http.StatusOK)
 		var result struct {

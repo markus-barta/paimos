@@ -80,6 +80,14 @@ func Open() error {
 }
 
 func migrate(db *sql.DB) error {
+	// In test mode, skip fsync and keep the journal in memory so the ~70
+	// migration statements don't each pay a disk-sync cost. Applied here
+	// (not after Open) because migrations run inside Open().
+	if os.Getenv("PAIMOS_TEST_MODE") == "1" {
+		db.Exec("PRAGMA synchronous=OFF")
+		db.Exec("PRAGMA journal_mode=MEMORY")
+	}
+
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_versions (
 		version    INTEGER PRIMARY KEY,
 		applied_at TEXT NOT NULL DEFAULT (datetime('now'))
