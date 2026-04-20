@@ -1,6 +1,6 @@
 # PAIMOS API — Quick Reference
 
-Base URL: `https://paimos.com/api`  
+Base URL: `https://paimos.example.com/api`  
 Auth: `Authorization: Bearer <key>`  
 Format: JSON in, JSON out.
 
@@ -31,23 +31,144 @@ DELETE /projects/:id                admin only
 ```
 GET    /projects/:id/issues         ?status= &priority= &type= &assignee_id=
 POST   /projects/:id/issues         {title, type, status, priority, description, acceptance_criteria}
+GET    /projects/:id/issues/tree    epic → ticket → task hierarchy
+GET    /issues                      cross-project list
+POST   /issues                      orphan (no project) issue
+GET    /issues/recent               dashboard feed
 GET    /issues/:id
 PUT    /issues/:id                  partial update
 DELETE /issues/:id                  admin only
+PATCH  /issues/:id/archive          {archived: bool} — admin only
+POST   /issues/:id/clone            {...field map}
+POST   /issues/:id/complete-epic    bulk-transition children
+GET    /issues/:id/aggregation      rollup stats
+GET    /issues/:id/children
+GET    /issues/:id/history          audit trail (who/when/diff)
 GET    /issues/:id/comments
 POST   /issues/:id/comments         {body}
 DELETE /comments/:id
-GET    /issues/:id/history
 ```
 
-## Tags / Users / Search
+## Issue relations
+
+```
+GET    /issues/:id/relations
+POST   /issues/:id/relations        {target_id, type}   type: parent|depends_on|impacts
+DELETE /issues/:id/relations        {target_id, type} — admin only
+GET    /issues/:id/members          list by relation
+```
+
+## Time entries
+
+```
+GET    /issues/:id/time-entries
+POST   /issues/:id/time-entries     {started_at, stopped_at?, override?, comment?}
+PUT    /time-entries/:id            partial update
+DELETE /time-entries/:id
+GET    /time-entries/running        active timers for current user
+GET    /time-entries/recent         recent entries for quick re-entry
+```
+
+## Attachments
+
+```
+GET    /issues/:id/attachments
+POST   /issues/:id/attachments      multipart upload — links immediately
+GET    /attachments/:id             fetch file bytes
+DELETE /attachments/:id             admin only
+POST   /attachments                 multipart — upload pending (not yet linked)
+PATCH  /attachments/link            {issue_id, attachment_ids} — batch link pending
+```
+
+## Sprints
+
+```
+GET    /sprints                     ?include_archived=true
+GET    /sprints/years               distinct years
+GET    /sprints/:year               sprints for one year
+POST   /sprints/batch               {...template} — admin only
+PUT    /sprints/:id                 partial — admin only
+POST   /sprints/:id/move-incomplete admin only — bump unfinished to next sprint
+PUT    /sprints/:id/reorder         {member_order}
+```
+
+## Users
+
+```
+GET    /users
+POST   /users                       admin only
+PUT    /users/:id                   admin only
+POST   /users/:id/disable           admin only
+DELETE /users/:id                   admin only
+POST   /users/:id/reset-totp        admin only
+```
+
+## User memberships (project access)
+
+```
+GET    /users/:id/projects                        admin only — projects granted
+POST   /users/:id/projects         {project_id}   admin only — grant access
+DELETE /users/:id/projects/:projectId             admin only — revoke access
+GET    /users/me/recent-projects                  self
+POST   /users/me/recent-projects   {project_id}   self — record a visit
+```
+
+## Tags
 
 ```
 GET    /tags
-GET    /users
-GET    /search?q=<term>             min 2 chars, prefix match
+POST   /tags                        admin only
+PUT    /tags/:id                    admin only
+DELETE /tags/:id                    admin only
 POST   /issues/:id/tags             {tag_id}
 DELETE /issues/:id/tags/:tag_id
+POST   /projects/:id/tags           {tag_id}
+DELETE /projects/:id/tags/:tag_id
+GET    /system-tag-rules
+PUT    /system-tag-rules            admin only
+```
+
+## Views
+
+```
+GET    /views
+POST   /views                       {name, filters, columns}
+PUT    /views/:id                   partial
+DELETE /views/:id
+PATCH  /views/order                 admin only
+POST   /views/:id/pin
+DELETE /views/:id/pin
+```
+
+## Search
+
+```
+GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix)
+```
+
+## Reports / audit
+
+```
+GET    /projects/:id/acceptance-log              timeline of accept/reject decisions
+GET    /projects/:id/acceptance-report           full report
+GET    /projects/:id/reports/lieferbericht       JSON delivery report
+GET    /projects/:id/reports/lieferbericht/pdf   PDF delivery report
+GET    /reports/accruals                         admin only — per-user time rollup
+```
+
+## Project metadata
+
+```
+GET    /projects/suggest-key                     key suggester
+GET    /projects/:id/cost-units
+GET    /projects/:id/releases
+GET    /cost-units                               cross-project distinct values
+GET    /releases                                 cross-project distinct values
+GET    /projects/:id/export/csv                  admin only
+POST   /projects/:id/import/csv/preflight        admin only
+POST   /projects/:id/import/csv                  admin only
+POST   /import/csv/preflight                     admin only — global
+POST   /import/csv                               admin only — global
 ```
 
 ---
@@ -70,7 +191,7 @@ Project 2 = PAIMOS's own backlog.
 
 ```bash
 curl -s -H "Authorization: Bearer $KEY" \
-  -X POST https://paimos.com/api/projects/2/issues \
+  -X POST https://paimos.example.com/api/projects/2/issues \
   -H "Content-Type: application/json" \
   -d '{"title":"...","type":"ticket","status":"open","priority":"medium",
        "description":"...","acceptance_criteria":"- [ ] ..."}'

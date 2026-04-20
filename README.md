@@ -121,6 +121,22 @@ devenv shell -- bash -c "cd backend && DATA_DIR=../data STATIC_DIR=../frontend/d
 devenv shell -- bash -c "cd frontend && npm run dev"
 ```
 
+## Agent integration
+
+PAIMOS is built for humans and AI agents alike. Any agent that can make
+HTTP requests can create issues, update status, log time, and search —
+all through the same REST API the web UI uses, gated by the same role
+and project-membership rules.
+
+→ **[Agent Integration Guide](docs/AGENT_INTEGRATION.md)**
+
+```bash
+# Example: agent creates a backlog item
+curl -s -X POST -H "Authorization: Bearer $KEY" \
+  https://paimos.example.com/api/projects/2/issues \
+  -d '{"title":"Refactor auth middleware","type":"ticket","status":"backlog","priority":"medium"}'
+```
+
 ## Architecture
 
 ```text
