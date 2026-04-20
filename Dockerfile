@@ -10,8 +10,10 @@ WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/ ./
-# vite.config.ts reads ../VERSION relative to frontend/ (__dirname = /src here)
+# vite.config.ts reads ../VERSION relative to frontend/ (__dirname = /src here);
+# AppChangelogModal.vue imports @docs/CHANGELOG.md?raw (alias -> ../docs/).
 COPY VERSION /VERSION
+COPY docs/ /docs/
 RUN npm run build
 
 FROM alpine:3.21
