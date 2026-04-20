@@ -10,6 +10,8 @@ WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/ ./
+# vite.config.ts reads ../VERSION relative to frontend/ (__dirname = /src here)
+COPY VERSION /VERSION
 RUN npm run build
 
 FROM alpine:3.21
