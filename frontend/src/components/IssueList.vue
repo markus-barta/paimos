@@ -497,9 +497,13 @@ async function confirmBulkDelete() {
   bulkDeleting.value = false
 }
 
-// ── Single-issue delete ─────────────────────────────────────────────────
+// ── Single-issue delete (soft-delete — recoverable from Settings → Trash) ──
 async function deleteRow(issue: Issue) {
-  if (!await confirm({ message: `Delete ${issue.issue_key} "${issue.title}"?`, confirmLabel: 'Delete', danger: true })) return
+  if (!await confirm({
+    message: `Move ${issue.issue_key} "${issue.title}" to Trash? Any child tasks will be moved too. You can restore from Settings → Trash.`,
+    confirmLabel: 'Move to trash',
+    danger: true,
+  })) return
   try {
     await api.delete(`/issues/${issue.id}`)
     emit('deleted', issue.id)

@@ -76,7 +76,7 @@ func AcceptanceReport(w http.ResponseWriter, r *http.Request) {
 		SELECT COALESCE(p.key || '-' || i.issue_number, ''), i.title
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
-		WHERE i.project_id = ? AND i.accepted_at LIKE ?
+		WHERE i.project_id = ? AND i.accepted_at LIKE ? AND i.deleted_at IS NULL
 		ORDER BY i.accepted_at
 	`, projectID, date+"%")
 	if aRows != nil {
@@ -100,7 +100,7 @@ func AcceptanceReport(w http.ResponseWriter, r *http.Request) {
 		FROM issues i
 		JOIN issues parent ON parent.id = i.parent_id
 		LEFT JOIN projects pp ON pp.id = i.project_id
-		WHERE i.project_id = ? AND i.notes = '[portal rejection]' AND i.created_at LIKE ?
+		WHERE i.project_id = ? AND i.notes = '[portal rejection]' AND i.created_at LIKE ? AND i.deleted_at IS NULL
 		ORDER BY i.created_at
 	`, projectID, date+"%")
 	if rRows != nil {

@@ -30,7 +30,7 @@
       <button v-if="canHaveChildren && !compact" class="row-act row-act--hover" title="Add child issue" @click.stop="$emit('add-child')">
         <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" />
       </button>
-      <button v-if="isAdmin" class="row-act row-act--hover row-act--danger" title="Delete issue" @click.stop="$emit('delete')">
+      <button v-if="isAdmin" class="row-act row-act--hover row-act--danger" title="Move to trash (recoverable)" @click.stop="$emit('delete')">
         <AppIcon name="trash-2" :size="13" />
       </button>
     </template>
@@ -56,7 +56,7 @@
               <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" /> Add child
             </button>
             <button v-if="isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
-              <AppIcon name="trash-2" :size="13" /> Delete
+              <AppIcon name="trash-2" :size="13" /> Move to trash
             </button>
           </div>
         </Teleport>

@@ -177,9 +177,13 @@ func buildRouter() http.Handler {
 			r.Post("/projects/{id}/issues", handlers.CreateIssue)
 
 			r.Get("/issues/recent", handlers.RecentIssues)
+			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
+			r.Get("/issues", handlers.ListAllIssues)
 			r.Get("/issues/{id}", handlers.GetIssue)
 			r.Put("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}", handlers.DeleteIssue)
+			r.With(auth.RequireAdmin).Post("/issues/{id}/restore", handlers.RestoreIssue)
+			r.With(auth.RequireAdmin).Delete("/issues/{id}/purge", handlers.PurgeIssue)
 			r.Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.Get("/issues/{id}/children", handlers.GetIssueChildren)
 

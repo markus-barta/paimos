@@ -88,11 +88,13 @@ const issueSelect = `
 	               END
 	           ) FROM time_entries te WHERE te.issue_id = i.id
 	       ), 0),
-	       i.accepted_at, i.accepted_by, i.invoiced_at, i.invoice_number
+	       i.accepted_at, i.accepted_by, i.invoiced_at, i.invoice_number,
+	       i.deleted_at, i.deleted_by, COALESCE(du.username, '')
 	FROM issues i
 	LEFT JOIN users u ON u.id = i.assignee_id
 	LEFT JOIN projects p ON p.id = i.project_id
 	LEFT JOIN users cb ON cb.id = i.created_by
+	LEFT JOIN users du ON du.id = i.deleted_by
 `
 
 // issueSelectCore is like issueSelect but without the 3 correlated subqueries
@@ -115,12 +117,20 @@ const issueSelectCore = `
 	       i.created_by, COALESCE(cb.username, ''),
 	       '' AS last_changed_by,
 	       0 AS booked_hours,
-	       i.accepted_at, i.accepted_by, i.invoiced_at, i.invoice_number
+	       i.accepted_at, i.accepted_by, i.invoiced_at, i.invoice_number,
+	       i.deleted_at, i.deleted_by, COALESCE(du.username, '')
 	FROM issues i
 	LEFT JOIN users u ON u.id = i.assignee_id
 	LEFT JOIN projects p ON p.id = i.project_id
 	LEFT JOIN users cb ON cb.id = i.created_by
+	LEFT JOIN users du ON du.id = i.deleted_by
 `
+
+// liveIssuesWhere is the WHERE predicate every issue-listing query must apply
+// to hide soft-deleted rows. Trash-listing endpoints bypass this (using
+// `i.deleted_at IS NOT NULL` explicitly). Prefix with " AND " when appending
+// after an existing WHERE clause.
+const liveIssuesWhere = `i.deleted_at IS NULL`
 
 func scanIssue(rows interface {
 	Scan(...any) error
@@ -152,6 +162,7 @@ func scanIssue(rows interface {
 		&i.CreatedBy, &i.CreatedByName, &i.LastChangedByName,
 		&i.BookedHours,
 		&i.AcceptedAt, &i.AcceptedBy, &i.InvoicedAt, &i.InvoiceNumber,
+		&i.DeletedAt, &i.DeletedBy, &i.DeletedByName,
 	); err != nil {
 		return nil, err
 	}
@@ -550,7 +561,7 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := issueSelectCore + ` WHERE i.project_id = ?`
+	query := issueSelectCore + ` WHERE i.project_id = ? AND ` + liveIssuesWhere
 	args := []any{projectID}
 
 	query, args = applyIssueFilters(query, args, r.URL.Query())
@@ -561,7 +572,7 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 			SELECT CAST(entity_id AS INTEGER) FROM search_index
 			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
 			UNION
-			SELECT id FROM issues WHERE project_id = ? AND (
+			SELECT id FROM issues WHERE project_id = ? AND deleted_at IS NULL AND (
 				title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
 				OR (SELECT key FROM projects WHERE id = issues.project_id) || '-' || issue_number LIKE ?
 			)
@@ -626,7 +637,7 @@ func GetIssueTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.DB.Query(issueSelectCore+` WHERE i.project_id=? ORDER BY i.issue_number ASC`, projectID)
+	rows, err := db.DB.Query(issueSelectCore+` WHERE i.project_id=? AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`, projectID)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -872,7 +883,9 @@ func GetIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue := getIssueByID(id)
-	if issue == nil {
+	if issue == nil || issue.DeletedAt != nil {
+		// Soft-deleted issues look like "not found" to every non-trash
+		// endpoint. To view/restore, go through /issues/trash.
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -885,7 +898,7 @@ func GetIssueChildren(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid id", http.StatusBadRequest)
 		return
 	}
-	rows, err := db.DB.Query(issueSelectCore+` WHERE i.parent_id=? ORDER BY i.issue_number ASC`, id)
+	rows, err := db.DB.Query(issueSelectCore+` WHERE i.parent_id=? AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`, id)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -912,7 +925,8 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	existing := getIssueByID(id)
-	if existing == nil {
+	if existing == nil || existing.DeletedAt != nil {
+		// Trashed issues are read-only from the update path; restore first.
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -1072,13 +1086,13 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 				shouldCascade = body.CascadeChildren != nil && *body.CascadeChildren
 			}
 			if shouldCascade {
-				if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE parent_id=? AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
+				if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE parent_id=? AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
 					*body.Status, nowTS, id); err != nil {
 					log.Printf("UpdateIssue: cascade children id=%d: %v", id, err)
 				}
 				// For epics, also cascade to grandchildren (tasks under tickets)
 				if issue.Type == "epic" {
-					if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE parent_id IN (SELECT id FROM issues WHERE parent_id=?) AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
+					if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE parent_id IN (SELECT id FROM issues WHERE parent_id=? AND deleted_at IS NULL) AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
 						*body.Status, nowTS, id); err != nil {
 						log.Printf("UpdateIssue: cascade grandchildren id=%d: %v", id, err)
 					}
@@ -1115,7 +1129,7 @@ func CompleteEpic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.DB.Query(issueSelectCore+` WHERE i.parent_id=? ORDER BY i.issue_number ASC`, id)
+	rows, err := db.DB.Query(issueSelectCore+` WHERE i.parent_id=? AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`, id)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -1177,15 +1191,104 @@ func CompleteEpic(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, updated)
 }
 
+// DeleteIssue moves an issue to the Trash (soft-delete). The issue and every
+// descendant reachable via parent_id (tasks under a ticket, and any deeper
+// orphan chains) get deleted_at stamped atomically. Related rows — comments,
+// history, tags, time_entries, attachments, issue_relations — are preserved
+// so a later Restore re-attaches them automatically.
+//
+// Caller can hard-delete via DELETE /issues/{id}/purge once the issue is in
+// the Trash. Deleting an already-trashed issue is a no-op 404 (the UI would
+// only offer Restore or Purge on those rows).
 func DeleteIssue(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		jsonError(w, "invalid id", http.StatusBadRequest)
 		return
 	}
-	res, err := db.DB.Exec("DELETE FROM issues WHERE id=?", id)
+	user := auth.GetUser(r)
+	var deletedBy *int64
+	if user != nil {
+		deletedBy = &user.ID
+	}
+	res, err := db.DB.Exec(`
+		WITH RECURSIVE descendants(id) AS (
+			SELECT id FROM issues WHERE id = ? AND deleted_at IS NULL
+			UNION ALL
+			SELECT i.id FROM issues i
+			JOIN descendants d ON i.parent_id = d.id
+			WHERE i.deleted_at IS NULL
+		)
+		UPDATE issues
+		   SET deleted_at = datetime('now'),
+		       deleted_by = ?
+		 WHERE id IN (SELECT id FROM descendants)
+	`, id, deletedBy)
 	if err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		// Either no such issue or it was already in the trash.
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	// History snapshot on the targeted issue only — cascaded tasks are
+	// reconstructible from the ticket snapshot + parent_id chain.
+	if snap := getIssueByID(id); snap != nil {
+		saveSnapshot(snap, user)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// RestoreIssue clears deleted_at on a trashed issue. Descendants that were
+// cascaded on delete are NOT auto-restored — restore is deliberately explicit
+// so an operator can pick what to bring back. Surviving issue_relations
+// (group / sprint / depends_on / impacts) re-attach automatically because
+// they were never touched at delete time.
+func RestoreIssue(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	res, err := db.DB.Exec(
+		`UPDATE issues SET deleted_at = NULL, deleted_by = NULL
+		  WHERE id = ? AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		jsonError(w, "restore failed", http.StatusInternalServerError)
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	restored := getIssueByID(id)
+	if restored == nil {
+		jsonError(w, "not found after restore", http.StatusInternalServerError)
+		return
+	}
+	saveSnapshot(restored, auth.GetUser(r))
+	jsonOK(w, restored)
+}
+
+// PurgeIssue permanently deletes a trashed issue and everything ON DELETE
+// CASCADE-bound to it (comments, history, tags, time_entries, attachments,
+// issue_relations rows where this issue is source or target). Only works on
+// issues already in the Trash — to purge a live issue you must soft-delete
+// it first. This is intentionally a two-step flow to prevent accidents.
+func PurgeIssue(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	res, err := db.DB.Exec(
+		`DELETE FROM issues WHERE id = ? AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		jsonError(w, "purge failed", http.StatusInternalServerError)
 		return
 	}
 	n, _ := res.RowsAffected()
@@ -1194,6 +1297,34 @@ func DeleteIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListTrashIssues returns every soft-deleted issue the caller has view access
+// to, ordered by deleted_at DESC. Admin-gated at the route level.
+func ListTrashIssues(w http.ResponseWriter, r *http.Request) {
+	query := issueSelectCore + ` WHERE i.deleted_at IS NOT NULL`
+	args := []any{}
+	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
+		query += accessFilter
+		args = append(args, accessArgs...)
+	}
+	query += ` ORDER BY i.deleted_at DESC, i.id DESC`
+	rows, err := db.DB.Query(query, args...)
+	if err != nil {
+		jsonError(w, "list failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	issues := []models.Issue{}
+	for rows.Next() {
+		iss, err := scanIssue(rows)
+		if err != nil {
+			jsonError(w, "scan failed", http.StatusInternalServerError)
+			return
+		}
+		issues = append(issues, *iss)
+	}
+	jsonOK(w, issues)
 }
 
 // ListAllIssues returns issues across all projects, with optional project_ids filter and pagination.
@@ -1215,7 +1346,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	query := issueSelectCore + ` WHERE 1=1`
+	query := issueSelectCore + ` WHERE ` + liveIssuesWhere
 	args := []any{}
 
 	// Scope by per-project access (admins pass through with empty filter).
@@ -1261,7 +1392,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 			SELECT CAST(entity_id AS INTEGER) FROM search_index
 			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
 			UNION
-			SELECT id FROM issues WHERE (
+			SELECT id FROM issues WHERE deleted_at IS NULL AND (
 				title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
 			)
 		)`
@@ -1300,7 +1431,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 
 	// Also return total count for the same filter (for "X remaining" UI)
 	// Build count query with same filters
-	countQuery := `SELECT COUNT(*) FROM issues i WHERE 1=1`
+	countQuery := `SELECT COUNT(*) FROM issues i WHERE ` + liveIssuesWhere
 	countArgs := []any{}
 	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
 		countQuery += accessFilter
@@ -1426,7 +1557,7 @@ func splitCSV(s string) []string {
 }
 
 func RecentIssues(w http.ResponseWriter, r *http.Request) {
-	query := issueSelectCore + ` WHERE 1=1`
+	query := issueSelectCore + ` WHERE ` + liveIssuesWhere
 	args := []any{}
 	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
 		query += accessFilter
@@ -1458,7 +1589,7 @@ func ListCostUnits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := db.DB.Query(
-		`SELECT DISTINCT cost_unit FROM issues WHERE project_id=? AND cost_unit != '' ORDER BY cost_unit`, projectID,
+		`SELECT DISTINCT cost_unit FROM issues WHERE project_id=? AND cost_unit != '' AND deleted_at IS NULL ORDER BY cost_unit`, projectID,
 	)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -1484,7 +1615,7 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := db.DB.Query(
-		`SELECT DISTINCT release FROM issues WHERE project_id=? AND release != '' ORDER BY release`, projectID,
+		`SELECT DISTINCT release FROM issues WHERE project_id=? AND release != '' AND deleted_at IS NULL ORDER BY release`, projectID,
 	)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -1505,7 +1636,7 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 
 // ListAllCostUnits returns distinct cost_unit values across all projects.
 func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT DISTINCT cost_unit FROM issues i WHERE cost_unit != ''`
+	query := `SELECT DISTINCT cost_unit FROM issues i WHERE cost_unit != '' AND i.deleted_at IS NULL`
 	args := []any{}
 	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
 		query += f
@@ -1532,7 +1663,7 @@ func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
 
 // ListAllReleases returns distinct release values across all projects.
 func ListAllReleases(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT DISTINCT release FROM issues i WHERE release != ''`
+	query := `SELECT DISTINCT release FROM issues i WHERE release != '' AND i.deleted_at IS NULL`
 	args := []any{}
 	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
 		query += f
@@ -1771,7 +1902,7 @@ func ListIssuesByRelation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := db.DB.Query(
-		issueSelectCore+` JOIN issue_relations ir ON ir.target_id = i.id WHERE ir.source_id = ? AND ir.type = ? ORDER BY ir.rank ASC, i.issue_number ASC`,
+		issueSelectCore+` JOIN issue_relations ir ON ir.target_id = i.id WHERE ir.source_id = ? AND ir.type = ? AND `+liveIssuesWhere+` ORDER BY ir.rank ASC, i.issue_number ASC`,
 		id, relType,
 	)
 	if err != nil {
@@ -1867,7 +1998,7 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		       SUM(i.ar_hours), SUM(i.ar_lp)
 		FROM issues i
 		JOIN issue_relations ir ON ir.target_id = i.id
-		WHERE ir.source_id = ? AND ir.type = 'groups'`+aggAccessFilter,
+		WHERE ir.source_id = ? AND ir.type = 'groups' AND i.deleted_at IS NULL`+aggAccessFilter,
 		aggArgs...).Scan(&agg.MemberCount, &agg.EstimateHours, &agg.EstimateLp, &agg.ArHours, &agg.ArLp)
 	if err != nil {
 		jsonError(w, "aggregation query failed", http.StatusInternalServerError)

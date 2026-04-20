@@ -159,7 +159,7 @@ func lookupIssueByKey(projKey string, issueNum int) (SearchIssue, bool) {
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE UPPER(p.key) = UPPER(?) AND i.issue_number = ?
+		WHERE UPPER(p.key) = UPPER(?) AND i.issue_number = ? AND i.deleted_at IS NULL
 	`, projKey, issueNum)
 	var iss SearchIssue
 	var num int
@@ -182,7 +182,7 @@ func lookupIssuesByProjKey(projKey string) []SearchIssue {
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE UPPER(p.key) = UPPER(?)
+		WHERE UPPER(p.key) = UPPER(?) AND i.deleted_at IS NULL
 		ORDER BY i.issue_number
 		LIMIT 201
 	`, projKey)
@@ -203,6 +203,7 @@ func lookupIssuesByKeyPrefix(projKey string, numPrefix string) []SearchIssue {
 		WHERE UPPER(p.key) = UPPER(?)
 		  AND CAST(i.issue_number AS TEXT) LIKE ?
 		  AND CAST(i.issue_number AS TEXT) != ?
+		  AND i.deleted_at IS NULL
 		ORDER BY i.updated_at DESC
 		LIMIT 20
 	`, projKey, numPrefix+"%", numPrefix)
@@ -354,7 +355,8 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'issue'
-		  AND search_index MATCH ?`+accessIssueFilter+`
+		  AND search_index MATCH ?
+		  AND i.deleted_at IS NULL`+accessIssueFilter+`
 		LIMIT ?
 	`, issArgs...)
 	if err == nil {
@@ -445,7 +447,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			JOIN issues i ON i.id = it.issue_id
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE it.tag_id IN (`+ph+`)`+accessIssueFilter+`
+			WHERE it.tag_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+`
 			LIMIT ?
 		`, tiArgs...)
 		if err == nil {
@@ -469,7 +471,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			FROM issues i
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE i.assignee_id IN (`+ph+`)`+accessIssueFilter+`
+			WHERE i.assignee_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+`
 			ORDER BY i.updated_at DESC
 			LIMIT ?
 		`, aiArgs...)
@@ -487,7 +489,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ?`+accessIssueFilter+`
+		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ? AND i.deleted_at IS NULL`+accessIssueFilter+`
 		ORDER BY i.updated_at DESC
 		LIMIT ?
 	`, keyArgs...)
@@ -508,7 +510,8 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'comment'
-		  AND search_index MATCH ?`+accessIssueFilter+`
+		  AND search_index MATCH ?
+		  AND i.deleted_at IS NULL`+accessIssueFilter+`
 		LIMIT ?
 	`, cmtArgs...)
 	if err == nil {

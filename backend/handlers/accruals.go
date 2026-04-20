@@ -114,6 +114,7 @@ func queryAccruals(from, toExclusive string) ([]accrualsRow, error) {
 		FROM issues i
 		JOIN entries e ON e.issue_id = i.id AND e.new_status = i.status
 		WHERE i.archived = 0
+		  AND i.deleted_at IS NULL
 		  AND e.entered_at >= ?
 		  AND e.entered_at <  ?
 		GROUP BY i.project_id, i.status
