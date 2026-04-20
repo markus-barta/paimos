@@ -34,9 +34,13 @@ surfaces the bits an agent needs extra reminders for.
 2. Update `docs/CHANGELOG.md`: new entry at the top, format
    `## [X.Y.Z] — YYYY-MM-DD`, one-line headline, bullet list of
    notable changes. Short and readable.
-3. Bump `VERSION` and `frontend/package.json` "version" together.
-4. Tag the commit: `git tag -s vX.Y.Z -m "vX.Y.Z"`.
-5. Publish (CI / manual).
+3. Tag the commit: `git tag -s vX.Y.Z -m "vX.Y.Z"` and push the tag.
+4. CI (`.github/workflows/ci.yml`) syncs `VERSION` from the git ref
+   before the docker build, so the committed `VERSION` file is a
+   dev baseline only — no manual bump is required for a release.
+   Main-branch images bake `<base>-dev+<sha>`; tagged images bake the
+   semver string from the tag.
+5. Publish (CI).
 
 ## Code conventions
 

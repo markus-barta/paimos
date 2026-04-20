@@ -1,8 +1,18 @@
-# PAIMOS Data Model
+# PAIMOS Data Model (Legacy — v0.3.5 snapshot)
+
+> ⚠️ **This document is a historical snapshot of the pre-v1 schema (migrations 1–10).**
+> The current schema — including the per-project access-control tables
+> (`project_members`, `access_audit`), `time_entries`, `attachments`,
+> `issue_relations`, sprints, the renamed status values
+> (`backlog` / `in-progress` / `complete` / `canceled`), and much more —
+> is documented in [`DATA_MODEL_v2.md`](DATA_MODEL_v2.md).
+>
+> For anything other than archaeology, read `DATA_MODEL_v2.md` and
+> `backend/db/db.go` (the source of truth).
 
 **Version**: 0.3.5  
 **Last updated**: 2026-03-06  
-**Schema source of truth**: `backend/db/db.go` — all migrations are applied in order on startup.
+**Schema source of truth (now)**: `backend/db/db.go` — all migrations are applied in order on startup.
 
 ---
 

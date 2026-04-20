@@ -53,7 +53,7 @@ DELETE /comments/:id
 
 ```
 GET    /issues/:id/relations
-POST   /issues/:id/relations        {target_id, type}   type: parent|depends_on|impacts
+POST   /issues/:id/relations        {target_id, type}   type: groups|sprint|depends_on|impacts
 DELETE /issues/:id/relations        {target_id, type} — admin only
 GET    /issues/:id/members          list by relation
 ```
@@ -106,11 +106,23 @@ POST   /users/:id/reset-totp        admin only
 ## User memberships (project access)
 
 ```
-GET    /users/:id/projects                        admin only — projects granted
-POST   /users/:id/projects         {project_id}   admin only — grant access
-DELETE /users/:id/projects/:projectId             admin only — revoke access
+GET    /users/:id/memberships                     admin — effective per-project level for every project
+PUT    /users/:id/memberships/:projectId          admin — upsert grant {level: "none"|"viewer"|"editor"}
+DELETE /users/:id/memberships/:projectId          admin — revert to role default
+
+GET    /users/:id/projects                        admin — legacy portal-grant list (kept for compat)
+POST   /users/:id/projects         {project_id}   admin — legacy grant (viewer-equivalent)
+DELETE /users/:id/projects/:projectId             admin — legacy revoke
+
 GET    /users/me/recent-projects                  self
 POST   /users/me/recent-projects   {project_id}   self — record a visit
+```
+
+## Permissions & access audit
+
+```
+GET    /permissions/matrix                        any logged-in user — capability × level matrix for UI
+GET    /access-audit                              admin — grant/update/revoke trail
 ```
 
 ## Tags
@@ -177,12 +189,15 @@ POST   /import/csv                               admin only — global
 
 | Field | Values |
 |-------|--------|
-| `type` | `epic` `ticket` `task` |
-| `status` | `open` `in-progress` `done` `closed` |
+| `type` | `epic` `cost_unit` `release` `sprint` `ticket` `task` |
+| `status` | `new` `backlog` `in-progress` `qa` `done` `delivered` `accepted` `invoiced` `cancelled` |
 | `priority` | `low` `medium` `high` |
+| issue-relation `type` | `groups` `sprint` `depends_on` `impacts` |
 
-Hierarchy: epic → ticket → task. Orphan tickets/tasks allowed. 422 on invalid parent.  
-Issue key: `{PROJECT_KEY}-{n}` e.g. `ACME-1` — computed, not stored.  
+Hierarchy: ticket → task via `parent_id` (strict 1:1). Group-level types
+(epic / cost_unit / release) link to tickets via `issue_relations` (M:N).
+Orphan tickets/tasks allowed. 422 on invalid parent.  
+Issue key: `{PROJECT_KEY}-{n}` e.g. `PAI-1` — computed, not stored.  
 Project 2 = PAIMOS's own backlog.
 
 ---
@@ -193,6 +208,6 @@ Project 2 = PAIMOS's own backlog.
 curl -s -H "Authorization: Bearer $KEY" \
   -X POST https://paimos.example.com/api/projects/2/issues \
   -H "Content-Type: application/json" \
-  -d '{"title":"...","type":"ticket","status":"open","priority":"medium",
+  -d '{"title":"...","type":"ticket","status":"backlog","priority":"medium",
        "description":"...","acceptance_criteria":"- [ ] ..."}'
 ```

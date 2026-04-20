@@ -1,9 +1,15 @@
 # PAIMOS Data Model v2
 
-**Status**: Implemented (v0.4.x)  
-**Date**: 2026-03-06  
-**Basis**: Team meeting whiteboard + discussion with Markus  
-**Previous model**: `docs/DATA_MODEL.md` (v0.3.5-poc baseline)
+**Status**: Current (active schema as of `v1.1.1`)  
+**Last verified**: 2026-04-20  
+**Schema source of truth**: `backend/db/db.go` — migrations run in order on startup.  
+**Legacy**: `docs/DATA_MODEL.md` captures the v0.3.5 pre-release baseline and is kept for archival reference only.
+
+> This is the canonical data-model document. The v1.0.0 / v1.1.1
+> releases have iterated well beyond the rename implied by "v2" — new
+> tables (`project_members`, `access_audit`, `time_entries`,
+> `attachments`, `issue_relations`, sprints, etc.) are documented
+> below in addition to the v1→v2 structural changes.
 
 ---
 
@@ -159,14 +165,34 @@ title, description, acceptance_criteria, notes, priority, assignee_id, created_a
 
 ## Unified Status Model
 
-All issue types use the same status values:
+All issue types share one status enum. The enum grew beyond the
+original v2-rename plan to cover the full **billing lifecycle** needed
+by cost-unit / release reporting. Current CHECK constraint (source of
+truth: `backend/db/db.go`):
 
-| v1 status | v2 status | Notes |
-|-----------|-----------|-------|
-| `open` | `backlog` | Renamed |
-| `in-progress` | `in-progress` | Unchanged |
-| `done` | `complete` | Renamed |
-| `closed` | `canceled` | Renamed — semantics change from "done+closed" to explicitly canceled |
+```
+CHECK(status IN (
+    'new','backlog','in-progress','qa','done',
+    'delivered','accepted','invoiced','cancelled'
+))
+```
+
+| Status         | Meaning                                                    |
+| -------------- | ---------------------------------------------------------- |
+| `new`          | Just created; not yet triaged.                             |
+| `backlog`      | Triaged, not yet started. (renamed from v1 `open`)         |
+| `in-progress`  | Actively being worked.                                     |
+| `qa`           | Work done; under review / quality check.                   |
+| `done`         | QA passed; ready for delivery. (renamed from v1 `done`)    |
+| `delivered`    | Shipped to customer / stakeholder.                         |
+| `accepted`     | Customer / PO has signed off.                              |
+| `invoiced`     | Billed to customer (final lifecycle state).                |
+| `cancelled`    | Will not be done. (renamed from v1 `closed`; note double-L)|
+
+Migration history: v1→v2 renamed `open→backlog`, `done→complete`,
+`closed→canceled`; a later migration expanded the enum, renamed
+`complete→done`, and switched `canceled→cancelled` (double-L) to match
+the UK spelling used elsewhere.
 
 Additional type-specific states live in separate fields, not in `status`:
 - `group_state` on releases: `unreleased` / `released`
@@ -200,10 +226,11 @@ time_entries (
 )
 ```
 
-- Only tracks time on tickets, not tasks or groups
+- Only tracks time on issues of type ticket/task (not groups)
 - A running timer has `stopped_at = NULL`
 - `override` allows manual correction without deleting the entry
-- Implementation deferred but schema is planned
+- `internal_rate_hourly` (REAL, nullable) added in a later migration for per-entry internal rate snapshots
+- **Shipped in v1.0.0.** API surface under `/api/time-entries` and `/api/issues/{id}/time-entries`
 
 ---
 
@@ -260,36 +287,57 @@ Each tab shows the same ticket pool from a different organizational perspective.
 
 ---
 
-## Permission Model (Model A — v0.4.4)
+## Permission Model (v1.1.1)
 
-Two roles: `admin` and `member`.
+PAIMOS uses a **two-layer** permission model:
 
-| Action | Member | Admin |
-|--------|--------|-------|
-| Create issue | ✅ | ✅ |
-| Edit issue | ✅ | ✅ |
-| Delete issue | ❌ | ✅ |
-| Delete issue relation | ❌ | ✅ |
-| Add/remove tags (issues & projects) | ✅ | ✅ |
-| Log time entry | ✅ | ✅ |
-| Delete own time entry | ✅ | ✅ |
-| Delete others' time entries | ❌ | ✅ |
-| Create comment | ✅ | ✅ |
-| Delete own comment | ✅ | ✅ |
-| Delete others' comments | ❌ | ✅ |
-| Create/edit/delete project | ❌ | ✅ |
+1. **Role** (on `users.role`) — `admin` / `member` / `external`.
+2. **Per-project access level** (on `project_members.access_level`) —
+   `none` / `viewer` / `editor`.
 
-**Backend enforcement:**
-- `DELETE /issues/{id}` — `auth.RequireAdmin` middleware (`backend/main.go`)
-- `DELETE /issues/{id}/relations` — `auth.RequireAdmin` middleware (`backend/main.go`)
-- `DELETE /time_entries/{id}` — own-or-admin check in handler (`backend/handlers/time_entries.go`)
-- `DELETE /comments/{id}` — own-or-admin check in handler (`backend/handlers/comments.go`)
-- `POST/PUT/DELETE /projects` — `auth.RequireAdmin` middleware (`backend/main.go`)
+| Level    | Read | Write | Notes                                               |
+| -------- | ---- | ----- | --------------------------------------------------- |
+| `none`   | no   | no    | Explicit denial; overrides the member default.      |
+| `viewer` | yes  | no    | Read-only access to the project and its issues.    |
+| `editor` | yes  | yes   | Full read + write within the project.              |
 
-**Frontend enforcement (UI hide):** Delete buttons hidden for members in `IssueList.vue` and `IssueDetailView.vue`.
+**Role defaults** when no `project_members` row exists:
+- **admin** — always bypasses per-project checks (effectively editor everywhere).
+- **member** — default `editor` on every non-deleted project.
+- **external** — default `none`; must be granted explicitly.
+
+**Auto-seeding:**
+- `CreateUser` (admin/member) seeds `editor` rows for every non-deleted project.
+- `CreateProject` seeds `editor` rows for every active admin/member.
+- Migration 64 backfilled existing portal grants as `viewer` and seeded
+  admin/member editors on pre-existing projects.
+
+**Access audit** (`access_audit` table) logs grant / update / revoke
+events with actor, old level, new level, and timestamp. Admin-only
+read via `GET /api/access-audit`.
+
+**Backend enforcement** — see `backend/auth/middleware_project.go` and
+`backend/auth/access.go`:
+- `RequireProjectView` / `RequireProjectEdit`
+- `RequireIssueAccess` / `RequireIssueEdit`
+- `RequireAttachmentAccess` / `RequireAttachmentEdit`
+- `RequireTimeEntryAccess` / `RequireTimeEntryEdit`
+- `RequireCommentAccess` / `RequireCommentEdit`
+- Admin-only routes (project CRUD, user CRUD, etc.) use `auth.RequireAdmin`.
+
+Response convention: **404** on no-view access (no existence oracle),
+**403** on view-only-when-edit-required.
+
+**Frontend:** `/auth/login`, `/auth/me`, `/auth/totp/verify` return
+`{ user, access }`. The Pinia store exposes `canView(pid)` / `canEdit(pid)`
+plus a hydrated `accessibleProjects` map. Router per-project guarding
+via `meta.projectIdParam`.
+
+See `docs/DEVELOPER_GUIDE.md` section 4a for the implementation walkthrough.
 
 ---
 
 ## Related
 
-- Current data model: `docs/DATA_MODEL.md`
+- Legacy v0.3.5 schema snapshot: `docs/DATA_MODEL.md`
+- Implementation guide: `docs/DEVELOPER_GUIDE.md`

@@ -53,8 +53,10 @@ docs/
   CONFIGURATION.md     every env var
   CHANGELOG.md         release notes
   DEVELOPER_GUIDE.md   this file
-  DATA_MODEL_v2.md     schema + relationships (ER-style)
-  api-minimal.md       smallest viable API surface reference
+  DATA_MODEL_v2.md     current schema (tables, relations, enums)
+  DATA_MODEL.md        legacy v0.3.5 snapshot — archival only
+  AGENT_INTEGRATION.md authenticated API usage for agents
+  api-minimal.md       compact API surface reference
   brand/               visual identity (mark + wordmark + brand guide)
 +agents/rules/         rules agents follow when editing this codebase
 +pm/                   product framing (PRD, roadmap)
