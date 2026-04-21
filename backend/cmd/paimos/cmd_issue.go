@@ -137,6 +137,7 @@ func issueListCmd() *cobra.Command {
 	c.Flags().StringVar(&assignee, "assignee", "", "filter by assignee id")
 	c.Flags().IntVar(&limit, "limit", 50, "page size (default 50, server cap 100)")
 	c.Flags().IntVar(&offset, "offset", 0, "pagination offset")
+	registerEnumCompletions(c, "status", "type", "priority")
 	return c
 }
 

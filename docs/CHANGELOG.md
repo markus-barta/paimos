@@ -5,6 +5,33 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] — 2026-04-21
+
+### Added — CLI shell completions (PAI-94, PAI-85 epic step I)
+
+- `paimos completion bash|zsh|fish|powershell` — Cobra-native.
+  Emits the completion script to stdout; install once per shell.
+- **Enum-aware completions** driven by the schema cache:
+  - Flags `--status`, `--type`, `--priority` on `issue list` /
+    `issue create` / `issue update`.
+  - Positional args: `issue ensure-status <ref> <status>` (second
+    arg), `relation add <source> <type> <target>` (middle arg).
+  - Zero network on tab-press — reads `~/.paimos/schema-<instance>.json`.
+    Run `paimos schema` once per instance to populate.
+
+#### Install examples
+
+```sh
+# fish
+paimos completion fish > ~/.config/fish/completions/paimos.fish
+
+# zsh (persistent)
+paimos completion zsh > "${fpath[1]}/_paimos"
+
+# bash
+paimos completion bash > /etc/bash_completion.d/paimos   # or ~/.bash_completion
+```
+
 ## [1.3.2] — 2026-04-21
 
 ### Added — CLI schema + doctor (PAI-93, PAI-85 epic step H)
