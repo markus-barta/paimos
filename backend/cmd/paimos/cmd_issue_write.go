@@ -198,6 +198,7 @@ Use --dry-run to print the request payload without hitting the API.`,
 	c.Flags().StringVar(&notes, "notes", "", "inline notes")
 	c.Flags().StringVar(&notesFile, "notes-file", "", "path to markdown notes file")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "print the payload without sending")
+	registerEnumCompletions(c, "status", "type", "priority")
 	return c
 }
 
@@ -372,6 +373,7 @@ Use --dry-run to print the payload without sending.`,
 	c.Flags().StringVar(&closeNote, "close-note", "", "single-line close-note (requires --status terminal)")
 	c.Flags().StringVar(&closeNoteFile, "close-note-file", "", "path to close-note file (requires --status terminal)")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "print the payload without sending")
+	registerEnumCompletions(c, "status", "type", "priority")
 	return c
 }
 
@@ -381,6 +383,15 @@ func issueEnsureStatusCmd() *cobra.Command {
 		Use:   "ensure-status <ref> <status>",
 		Short: "Set an issue's status only if it's not already there (idempotent)",
 		Args:  cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			// First arg (ref) — can't complete cheaply without a round
+			// trip; leave to the shell. Second arg (status) comes from
+			// the schema cache.
+			if len(args) == 1 {
+				return enumFromCachedSchema("status"), cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, want := args[0], args[1]
 			client, err := instanceClient()
@@ -467,6 +478,14 @@ func relationAddCmd() *cobra.Command {
 		Use:   "add <source-ref> <type> <target-ref>",
 		Short: "Add a relation between two issues",
 		Args:  cobra.ExactArgs(3),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			// source-ref, type, target-ref. Only the middle one (type)
+			// is cheaply completable from the schema cache.
+			if len(args) == 1 {
+				return enumFromCachedSchema("relation"), cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			src, typ, tgt := args[0], args[1], args[2]
 			client, err := instanceClient()
