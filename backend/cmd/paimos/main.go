@@ -50,13 +50,14 @@ var (
 
 func main() {
 	if err := rootCmd().Execute(); err != nil {
-		// Cobra prints usage on unknown-command / bad-flag errors. For
-		// those we want exit 2 (convention). Everything else that
-		// bubbles up is an API/runtime failure → exit 1.
-		if _, ok := err.(*usageError); ok {
+		// Usage errors: our own error type → print + exit 2 (convention).
+		// apiError has already been printed in the caller's chosen
+		// format (pretty or --json), don't double up.
+		// Everything else (config I/O, marshaling, etc.) → print + exit 1.
+		if ue, ok := err.(*usageError); ok {
+			fmt.Fprintln(os.Stderr, "paimos: "+ue.Error())
 			os.Exit(2)
 		}
-		// Cobra already printed the message; avoid doubling it.
 		if _, ok := err.(*apiError); !ok {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 		}
@@ -90,6 +91,7 @@ Get started:
 	cmd.AddCommand(authCmd())
 	cmd.AddCommand(projectCmd())
 	cmd.AddCommand(issueCmd())
+	cmd.AddCommand(relationCmd())
 
 	// If no subcommand is given, Cobra's default is to print help with
 	// exit 0. The AC wants exit 2 for that case (standard convention).
