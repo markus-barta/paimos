@@ -161,6 +161,18 @@ DELETE /views/:id/pin
 GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix)
 ```
 
+## Schema (self-describing discovery)
+
+```
+GET    /schema                      public — enums, transitions, entity shapes
+```
+
+Returns `{version, enums, transitions, entities, conventions}`. No auth
+required. Cacheable: strong ETag + `Cache-Control: public, max-age=300`.
+Version bumps whenever any enum, transition, field, or convention changes.
+The CLI and MCP use this endpoint to validate user input before POSTing
+so agents catch typos (e.g. `status: "completed"`) client-side.
+
 ## Reports / audit
 
 ```

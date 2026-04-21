@@ -5,6 +5,24 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] — 2026-04-21
+
+### Added
+
+- **`GET /api/schema` — self-describing discovery endpoint** — PAI-87
+  (PAI-85 epic, B). Public, no auth required. Returns a versioned JSON
+  payload with `enums` (status, priority, type, relation), recommended
+  `transitions` (any→any still accepted server-side — these are hints
+  for clients), `entities` (required/optional field lists per type,
+  with `key_shape` for issues), and `conventions` (AC checkbox
+  format, key case-sensitivity, multiline-input guidance). Strong
+  ETag + `Cache-Control: public, max-age=300`; `X-Schema-Version`
+  header mirrors the body's `version` string. The CLI (PAI-90+) and
+  MCP (PAI-95) consume this before POSTing so typos like
+  `status: "completed"` get caught client-side with a suggestion.
+  Regression test hashes the payload — editing the schema without
+  bumping `SchemaVersion` fails CI.
+
 ## [1.2.5] — 2026-04-21
 
 ### Added

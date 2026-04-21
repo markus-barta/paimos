@@ -57,10 +57,13 @@ func main() {
 		// list short and auditable — the only valid reasons for a
 		// route to live outside the auth group are:
 		//   (a) health checks for Docker / CI / monitoring, or
-		//   (b) the login page needs it before any session can exist.
-		// Audited 2026-04-15.
+		//   (b) the login page needs it before any session can exist, or
+		//   (c) agent-discovery endpoints the CLI / MCP fetch before
+		//       any API key is issued (e.g. /api/schema).
+		// Audited 2026-04-21.
 		r.Get("/health", healthHandler)                // (a) Docker + CI
 		r.Get("/branding", handlers.GetBranding)       // (b) login page logo + colors
+		r.Get("/schema", handlers.GetAPISchema)        // (c) CLI / MCP discovery (PAI-87)
 
 		// Auth (public — no session possible yet)
 		r.Post("/auth/login", auth.LoginHandler)
