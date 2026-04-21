@@ -5,6 +5,36 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-04-21
+
+### Added
+
+- **`paimos` CLI — bootstrap** — PAI-90 (PAI-85 epic, E). New binary
+  at `backend/cmd/paimos/`. Cobra + Viper-lite + `golang.org/x/term`
+  (hidden API-key input) + `gopkg.in/yaml.v3` (config). Read-only
+  surface for v1:
+  - `paimos auth login` — interactive; prompts for URL + API key,
+    verifies against `/api/auth/me`, writes `~/.paimos/config.yaml`
+    (atomic temp+rename, mode 0600).
+  - `paimos auth whoami` — shows active instance + user.
+  - `paimos project list` — compact table or `--json`.
+  - `paimos issue get <ref>` — ref is key or numeric id; pretty by
+    default, `--json` pipes the server payload verbatim.
+  - `paimos issue list --project PAI --status backlog --limit 20`.
+  - `paimos issue children <ref>`.
+
+  Global flags work on every subcommand: `--instance <name>` (multi-
+  instance config), `--json` (machine output), `--config <path>`.
+  Missing/invalid config → exit 2 with a pointer to `auth login`.
+  API errors → exit 1, `--json` emits `{error, code}` (never HTML
+  or unstructured dumps). `paimos` with no subcommand prints usage
+  to stderr with exit 2.
+
+### Note: CLI is bundled in the backend Go module (monorepo layout).
+  Shared types with the server prevent schema drift. Distribution
+  via `go install github.com/markus-barta/paimos/backend/cmd/paimos@latest`
+  or a release binary — not via the PAIMOS Docker image.
+
 ## [1.2.8] — 2026-04-21
 
 ### Added
