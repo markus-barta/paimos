@@ -5,6 +5,36 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] — 2026-04-21
+
+### Added — agent interface docs (PAI-96, PAI-85 epic step K)
+
+- New `docs/AGENT_INTERFACE.md`: the single place to learn how to
+  drive PAIMOS as an agent. Covers install + `auth login`, core
+  patterns (keys-or-ids, file-first multi-line, `--dry-run`,
+  `--json`), an end-to-end transcript of a real session (ticket →
+  branch → deploy → close-with-note), bulk ops (`batch-update`,
+  `apply`), schema discovery, MCP wiring for Claude Desktop, and
+  explicit failure-mode guarantees.
+- Linked from `DEVELOPER_GUIDE.md` as the top-of-document pointer
+  for agent-driving readers.
+
+### Closes the PAI-85 epic
+
+All 12 children (PAI-86 → PAI-97) shipped across 12 PRs in one day:
+
+- **API** (A–D): keys everywhere, `/api/schema`, bulk endpoints,
+  new relation types.
+- **CLI** (E–I): bootstrap, write commands + close-note,
+  batch-update + apply, schema + doctor, shell completions.
+- **MCP** (J): 6-tool stdio facade.
+- **Docs** (K): this file.
+- **Session audit** (L): opt-in UUIDv7 mutation trail.
+
+The shell-quoted-JSON foot-gun, the numeric-id lookups, the
+project-ID mismatch between instances, and the status-enum guessing
+are all gone from the agent hot-path.
+
 ## [1.5.0] — 2026-04-21
 
 ### Added — MCP facade (PAI-95, PAI-85 epic step J)

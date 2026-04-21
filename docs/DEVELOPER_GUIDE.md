@@ -4,6 +4,11 @@ For operator-facing configuration, see [`CONFIGURATION.md`](CONFIGURATION.md).
 For contribution mechanics (DCO, PR flow, review criteria), see
 [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
+**Driving PAIMOS as an agent (Claude Code / scripts / MCP):**
+[`AGENT_INTERFACE.md`](AGENT_INTERFACE.md) is the entry point — covers
+`paimos` CLI setup, schema discovery, bulk ops, MCP wiring, and
+failure-mode guarantees.
+
 This guide is for people who want to understand, extend, or debug
 PAIMOS's internals.
 
