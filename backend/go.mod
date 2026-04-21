@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-pdf/fpdf v0.9.0
+	github.com/google/uuid v1.6.0
 	github.com/minio/minio-go/v7 v7.0.99
 	github.com/pquerna/otp v1.5.0
 	github.com/spf13/cobra v1.10.2
@@ -19,7 +20,6 @@ require (
 	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
