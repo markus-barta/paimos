@@ -27,6 +27,7 @@ import { formatDuration } from '@/composables/useDurationInput'
 import { useConfirm } from '@/composables/useConfirm'
 import { useIssueContext } from '@/composables/useIssueContext'
 import { useAttachmentUploads } from '@/composables/useAttachmentUploads'
+import { LS_SIDEBAR_WIDTH as LS_WIDTH_KEY } from '@/constants/storage'
 
 const ctx = useIssueContext(true)
 
@@ -327,7 +328,6 @@ const typeIcon = computed(() => {
 const DEFAULT_WIDTH = 520
 const MIN_WIDTH = 300
 const MAX_WIDTH_RATIO = 0.6
-const LS_WIDTH_KEY = 'paimos:sidebar:width'
 
 const sidebarWidth = ref(parseInt(localStorage.getItem(LS_WIDTH_KEY) || String(DEFAULT_WIDTH), 10))
 const resizing = ref(false)

@@ -8,6 +8,7 @@ import { formatDuration, parseDuration } from '@/composables/useDurationInput'
 import { fmtShortDateTime } from '@/utils/formatTime'
 import AppIcon from '@/components/AppIcon.vue'
 import type { TimeEntry } from '@/types'
+import { LS_TIME_ENTRIES_EXPANDED } from '@/constants/storage'
 
 const props = defineProps<{
   issueId: number
@@ -28,9 +29,9 @@ const teDurationRef  = ref<HTMLInputElement | null>(null)
 const isTimerIssue = computed(() => timerStore.isRunning(props.issueId))
 
 // Collapsible time bar state
-const tePref = localStorage.getItem('paimos:te-expanded') === '1'
+const tePref = localStorage.getItem(LS_TIME_ENTRIES_EXPANDED) === '1'
 const teExpanded = ref(false)
-watch(teExpanded, (v) => localStorage.setItem('paimos:te-expanded', v ? '1' : '0'))
+watch(teExpanded, (v) => localStorage.setItem(LS_TIME_ENTRIES_EXPANDED, v ? '1' : '0'))
 
 // Per-user time totals for the collapsed bar
 const perUserTotals = computed(() => {

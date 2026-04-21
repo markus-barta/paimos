@@ -5,6 +5,12 @@ import { useSidebarColors, resetSidebarToDefaults } from '@/composables/useSideb
 import { useBranding } from '@/composables/useBranding'
 import { useIssueDisplay, TYPE_SVGS } from '@/composables/useIssueDisplay'
 import { useTableAppearance, resetTableAppearance } from '@/composables/useTableAppearance'
+import {
+  LS_TYPE_COLOR_EPIC,
+  LS_TYPE_COLOR_TICKET,
+  LS_TYPE_COLOR_TASK,
+  LS_ACCRUALS_ACCENT,
+} from '@/constants/storage'
 
 // ── Issue Display ────────────────────────────────────────────────────────────
 const { _rawIcon: typeIcon, _rawText: typeText } = useIssueDisplay()
@@ -37,18 +43,18 @@ function resetTableColors() {
 }
 
 // Issue type color overrides
-const typeColorEpic = ref(localStorage.getItem('paimos:type-color-epic') || branding.value.colors.typeEpic)
-const typeColorTicket = ref(localStorage.getItem('paimos:type-color-ticket') || branding.value.colors.typeTicket)
-const typeColorTask = ref(localStorage.getItem('paimos:type-color-task') || branding.value.colors.typeTask)
+const typeColorEpic = ref(localStorage.getItem(LS_TYPE_COLOR_EPIC) || branding.value.colors.typeEpic)
+const typeColorTicket = ref(localStorage.getItem(LS_TYPE_COLOR_TICKET) || branding.value.colors.typeTicket)
+const typeColorTask = ref(localStorage.getItem(LS_TYPE_COLOR_TASK) || branding.value.colors.typeTask)
 
-watch(typeColorEpic, v => { localStorage.setItem('paimos:type-color-epic', v); document.documentElement.style.setProperty('--type-epic', v) })
-watch(typeColorTicket, v => { localStorage.setItem('paimos:type-color-ticket', v); document.documentElement.style.setProperty('--type-ticket', v) })
-watch(typeColorTask, v => { localStorage.setItem('paimos:type-color-task', v); document.documentElement.style.setProperty('--type-task', v) })
+watch(typeColorEpic, v => { localStorage.setItem(LS_TYPE_COLOR_EPIC, v); document.documentElement.style.setProperty('--type-epic', v) })
+watch(typeColorTicket, v => { localStorage.setItem(LS_TYPE_COLOR_TICKET, v); document.documentElement.style.setProperty('--type-ticket', v) })
+watch(typeColorTask, v => { localStorage.setItem(LS_TYPE_COLOR_TASK, v); document.documentElement.style.setProperty('--type-task', v) })
 
 function resetTypeColors() {
-  localStorage.removeItem('paimos:type-color-epic')
-  localStorage.removeItem('paimos:type-color-ticket')
-  localStorage.removeItem('paimos:type-color-task')
+  localStorage.removeItem(LS_TYPE_COLOR_EPIC)
+  localStorage.removeItem(LS_TYPE_COLOR_TICKET)
+  localStorage.removeItem(LS_TYPE_COLOR_TASK)
   typeColorEpic.value = branding.value.colors.typeEpic
   typeColorTicket.value = branding.value.colors.typeTicket
   typeColorTask.value = branding.value.colors.typeTask
@@ -56,7 +62,7 @@ function resetTypeColors() {
 
 // ── Reports / Accruals accent ────────────────────────────────────
 const ACCRUALS_DEFAULT = '#006497'
-const accrualsAccent = ref(localStorage.getItem('paimos:accruals-accent') || branding.value.colors.accrualsAccent || ACCRUALS_DEFAULT)
+const accrualsAccent = ref(localStorage.getItem(LS_ACCRUALS_ACCENT) || branding.value.colors.accrualsAccent || ACCRUALS_DEFAULT)
 function hexWithAlpha(hex: string, alpha: number): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex); if (!m) return hex
   const n = parseInt(m[1], 16)
@@ -70,13 +76,13 @@ function shadeHex(hex: string, pct: number): string {
   return '#' + [f(r), f(g), f(b)].map(c => c.toString(16).padStart(2,'0')).join('')
 }
 watch(accrualsAccent, v => {
-  localStorage.setItem('paimos:accruals-accent', v)
+  localStorage.setItem(LS_ACCRUALS_ACCENT, v)
   document.documentElement.style.setProperty('--accruals-accent', v)
   document.documentElement.style.setProperty('--accruals-accent-soft', hexWithAlpha(v, 0.10))
   document.documentElement.style.setProperty('--accruals-accent-dark', shadeHex(v, -25))
 })
 function resetAccrualsAccent() {
-  localStorage.removeItem('paimos:accruals-accent')
+  localStorage.removeItem(LS_ACCRUALS_ACCENT)
   accrualsAccent.value = branding.value.colors.accrualsAccent || ACCRUALS_DEFAULT
 }
 

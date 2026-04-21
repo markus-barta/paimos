@@ -26,6 +26,17 @@
  */
 
 import { ref, readonly } from 'vue'
+import {
+  LS_BRANDING_FILE,
+  LS_TYPE_COLOR_EPIC,
+  LS_TYPE_COLOR_TICKET,
+  LS_TYPE_COLOR_TASK,
+  LS_TABLE_ROW_BORDER_COLOR,
+  LS_TABLE_ROW_STRIPE_COLOR,
+  LS_ACCRUALS_ACCENT,
+  LS_SIDEBAR_BG_COLOR,
+  LS_SIDEBAR_PATTERN_COLOR,
+} from '@/constants/storage'
 
 export interface BrandingConfig {
   name: string
@@ -55,7 +66,7 @@ export interface BrandingConfig {
   pageTitle: string
 }
 
-const LS_KEY = 'paimos:branding-file'
+const LS_KEY = LS_BRANDING_FILE
 
 const defaults: BrandingConfig = {
   name: 'PAIMOS',
@@ -113,13 +124,13 @@ function applyToDOM(cfg: BrandingConfig) {
   root.setProperty('--bp-blue-pale', cfg.colors.primaryPale)
   root.setProperty('--bp-green', cfg.colors.accent)
   root.setProperty('--sidebar-text', cfg.colors.sidebarText)
-  root.setProperty('--type-epic', localStorage.getItem('paimos:type-color-epic') || cfg.colors.typeEpic)
-  root.setProperty('--type-ticket', localStorage.getItem('paimos:type-color-ticket') || cfg.colors.typeTicket)
-  root.setProperty('--type-task', localStorage.getItem('paimos:type-color-task') || cfg.colors.typeTask)
-  root.setProperty('--table-row-border', localStorage.getItem('paimos:table-row-border-color') || cfg.colors.tableRowBorder)
-  root.setProperty('--table-row-alt', localStorage.getItem('paimos:table-row-stripe-color') || cfg.colors.tableRowAlt)
+  root.setProperty('--type-epic', localStorage.getItem(LS_TYPE_COLOR_EPIC) || cfg.colors.typeEpic)
+  root.setProperty('--type-ticket', localStorage.getItem(LS_TYPE_COLOR_TICKET) || cfg.colors.typeTicket)
+  root.setProperty('--type-task', localStorage.getItem(LS_TYPE_COLOR_TASK) || cfg.colors.typeTask)
+  root.setProperty('--table-row-border', localStorage.getItem(LS_TABLE_ROW_BORDER_COLOR) || cfg.colors.tableRowBorder)
+  root.setProperty('--table-row-alt', localStorage.getItem(LS_TABLE_ROW_STRIPE_COLOR) || cfg.colors.tableRowAlt)
   // Accruals accent: localStorage override → branding default → fallback
-  const accAccent = localStorage.getItem('paimos:accruals-accent') || cfg.colors.accrualsAccent || '#006497'
+  const accAccent = localStorage.getItem(LS_ACCRUALS_ACCENT) || cfg.colors.accrualsAccent || '#006497'
   root.setProperty('--accruals-accent', accAccent)
   root.setProperty('--accruals-accent-soft', hexWithAlpha(accAccent, 0.10))
   root.setProperty('--accruals-accent-dark', shadeHex(accAccent, -25))
@@ -180,14 +191,14 @@ export function useBranding() {
         localStorage.removeItem(LS_KEY)
       }
       // Clear sidebar and type color overrides so the new brand's defaults apply
-      localStorage.removeItem('sidebar-color-bg')
-      localStorage.removeItem('sidebar-color-pattern')
-      localStorage.removeItem('paimos:type-color-epic')
-      localStorage.removeItem('paimos:type-color-ticket')
-      localStorage.removeItem('paimos:type-color-task')
-      localStorage.removeItem('paimos:table-row-border-color')
-      localStorage.removeItem('paimos:table-row-stripe-color')
-      localStorage.removeItem('paimos:accruals-accent')
+      localStorage.removeItem(LS_SIDEBAR_BG_COLOR)
+      localStorage.removeItem(LS_SIDEBAR_PATTERN_COLOR)
+      localStorage.removeItem(LS_TYPE_COLOR_EPIC)
+      localStorage.removeItem(LS_TYPE_COLOR_TICKET)
+      localStorage.removeItem(LS_TYPE_COLOR_TASK)
+      localStorage.removeItem(LS_TABLE_ROW_BORDER_COLOR)
+      localStorage.removeItem(LS_TABLE_ROW_STRIPE_COLOR)
+      localStorage.removeItem(LS_ACCRUALS_ACCENT)
       window.location.reload()
     },
     /** Currently selected branding file (from localStorage) */

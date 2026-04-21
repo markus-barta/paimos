@@ -36,6 +36,12 @@ import BulkChangeModal from '@/components/BulkChangeModal.vue'
 import IssueFilterPanel from '@/components/IssueFilterPanel.vue'
 import IssueViewsPanel from '@/components/IssueViewsPanel.vue'
 import EpicCascadeDialog from '@/components/EpicCascadeDialog.vue'
+import {
+  LS_EPIC_DISPLAY_MODE as EPIC_MODE_KEY,
+  LS_SIDEBAR_PINNED    as LS_PIN_KEY,
+  LS_SIDEBAR_WIDTH,
+  lsFiltersKey,
+} from '@/constants/storage'
 
 const props = defineProps<{
   projectId?: number
@@ -333,7 +339,7 @@ function applyView(v: SavedView, closePanel = true) {
   applyingView = true
   setColsFromJSON(v.columns_json)
   try {
-    localStorage.setItem(`paimos:filters:${props.projectId ?? 'global'}`, v.filters_json)
+    localStorage.setItem(lsFiltersKey(props.projectId), v.filters_json)
     loadFilters()
   } catch { /* ignore */ }
   if (v.id >= 0) {
@@ -412,7 +418,6 @@ function copyKey(key: string, event?: MouseEvent) {
 }
 
 type EpicMode = 'key' | 'title' | 'abbreviated'
-const EPIC_MODE_KEY = 'paimos:epic-display-mode'
 const epicDisplayMode = ref<EpicMode>((localStorage.getItem(EPIC_MODE_KEY) as EpicMode) || 'key')
 
 function setEpicMode(m: EpicMode) {
@@ -513,9 +518,8 @@ async function deleteRow(issue: Issue) {
 // ── Side panel ──────────────────────────────────────────────────────────
 const sidePanelIssueId = ref<number | null>(null)
 const sidePanelEdit    = ref(false)
-const LS_PIN_KEY = 'paimos:sidebar:pinned'
 const sidePanelPinned  = ref(localStorage.getItem(LS_PIN_KEY) === '1')
-const sidePanelWidth   = ref(parseInt(localStorage.getItem('paimos:sidebar:width') || '520', 10))
+const sidePanelWidth   = ref(parseInt(localStorage.getItem(LS_SIDEBAR_WIDTH) || '520', 10))
 
 const sidePanelIssueIds = computed(() => finalIssues.value.map(i => i.id))
 
@@ -564,7 +568,7 @@ function onSidePanelNavigate(id: number) {
 function onPinnedChange(pinned: boolean) {
   sidePanelPinned.value = pinned
   localStorage.setItem(LS_PIN_KEY, pinned ? '1' : '0')
-  sidePanelWidth.value = parseInt(localStorage.getItem('paimos:sidebar:width') || '520', 10)
+  sidePanelWidth.value = parseInt(localStorage.getItem(LS_SIDEBAR_WIDTH) || '520', 10)
 }
 
 function navigateTo(issue: Issue) { openSidePanel(issue) }

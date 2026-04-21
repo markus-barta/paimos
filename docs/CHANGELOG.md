@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] — 2026-04-21
+
+### Changed
+
+- **State-management pattern documented + localStorage keys
+  centralized** — PAI-40. `docs/DEVELOPER_GUIDE.md` now names all
+  three state tiers (Pinia store / module-scope composable singleton /
+  component-local `ref`) with criteria for when each is appropriate,
+  replacing the previous two-tier summary that didn't mention
+  singleton composables despite their heavy use. New single source of
+  truth `frontend/src/constants/storage.ts` exports every
+  localStorage key the app touches — 22 static keys + 4 dynamic
+  factory functions, migrated across 16 files. Legacy outliers
+  (`sidebar-color-bg`, `sidebar-color-pattern`, `issue-display-type-*`,
+  `paimos_time_unit`) keep their non-standard names to avoid wiping
+  existing user preferences on upgrade; all documented in the module
+  header. Pure refactor — no behavior change. Triple-ownership of
+  type-color / table-row-color / sidebar-width state carved out to
+  PAI-84 for separate treatment.
+
 ## [1.2.2] — 2026-04-21
 
 ### Fixed

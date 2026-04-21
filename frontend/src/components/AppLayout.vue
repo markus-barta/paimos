@@ -22,6 +22,7 @@ import SidebarFooter from '@/components/SidebarFooter.vue'
 import GlobalNewIssueModal from '@/components/GlobalNewIssueModal.vue'
 import AttachmentLightbox from '@/components/issue/AttachmentLightbox.vue'
 import SessionExpiredBanner from '@/components/SessionExpiredBanner.vue'
+import { LS_SIDEBAR_COLLAPSED as COLLAPSED_KEY } from '@/constants/storage'
 
 const auth    = useAuthStore()
 const search  = useSearchStore()
@@ -53,7 +54,6 @@ function goTo2FASetup() {
 }
 
 // ── Collapsible sidebar ──────────────────────────────────────────────────────
-const COLLAPSED_KEY = 'paimos:sidebar:collapsed'
 const sidebarCollapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1')
 const isExpanded = computed(() => !sidebarCollapsed.value)
 

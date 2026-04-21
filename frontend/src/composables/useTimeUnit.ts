@@ -30,11 +30,11 @@
 
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { LS_TIME_UNIT as LS_KEY } from '@/constants/storage'
 
 export type TimeUnit = 'h' | 'pt'
 export type FormatContext = 'table' | 'detail'
 
-const LS_KEY = 'paimos_time_unit'
 const PT_FACTOR = 8
 
 function loadUnit(): TimeUnit {
