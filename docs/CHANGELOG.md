@@ -5,6 +5,43 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] — 2026-04-21
+
+### Added — CLI batch-update + apply (PAI-92, PAI-85 epic step G)
+
+- `paimos issue batch-update --from-file ops.jsonl` — streams JSONL
+  (one `{"ref": …, "fields": {…}}` per line), chunks at 100 (the
+  server's batch cap), each chunk is one `PATCH /api/issues`
+  transaction. Reports per-chunk progress + a final summary. `-`
+  reads stdin.
+- `paimos apply --from-file plan.yaml` — declarative scaffolding:
+  a single command creates an epic + N children + relations in
+  one go. Named refs (`name: epic` on a create item) let later
+  rows reference the same-plan item; the CLI translates to the
+  server's positional `parent_ref: "#N"` before POSTing the batch.
+- Both support `--dry-run` to print the resolved payload(s) without
+  sending. **Not idempotent in v1** — running `apply` twice
+  duplicates. Use `ensure-status` / `batch-update` for subsequent
+  changes to scaffolded work.
+
+#### Example plan
+
+```yaml
+project: PAI
+create:
+  - name: epic
+    type: epic
+    title: Quarter refactor
+  - name: child1
+    type: ticket
+    title: Extract auth module
+    parent: epic
+relations:
+  - source: epic
+    type: related
+    target: PAI-85
+```
+
 ## [1.4.0] — 2026-04-21
 
 ### Added — session-scoped mutation audit (PAI-97, PAI-85 epic step L)
