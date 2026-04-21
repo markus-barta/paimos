@@ -5,6 +5,49 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-04-21
+
+### Added — MCP facade (PAI-95, PAI-85 epic step J)
+
+- New `paimos-mcp` binary at `backend/cmd/paimos-mcp/`. Hand-rolled
+  JSON-RPC 2.0 over stdio (newline-delimited frames). Spawned by
+  Claude Desktop / other MCP clients as a subprocess.
+- **6 tools** exposed in v1 (allowlist from the epic pickup doc):
+  - `paimos_schema` — fetch `/api/schema` for pre-call validation.
+  - `paimos_issue_get` — ref (key or id).
+  - `paimos_issue_list` — project_key + status/type/priority filters.
+  - `paimos_issue_create` — title + project_key required, full field set.
+  - `paimos_issue_update` — partial update by ref.
+  - `paimos_relation_add` — all 7 PAI-89 relation types.
+- **Deliberately NOT exposed**: `batch-update`, `apply`. MCP context
+  grows fast — if an agent needs bulk, it shells out to the
+  `paimos` CLI.
+- Shares `~/.paimos/config.yaml` with the CLI (same file authored
+  by `paimos auth login`). `PAIMOS_CONFIG` / `PAIMOS_INSTANCE` /
+  `PAIMOS_SESSION_ID` env vars for overrides.
+- Errors from tool bodies surface as `isError=true` MCP results so
+  agents see "issue not found" without the JSON-RPC envelope
+  eating the message.
+
+#### Example: register with Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "paimos": {
+      "command": "/path/to/paimos-mcp",
+      "env": {
+        "PAIMOS_INSTANCE": "ppm"
+      }
+    }
+  }
+}
+```
+
+Live smoke (stdio): initialize → tools/list (6 tools) → 4 tools/call
+invocations (schema, issue_get, issue_list, issue_get error path)
+all return correct MCP-shaped responses.
+
 ## [1.4.1] — 2026-04-21
 
 ### Added — CLI batch-update + apply (PAI-92, PAI-85 epic step G)
