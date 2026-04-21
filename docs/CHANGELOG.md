@@ -5,6 +5,34 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-04-21
+
+### Added — session-scoped mutation audit (PAI-97, PAI-85 epic step L)
+
+- New table `session_activity` (migration M68).
+- `SessionAuditMiddleware` records mutation requests (POST / PUT /
+  PATCH / DELETE) with method, path, status code, user id, and the
+  value of the `X-PAIMOS-Session-Id` header. Reads are skipped so
+  UI browsing noise doesn't bloat the table.
+- **Off by default in v1.** Enable via `PAIMOS_AUDIT_SESSIONS=true`
+  env var (reads per-request so flipping it at runtime works).
+  Rationale: single-user instances don't need the data yet; flip
+  the default once multi-agent use proves it valuable.
+- Missing/malformed header is non-fatal: mutation succeeds, row
+  written with `session_id = NULL` (operators can still spot
+  untagged traffic).
+- `GET /api/sessions/{id}/activity` (admin only): keyset-paginated
+  by `id > cursor`, default limit 100, max 1000. Response includes
+  `next_cursor` pointing past the last returned row (null on last
+  page). Keyset not offset — audit tables grow unboundedly.
+
+### Added — CLI session tagging
+
+- The `paimos` CLI generates a UUIDv7 per invocation and sends it as
+  `X-PAIMOS-Session-Id` on every request. `PAIMOS_SESSION_ID` env
+  var overrides for multi-step shell flows that need to share one
+  session across invocations.
+
 ## [1.3.3] — 2026-04-21
 
 ### Added — CLI shell completions (PAI-94, PAI-85 epic step I)

@@ -109,6 +109,7 @@ func newTestServer(t *testing.T) *testServer {
 func buildRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+	r.Use(handlers.SessionAuditMiddleware) // PAI-97 — off unless PAIMOS_AUDIT_SESSIONS=true
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -216,6 +217,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Delete("/users/{id}/memberships/{projectId}", handlers.DeleteUserMembership)
 			r.Get("/permissions/matrix", handlers.GetPermissionsMatrix)
 			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
+			r.With(auth.RequireAdmin).Get("/sessions/{id}/activity", handlers.GetSessionActivity)
 
 			r.Get("/auth/api-keys", handlers.ListAPIKeys)
 			r.Post("/auth/api-keys", handlers.CreateAPIKey)

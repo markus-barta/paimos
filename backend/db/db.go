@@ -3209,6 +3209,28 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
 		 ON issue_relations(target_id, type)`,
 	}},
+
+	// M68: session-scoped mutation audit (PAI-97). One row per mutation
+	// request, tagged with X-PAIMOS-Session-Id. session_id is nullable
+	// so requests without the header still get audited (null tag) —
+	// catches misbehaving callers that fail to set the header.
+	// user_id is also nullable for the same reason.
+	{68, []string{
+		`CREATE TABLE IF NOT EXISTS session_activity (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id  TEXT,
+			user_id     INTEGER,
+			method      TEXT NOT NULL,
+			path        TEXT NOT NULL,
+			status_code INTEGER NOT NULL,
+			occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// (session_id, id) gets us fast keyset pagination by session.
+		`CREATE INDEX IF NOT EXISTS idx_session_activity_session
+		 ON session_activity(session_id, id)`,
+		`CREATE INDEX IF NOT EXISTS idx_session_activity_occurred
+		 ON session_activity(occurred_at)`,
+	}},
 	}
 
 	for _, m := range migrations {

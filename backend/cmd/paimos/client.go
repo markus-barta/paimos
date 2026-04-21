@@ -13,14 +13,35 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // userAgent identifies this CLI to PAIMOS servers (and, more
 // importantly, to Cloudflare WAF — the default urllib/python User-Agent
 // gets blocked on pm.bytepoets.com, see paimos_api_gotchas.md).
 var userAgent = "paimos-cli/" + Version
+
+// sessionID is generated once per CLI invocation and sent on every
+// request as X-PAIMOS-Session-Id. Lets PAI-97's server-side audit
+// correlate the mutations from one `paimos …` run. Honors the env
+// override PAIMOS_SESSION_ID so multi-step shell scripts can share
+// one session across invocations.
+var sessionID = func() string {
+	if s := os.Getenv("PAIMOS_SESSION_ID"); s != "" {
+		return s
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		// Fall back to v4 — losing time-ordering is fine, the only
+		// concern is uniqueness.
+		return uuid.NewString()
+	}
+	return id.String()
+}()
 
 // Client is a thin HTTP wrapper with auth + error semantics tailored
 // for the CLI's JSON-first flow. One per command invocation.
@@ -60,6 +81,7 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-PAIMOS-Session-Id", sessionID)
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}

@@ -50,6 +50,9 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+	// PAI-97: session-scoped mutation audit. No-op unless
+	// PAIMOS_AUDIT_SESSIONS=true is set — off by default in v1.
+	r.Use(handlers.SessionAuditMiddleware)
 
 	r.Route("/api", func(r chi.Router) {
 		// ── Strictly public endpoints ────────────────────────────────
@@ -260,6 +263,11 @@ func main() {
 
 			// Access-change audit log (admin only).
 			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
+
+			// Session-scoped mutation audit (PAI-97). Admin only. Returns
+			// the mutations recorded under a session, keyset-paginated by
+			// `id > cursor`. Empty array for unknown sessions.
+			r.With(auth.RequireAdmin).Get("/sessions/{id}/activity", handlers.GetSessionActivity)
 
 			// Tags (admin only for write)
 			r.Get("/tags", handlers.ListTags)

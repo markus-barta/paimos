@@ -176,6 +176,20 @@ Version bumps whenever any enum, transition, field, or convention changes.
 The CLI and MCP use this endpoint to validate user input before POSTing
 so agents catch typos (e.g. `status: "completed"`) client-side.
 
+## Session audit (opt-in)
+
+```
+GET    /sessions/{id}/activity      admin — mutations tagged with X-PAIMOS-Session-Id
+                                   ?cursor=<id>&limit=100 (keyset pagination)
+```
+
+Off by default in v1. Enable with `PAIMOS_AUDIT_SESSIONS=true` env var
+on the backend. When on, every mutation request (POST/PUT/PATCH/DELETE)
+is recorded with the caller's `X-PAIMOS-Session-Id` header. Missing
+header → row with `session_id = null` (non-fatal). The `paimos` CLI
+auto-generates a UUIDv7 per invocation; `PAIMOS_SESSION_ID` env var
+overrides so multi-step scripts can share a session.
+
 ## Reports / audit
 
 ```
