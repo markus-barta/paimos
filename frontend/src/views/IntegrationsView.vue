@@ -8,6 +8,7 @@ import type { MetaOption } from '@/components/MetaSelect.vue'
 import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
+import { STATUSES } from '@/constants/status'
 
 const auth   = useAuthStore()
 const route  = useRoute()
@@ -190,7 +191,7 @@ const priorityMap = ref<Record<string,string>>({
 })
 
 const TYPE_VAL_OPTIONS: MetaOption[]     = ['epic','ticket','task','cost_unit','release'].map(v => ({ value: v, label: v === 'cost_unit' ? 'Cost Unit' : v.charAt(0).toUpperCase()+v.slice(1) }))
-const STATUS_VAL_OPTIONS: MetaOption[]   = ['new','backlog','in-progress','qa','done','delivered','accepted','invoiced','cancelled'].map(v => ({ value: v, label: v }))
+const STATUS_VAL_OPTIONS: MetaOption[]   = STATUSES.map(v => ({ value: v, label: v }))
 const PRIORITY_VAL_OPTIONS: MetaOption[] = ['high','medium','low'].map(v => ({ value: v, label: v.charAt(0).toUpperCase()+v.slice(1) }))
 
 const opts = ref({

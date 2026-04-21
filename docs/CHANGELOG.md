@@ -5,6 +5,42 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] — 2026-04-21
+
+### Changed
+
+- **Issue-status constants centralized + `IssueStatus` type completed**
+  — PAI-44 (scope c). New `frontend/src/constants/status.ts` exports
+  `STATUSES` (all 9 in canonical workflow order),
+  `ACCRUALS_DEFAULT_STATUSES` (done / delivered / accepted / invoiced),
+  and `ACCRUALS_EXTRA_STATUSES` (new / backlog / in-progress /
+  cancelled — `qa` deliberately excluded). Four call sites migrated:
+  `IntegrationsView.vue`, `ImportView.vue`, `AccrualsPrintView.vue`,
+  `ProjectsView.vue` — the previously-duplicated literal arrays are
+  gone.
+
+### Fixed
+
+- **`IssueStatus` type now reflects the full 9-status workflow**
+  (`types.ts:73`). Previously omitted `qa` and `delivered`, which the
+  backend already emits and the frontend handles at runtime — the
+  type was silently wider than declared.
+
+### Not changed (deliberately)
+
+- Single-value equality checks like `if (s === 'done')` were left
+  alone: TypeScript's `IssueStatus` union already gives compile-time
+  safety there, so importing a const would be noise.
+- `SprintBoardView`'s narrower "completed" arrays and the
+  `useInlineEdit` / `IssueEditSidebar` "terminal" sets (which
+  disagree on whether `delivered` counts as terminal) were not
+  migrated. That's a semantic question for product review, not a
+  centralization question. Flagged in the PAI-44 close note.
+- `PT_FACTOR = 8` (`useTimeUnit.ts:38`) and the two `10 * time.Second`
+  literals in `backend/handlers/integrations.go` — mentioned in
+  PAI-44's description but not in its acceptance criteria; leaving
+  to a separate ticket if ever warranted.
+
 ## [1.2.3] — 2026-04-21
 
 ### Changed
