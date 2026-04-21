@@ -21,6 +21,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import type { Ref } from 'vue'
 import type { Sprint } from '@/types'
+import { lsSprintNavKey } from '@/constants/storage'
 
 export interface UseSprintNavOptions {
   projectId: Ref<number | undefined>
@@ -135,8 +136,7 @@ export function useSprintNav(opts: UseSprintNavOptions) {
   }
 
   // Persistence
-  const SPRINT_NAV_KEY = (id: number | string) => `paimos:sprint-nav:${id}`
-  const sprintNavStorageKey = computed(() => SPRINT_NAV_KEY(opts.projectId.value ?? 'global'))
+  const sprintNavStorageKey = computed(() => lsSprintNavKey(opts.projectId.value ?? 'global'))
 
   function loadSprintNav() {
     try {

@@ -27,11 +27,12 @@
  */
 
 import { ref, watch } from 'vue'
-
-const LS_BORDERS = 'paimos:table-row-borders'
-const LS_STRIPES = 'paimos:table-row-stripes'
-const LS_BORDER_COLOR = 'paimos:table-row-border-color'
-const LS_STRIPE_COLOR = 'paimos:table-row-stripe-color'
+import {
+  LS_TABLE_ROW_BORDERS      as LS_BORDERS,
+  LS_TABLE_ROW_STRIPES      as LS_STRIPES,
+  LS_TABLE_ROW_BORDER_COLOR as LS_BORDER_COLOR,
+  LS_TABLE_ROW_STRIPE_COLOR as LS_STRIPE_COLOR,
+} from '@/constants/storage'
 
 const showBorders = ref(localStorage.getItem(LS_BORDERS) !== 'false')
 const showStripes = ref(localStorage.getItem(LS_STRIPES) === 'true')

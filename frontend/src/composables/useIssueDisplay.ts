@@ -25,9 +25,10 @@
  */
 
 import { ref, watch, computed } from 'vue'
-// ─── localStorage keys ───────────────────────────────────────────────────────
-const LS_TYPE_ICON = 'issue-display-type-icon'
-const LS_TYPE_TEXT = 'issue-display-type-text'
+import {
+  LS_ISSUE_DISPLAY_TYPE_ICON as LS_TYPE_ICON,
+  LS_ISSUE_DISPLAY_TYPE_TEXT as LS_TYPE_TEXT,
+} from '@/constants/storage'
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 export const DEFAULT_TYPE_ICON = true

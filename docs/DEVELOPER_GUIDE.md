@@ -162,13 +162,32 @@ opt in to per-project guarding by setting
 
 - **Vue 3 + `<script setup lang="ts">`** for all new components.
 - **Strict TypeScript** — `npm run typecheck` must pass.
-- **State**: Pinia stores for cross-view state; local `ref`/`reactive`
-  for component state. No Vuex.
+- **State** — three tiers, pick the smallest that fits:
+  1. **Pinia store** (`src/stores/*.ts`) for global, cross-view domain
+     state: auth session + permissions, running timer, search query,
+     drag-drop intent. Use when multiple unrelated routes need to
+     read or mutate the same thing, or when the state outlives any
+     single view.
+  2. **Module-scope composable singleton** (`src/composables/use*.ts`
+     with `const foo = ref(...)` at module level) for UI-level
+     preferences that are app-wide but not really domain state:
+     sidebar colors, table appearance, timer panel open/closed,
+     time unit, issue-display toggles, branding. These persist via
+     `localStorage` and share a single reactive cell across every
+     consumer.
+  3. **Component-local `ref`/`reactive`** for state that belongs to
+     one component. No default, no prop drilling.
+
+  No Vuex. No duplicating the same piece of state in two tiers.
 - **Routing**: `vue-router`, lazy-loaded views.
 - **i18n**: `vue-i18n`; English and German catalogs in `src/i18n/`.
 - **Styling**: scoped `<style>` blocks + a small set of CSS custom
   properties fed from the branding API.
-- **localStorage**: all keys prefixed with `paimos:` for namespacing.
+- **localStorage**: every key lives in `src/constants/storage.ts` —
+  import from there instead of inlining the string. New keys follow
+  `paimos:<domain>:<thing>`; a few pre-dating the convention keep
+  their legacy names (documented in the module) to avoid wiping
+  existing user preferences.
 
 ## 6. Testing
 

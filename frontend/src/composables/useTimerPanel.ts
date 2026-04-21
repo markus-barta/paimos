@@ -19,9 +19,9 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTimerStore } from '@/stores/timer'
 import { useIssuePreview } from '@/composables/useIssuePreview'
+import { LS_TIMER_PANEL_OPEN as LS_KEY } from '@/constants/storage'
 
 // Shared state — singleton across all callers
-const LS_KEY = 'paimos:timer-panel:open'
 const timerPanelOpen = ref(localStorage.getItem(LS_KEY) === '1')
 const timerPanelEl = ref<HTMLElement | null>(null)
 

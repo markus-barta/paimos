@@ -17,9 +17,10 @@
 
 import { ref, watch } from 'vue'
 import { useBranding } from './useBranding'
-
-const LS_BG   = 'sidebar-color-bg'
-const LS_PAT  = 'sidebar-color-pattern'
+import {
+  LS_SIDEBAR_BG_COLOR      as LS_BG,
+  LS_SIDEBAR_PATTERN_COLOR as LS_PAT,
+} from '@/constants/storage'
 
 // Legacy defaults (used if branding not loaded yet)
 export const DEFAULT_BG      = '#002b41'

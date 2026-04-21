@@ -17,8 +17,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-
-const LS_KEY = 'paimos:search:lastQuery'
+import { LS_SEARCH_LAST_QUERY as LS_KEY } from '@/constants/storage'
 
 // Search state is URL-driven (/issues?q=...).
 // This store tracks the input value so AppLayout can bind v-model,

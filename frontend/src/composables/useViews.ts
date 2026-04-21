@@ -29,10 +29,10 @@ import { ref, computed } from 'vue'
 import { api } from '@/api/client'
 import type { SavedView } from '@/types'
 import { ALL_COLUMNS } from '@/composables/useColumnConfig'
-
-const MRU_KEY      = 'paimos:views:mru'
-const LAST_VIEW_KEY = (userId: number | undefined, scope: string) =>
-  `paimos:views:last:${userId ?? 0}:${scope}`
+import {
+  LS_VIEWS_MRU as MRU_KEY,
+  lsLastViewKey as LAST_VIEW_KEY,
+} from '@/constants/storage'
 
 export function getLastViewId(userId: number | undefined, scope: string): number | null {
   try {

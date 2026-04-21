@@ -82,7 +82,7 @@ const DEFAULT_HIDDEN = new Set<string>([
   'booked_hours',
 ])
 
-const LS_KEY = (scope: string) => `paimos:columns:${scope}`
+import { lsColumnsKey as LS_KEY } from '@/constants/storage'
 
 export function useColumnConfig(scope: string | Ref<string>) {
   const hidden = ref<Set<string>>(new Set())

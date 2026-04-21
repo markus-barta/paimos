@@ -29,6 +29,7 @@ import {
   STATUS_DOT_STYLE, STATUS_LABEL,
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
+import { lsFiltersKey } from '@/constants/storage'
 
 // ── Negation helpers ────────────────────────────────────────────────────────
 export const NEG = '!'
@@ -142,8 +143,7 @@ export interface UseIssueFilterOptions {
 export type ComplexTabKey = 'project' | 'assignee' | 'tags' | 'costunit' | 'release' | 'sprint' | 'epic'
 
 export function useIssueFilter(opts: UseIssueFilterOptions) {
-  const FILTER_STORAGE_KEY = (id: number | string) => `paimos:filters:${id}`
-  const storageKey = computed(() => FILTER_STORAGE_KEY(opts.projectId.value ?? 'global'))
+  const storageKey = computed(() => lsFiltersKey(opts.projectId.value))
 
   // Filter refs
   const filterStatus   = ref<string[]>([])
