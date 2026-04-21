@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -294,27 +295,6 @@ func TestLookupByKeys_OrderPreservedAndMissingMarked(t *testing.T) {
 	}
 }
 
-// itoa is a tiny local helper to avoid importing strconv just for Itoa
-// in tests that already deal in int64 ids.
-func itoa(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := false
-	if n < 0 {
-		neg = true
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
-}
+// itoa is a shorter spelling of strconv.FormatInt base 10, used
+// liberally to compose URL paths and JSON refs from int64 ids.
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

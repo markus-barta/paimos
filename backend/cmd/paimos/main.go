@@ -18,12 +18,13 @@
 // issues without wrestling with shell-quoted JSON.
 //
 // Bootstrap surface (PAI-90):
-//   paimos auth login              — write ~/.paimos/config.yaml
-//   paimos auth whoami
-//   paimos project list
-//   paimos issue get <ref>
-//   paimos issue list --project PAI --status backlog
-//   paimos issue children <ref>
+//
+//	paimos auth login              — write ~/.paimos/config.yaml
+//	paimos auth whoami
+//	paimos project list
+//	paimos issue get <ref>
+//	paimos issue list --project PAI --status backlog
+//	paimos issue children <ref>
 //
 // Global flags: --instance <name>, --json, --config <path>.
 //
@@ -53,10 +54,14 @@ func main() {
 		// Usage errors: our own error type → print + exit 2 (convention).
 		// apiError has already been printed in the caller's chosen
 		// format (pretty or --json), don't double up.
+		// doctorExitCode carries its own status code (1 warn / 2 fail).
 		// Everything else (config I/O, marshaling, etc.) → print + exit 1.
 		if ue, ok := err.(*usageError); ok {
 			fmt.Fprintln(os.Stderr, "paimos: "+ue.Error())
 			os.Exit(2)
+		}
+		if de, ok := err.(*doctorExitCode); ok {
+			os.Exit(de.code)
 		}
 		if _, ok := err.(*apiError); !ok {
 			fmt.Fprintln(os.Stderr, "Error:", err)

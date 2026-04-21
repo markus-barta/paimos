@@ -282,9 +282,20 @@ Exit codes:
 	}
 }
 
-// renderDoctor prints results and calls os.Exit with the right code.
-// Never returns in warn/fail cases — exits for the caller. Returns nil
-// on all-green so Cobra's normal 0-exit path proceeds.
+// doctorExitCode is returned by renderDoctor via a typed error so main()
+// maps it to the right os.Exit — same pattern Cobra uses for usage/API
+// errors. Keeps the function itself testable: no os.Exit inside library
+// code.
+type doctorExitCode struct{ code int }
+
+func (e *doctorExitCode) Error() string {
+	return fmt.Sprintf("doctor reported status code %d", e.code)
+}
+
+// renderDoctor prints results and returns a doctorExitCode error
+// carrying the worst status (0 ok, 1 warn, 2 fail). main() translates
+// to os.Exit. Writing exit logic here used to call os.Exit directly;
+// moved up to the boundary so the render logic is unit-testable.
 func renderDoctor(results []doctorCheck) error {
 	worst := 0 // 0 ok, 1 warn, 2 fail
 	if flagJSON {
@@ -316,11 +327,8 @@ func renderDoctor(results []doctorCheck) error {
 			worst = 2
 		}
 	}
-	if worst == 2 {
-		os.Exit(2)
-	}
-	if worst == 1 {
-		os.Exit(1)
+	if worst > 0 {
+		return &doctorExitCode{code: worst}
 	}
 	return nil
 }

@@ -17,9 +17,9 @@ import (
 // Tool is the MCP-facing shape for one tool declaration: name, human
 // description, and a JSON Schema for the expected arguments.
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	InputSchema map[string]any         `json:"inputSchema"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
 	handler     func(args map[string]any) (string, error)
 }
 
@@ -45,8 +45,8 @@ func (s *Server) handleToolsList() any {
 // wrong without the JSON-RPC envelope eating the message.
 func (s *Server) handleToolsCall(raw json.RawMessage) (any, *rpcError) {
 	var params struct {
-		Name      string                 `json:"name"`
-		Arguments map[string]any         `json:"arguments"`
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
 	}
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}

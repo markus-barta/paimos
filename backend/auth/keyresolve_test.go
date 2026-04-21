@@ -73,15 +73,15 @@ func TestIsIssueKey(t *testing.T) {
 		{"A-1", true},
 		{"", false},
 		{"PAI", false},
-		{"pai-1", false},           // lowercase rejected
-		{"PAI-", false},            // no number
-		{"-1", false},              // no project
-		{"PAI--1", false},          // negative-looking
-		{"PAI 1", false},           // space
-		{"PAI_1", false},           // underscore
+		{"pai-1", false},            // lowercase rejected
+		{"PAI-", false},             // no number
+		{"-1", false},               // no project
+		{"PAI--1", false},           // negative-looking
+		{"PAI 1", false},            // space
+		{"PAI_1", false},            // underscore
 		{"VERYLONGKEYNAME-1", true}, // 15 extra chars after first letter — fits
 		{"SIXTEENCHARSLONGK-1", false},
-		{"123", false},             // numeric is not a key
+		{"123", false}, // numeric is not a key
 	}
 	for _, tc := range cases {
 		if got := auth.IsIssueKey(tc.in); got != tc.want {
@@ -106,18 +106,18 @@ func TestResolveIssueRef(t *testing.T) {
 		want int64
 		ok   bool
 	}{
-		{strconv.FormatInt(pai1, 10), pai1, true},     // numeric passes through
-		{"PAI-1", pai1, true},                         // key resolves
+		{strconv.FormatInt(pai1, 10), pai1, true}, // numeric passes through
+		{"PAI-1", pai1, true},                     // key resolves
 		{"PAI-83", pai83, true},
-		{"PMO26-639", pmo639, true},                   // multi-digit project key
-		{"PAI-99", paiDeleted, true},                  // soft-deleted resolves (handler enforces visibility)
-		{"PAI-9999", 0, false},                        // not-found key
-		{"ZZZ-1", 0, false},                           // project doesn't exist
-		{"pai-83", 0, false},                          // lowercase rejected
-		{"foo", 0, false},                             // garbage
-		{"", 0, false},                                // empty
-		{"0", 0, false},                               // zero is not valid
-		{"-1", 0, false},                              // negative parses but rejected
+		{"PMO26-639", pmo639, true},  // multi-digit project key
+		{"PAI-99", paiDeleted, true}, // soft-deleted resolves (handler enforces visibility)
+		{"PAI-9999", 0, false},       // not-found key
+		{"ZZZ-1", 0, false},          // project doesn't exist
+		{"pai-83", 0, false},         // lowercase rejected
+		{"foo", 0, false},            // garbage
+		{"", 0, false},               // empty
+		{"0", 0, false},              // zero is not valid
+		{"-1", 0, false},             // negative parses but rejected
 	}
 	for _, tc := range cases {
 		got, ok := auth.ResolveIssueRef(tc.in)
