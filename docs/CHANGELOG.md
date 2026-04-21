@@ -5,6 +5,21 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] — 2026-04-21
+
+### Added — CLI schema + doctor (PAI-93, PAI-85 epic step H)
+
+- `paimos schema` — shows enums/transitions/conventions from the
+  local cache; fetches transparently on first run. `--refresh`
+  forces re-download and reports whether the server-side version
+  moved. Cache file: `~/.paimos/schema-<instance>.json` (per-
+  instance so multi-env setups don't clobber each other).
+- `paimos doctor` — read-only preflight. Checks: config readable,
+  `/api/health` reachable, API key valid (`/api/auth/me`), schema
+  version current. Exit codes 0/1/2 (ok / warn / fail) per
+  convention — CI-safe. `--json` emits the same result array for
+  programmatic use.
+
 ## [1.3.1] — 2026-04-21
 
 ### Added — CLI write commands (PAI-91, PAI-85 epic step F)
