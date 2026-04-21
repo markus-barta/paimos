@@ -66,22 +66,22 @@ var terminalStatuses = map[string]bool{
 // issueCreateCmd: paimos issue create --project PAI --type ticket --title "..." [flags]
 func issueCreateCmd() *cobra.Command {
 	var (
-		projectKey    string
-		title         string
-		typ           string
-		status        string
-		priority      string
-		parent        string
-		assignee      string
-		costUnit      string
-		release       string
-		desc          string
-		descFile      string
-		ac            string
-		acFile        string
-		notes         string
-		notesFile     string
-		dryRun        bool
+		projectKey string
+		title      string
+		typ        string
+		status     string
+		priority   string
+		parent     string
+		assignee   string
+		costUnit   string
+		release    string
+		desc       string
+		descFile   string
+		ac         string
+		acFile     string
+		notes      string
+		notesFile  string
+		dryRun     bool
 	)
 	c := &cobra.Command{
 		Use:   "create",
@@ -297,6 +297,11 @@ Use --dry-run to print the payload without sending.`,
 				body["release"] = release
 			}
 			if parent != "" {
+				// Detach (parent=null) is NOT supported: the server's
+				// UpdateIssue CASE-WHENs on a non-null sentinel, so a
+				// JSON null is treated as "no change" not "clear". If
+				// detach becomes a real need, server needs a distinct
+				// signal (e.g. an `unset` array on the request).
 				pid, err := resolveIssueRefToID(client, parent)
 				if err != nil {
 					return reportError(err)
@@ -360,7 +365,7 @@ Use --dry-run to print the payload without sending.`,
 	c.Flags().StringVar(&typ, "type", "", "new type")
 	c.Flags().StringVar(&status, "status", "", "new status")
 	c.Flags().StringVar(&priority, "priority", "", "new priority")
-	c.Flags().StringVar(&parent, "parent", "", "new parent (ref or id, or 'null' to detach)")
+	c.Flags().StringVar(&parent, "parent", "", "new parent (ref or id; detach is not supported server-side)")
 	c.Flags().StringVar(&assignee, "assignee", "", "new assignee user id")
 	c.Flags().StringVar(&costUnit, "cost-unit", "", "new cost unit")
 	c.Flags().StringVar(&release, "release", "", "new release")

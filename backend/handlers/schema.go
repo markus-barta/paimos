@@ -107,11 +107,11 @@ var Schema = SchemaPayload{
 		},
 	},
 	Conventions: map[string]string{
-		"acceptance_criteria":   "markdown checkbox list: `- [ ] ...` / `- [x] ...`",
-		"issue_key":             "{PROJECT_KEY}-{N}, case-sensitive (e.g. PAI-83). `/issues/{id}` accepts either the numeric id or the key since v1.2.5.",
-		"multiline_inputs":      "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
+		"acceptance_criteria":    "markdown checkbox list: `- [ ] ...` / `- [x] ...`",
+		"issue_key":              "{PROJECT_KEY}-{N}, case-sensitive (e.g. PAI-83). `/issues/{id}` accepts either the numeric id or the key since v1.2.5.",
+		"multiline_inputs":       "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
 		"transitions_permissive": "status transitions are recommendations, not enforced; the backend accepts any→any to keep fix-by-hand flexible. Clients should surface the recommended list but allow override.",
-		"relation_direction":    "GET /api/issues/{id}/relations tags each row with direction=outgoing|incoming so clients can render inverse labels (e.g. 'follows up on X' vs 'followed up by Y') without a second DB row.",
+		"relation_direction":     "GET /api/issues/{id}/relations tags each row with direction=outgoing|incoming so clients can render inverse labels (e.g. 'follows up on X' vs 'followed up by Y') without a second DB row.",
 	},
 }
 

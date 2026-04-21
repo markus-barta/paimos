@@ -612,4 +612,3 @@ func ListOrLookupIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	ListAllIssues(w, r)
 }
-

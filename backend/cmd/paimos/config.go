@@ -19,8 +19,8 @@ import (
 // $XDG_CONFIG_HOME/paimos/config.yaml (or ~/.paimos/config.yaml) with
 // mode 0600 since it holds API keys.
 type Config struct {
-	DefaultInstance string                     `yaml:"default_instance"`
-	Instances       map[string]InstanceConfig  `yaml:"instances"`
+	DefaultInstance string                    `yaml:"default_instance"`
+	Instances       map[string]InstanceConfig `yaml:"instances"`
 }
 
 // InstanceConfig is one named target: a URL and an API key.

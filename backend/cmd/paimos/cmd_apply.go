@@ -81,11 +81,11 @@ need strict all-or-nothing, keep the file under 100 items.`,
 				chunkNum++
 				if dryRun {
 					return emitJSON(map[string]any{
-						"dry_run":  true,
-						"chunk":    chunkNum,
-						"method":   "PATCH",
-						"path":     "/api/issues",
-						"body":     chunk,
+						"dry_run": true,
+						"chunk":   chunkNum,
+						"method":  "PATCH",
+						"path":    "/api/issues",
+						"body":    chunk,
 					})
 				}
 				raw, err := client.do("PATCH", "/api/issues", chunk)
@@ -179,25 +179,25 @@ need strict all-or-nothing, keep the file under 100 items.`,
 //	    type: follows_from
 //	    target: PAI-40
 type ApplyPlan struct {
-	Project   string                   `yaml:"project"`
-	Create    []ApplyCreate            `yaml:"create"`
-	Update    []ApplyUpdate            `yaml:"update"`
-	Relations []ApplyRelation          `yaml:"relations"`
+	Project   string          `yaml:"project"`
+	Create    []ApplyCreate   `yaml:"create"`
+	Update    []ApplyUpdate   `yaml:"update"`
+	Relations []ApplyRelation `yaml:"relations"`
 }
 
 type ApplyCreate struct {
-	Name               string            `yaml:"name"` // local ref for cross-ops
-	Title              string            `yaml:"title"`
-	Type               string            `yaml:"type"`
-	Status             string            `yaml:"status"`
-	Priority           string            `yaml:"priority"`
-	Description        string            `yaml:"description"`
-	AcceptanceCriteria string            `yaml:"acceptance_criteria"`
-	Notes              string            `yaml:"notes"`
-	CostUnit           string            `yaml:"cost_unit"`
-	Release            string            `yaml:"release"`
-	Parent             string            `yaml:"parent"`  // name of another create item, OR existing ref
-	ExtraFields        map[string]any    `yaml:"fields"`  // escape hatch
+	Name               string         `yaml:"name"` // local ref for cross-ops
+	Title              string         `yaml:"title"`
+	Type               string         `yaml:"type"`
+	Status             string         `yaml:"status"`
+	Priority           string         `yaml:"priority"`
+	Description        string         `yaml:"description"`
+	AcceptanceCriteria string         `yaml:"acceptance_criteria"`
+	Notes              string         `yaml:"notes"`
+	CostUnit           string         `yaml:"cost_unit"`
+	Release            string         `yaml:"release"`
+	Parent             string         `yaml:"parent"` // name of another create item, OR existing ref
+	ExtraFields        map[string]any `yaml:"fields"` // escape hatch
 }
 
 type ApplyUpdate struct {
@@ -226,8 +226,8 @@ reference them (including children referencing a same-plan epic
 via its name — translated to the server's parent_ref "#N" index).
 
 NOT idempotent in v1 — running twice creates duplicates. Scaffold
-epic+children once, then use `+"`issue ensure-status`"+` or
-`+"`batch-update`"+` for subsequent changes.`,
+epic+children once, then use ` + "`issue ensure-status`" + ` or
+` + "`batch-update`" + ` for subsequent changes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if path == "" {
 				return &usageError{msg: "--from-file is required"}

@@ -85,15 +85,15 @@ func TestLoadConfig_Missing_ReturnsEmpty(t *testing.T) {
 
 func TestResolveInstance(t *testing.T) {
 	cases := []struct {
-		name          string
-		cfg           Config
-		flag          string
-		wantInstance  string
-		wantError     bool
+		name         string
+		cfg          Config
+		flag         string
+		wantInstance string
+		wantError    bool
 	}{
 		{
-			name: "none configured",
-			cfg:  Config{},
+			name:      "none configured",
+			cfg:       Config{},
 			wantError: true,
 		},
 		{
