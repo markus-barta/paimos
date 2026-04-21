@@ -32,8 +32,11 @@ DELETE /projects/:id                admin only
 GET    /projects/:id/issues         ?status= &priority= &type= &assignee_id=
 POST   /projects/:id/issues         {title, type, status, priority, description, acceptance_criteria}
 GET    /projects/:id/issues/tree    epic → ticket → task hierarchy
-GET    /issues                      cross-project list
+GET    /issues                      cross-project list (or pick-list when ?keys=PAI-1,PAI-2)
+GET    /issues?keys=PAI-1,PAI-2     pick list, order preserved, missing → {ref, error} entries
 POST   /issues                      orphan (no project) issue
+POST   /projects/:key/issues/batch  admin — atomic create-many (parent_ref:"#N" cross-refs)
+PATCH  /issues                      admin — atomic update-many [{ref, fields: {...}}, ...]
 GET    /issues/recent               dashboard feed
 GET    /issues/:id
 PUT    /issues/:id                  partial update
