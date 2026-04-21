@@ -5,6 +5,35 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-04-21
+
+### Added — CLI write commands (PAI-91, PAI-85 epic step F)
+
+- `paimos issue create --project PAI --type ticket --title "..." --description-file/--ac-file/--notes-file`
+- `paimos issue update <ref> --status done --close-note-file note.md` —
+  when the status is terminal (done/delivered/accepted/invoiced/cancelled),
+  appends a **Close note** comment so the "why" is captured alongside
+  the status change. Errors out if `--close-note` is passed without a
+  terminal `--status`.
+- `paimos issue ensure-status <ref> <status>` — idempotent: GETs current
+  state, PUTs only if different; second run prints "already X" with
+  exit 0. JSON mode reports `{changed: bool, previous, status}`.
+- `paimos issue comment <ref> --body-file comment.md`.
+- `paimos relation add <source> <type> <target>` — accepts all 7
+  relation types (dogfoods PAI-89).
+
+### Conventions
+
+- **Multiline inputs are always file-first.** Inline `--foo "…"` is
+  single-line by design. `--foo-file <path>` reads UTF-8 (or `-` for
+  stdin). Mutually exclusive — combining inline + file errors out
+  rather than silently preferring one.
+- **`--dry-run`** on create/update prints the resolved request payload
+  (method, path, body) as JSON to stdout and exits 0 without calling
+  the API. Makes it safe to script without fear.
+- Usage errors → stderr + exit 2. API errors → exit 1 (message in
+  chosen format — pretty or `--json`). Nothing ever dumps HTML.
+
 ## [1.3.0] — 2026-04-21
 
 ### Added
