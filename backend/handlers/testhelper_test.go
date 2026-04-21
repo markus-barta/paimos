@@ -178,7 +178,9 @@ func buildRouter() http.Handler {
 
 			r.Get("/issues/recent", handlers.RecentIssues)
 			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
-			r.Get("/issues", handlers.ListAllIssues)
+			r.Get("/issues", handlers.ListOrLookupIssues)
+			r.With(auth.RequireAdmin).Patch("/issues", handlers.UpdateIssuesBatch)
+			r.With(auth.RequireAdmin).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
 			r.Get("/issues/{id}", handlers.GetIssue)
 			r.Put("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}", handlers.DeleteIssue)
@@ -268,8 +270,9 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/projects/{id}/time-entries/purge-preview", handlers.PurgePreview)
 			r.With(auth.RequireAdmin).Post("/projects/{id}/time-entries/purge", handlers.PurgeTimeEntries)
 
-			// Cross-project issue list + orphan sprint creation
-			r.Get("/issues", handlers.ListAllIssues)
+			// Cross-project issue list + orphan sprint creation.
+			// GET + PATCH + POST-batch already registered above — keep
+			// the orphan create here since it's the only one missing there.
 			r.Post("/issues", handlers.CreateOrphanIssue)
 
 			// Sprint listing

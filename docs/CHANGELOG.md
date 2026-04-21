@@ -5,6 +5,30 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.7] — 2026-04-21
+
+### Added
+
+- **Bulk issue endpoints** — PAI-88 (PAI-85 epic, C). Three new
+  admin-only operations, all atomic under a single SQLite transaction
+  with a 100-item hard cap (413 on exceed):
+  - `POST /api/projects/{key}/issues/batch` — create N issues at once.
+    Accepts project key or numeric id. Supports `parent_ref: "#N"`
+    to point a child row at an earlier same-batch item, so the
+    canonical "create an epic + all its children in one call" flow
+    works without a round-trip-per-child.
+  - `PATCH /api/issues` — update N issues at once. Body shape
+    `[{ref: "PAI-83"|123, fields: {...}}, ...]`; any row failing
+    validation rolls back the whole batch and returns per-row errors
+    with `rolled_back: true`.
+  - `GET /api/issues?keys=PAI-1,PAI-2,PAI-3` — pick list, response
+    order matches request order, missing/inaccessible keys surface
+    as `{ref, error: "not found"}` entries (never silently dropped).
+- **Side-effect note** — bulk ops deliberately SKIP the auto-promote
+  parent-epic / cascade-children / billing-timestamp logic that
+  single-issue CreateIssue and UpdateIssue run. Bulk is mechanical;
+  the CLI calls single endpoints when it wants the full lifecycle.
+
 ## [1.2.6] — 2026-04-21
 
 ### Added

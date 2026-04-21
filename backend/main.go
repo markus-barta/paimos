@@ -168,8 +168,17 @@ func main() {
 			// Trash (soft-deleted issues) — admin-only (must be before /issues/{id})
 			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
 			// Cross-project issue list + orphan sprint creation (must be before /issues/{id})
-			r.Get("/issues", handlers.ListAllIssues)
+			// ListOrLookupIssues dispatches to the key-pick handler when ?keys= is
+			// present (PAI-88) and falls through to ListAllIssues otherwise.
+			r.Get("/issues", handlers.ListOrLookupIssues)
 			r.Post("/issues", handlers.CreateOrphanIssue)
+
+			// Bulk issue ops (PAI-88). Admin-only for v1 — simpler to reason
+			// about than cross-project per-item access checks, and the primary
+			// caller is the paimos CLI run under an admin key. Single-issue
+			// endpoints still serve non-admins.
+			r.With(auth.RequireAdmin).Patch("/issues", handlers.UpdateIssuesBatch)
+			r.With(auth.RequireAdmin).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
 
 			// Sprints
 			r.Get("/sprints", handlers.ListSprints)
