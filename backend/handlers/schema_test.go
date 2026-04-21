@@ -152,6 +152,21 @@ func TestGetAPISchemaETag_ConditionalGET(t *testing.T) {
 	if rec3.Code != http.StatusOK {
 		t.Errorf("stale If-None-Match: code=%d, want 200", rec3.Code)
 	}
+
+	// Strong-form If-None-Match should also match the weak server ETag
+	// (RFC 7232 §2.3.2). Compression middleware in prod may add/remove
+	// the W/ prefix in flight, so the comparison has to be lenient.
+	stripped := etag
+	if len(stripped) > 2 && stripped[:2] == "W/" {
+		stripped = stripped[2:]
+	}
+	req4 := httptest.NewRequest(http.MethodGet, "/api/schema", nil)
+	req4.Header.Set("If-None-Match", stripped)
+	rec4 := httptest.NewRecorder()
+	handlers.GetAPISchema(rec4, req4)
+	if rec4.Code != http.StatusNotModified {
+		t.Errorf("strong-form If-None-Match against weak server ETag: code=%d, want 304 (RFC 7232 weak-compare)", rec4.Code)
+	}
 }
 
 // TestGetAPISchemaDeterministicBytes ensures back-to-back requests
