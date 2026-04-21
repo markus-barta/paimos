@@ -210,7 +210,7 @@ POST   /import/csv                               admin only — global
 | `type` | `epic` `cost_unit` `release` `sprint` `ticket` `task` |
 | `status` | `new` `backlog` `in-progress` `qa` `done` `delivered` `accepted` `invoiced` `cancelled` |
 | `priority` | `low` `medium` `high` |
-| issue-relation `type` | `groups` `sprint` `depends_on` `impacts` |
+| issue-relation `type` | `groups` `sprint` `depends_on` `impacts` `follows_from` `blocks` `related` |
 
 Hierarchy: ticket → task via `parent_id` (strict 1:1). Group-level types
 (epic / cost_unit / release) link to tickets via `issue_relations` (M:N).

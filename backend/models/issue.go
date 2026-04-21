@@ -99,4 +99,9 @@ type IssueRelation struct {
 	Type        string `json:"type"`
 	TargetKey   string `json:"target_key,omitempty"`
 	TargetTitle string `json:"target_title,omitempty"`
+	// Direction is "outgoing" when the issue named in the request URL
+	// is this relation's source_id, "incoming" otherwise. Lets the UI
+	// render inverse labels (e.g. "follows up on X" vs "followed up by Y")
+	// without a second DB row. Added in PAI-89.
+	Direction string `json:"direction,omitempty"`
 }

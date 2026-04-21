@@ -63,11 +63,18 @@ export interface IssueRelation {
   // Convention: source = container/owner, target = member/child.
   // sprint:     source = sprint, target = member issue.
   // groups:     source = epic/cost_unit/release, target = ticket.
-  // depends_on: source = dependent, target = dependency.
-  // impacts:    source = impactor, target = impacted.
-  type: 'groups' | 'sprint' | 'depends_on' | 'impacts'
+  // depends_on:   source = dependent, target = dependency.
+  // impacts:      source = impactor, target = impacted.
+  // follows_from: source = spin-off, target = predecessor (PAI-89).
+  // blocks:       source = blocker, target = blocked (PAI-89).
+  // related:      loose "see also" — direction is cosmetic (PAI-89).
+  type: 'groups' | 'sprint' | 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'
   target_key?: string
   target_title?: string
+  // "outgoing" when the issue whose /relations endpoint was called is
+  // this row's source_id, "incoming" otherwise. Lets the UI render
+  // inverse labels without storing a second row. Added in PAI-89.
+  direction?: 'outgoing' | 'incoming'
 }
 
 export type IssueStatus = 'new' | 'backlog' | 'in-progress' | 'qa' | 'done' | 'delivered' | 'accepted' | 'invoiced' | 'cancelled'

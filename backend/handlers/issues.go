@@ -1787,6 +1787,15 @@ func ListIssueRelations(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&rel.SourceID, &rel.TargetID, &rel.Type, &rel.TargetKey, &rel.TargetTitle, &targetProjectID); err != nil {
 			continue
 		}
+		// Direction lets the UI render inverse labels for directional
+		// relation types (follows_from, blocks) without storing a
+		// second row. "outgoing" = this endpoint's {id} is the source;
+		// "incoming" = it's the target.
+		if rel.SourceID == id {
+			rel.Direction = "outgoing"
+		} else {
+			rel.Direction = "incoming"
+		}
 		// Restrict: if the relation's target issue lives in a project
 		// the caller can't view, keep the relation visible (so tooling
 		// that counts them still works) but redact the title and key.
@@ -1814,9 +1823,13 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "target_id and type required", http.StatusBadRequest)
 		return
 	}
-	validTypes := map[string]bool{"groups": true, "sprint": true, "depends_on": true, "impacts": true}
+	validTypes := map[string]bool{
+		"groups": true, "sprint": true, "depends_on": true, "impacts": true,
+		// PAI-89: directional types for spin-offs, blockers, and loose "see also".
+		"follows_from": true, "blocks": true, "related": true,
+	}
 	if !validTypes[body.Type] {
-		jsonError(w, "type must be one of: groups, sprint, depends_on, impacts", http.StatusBadRequest)
+		jsonError(w, "type must be one of: groups, sprint, depends_on, impacts, follows_from, blocks, related", http.StatusBadRequest)
 		return
 	}
 	if sourceID == body.TargetID {

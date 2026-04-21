@@ -5,6 +5,23 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.8] — 2026-04-21
+
+### Added
+
+- **Three new relation types** — PAI-89 (PAI-85 epic, D):
+  - `follows_from` (spin-off / carved-out ticket),
+  - `blocks` (hard blocker, semantically distinct from `depends_on`),
+  - `related` (loose "see also").
+
+  Migration M67 extends the `issue_relations.type` CHECK constraint;
+  existing rows unaffected. `GET /api/issues/{id}/relations` now tags
+  every row with `direction: "outgoing" | "incoming"` so the UI can
+  render inverse labels ("follows up on X" vs "followed up by Y")
+  without a second stored row. Issue detail page picks up new form
+  options + grouped rendering. `SchemaVersion` bumped to **1.1.0**;
+  `/api/schema` `enums.relation` lists all seven types.
+
 ## [1.2.7] — 2026-04-21
 
 ### Added
