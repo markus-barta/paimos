@@ -9,6 +9,7 @@ import AppFooter from '@/components/AppFooter.vue'
 
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
+import { STATUSES } from '@/constants/status'
 
 const auth   = useAuthStore()
 const router = useRouter()
@@ -145,7 +146,7 @@ const typeEnabled = ref<Record<string,boolean>>({
   'Epic': true, 'Story': true, 'Bug': true, 'Task': true, 'Change Request': true, 'Sub-task': true,
   'Cost Unit': false, 'Release': false,
 })
-const STATUS_VAL_OPTIONS: MetaOption[]   = ['new','backlog','in-progress','qa','done','delivered','accepted','invoiced','cancelled'].map(v => ({ value: v, label: v }))
+const STATUS_VAL_OPTIONS: MetaOption[]   = STATUSES.map(v => ({ value: v, label: v }))
 const PRIORITY_VAL_OPTIONS: MetaOption[] = ['high','medium','low'].map(v => ({ value: v, label: v.charAt(0).toUpperCase()+v.slice(1) }))
 
 // Smart options

@@ -5,11 +5,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, errMsg } from '@/api/client'
+import {
+  ACCRUALS_DEFAULT_STATUSES as ACCRUALS_DEFAULTS,
+  ACCRUALS_EXTRA_STATUSES   as ACCRUALS_EXTRAS,
+} from '@/constants/status'
 
 const route = useRoute()
-
-const ACCRUALS_DEFAULTS = ['done', 'delivered', 'accepted', 'invoiced'] as const
-const ACCRUALS_EXTRAS   = ['new', 'backlog', 'in-progress', 'cancelled'] as const
 
 interface AccrualsApiRow { project_id: number; project_key: string; project_name: string; totals: Record<string, number> }
 interface AccrualsApiResp { from: string; to: string; statuses: string[]; rows: AccrualsApiRow[] }

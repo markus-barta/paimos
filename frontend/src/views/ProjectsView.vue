@@ -11,6 +11,10 @@ import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import TagChip from '@/components/TagChip.vue'
 import type { Tag } from '@/types'
+import {
+  ACCRUALS_DEFAULT_STATUSES as ACCRUALS_DEFAULTS,
+  ACCRUALS_EXTRA_STATUSES   as ACCRUALS_EXTRAS,
+} from '@/constants/status'
 
 const router = useRouter()
 
@@ -203,9 +207,6 @@ async function onImportConfirm(strategy: CollisionStrategy, projectName: string)
 // ── Accruals report ──────────────────────────────────────────────
 // Admin-only feature gated by user pref `accruals_stats_enabled`.
 // Refined "ledger" aesthetic: tabular numerals, hairline rules, restraint.
-const ACCRUALS_DEFAULTS = ['done', 'delivered', 'accepted', 'invoiced'] as const
-const ACCRUALS_EXTRAS   = ['new', 'backlog', 'in-progress', 'cancelled'] as const
-
 const accrualsEnabled = computed(() => isAdmin.value && !!auth.user?.accruals_stats_enabled)
 
 // QRL preset ranges. All inclusive on both ends.

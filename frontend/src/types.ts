@@ -70,7 +70,7 @@ export interface IssueRelation {
   target_title?: string
 }
 
-export type IssueStatus = 'new' | 'backlog' | 'in-progress' | 'done' | 'accepted' | 'invoiced' | 'cancelled'
+export type IssueStatus = 'new' | 'backlog' | 'in-progress' | 'qa' | 'done' | 'delivered' | 'accepted' | 'invoiced' | 'cancelled'
 export type IssuePriority = 'low' | 'medium' | 'high'
 export type IssueType = 'epic' | 'cost_unit' | 'release' | 'sprint' | 'ticket' | 'task'
 
