@@ -201,15 +201,20 @@ Hierarchy: ticket → task via `parent_id` (strict 1:1). Group-level types
 (epic / cost_unit / release) link to tickets via `issue_relations` (M:N).
 Orphan tickets/tasks allowed. 422 on invalid parent.  
 Issue key: `{PROJECT_KEY}-{n}` e.g. `PAI-1` — computed, not stored.  
-Project 2 = PAIMOS's own backlog.
+Project numeric IDs are assigned per-deployment in creation order — always `GET /projects` and match on `key` or `name` before POSTing. Do not hard-code project IDs from examples.
 
 ---
 
 ## Create backlog item
 
 ```bash
+# Resolve project id first — never hard-code from examples.
+PID=$(curl -s -H "Authorization: Bearer $KEY" \
+  https://paimos.example.com/api/projects \
+  | jq '.[] | select(.key=="PAI") | .id')
+
 curl -s -H "Authorization: Bearer $KEY" \
-  -X POST https://paimos.example.com/api/projects/2/issues \
+  -X POST "https://paimos.example.com/api/projects/$PID/issues" \
   -H "Content-Type: application/json" \
   -d '{"title":"...","type":"ticket","status":"backlog","priority":"medium",
        "description":"...","acceptance_criteria":"- [ ] ..."}'

@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] — 2026-04-21
+
+### Fixed
+
+- **"Session expired" banner stuck on after login** — PAI-83. Any 401
+  from a non-auth endpoint flipped the global `sessionExpired` ref to
+  `true`, but nothing ever cleared it. A user logging back in after a
+  stale session saw the dashboard correctly populated — but the
+  "Session expired. Your content may be out of date — please sign in
+  again." banner persisted at the top. Fix: clear `sessionExpired` in
+  `auth.setUser()` (which both password and TOTP login paths converge
+  on) and in `auth.login()`. Added a regression test in
+  `src/stores/auth.test.ts`.
+
 ## [1.2.1] — 2026-04-20
 
 ### Fixed
