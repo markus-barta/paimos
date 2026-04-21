@@ -142,14 +142,35 @@ func entityAccessMiddleware(
 
 // RequireIssueAccess gates routes like /api/issues/{id}/* on view access to
 // the issue's owning project. Orphan issues (NULL project_id — sprints)
-// pass through.
+// pass through. Accepts either a numeric issue id or an issue key (e.g.
+// "PAI-83") — keys are resolved to their numeric id before the access check.
 func RequireIssueAccess(next http.Handler) http.Handler {
-	return entityAccessMiddleware("id", ProjectIDForIssue, false)(next)
+	return resolveIssueRefThen(entityAccessMiddleware("id", ProjectIDForIssue, false)(next))
 }
 
-// RequireIssueEdit gates write-side issue routes on edit access.
+// RequireIssueEdit gates write-side issue routes on edit access. Like
+// RequireIssueAccess, accepts numeric ids or issue keys.
 func RequireIssueEdit(next http.Handler) http.Handler {
-	return entityAccessMiddleware("id", ProjectIDForIssue, true)(next)
+	return resolveIssueRefThen(entityAccessMiddleware("id", ProjectIDForIssue, true)(next))
+}
+
+// resolveIssueRefThen rewrites the "id" URL param from an issue key (e.g.
+// "PAI-83") to its numeric form before delegating to the given handler.
+// Malformed inputs (neither number nor key-shape) return 400; key-shaped
+// inputs with no matching issue return 404.
+func resolveIssueRefThen(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ok, malformed := rewriteIssueRefToID(r)
+		if malformed {
+			http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+			return
+		}
+		if !ok {
+			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // RequireAttachmentAccess gates /api/attachments/{id} on view access to the
