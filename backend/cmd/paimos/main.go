@@ -92,6 +92,8 @@ Get started:
 	cmd.AddCommand(projectCmd())
 	cmd.AddCommand(issueCmd())
 	cmd.AddCommand(relationCmd())
+	cmd.AddCommand(schemaCmd())
+	cmd.AddCommand(doctorCmd())
 
 	// If no subcommand is given, Cobra's default is to print help with
 	// exit 0. The AC wants exit 2 for that case (standard convention).
