@@ -5,6 +5,19 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] — 2026-04-21
+
+### Added
+
+- **API: accept issue keys everywhere** — PAI-86 (PAI-85 epic, A). Every
+  `/api/issues/{id}/*` route now accepts either the numeric id or an
+  issue key like `PAI-83` / `PMO26-639`. Keys resolve server-side via
+  `(project.key, issue.issue_number)`; numeric ids keep working
+  unchanged. Malformed refs return 400, key-shapes with no match 404.
+  Soft-deleted issues still resolve so `restore` / `purge` can target
+  them by key. New helper `auth.ResolveIssueRef` + `auth.IsIssueKey`;
+  table-driven test in `keyresolve_test.go`.
+
 ## [1.2.4] — 2026-04-21
 
 ### Changed

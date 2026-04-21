@@ -203,6 +203,13 @@ Orphan tickets/tasks allowed. 422 on invalid parent.
 Issue key: `{PROJECT_KEY}-{n}` e.g. `PAI-1` — computed, not stored.  
 Project numeric IDs are assigned per-deployment in creation order — always `GET /projects` and match on `key` or `name` before POSTing. Do not hard-code project IDs from examples.
 
+**Issue `{id}` accepts keys too.** Every `/issues/{id}/*` route resolves either
+a numeric id (`462`) or an issue key (`PAI-83`, `PMO26-639`). Keys match
+case-sensitively against `project.key` + `issue_number`. Malformed
+references return 400; key-shaped refs with no matching row return 404.
+Soft-deleted issues still resolve so `POST /issues/:id/restore` and
+`DELETE /issues/:id/purge` work with keys.
+
 ---
 
 ## Create backlog item
