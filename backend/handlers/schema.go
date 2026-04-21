@@ -30,7 +30,7 @@ import (
 // changes — forcing the bump to happen in the same commit as the edit.
 //
 // The version doubles as cache key: clients refetch when the value changes.
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -60,7 +60,7 @@ var Schema = SchemaPayload{
 		"status":   {"new", "backlog", "in-progress", "qa", "done", "delivered", "accepted", "invoiced", "cancelled"},
 		"priority": {"low", "medium", "high"},
 		"type":     {"epic", "cost_unit", "release", "sprint", "ticket", "task"},
-		"relation": {"groups", "sprint", "depends_on", "impacts"},
+		"relation": {"groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related"},
 	},
 	// Transitions are RECOMMENDED, not enforced — the backend currently
 	// accepts any→any so humans can fix mistakes without a ceremony. The
@@ -111,6 +111,7 @@ var Schema = SchemaPayload{
 		"issue_key":             "{PROJECT_KEY}-{N}, case-sensitive (e.g. PAI-83). `/issues/{id}` accepts either the numeric id or the key since v1.2.5.",
 		"multiline_inputs":      "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
 		"transitions_permissive": "status transitions are recommendations, not enforced; the backend accepts any→any to keep fix-by-hand flexible. Clients should surface the recommended list but allow override.",
+		"relation_direction":    "GET /api/issues/{id}/relations tags each row with direction=outgoing|incoming so clients can render inverse labels (e.g. 'follows up on X' vs 'followed up by Y') without a second DB row.",
 	},
 }
 

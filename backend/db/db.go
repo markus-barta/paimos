@@ -3184,6 +3184,31 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE issues ADD COLUMN deleted_by INTEGER`,
 		`CREATE INDEX IF NOT EXISTS idx_issues_deleted_at ON issues(deleted_at)`,
 	}},
+
+	// M67: extend issue_relations.type CHECK constraint with three new
+	// directional types — follows_from (spin-off), blocks, related
+	// (loose "see also"). Purely additive: existing rows stay valid
+	// under the new CHECK. SQLite can't ALTER a CHECK constraint, so
+	// the usual rename+recreate+copy dance. See PAI-89.
+	{67, []string{
+		`ALTER TABLE issue_relations RENAME TO issue_relations_old66`,
+		`CREATE TABLE issue_relations (
+			source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+			target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+			type      TEXT NOT NULL
+			          CHECK(type IN ('groups','sprint','depends_on','impacts',
+			                         'follows_from','blocks','related')),
+			rank      INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (source_id, target_id, type)
+		)`,
+		`INSERT OR IGNORE INTO issue_relations
+		 SELECT source_id, target_id, type, rank FROM issue_relations_old66`,
+		`DROP TABLE issue_relations_old66`,
+		`CREATE INDEX IF NOT EXISTS idx_issue_relations_source
+		 ON issue_relations(source_id, type)`,
+		`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
+		 ON issue_relations(target_id, type)`,
+	}},
 	}
 
 	for _, m := range migrations {

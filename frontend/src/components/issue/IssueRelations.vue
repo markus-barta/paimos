@@ -20,7 +20,7 @@ const relations      = ref<IssueRelation[]>([])
 const relLoading     = ref(false)
 const showRelForm    = ref(false)
 const relFormTarget  = ref('')
-const relFormType    = ref<'depends_on' | 'impacts'>('depends_on')
+const relFormType    = ref<'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'>('depends_on')
 const relFormError   = ref('')
 const relSaving      = ref(false)
 
@@ -79,9 +79,36 @@ async function removeRelation(rel: IssueRelation) {
 }
 
 const relsByType = computed(() => ({
-  depends_on: relations.value.filter(r => r.type === 'depends_on'),
-  impacts:    relations.value.filter(r => r.type === 'impacts'),
+  depends_on:   relations.value.filter(r => r.type === 'depends_on'),
+  impacts:      relations.value.filter(r => r.type === 'impacts'),
+  follows_from: relations.value.filter(r => r.type === 'follows_from'),
+  blocks:       relations.value.filter(r => r.type === 'blocks'),
+  related:      relations.value.filter(r => r.type === 'related'),
 }))
+
+// Direction-aware label for the three new PAI-89 relation types.
+// Outgoing = current issue is the source; incoming = current issue is the target.
+// `related` is semantically symmetric so the label doesn't flip.
+function relGroupLabel(type: string, direction?: string): string {
+  switch (type) {
+    case 'follows_from': return direction === 'incoming' ? 'Followed up by' : 'Follows up on'
+    case 'blocks':       return direction === 'incoming' ? 'Blocked by'     : 'Blocks'
+    case 'related':      return 'Related'
+    case 'depends_on':   return 'Depends On'
+    case 'impacts':      return 'Impacts'
+    default:             return type
+  }
+}
+
+// Split directional relations so each sub-section can get the correct
+// label. For non-directional types (related, depends_on, impacts) all
+// rows go to the same bucket.
+function splitByDirection(rels: IssueRelation[]) {
+  return {
+    outgoing: rels.filter(r => r.direction !== 'incoming'),
+    incoming: rels.filter(r => r.direction === 'incoming'),
+  }
+}
 </script>
 
 <template>
@@ -95,6 +122,9 @@ const relsByType = computed(() => ({
       <select v-model="relFormType" class="rel-type-select">
         <option value="depends_on">Depends On</option>
         <option value="impacts">Impacts</option>
+        <option value="follows_from">Follows up on</option>
+        <option value="blocks">Blocks</option>
+        <option value="related">Related</option>
       </select>
       <div class="rel-key-wrap">
         <input v-model="relFormTarget" type="text" placeholder="Issue key or title…" class="rel-key-input"
@@ -141,7 +171,23 @@ const relsByType = computed(() => ({
         </div>
       </div>
     </div>
-    <div v-if="!relLoading && !relsByType.depends_on.length && !relsByType.impacts.length && !showRelForm" class="rel-empty">
+    <template v-for="t in ['follows_from', 'blocks', 'related'] as const" :key="t">
+      <template v-for="(dirRels, direction) in splitByDirection(relsByType[t])" :key="`${t}-${direction}`">
+        <div v-if="dirRels.length" class="rel-group">
+          <span class="rel-group-label">{{ relGroupLabel(t, direction) }}</span>
+          <div class="rel-chips">
+            <div v-for="r in dirRels" :key="`${r.source_id}-${r.target_id}`" class="rel-chip">
+              <RouterLink :to="`/projects/${projectId}/issues/${r.target_id}`" class="rel-chip-key">
+                {{ r.target_key || r.target_id }}
+              </RouterLink>
+              <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
+              <button v-if="authStore.user?.role === 'admin' && r.direction !== 'incoming'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
+    <div v-if="!relLoading && !relations.length && !showRelForm" class="rel-empty">
       No relations yet.
     </div>
   </div>
