@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 // SchemaVersion is the authoritative version of the API schema payload.
@@ -132,7 +133,19 @@ func init() {
 	}
 	schemaJSON = append(b, '\n')
 	h := sha256.Sum256(schemaJSON)
-	schemaETag = `"` + hex.EncodeToString(h[:16]) + `"`
+	// Weak ETag (W/"...") rather than strong. chi's Compress middleware
+	// gzip-rewrites the response body, which legitimately changes bytes;
+	// emitting a strong ETag in that setup is a lie and RFC-7232
+	// violating. Weak is what we can truthfully assert here — the
+	// payload is semantically equivalent across compressions.
+	schemaETag = `W/"` + hex.EncodeToString(h[:16]) + `"`
+}
+
+// etagMatches does RFC 7232 §2.3.2 weak comparison: W/"x" and "x" and W/"x"
+// are all considered equivalent. Needed because compression middleware
+// can legitimately add the W/ prefix without our code's knowledge.
+func etagMatches(got, want string) bool {
+	return strings.TrimPrefix(got, "W/") == strings.TrimPrefix(want, "W/")
 }
 
 // GetAPISchema serves the schema payload. Public — no auth required,
@@ -148,7 +161,7 @@ func GetAPISchema(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.Header().Set("ETag", schemaETag)
 	w.Header().Set("X-Schema-Version", SchemaVersion)
-	if inm := r.Header.Get("If-None-Match"); inm != "" && inm == schemaETag {
+	if inm := r.Header.Get("If-None-Match"); inm != "" && etagMatches(inm, schemaETag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
