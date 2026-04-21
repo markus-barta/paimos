@@ -14,6 +14,7 @@
 <p align="center">
   <a href="https://paimos.com">paimos.com</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="docs/AGENT_INTERFACE.md">Agent Guide</a> ·
   <a href="docs/CONFIGURATION.md">Configuration</a> ·
   <a href="#highlights">Features</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
@@ -50,9 +51,23 @@ port, backed by SQLite. Docker up, browser open, done.
 
 ## Highlights
 
+- **Agent-native toolchain (new).** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
+  [`paimos-mcp`](docs/AGENT_INTERFACE.md#6-mcp-integration) facade for
+  Claude Desktop and friends. File-first multi-line inputs, `--dry-run`,
+  `--json`, idempotent transitions, declarative YAML `apply` — no more
+  shell-quoted-JSON foot-gun.
+- **Self-describing API.** `GET /api/schema` is the single source of
+  truth for enums, status transitions, relation types, and field
+  shapes. Strong-ETagged, versioned, cached client-side.
+- **Keys or ids, pick either.** Every `/issues/{id}/*` endpoint
+  accepts `PAI-83` or `462` — same request, same result.
 - Hierarchical issues: **epic → ticket → task**, with parent-child
-  relations, dependency links, and impact links
+  relations and seven relation types (`groups`, `sprint`,
+  `depends_on`, `impacts`, `follows_from`, `blocks`, `related`)
 - **Sprints, accruals, cost units, releases** as first-class concepts
+- **Bulk operations** — atomic create-many (`POST /projects/{key}/issues/batch`)
+  and update-many (`PATCH /issues`) with same-batch cross-refs,
+  100-item cap, transactional rollback
 - **Full-text search** with partial issue-key matching (`PAIMOS-15`
   finds `PAIMOS-150`, `PAIMOS-151`, etc.)
 - **TOTP 2FA + API keys** (sha256-hashed, `paimos_` prefix) + session
@@ -72,6 +87,10 @@ port, backed by SQLite. Docker up, browser open, done.
   workflow and acceptance reports
 - **PDF delivery reports** (Lieferbericht) with configurable column
   layout
+- **Opt-in session audit** — tag every mutation with an
+  `X-PAIMOS-Session-Id`; replay what an agent did via
+  `GET /api/sessions/:id/activity`. Off by default; one env var
+  to enable.
 
 A [complete feature catalog](#complete-feature-list) lives at the bottom
 of this README.
@@ -101,7 +120,7 @@ Open <http://localhost:8888> and log in with `admin` / your
 
 ### Local dev
 
-Requires Go 1.23+ and Node.js 22+.
+Requires Go 1.25+ and Node.js 22+.
 
 ```bash
 # backend (terminal 1)
@@ -123,19 +142,76 @@ devenv shell -- bash -c "cd frontend && npm run dev"
 
 ## Agent integration
 
-PAIMOS is built for humans and AI agents alike. Any agent that can make
-HTTP requests can create issues, update status, log time, and search —
-all through the same REST API the web UI uses, gated by the same role
-and project-membership rules.
+PAIMOS is built for humans **and** AI agents. The recommended way to
+drive it as an agent is the **`paimos` CLI** — it handles auth,
+multi-line markdown inputs, key resolution, error shapes, and shell
+safety so you don't have to.
 
-→ **[Agent Integration Guide](docs/AGENT_INTEGRATION.md)**
+→ **[Agent Interface Guide](docs/AGENT_INTERFACE.md)** (this is the one
+to read first.)  
+→ [Legacy integration guide (HTTP-only patterns)](docs/AGENT_INTEGRATION.md)  
+→ [REST reference](docs/api-minimal.md)
 
 ```bash
-# Example: agent creates a backlog item
-curl -s -X POST -H "Authorization: Bearer $KEY" \
-  https://paimos.example.com/api/projects/2/issues \
-  -d '{"title":"Refactor auth middleware","type":"ticket","status":"backlog","priority":"medium"}'
+# Install both binaries (Go 1.25+)
+go install github.com/markus-barta/paimos/backend/cmd/paimos@latest
+go install github.com/markus-barta/paimos/backend/cmd/paimos-mcp@latest
+
+# Interactive login — writes ~/.paimos/config.yaml (0600)
+paimos auth login
+
+# Read a ticket by key or numeric id
+paimos issue get PAI-83
+paimos issue list --project PAI --status backlog --limit 20
+
+# Create an issue with multi-line markdown — no shell quoting
+paimos issue create --project PAI --type ticket \
+  --title "Refactor auth middleware" \
+  --description-file /tmp/desc.md \
+  --ac-file /tmp/ac.md
+
+# Idempotent status transitions — safe to re-run
+paimos issue ensure-status PAI-83 done
+
+# Close with a structured note in one atomic-ish command
+paimos issue update PAI-83 --status done \
+  --close-note-file /tmp/close.md
+
+# Scaffold an epic + N children + relations in one shot
+paimos apply --from-file plan.yaml
+
+# Preflight check — safe in CI; exit 0/1/2 (ok/warn/fail)
+paimos doctor
 ```
+
+### MCP (Claude Desktop)
+
+```json
+{
+  "mcpServers": {
+    "paimos": {
+      "command": "/Users/you/go/bin/paimos-mcp",
+      "env": { "PAIMOS_INSTANCE": "default" }
+    }
+  }
+}
+```
+
+Exposes six tools: `paimos_schema`, `paimos_issue_get`, `_list`,
+`_create`, `_update`, `paimos_relation_add`. Bulk ops are deliberately
+CLI-only — MCP context grows fast.
+
+### Still just HTTP
+
+```bash
+# Everything the CLI does is available as REST.
+curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: my-agent/1.0" \
+  https://paimos.example.com/api/issues/PAI-83
+```
+
+Keys (`PAI-83`) and numeric ids are interchangeable on every
+`/issues/{id}/*` endpoint. Full details in
+[`docs/api-minimal.md`](docs/api-minimal.md).
 
 ## Architecture
 
@@ -208,16 +284,22 @@ obligation.
 ### Issues
 - Create / edit / delete issues with title, description, acceptance
   criteria, notes
-- Issue types: `epic`, `ticket`, `task`; each with configurable type
-  color
-- Auto-incremented issue keys per project (e.g., `ACME-1`, `ACME-2`)
-- Status workflow: open, in progress, testing, closed, cancelled,
-  archived
-- Priority levels P0–P4
+- Issue types: `epic`, `cost_unit`, `release`, `sprint`, `ticket`,
+  `task`; each with configurable type color
+- Auto-incremented issue keys per project (e.g., `ACME-1`, `ACME-2`);
+  `/issues/{id}/*` endpoints accept either the key or the numeric id
+- Status workflow: `new`, `backlog`, `in-progress`, `qa`, `done`,
+  `delivered`, `accepted`, `invoiced`, `cancelled`
+- Priorities: `low`, `medium`, `high`
 - Hierarchical parent-child relationships (epic → ticket → task)
-- Depends-on and impacts relations between issues
+- Seven relation types between issues: `groups`, `sprint`,
+  `depends_on`, `impacts`, `follows_from`, `blocks`, `related` —
+  directional types tag each side with `outgoing` / `incoming`
+  for correct inverse rendering
+- Bulk create/update with atomic rollback and 100-item cap
 - Clone issue with configurable field mapping
 - Complete-epic action: bulk-transitions all children
+- Soft-delete + Trash with restore and admin-only hard purge
 - Aggregation endpoint for rollup stats
 - Full audit history per issue (editor, timestamp, diff)
 - Cost/effort estimation: `estimate_hours`, `estimate_lp`, rate
@@ -323,7 +405,7 @@ obligation.
 - Optional MinIO for attachments (graceful disable)
 - Optional SMTP for password reset (dev mode = log to stdout)
 - SQLite with WAL + 5-second busy timeout + connection pool
-- 63+ additive migrations run on startup
+- 68 additive migrations run on startup
 - Health endpoint: `GET /api/health`
 - Instance endpoint: `GET /api/instance` (label, hostname,
   attachments-enabled flag)
@@ -340,6 +422,18 @@ obligation.
 <details>
 <summary>API surface (route groups)</summary>
 
+- **Schema discovery**: `GET /api/schema` — versioned enums,
+  transitions, entity shapes, conventions. Public, strong-ETagged,
+  `Cache-Control: public, max-age=300`
+- **Bulk**: `POST /api/projects/{key}/issues/batch` (atomic
+  create-many with same-batch `parent_ref:"#N"` cross-refs),
+  `PATCH /api/issues` (atomic update-many by ref),
+  `GET /api/issues?keys=PAI-1,PAI-2,…` (ordered pick list,
+  missing refs marked)
+- **Session audit (opt-in)**: `GET /api/sessions/{id}/activity` —
+  admin-only, keyset-paginated replay of mutations tagged by an
+  `X-PAIMOS-Session-Id` header. Controlled by
+  `PAIMOS_AUDIT_SESSIONS=true`
 - **Auth / session**: login, logout, me, password change, avatar
   upload/delete, profile update
 - **2FA (TOTP)**: status, setup, enable, disable, verify (login step 2)
@@ -385,6 +479,9 @@ obligation.
 - `SECURITY.md` — vulnerability reporting
 - `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1
 - `DCO.md` — Developer Certificate of Origin
+- `docs/AGENT_INTERFACE.md` — **driving PAIMOS as an agent** (CLI, MCP, patterns)
+- `docs/api-minimal.md` — REST reference
+- `docs/CHANGELOG.md` — version history
 - `docs/CONFIGURATION.md` — every env var, every branding knob
 - `docs/brand/BRAND.md` — brand guide (name, mark, voice)
 - `docs/DEVELOPER_GUIDE.md` — deeper implementation notes
