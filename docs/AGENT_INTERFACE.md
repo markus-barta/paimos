@@ -161,7 +161,7 @@ $ gh pr create --title "..." --body "..."
 # https://github.com/markus-barta/paimos/pull/15
 
 # 4. CI runs; PR merges; docker image publishes; deploy.
-$ ssh mba@csb1 "cd ~/docker && just deploy-ppm"
+$ ssh user@deploy-host "cd ~/docker && just deploy"
 
 # 5. Smoke check the new behaviour before closing.
 $ paimos --json issue get PAI-85 \

@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/mark-dark.svg">
-    <img src="docs/brand/mark-light.svg" alt="PAIMOS" height="96">
-  </picture>
+  <img src="docs/brand/favicon.png" alt="PAIMOS" height="96">
 </p>
 
 <h1 align="center">PAIMOS</h1>
@@ -149,7 +146,7 @@ safety so you don't have to.
 
 → **[Agent Interface Guide](docs/AGENT_INTERFACE.md)** (this is the one
 to read first.)  
-→ [Legacy integration guide (HTTP-only patterns)](docs/AGENT_INTEGRATION.md)  
+→ [REST integration patterns](docs/AGENT_INTEGRATION.md) (HTTP-only agents)  
 → [REST reference](docs/api-minimal.md)
 
 ```bash

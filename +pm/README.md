@@ -34,7 +34,7 @@ LNN.hhhhhhh.description.md
 
 **Examples**:
 - `A00.a1b2c3d.critical-security-fix.md` (Absolute highest priority)
-- `P50.c7d2b4a.refactor-legacy-code.md` (Standard priority, default)
+- `P50.c7d2b4a.refactor-auth-middleware.md` (Standard priority, default)
 - `Z99.e1f9c2b.nice-to-have-feature.md` (Lowest priority)
 
 ---

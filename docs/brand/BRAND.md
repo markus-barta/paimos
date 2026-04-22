@@ -185,9 +185,12 @@ added later, it should distinguish clearly from Apache Paimon (which has
 no strong color branding) and from the dominant PM tools: Linear
 (blue/purple), Notion (black/white), Asana (coral), Jira (blue).
 
-### Logo variants #FIXME
+### Logo variants
 
-Maintain these in the repo under `docs/brand/`:
+> **Status:** in progress. Only `favicon.png` is in the repo today; the
+> SVG variants below are the target set to produce.
+
+Target assets under `docs/brand/`:
 
 | File | Purpose |
 |---|---|
