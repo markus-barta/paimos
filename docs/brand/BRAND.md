@@ -45,44 +45,82 @@ At first glance, PAIMOS starts with one `P`. The logo reveals there are
 actually **three**:
 
 ```
-|||P A I M O S
- │ │ │  │  │  │
- │ │ │  │  │  └─ System
- │ │ │  │  └──── Online        ← Phase 1 (FOSS, current)
- │ │ │  │        Operating     ← Phase 2 (optional, later)
- │ │ │  └─────── Management
- │ │ └────────── AI
- │ │
- │ └──────────── Project
- │
- Professional · Personal
- (the two hidden P-strokes)
+||P AI M  O  S
+│ │ │  │  │  │
+│ │ │  │  │  └─ System · Services · (Suite)
+│ │ │  │  └──── Online · (Operating)
+│ │ │  └─────── Management · Managed
+│ │ └────────── AI
+│ │
+│ └──────────── Project
+│
+Professional · Personal (the two hidden P-strokes)
 ```
 
-### Two phases of resolution
+### Fixed anchors, flexible slots
 
-**Phase 1 — today, FOSS launch:**
-> **P**rofessional and **P**ersonal **P**roject- and **AI**-**M**anagement
-> **O**nline **S**ystem
+The acronym is deliberately built so that **the first half is fixed and
+the second half is parameterized.**
 
-**Phase 2 — later, if platform features materialize (plugins, agent
-orchestration, extensibility, marketplace):**
-> **P**rofessional and **P**ersonal **P**roject- and **AI**-**M**anagement
-> **O**perating **S**ystem
+- **`P · P · P`** (the three strokes, Professional · Personal · Project)
+  and **`AI`** are **untouchable.** They define the product and the mark.
+  If any of these four wavered, the logo and positioning would wobble too.
+- **`M`, `O`, `S`** are **interpretation slots.** Each has a small set of
+  valid fillings that signal a different facet of the same product —
+  without changing the name, the logo, or the abbreviation. The slot set
+  is closed (not open-ended), so the acronym never becomes a free-for-all.
 
-The acronym stays PAIMOS in both cases. The abbreviation stays "OS". Only
-**one word** changes in one sentence on the About page. Not a rebrand.
+| Slot | Valid fillings | What it signals |
+|---|---|---|
+| **M** | Management · Managed | Active voice (tool manages work) vs. passive voice (work is AI-managed). Audience choice. |
+| **O** | Online · Operating · Open | Product maturity and license stance. `Online` = default delivery form. `Operating` = earned platform claim (Phase 2+). `Open` = FOSS stance, usually paired with `Source` in S. |
+| **S** | System · Services · Source | Monolith framing (one tool) vs. plural framing (a set of capabilities) vs. FOSS framing. Dev, business, or community register. |
 
-### When to switch to Phase 2
 
-Trigger the switch once at least two of the following hold:
+This is what makes the name evolve *dezent*: no rebrand, no logo change,
+just a slot swap on the About page as the product or the audience
+changes.
+
+### Readings (what actually appears on the website)
+
+PAIMOS ships with **two co-equal readings** in Phase 1. Both are valid,
+both are documented, and the audience picks whichever fits them. Neither
+is primary.
+
+**Today's reading — *for developers, FOSS users, the default*:**
+> **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anagement
+> / **O**nline **S**ystem
+
+**Services reading — *for teams where agents ship alongside humans*:**
+> **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anaged
+> / **O**nline **S**ervices
+
+Same name, same mark, same AI-first commitment — two entry narratives.
+One lands with engineers who want a FOSS tool for their boards; the
+other lands with engineering leads at companies who think in services
+and managed capabilities. The About page shows both side by side with
+equal visual weight.
+
+### A potential third reading (Phase 2)
+
+If platform features materialize (plugins, agent orchestration, public
+API, marketplace), a third reading becomes defensible:
+
+**Platform reading — *for teams building on top of PAIMOS*:**
+> **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anagement
+> / **O**perating **S**ystem
+
+The `Operating System` filling is the strongest claim in the whole
+matrix — it implies platform, extensibility, ecosystem. Don't use it
+until the product earns it. Trigger criteria (at least two must hold):
 
 - A plugin or extensions system exists and is used by third parties
 - Multiple AI agents / workflows can be orchestrated together
 - A public API enables integration with other tools
 - A marketplace or template store is live
 
-Until then: **Online System.** Honest, descriptive, low on promise.
+Until then: the Platform reading stays documented internally (here) but
+is **not shown on the website**. Today's + Services reading are enough.
 
 ---
 
@@ -91,9 +129,9 @@ Until then: **Online System.** Honest, descriptive, low on promise.
 ### The mark
 
 ```
-  │ │ │┌─
-  │ │ ├┘   A I M O S
-  │ │ │
+  ╷╷┌─┐
+  ││├─┘ A I M O S
+  ╵╵╵
 ```
 
 Three parallel vertical strokes, the rightmost one carrying the P-bowl.
@@ -114,19 +152,40 @@ arrow or the Amazon smile).
 
 ### Color
 
-**Phase 1: monochrome.** The mark uses `currentColor` / the primary
-text color of its context throughout. This means:
+**Phase 1: monochrome with graduated opacity on the wordmark.** The mark
+uses `currentColor` / the primary text color of its context throughout.
+This means:
 
 - It works automatically in light and dark mode
 - No two logo variants need to be maintained in the repo
 - The project stays visually restrained — FOSS-appropriate
+
+**Opacity stepping on the leading strokes (wordmark only).** In the full
+wordmark `|||PAIMOS`, the two strokes before the `P` are set at reduced
+opacity, creating a crescendo into the letterforms:
+
+| Element | Opacity |
+|---|---|
+| Stroke 1 (leftmost) | `0.35` |
+| Stroke 2 (middle) | `0.60` |
+| Stroke 3 (the `P` itself) + `AIMOS` | `1.00` |
+
+The effect: the three P's are visibly *ranked in presence* — the eye
+lands on the `P`, then notices the two ghosted strokes leading into it.
+The Triple-P-concept becomes legible without explanation, instead of
+being a hidden puzzle only insiders solve.
+
+**Important:** opacity stepping applies **only to the full wordmark**.
+The mark-alone variant (favicon, app icon, GitHub avatar) keeps all
+three strokes at full opacity — at small sizes, any transparency reads
+as rendering error, not intent.
 
 **Do not introduce a brand color** while Phase 1 is active. If one gets
 added later, it should distinguish clearly from Apache Paimon (which has
 no strong color branding) and from the dominant PM tools: Linear
 (blue/purple), Notion (black/white), Asana (coral), Jira (blue).
 
-### Logo variants
+### Logo variants #FIXME
 
 Maintain these in the repo under `docs/brand/`:
 
@@ -188,6 +247,23 @@ whose existing PM tool can't represent what the agents are doing. For
 those teams PAIMOS isn't competing with Jira; it's solving a problem
 Jira was never designed to solve.
 
+### Which reading to lead with
+
+The two readings (Today's / Services) are co-equal on the About page,
+but in conversation, pitch, or copy outside of that page, pick
+deliberately:
+
+- **Talking to developers, solo devs, FOSS folks:** lead with
+  **Today's reading**. Language: *system, tool, self-hosted,
+  FOSS, board, CLI.*
+- **Talking to engineering leads, CTOs, companies adopting agentic
+  engineering:** lead with the **Services reading**. Language:
+  *managed, services, capabilities, orchestration, platform.*
+
+Same product. Same mark. Different first sentence. The other reading
+is always one click away on the About page, so no audience feels
+excluded — they just encounter the framing that speaks to them first.
+
 ### Tone
 
 - **Direct.** No marketing fluff, no "revolutionary" adjectives.
@@ -216,20 +292,34 @@ Jira was never designed to solve.
 - Show the triple-P resolution **once** prominently (About page) and
   let it rest otherwise. Easter eggs lose their charm if explained on
   every page
-- Homepage claim: *"Your Professional & Personal AI Project OS"* —
-  without giving away the decoding
+- On the About page, present Today's reading and Services reading
+  **side by side with equal visual weight** — neither is primary
+- Visually highlight what both readings share (`P · P · P` and `AI`)
+  and let only the `M · O · S` slots differ in emphasis — the
+  slot-based structure should be visible without needing explanation
+- Homepage claim: *"Professional and personal AI project management, online and open source."* — acronym-complete (P · P · P · AI · M · O · S with `O` carrying both "online" and "open" and `S` resolving to  "source"), avoids the "OS" landmine, and puts the FOSS commitment in the first sentence. Rendered on the site with the first word animating through P-P-P permutations (Professional ↔ Personal ↔ Project) to  echo the Triple-P mark.
 - Use the three strokes as icon / favicon / avatar from day one. It's
   the strongest visual asset
 - Put `mark.svg` prominently in the README header
 - When talking to engineering teams, lead with the **agentic
-  engineering** angle — that's the sharpest wedge into the market
+  engineering** angle and the **Services reading**
 - When talking to solo devs, lead with the **FOSS + no enterprise
-  bloat** angle
+  bloat** angle and **Today's reading**
 
 ### Don't
 
-- Don't use the long form as a tagline ("Professional and Personal
-  Project- and AI-Management Online System" is too clunky to read)
+- Don't use any full reading as a tagline. "Professional and Personal
+  Project- and AI-Management Online System" (or any variant) is too
+  clunky to read aloud — the short form *paimos* stays the marketing
+  asset, the long form is documented, not advertised
+- Don't rank the readings. No "primary reading / alternative reading",
+  no "developer edition / business edition". Both are the product
+- Don't invent new slot fillings ad-hoc. The `M · O · S` slot set is
+  closed (see table). If a genuinely better filling emerges, update
+  this document first, then the website
+- Don't show the **Platform reading** (`Operating System`) on the
+  website until the Phase 2 trigger criteria are met. It's an earned
+  claim, not a marketing upgrade
 - Don't introduce a brand color while Phase 1 is live
 - Don't force a "PM 3.0" or "AI-native" marketing frame
 - Don't overload the logo with effects (gradients, glow, 3D). The
@@ -265,16 +355,13 @@ Both together cover the product range.
 
 Priority descending; as of this document's date all found free:
 
-- [ ] GitHub Org `paimos`
+- [✔︎] GitHub Org `paimos`
 - [ ] npm package `paimos` (placeholder release is enough)
 - [ ] PyPI package `paimos` (placeholder release is enough)
-- [ ] Domain `paimos.dev` (primary, FOSS signal)
-- [ ] Domain `paimos.io` (alternative or parallel)
-- [ ] Domain `paimos.at` (DACH anchor, inexpensive)
+- [✔︎] Domain `paimos.com` (primary)
 - [ ] Mastodon / Bluesky handle `@paimos`
 - [ ] LinkedIn page (only once business phase starts)
-- [ ] Instagram handle `@paimos` **taken** — not available. Alternatives:
-      `@paimosapp`, `@paimos_os`, or deliberately no Instagram
+- [✔︎] NO Instagram handle
 
 ### Re-run trademark checks periodically
 
@@ -286,14 +373,15 @@ opposition proceedings.
 
 ## Phasing Plan
 
-| Phase | Name resolution | Claim | Brand color | Trademark |
+| Phase | Readings shown on website | Claim | Brand color | Trademark |
 |---|---|---|---|---|
-| **1 — FOSS** | Online System | *Your Professional & Personal AI Project OS* | monochrome | none |
-| **2 — Platform** | Operating System | *The OS for how you ship work* (or similar) | 1 primary color | DE word mark, classes 9+42 |
-| **3 — Commercial** | Operating System | (product-specific) | full system | EU Union mark |
+| **1 — FOSS** | Today's + Services (co-equal) | *Professional and personal AI project management, online and open source.* | monochrome | none |
+| **2 — Platform** | Today's + Services + Platform (Operating System earned) | *The OS for how you ship work* (or similar) | 1 primary color | DE word mark, classes 9+42 |
+| **3 — Commercial** | Today's + Services + Platform | (product-specific) | full system | EU Union mark |
 
 Every transition is **additive**, not destructive: the logo stays, the
-domain stays, the name stays. Only new pieces come in.
+domain stays, the name stays, existing readings stay. New readings are
+added once they are earned — never at the cost of the previous ones.
 
 ---
 
@@ -306,3 +394,7 @@ domain stays, the name stays. Only new pieces come in.
 - Positioning references: Linear (dev focus), Notion (personal/pro
   duality), Obsidian (FOSS spirit), Claude Code / Cursor (agentic
   engineering workflows PAIMOS aims to manage)
+- Readings concept: informed by tools that carry multiple legitimate
+  entry narratives without rebranding (Notion's "OS for your work /
+  second brain / wiki"; Linear's "tool for modern software teams /
+  issue tracker / project planner")
