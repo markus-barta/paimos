@@ -41,7 +41,7 @@ All green → commit → push → open PR.
 
 ## When stuck
 
-1. **Read the DATA_MODEL_v2.md** if it's a data question.
+1. **Read the DATA_MODEL.md** if it's a data question.
 2. **Grep for a similar handler** — PAIMOS has strong patterns.
 3. **Open an issue with `needs-discussion`** if direction is unclear.
    Better than 500 lines of speculative code.

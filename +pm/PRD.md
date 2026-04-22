@@ -258,7 +258,7 @@ Notes:
   - totp_pending
   - search_index (FTS5)
 
-See `docs/DATA_MODEL_v2.md` for the full schema; `docs/DATA_MODEL.md` is the
+See `docs/DATA_MODEL.md` for the full schema; `docs/archive/DATA_MODEL.md` is the
 legacy v0.3.5 snapshot kept for archival reference.
 
 ---

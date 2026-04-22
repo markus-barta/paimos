@@ -184,7 +184,7 @@ key should never disrupt an unrelated workflow.
    → accepted → invoiced`. `cancelled` is a terminal off-ramp at any
    point. Avoid jumping straight to `done` (skips QA) or setting
    `accepted`/`invoiced` programmatically — those are usually human
-   decisions. See `docs/DATA_MODEL_v2.md` for the full enum.
+   decisions. See `docs/DATA_MODEL.md` for the full enum.
 4. **Partial updates.** `PUT /api/issues/{id}` is partial. Send only
    the fields you want to change; everything else is preserved.
 5. **Be reasonable about rate.** There is no hard rate limit on API
@@ -207,7 +207,7 @@ key should never disrupt an unrelated workflow.
   route the web SPA uses, in one page.
 - **Permissions and role matrix**: see the *Access model* section above
   and the per-project `project_members` / `access_audit` model in
-  [`DATA_MODEL_v2.md`](DATA_MODEL_v2.md) and
+  [`DATA_MODEL.md`](DATA_MODEL.md) and
   [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md) §4a. Admin-gated routes
   are marked with `auth.RequireAdmin`; per-project view/edit gates
   live in `backend/auth/middleware_project.go`.

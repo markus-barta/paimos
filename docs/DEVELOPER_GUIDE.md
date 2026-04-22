@@ -58,8 +58,9 @@ docs/
   CONFIGURATION.md     every env var
   CHANGELOG.md         release notes
   DEVELOPER_GUIDE.md   this file
-  DATA_MODEL_v2.md     current schema (tables, relations, enums)
-  DATA_MODEL.md        legacy v0.3.5 snapshot — archival only
+  DATA_MODEL.md        current schema (tables, relations, enums)
+  archive/
+    DATA_MODEL.md      legacy v0.3.5 snapshot — archival only
   AGENT_INTEGRATION.md authenticated API usage for agents
   api-minimal.md       compact API surface reference
   brand/               visual identity (mark + wordmark + brand guide)
@@ -96,7 +97,7 @@ scripts/               maintenance helpers
 - Schema migrations are idempotent and run at every startup.
 - Default filename is `paimos.db` (override with `BRAND_DB_FILENAME`;
   see caveats in `CONFIGURATION.md`).
-- See [`DATA_MODEL_v2.md`](DATA_MODEL_v2.md) for the full schema.
+- See [`DATA_MODEL.md`](DATA_MODEL.md) for the full schema.
 
 ## 4a. Access model (per-project)
 
@@ -235,7 +236,7 @@ yourself.
 1. Append a `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` block to
    `migrate()` in `backend/db/db.go`.
 2. Bump the version counter (see existing pattern).
-3. Reflect the schema change in `models/` and `docs/DATA_MODEL_v2.md`.
+3. Reflect the schema change in `models/` and `docs/DATA_MODEL.md`.
 4. Test on a fresh DB and on a DB with the old schema (migrations are
    one-way).
 

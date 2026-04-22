@@ -1,396 +1,358 @@
-# PAIMOS Data Model (Legacy — v0.3.5 snapshot)
+# PAIMOS Data Model
 
-> ⚠️ **This document is a historical snapshot of the pre-v1 schema (migrations 1–10).**
-> The current schema — including the per-project access-control tables
-> (`project_members`, `access_audit`), `time_entries`, `attachments`,
-> `issue_relations`, sprints, the renamed status values
-> (`backlog` / `in-progress` / `complete` / `canceled`), and much more —
-> is documented in [`DATA_MODEL_v2.md`](DATA_MODEL_v2.md).
->
-> For anything other than archaeology, read `DATA_MODEL_v2.md` and
-> `backend/db/db.go` (the source of truth).
+**Status**: Current (active schema as of `v1.1.1`)  
+**Last verified**: 2026-04-20  
+**Schema source of truth**: `backend/db/db.go` — migrations run in order on startup.  
+**Legacy**: `docs/archive/DATA_MODEL.md` captures the v0.3.5 pre-release baseline and is kept for archival reference only.
 
-**Version**: 0.3.5  
-**Last updated**: 2026-03-06  
-**Schema source of truth (now)**: `backend/db/db.go` — all migrations are applied in order on startup.
+> This is the canonical data-model document. The v1.0.0 / v1.1.1
+> releases added `project_members`, `access_audit`, `time_entries`,
+> `attachments`, `issue_relations`, sprints, etc.; those are documented
+> below alongside the original v1→v2 structural changes.
 
 ---
 
-## Entity-Relationship Diagram
+## Core Concept
+
+The entity hierarchy changes from a strict tree to a **mixed model**:
+
+- Groups/Sprints → Tickets use **M:N relations** (a ticket can belong to multiple groups and sprints)
+- Tickets → Tasks keep **strict 1:1 parent** (unchanged)
+
+Group types (Epic, Cost Unit, Release) and Sprint are **different views into the same set of tickets**, not separate containers. All live in the `issues` table with a `type` discriminator.
+
+---
+
+## Entity Hierarchy
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                 │
-│   USERS                          PROJECTS                                       │
-│   ─────────────────────          ──────────────────────────────                 │
-│   id          PK  INTEGER        id          PK  INTEGER                        │
-│   username    UNIQUE TEXT        name            TEXT                           │
-│   password        TEXT           key         UNIQUE TEXT  (e.g. ACME)          │
-│   role            TEXT           description     TEXT                           │
-│     ∈ {admin,member}             status          TEXT                           │
-│   status          TEXT             ∈ {active, archived, deleted}                │
-│     ∈ {active,                   created_at      TEXT                           │
-│         inactive,                updated_at      TEXT                           │
-│         deleted}                                                                │
-│   totp_secret     TEXT           │                 │                            │
-│   totp_enabled    INTEGER        │                 │                            │
-│   created_at      TEXT           │   1             │  1                         │
-│        │                         │   │             │  │                         │
-│        │ 1                       │   │             │  │                         │
-│        ├──────────────────────────── │             │  │                         │
-│        │            ┌──────────────────────────────┘  │                         │
-│        │            │           N └────────────────── │                         │
-│        │            │                                 │ N                       │
-│        │            ▼                                 ▼                         │
-│        │   ISSUES                         PROJECT_TAGS (join)                   │
-│        │   ─────────────────────────────  ────────────────────────              │
-│        │   id          PK  INTEGER        project_id FK→projects                │
-│        │   project_id  FK→projects        tag_id     FK→tags                    │
-│        │     ON DELETE CASCADE            PK(project_id, tag_id)                │
-│        │   issue_number     INTEGER       │                                     │
-│        │   issue_key  (computed)          │                                     │
-│        │   type             TEXT          │                                     │
-│        │     ∈ {epic,ticket,task}         │                                     │
-│        │   parent_id  FK→issues NULL      │                                     │
-│        │     ON DELETE SET NULL           │                                     │
-│        │   title            TEXT          │                                     │
-│        │   description      TEXT          │                                     │
-│        │   acceptance_criteria TEXT       │           TAGS                      │
-│        │   notes            TEXT          │           ──────────────────────    │
-│        │   status           TEXT          │           id          PK INTEGER    │
-│        │     ∈ {open,in-progress,         │           name    UNIQUE TEXT       │
-│        │         done,closed}             │           color        TEXT         │
-│        │   priority         TEXT          │           description  TEXT         │
-│        │     ∈ {low,medium,high}          │           created_at   TEXT         │
-│        │   cost_unit        TEXT          │                 │                   │
-│        │   release          TEXT          │                 │ N                 │
-│        │   depends_on       TEXT          │                 │                   │
-│        │     (free-text issue keys,       └─────────────────┤                   │
-│        │      e.g. "ACME-1, ACME-3")                        │                   │
-│        │   impacts          TEXT                            │                   │
-│        │     (free-text issue keys)       ISSUE_TAGS (join) │                   │
-│        │   assignee_id  FK→users NULL     ────────────────────────              │
-│        │     ON DELETE SET NULL           issue_id  FK→issues                   │
-│        │   created_at       TEXT          tag_id    FK→tags                     │
-│        │   updated_at       TEXT          PK(issue_id, tag_id)                  │
-│        │         │                                                              │
-│        │         │ 1─────────────────────────────────────────────────┐          │
-│        │         │                                                    │         │
-│        │         ├──────────────────┐                                 │         │
-│        │         │ 1                │ 1                               │         │
-│        │         │                  │                                 │         │
-│        │         ▼ N                ▼ N                               │ N       │
-│        │  ISSUE_HISTORY       COMMENTS                      ISSUE_TAGS (above)  │
-│        │  ──────────────────  ──────────────────────────                        │
-│        │  id      PK INTEGER  id        PK INTEGER                              │
-│        │  issue_id FK→issues  issue_id  FK→issues                               │
-│        │    ON DELETE CASCADE   ON DELETE CASCADE                               │
-│        │  changed_by FK→users author_id FK→users NULL                           │
-│        │    ON DELETE SET NULL   ON DELETE SET NULL                             │
-│        │  snapshot  TEXT JSON  body      TEXT                                   │
-│        │  changed_at  TEXT     created_at TEXT                                  │
-│        │                                                                        │
-│        │ 1                                                                      │
-│        ├───────────────────────────────────────────┐                            │
-│        │                                           │ N                          │
-│        ▼ N                                         │                            │
-│   SESSIONS                                    API_KEYS                          │
-│   ─────────────────────────                   ──────────────────────────        │
-│   id (hex)  PK TEXT                           id          PK INTEGER            │
-│   user_id   FK→users                          user_id     FK→users              │
-│     ON DELETE CASCADE                           ON DELETE CASCADE               │
-│   expires_at    TEXT                          name            TEXT              │
-│                                               key_hash    UNIQUE TEXT           │
-│                                               key_prefix      TEXT              │
-│                                               created_at      TEXT              │
-│                                               last_used_at    TEXT NULL         │
-│                                                                                 │
-│   TOTP_PENDING                INTEGRATIONS              SEARCH_INDEX (FTS5)     │
-│   ─────────────────────────   ──────────────────────    ─────────────────────   │
-│   token  PK TEXT              id      PK INTEGER        entity_type  TEXT       │
-│   user_id FK→users            provider UNIQUE TEXT      entity_id    INTEGER    │
-│     ON DELETE CASCADE         config   TEXT JSON        content      TEXT       │
-│   expires_at    TEXT          updated_at   TEXT                                 │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+PROJECT
+  │
+  ├──1:N──► GROUP (type = epic | cost_unit | release)
+  │           │
+  │           │  M:N via issue_relations (type = 'groups')
+  │           │
+  │           ▼
+  │         TICKET ◄── M:N via issue_relations (type = 'sprint') ──► SPRINT
+  │           │
+  │           │  1:N strict (parent_id)
+  │           │
+  │           ▼
+  │         TASK
+  │
+  │         issue_relations also handles:
+  │           type = 'depends_on'  (ticket/task → ticket/task)
+  │           type = 'impacts'     (ticket/task → ticket/task)
+  │
+  ├──1:N──► TIME_ENTRIES   (on tickets, per user, start/stop tracking)
+  ├──1:N──► COMMENTS       (on any issue)
+  ├──1:N──► ISSUE_HISTORY  (on any issue)
+  └──M:N──► TAGS           (on project or any issue)
 ```
 
 ---
 
-## Tables — Full Column Reference
+## Resolved Design Decisions
 
-### `users`
+### Single `issues` table with type discriminator
 
-| Column         | Type    | Constraints                                                 | Notes                                                     |
-| -------------- | ------- | ----------------------------------------------------------- | --------------------------------------------------------- |
-| `id`           | INTEGER | PK AUTOINCREMENT                                            |                                                           |
-| `username`     | TEXT    | NOT NULL UNIQUE                                             |                                                           |
-| `password`     | TEXT    | NOT NULL                                                    | bcrypt hash                                               |
-| `role`         | TEXT    | NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')) |                                                           |
-| `status`       | TEXT    | NOT NULL DEFAULT 'active'                                   | `active` / `inactive` / `deleted` — enforced in app logic |
-| `totp_secret`  | TEXT    | NOT NULL DEFAULT ''                                         | TOTP base32 secret; empty if not set up                   |
-| `totp_enabled` | INTEGER | NOT NULL DEFAULT 0                                          | 0 = disabled, 1 = enabled                                 |
-| `created_at`   | TEXT    | NOT NULL DEFAULT datetime('now')                            | ISO 8601                                                  |
+All entity types live in one `issues` table. Reasons:
 
-**Status semantics:**
+- Shared behavior: key generation, tags, comments, search, history, CSV, CRUD lifecycle
+- No duplicated handler/component logic
+- Sparse nullable columns have zero performance cost at this scale
+- `type` field discriminates; frontend renders different views/columns per type
 
-- `active` — normal login, visible everywhere
-- `inactive` — login blocked, data preserved, shown as "Disabled" in admin UI
-- `deleted` — login blocked, hidden from normal UI, restorable via `UPDATE users SET status='active'`
+### `issue_relations` — one table for all relationships
 
----
-
-### `sessions`
-
-| Column       | Type    | Constraints                         | Notes                 |
-| ------------ | ------- | ----------------------------------- | --------------------- |
-| `id`         | TEXT    | PK                                  | Random 32-char hex    |
-| `user_id`    | INTEGER | NOT NULL FK→users ON DELETE CASCADE |                       |
-| `expires_at` | TEXT    | NOT NULL                            | 24h TTL from creation |
-
----
-
-### `totp_pending`
-
-| Column       | Type    | Constraints                         | Notes                          |
-| ------------ | ------- | ----------------------------------- | ------------------------------ |
-| `token`      | TEXT    | PK                                  | Short-lived login step-2 token |
-| `user_id`    | INTEGER | NOT NULL FK→users ON DELETE CASCADE |                                |
-| `expires_at` | TEXT    | NOT NULL                            | 5min TTL                       |
-
----
-
-### `api_keys`
-
-| Column         | Type    | Constraints                         | Notes                           |
-| -------------- | ------- | ----------------------------------- | ------------------------------- |
-| `id`           | INTEGER | PK AUTOINCREMENT                    |                                 |
-| `user_id`      | INTEGER | NOT NULL FK→users ON DELETE CASCADE |                                 |
-| `name`         | TEXT    | NOT NULL                            | Human label                     |
-| `key_hash`     | TEXT    | NOT NULL UNIQUE                     | SHA-256 of raw key              |
-| `key_prefix`   | TEXT    | NOT NULL                            | First 8 chars for display       |
-| `created_at`   | TEXT    | NOT NULL DEFAULT datetime('now')    |                                 |
-| `last_used_at` | TEXT    | NULL                                | Updated on each successful auth |
-
----
-
-### `projects`
-
-| Column        | Type    | Constraints                      | Notes                                                     |
-| ------------- | ------- | -------------------------------- | --------------------------------------------------------- |
-| `id`          | INTEGER | PK AUTOINCREMENT                 |                                                           |
-| `name`        | TEXT    | NOT NULL                         |                                                           |
-| `key`         | TEXT    | NOT NULL UNIQUE DEFAULT ''       | Uppercase alphanumeric, 3–10 chars (e.g. `ACME`)         |
-| `description` | TEXT    | NOT NULL DEFAULT ''              |                                                           |
-| `status`      | TEXT    | NOT NULL DEFAULT 'active'        | `active` / `archived` / `deleted` — enforced in app logic |
-| `created_at`  | TEXT    | NOT NULL DEFAULT datetime('now') |                                                           |
-| `updated_at`  | TEXT    | NOT NULL DEFAULT datetime('now') |                                                           |
-
-**Status semantics:**
-
-- `active` — normal, visible in project lists
-- `archived` — intentionally closed, still visible with badge
-- `deleted` — hidden from all UI, restorable via `UPDATE projects SET status='active'`
-
----
-
-### `issues`
-
-| Column                | Type    | Constraints                            | Notes                                          |
-| --------------------- | ------- | -------------------------------------- | ---------------------------------------------- |
-| `id`                  | INTEGER | PK AUTOINCREMENT                       |                                                |
-| `project_id`          | INTEGER | NOT NULL FK→projects ON DELETE CASCADE |                                                |
-| `issue_number`        | INTEGER | NOT NULL DEFAULT 0                     | Scoped per-project; forms the issue key        |
-| `type`                | TEXT    | NOT NULL DEFAULT 'ticket'              | `epic` / `ticket` / `task`                     |
-| `parent_id`           | INTEGER | FK→issues ON DELETE SET NULL NULL      | Self-referential hierarchy                     |
-| `title`               | TEXT    | NOT NULL                               |                                                |
-| `description`         | TEXT    | NOT NULL DEFAULT ''                    |                                                |
-| `acceptance_criteria` | TEXT    | NOT NULL DEFAULT ''                    |                                                |
-| `notes`               | TEXT    | NOT NULL DEFAULT ''                    |                                                |
-| `status`              | TEXT    | NOT NULL DEFAULT 'open' CHECK(...)     | `open` / `in-progress` / `done` / `closed`     |
-| `priority`            | TEXT    | NOT NULL DEFAULT 'medium' CHECK(...)   | `low` / `medium` / `high`                      |
-| `cost_unit`           | TEXT    | NOT NULL DEFAULT ''                    | Free-text cost/billing category                |
-| `release`             | TEXT    | NOT NULL DEFAULT ''                    | Free-text release tag                          |
-| `depends_on`          | TEXT    | NOT NULL DEFAULT ''                    | Free-text issue-key list e.g. `ACME-1, ACME-3` |
-| `impacts`             | TEXT    | NOT NULL DEFAULT ''                    | Free-text issue-key list                       |
-| `assignee_id`         | INTEGER | FK→users ON DELETE SET NULL NULL       |                                                |
-| `created_at`          | TEXT    | NOT NULL DEFAULT datetime('now')       |                                                |
-| `updated_at`          | TEXT    | NOT NULL DEFAULT datetime('now')       |                                                |
-
-**Computed field (not in DB):**
-
-- `issue_key` — `project.key + "-" + issue_number` assembled in Go at query time
-
-**Hierarchy rules (enforced in application logic):**
-
-```
-epic    → can have no parent
-ticket  → parent must be an epic (or null for orphan tickets)
-task    → parent must be a ticket (or null for orphan tasks)
-```
-
-**Indexes:**
-
-- `idx_issues_project` on `(project_id)`
-- `idx_issues_project_number` UNIQUE on `(project_id, issue_number)`
-- `idx_issues_parent` on `(parent_id)`
-- `idx_issues_type` on `(type)`
-- `idx_issues_costunit` on `(cost_unit)`
-- `idx_issues_release` on `(release)`
-
----
-
-### `issue_history`
-
-| Column       | Type    | Constraints                          | Notes                           |
-| ------------ | ------- | ------------------------------------ | ------------------------------- |
-| `id`         | INTEGER | PK AUTOINCREMENT                     |                                 |
-| `issue_id`   | INTEGER | NOT NULL FK→issues ON DELETE CASCADE |                                 |
-| `changed_by` | INTEGER | FK→users ON DELETE SET NULL NULL     |                                 |
-| `snapshot`   | TEXT    | NOT NULL                             | Full JSON of issue at save time |
-| `changed_at` | TEXT    | NOT NULL DEFAULT datetime('now')     |                                 |
-
----
-
-### `comments`
-
-| Column       | Type    | Constraints                          | Notes                    |
-| ------------ | ------- | ------------------------------------ | ------------------------ |
-| `id`         | INTEGER | PK AUTOINCREMENT                     |                          |
-| `issue_id`   | INTEGER | NOT NULL FK→issues ON DELETE CASCADE |                          |
-| `author_id`  | INTEGER | FK→users ON DELETE SET NULL NULL     | NULL after user deletion |
-| `body`       | TEXT    | NOT NULL                             |                          |
-| `created_at` | TEXT    | NOT NULL DEFAULT datetime('now')     |                          |
-
----
-
-### `tags`
-
-| Column        | Type    | Constraints                      | Notes                    |
-| ------------- | ------- | -------------------------------- | ------------------------ |
-| `id`          | INTEGER | PK AUTOINCREMENT                 |                          |
-| `name`        | TEXT    | NOT NULL UNIQUE                  |                          |
-| `color`       | TEXT    | NOT NULL DEFAULT 'gray'          | Token from fixed palette |
-| `description` | TEXT    | NOT NULL DEFAULT ''              |                          |
-| `created_at`  | TEXT    | NOT NULL DEFAULT datetime('now') |                          |
-
----
-
-### `issue_tags` (join table)
-
-| Column     | Type    | Constraints                 |
-| ---------- | ------- | --------------------------- |
-| `issue_id` | INTEGER | FK→issues ON DELETE CASCADE |
-| `tag_id`   | INTEGER | FK→tags ON DELETE CASCADE   |
-| PK         |         | `(issue_id, tag_id)`        |
-
----
-
-### `project_tags` (join table)
-
-| Column       | Type    | Constraints                   |
-| ------------ | ------- | ----------------------------- |
-| `project_id` | INTEGER | FK→projects ON DELETE CASCADE |
-| `tag_id`     | INTEGER | FK→tags ON DELETE CASCADE     |
-| PK           |         | `(project_id, tag_id)`        |
-
----
-
-### `integrations`
-
-| Column       | Type    | Constraints                      | Notes                                     |
-| ------------ | ------- | -------------------------------- | ----------------------------------------- |
-| `id`         | INTEGER | PK AUTOINCREMENT                 |                                           |
-| `provider`   | TEXT    | NOT NULL UNIQUE                  | e.g. `jira`                               |
-| `config`     | TEXT    | NOT NULL DEFAULT '{}'            | JSON blob with provider-specific settings |
-| `updated_at` | TEXT    | NOT NULL DEFAULT datetime('now') |                                           |
-
-Current providers: `jira` only. Config keys for Jira: `host`, `email`, `token` (stored plain in JSON — see security gap `ACME-1`).
-
----
-
-### `search_index` (FTS5 virtual table)
-
-| Column        | Type    | Notes                                |
-| ------------- | ------- | ------------------------------------ |
-| `entity_type` | TEXT    | `project` / `issue` / `user` / `tag` |
-| `entity_id`   | INTEGER | UNINDEXED — used for result lookup   |
-| `content`     | TEXT    | Space-joined searchable fields       |
-
-Tokenizer: `porter ascii` (English stemming).  
-Kept in sync with 12 triggers on `projects`, `issues`, `users`, `tags` (`_ai`, `_au`, `_ad` × 4 entities) plus duplicate triggers `_ai2` / `_au2` / `_ad2` on the recreated `projects` table (migration 10).
-
----
-
-## Key Relationships Summary
-
-```
-users ──1──< sessions
-users ──1──< totp_pending
-users ──1──< api_keys
-users ──1──< issues (as assignee)
-users ──1──< issue_history (as changed_by)
-users ──1──< comments (as author)
-
-projects ──1──< issues
-projects ──M──< project_tags >──M── tags
-
-issues ──1──< issues (parent/child self-join)
-issues ──1──< issue_tags >──M── tags
-issues ──1──< issue_history
-issues ──1──< comments
-```
-
----
-
-## Soft Delete Model
-
-Both `users` and `projects` use a three-phase soft delete pattern:
-
-| Phase                                  | `status` value          | Login | Visible in UI | Restorable        |
-| -------------------------------------- | ----------------------- | ----- | ------------- | ----------------- |
-| Normal                                 | `active`                | ✓     | ✓             | —                 |
-| Disabled (users) / Archived (projects) | `inactive` / `archived` | ✗ / — | admin view    | ✓ one click       |
-| Soft-deleted                           | `deleted`               | ✗     | hidden        | ✓ DB command only |
-
-DB restore commands:
+Replaces the current `parent_id` for group→ticket links **and** the free-text `depends_on`/`impacts` fields.
 
 ```sql
--- restore a user
-UPDATE users SET status='active' WHERE username = 'alice';
-
--- restore a project
-UPDATE projects SET status='active' WHERE key = 'ACME';
+issue_relations (
+    source_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    target_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,
+    PRIMARY KEY (source_id, target_id, type)
+)
 ```
 
-UI restore view is tracked as backlog item `ACME-1`.
+| Relation `type` | `source_id` | `target_id` | Meaning |
+|-----------------|-------------|-------------|---------|
+| `groups` | group (epic/cost_unit/release) | ticket | Ticket belongs to this group |
+| `sprint` | sprint | ticket | Ticket is in this sprint |
+| `depends_on` | any issue | any issue | Source depends on target |
+| `impacts` | any issue | any issue | Source impacts target |
+
+- A ticket can have 0..N group relations of different group types
+- A ticket can be in 0..N sprints (tickets flow between sprints)
+- Dependency/impact links work between any issue types
+- Application logic enforces type constraints where needed
+
+### Strict 1:1 for ticket→task via `parent_id`
+
+Tasks always have exactly one ticket parent. This stays on `issues.parent_id`, unchanged from today.
+
+### Free-text fields that go away
+
+| Field | Replaced by |
+|-------|------------|
+| `cost_unit` (free-text on issues) | Relation to a `cost_unit` group entity via `issue_relations` |
+| `release` (free-text on issues) | Relation to a `release` group entity via `issue_relations` |
+| `depends_on` (free-text on issues) | `issue_relations` with `type = 'depends_on'` |
+| `impacts` (free-text on issues) | `issue_relations` with `type = 'impacts'` |
 
 ---
 
-## Migration History
+## Expanded `type` Values
 
-| Version | Applied    | Summary                                                                                                                                                   |
-| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1       | 2026-03-04 | Base schema: users, sessions, projects, issues                                                                                                            |
-| 2       | 2026-03-04 | projects.key; issues: issue_number, type, parent_id, acceptance_criteria, notes, cost_unit, release; indexes                                              |
-| 3       | 2026-03-04 | tags, issue_tags, project_tags; FTS5 search_index + 12 triggers; backfill                                                                                 |
-| 4       | 2026-03-04 | issues.depends_on, issues.impacts                                                                                                                         |
-| 5       | 2026-03-04 | issue_history table                                                                                                                                       |
-| 6       | 2026-03-04 | users.totp_secret, totp_enabled; totp_pending table                                                                                                       |
-| 7       | 2026-03-05 | api_keys table                                                                                                                                            |
-| 8       | 2026-03-05 | integrations table                                                                                                                                        |
-| 9       | 2026-03-05 | comments table                                                                                                                                            |
-| 10      | 2026-03-06 | users.status (active/inactive/deleted); projects table recreated to remove restrictive CHECK on status, FK disabled during DROP to prevent cascade delete |
+| Type | Level | Description |
+|------|-------|-------------|
+| `epic` | Group | Feature grouping; has billing/budget fields |
+| `cost_unit` | Group | Billing/accounting grouping; has billing/budget fields |
+| `release` | Group | Version/release grouping; has dates and release state |
+| `sprint` | Sprint | Time-boxed iteration; tickets flow in/out between sprints |
+| `ticket` | Ticket | Work item; can belong to multiple groups and sprints |
+| `task` | Task | Sub-item of a ticket; strict single parent |
 
 ---
 
-## Notes for Refactoring
+## New and Changed Fields on `issues`
 
-This section captures known model limitations and areas likely to evolve:
+### Group-level fields (nullable; only meaningful when type is a group type)
 
-- `depends_on` and `impacts` are free-text fields containing issue key references (e.g. `ACME-1, ACME-3`). They are not FK-backed relations — no referential integrity, no cascades, no query performance. If these become first-class features, they should move to a separate `issue_relations` table.
-- `issue_key` is computed at query time in Go (`project.key + "-" + issue_number`). It is not stored in the DB. This means FTS search does not index issue keys directly.
-- `cost_unit` and `release` are free-text; they could be normalized into lookup tables if filtering/reporting grows.
-- `integrations.config` is a raw JSON blob — typed config tables per provider would be cleaner for schema validation.
-- No timestamps on `sessions`, `issue_tags`, `project_tags` — useful for audit if needed.
-- `users.password` and `integrations.config` (Jira token) are stored plain in SQLite — encryption at rest is a known gap (`ACME-1`).
+| Field | Type | Applies to | Notes |
+|-------|------|------------|-------|
+| `billing_type` | TEXT | epic, cost_unit | Enum: `time_and_material`, `fixed_price` |
+| `total_budget` | REAL | epic, cost_unit | Currency amount |
+| `rate_hourly` | REAL | epic, cost_unit | €/h |
+| `rate_package` | REAL | epic, cost_unit | €/P (package rate) |
+| `start_date` | TEXT | release, sprint | ISO date |
+| `end_date` | TEXT | release, sprint | ISO date |
+| `group_state` | TEXT | release | `unreleased` / `released` |
+| `sprint_state` | TEXT | sprint | `planned` / `active` / `complete` |
+| `jira_id` | TEXT | epic, cost_unit, sprint | External Jira ID for mapping |
+| `jira_version` | TEXT | release | External Jira version for mapping |
+
+### Fields that go away
+
+| Field | Replaced by |
+|-------|------------|
+| `cost_unit` (free-text) | Relation to `cost_unit` group entity |
+| `release` (free-text) | Relation to `release` group entity |
+| `depends_on` (free-text) | `issue_relations` with `type = 'depends_on'` |
+| `impacts` (free-text) | `issue_relations` with `type = 'impacts'` |
+
+### Fields that stay unchanged
+
+title, description, acceptance_criteria, notes, priority, assignee_id, created_at, updated_at, issue_number/issue_key.
+
+### Soft-delete (`deleted_at` / `deleted_by`) — added in v1.1.2
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `deleted_at` | TEXT NULL | ISO timestamp. `NULL` = live, non-NULL = in the Trash. |
+| `deleted_by` | INTEGER NULL | `users.id` of whoever moved the row to Trash (plain integer, no FK — stale id after a user purge is acceptable; shown for display only). |
+
+Index: `idx_issues_deleted_at` on `deleted_at`.
+
+**Semantics:**
+- `DELETE /api/issues/{id}` stamps `deleted_at` + `deleted_by` and cascades the stamp to every descendant reachable via `parent_id` (so tasks under a trashed ticket disappear alongside the ticket).
+- `issue_relations` rows are **not** touched on soft-delete — a trashed ticket keeps its `groups` / `sprint` / `depends_on` / `impacts` links, so restoring re-attaches automatically.
+- Every user-facing list / search / tree / report query filters `deleted_at IS NULL`. Trashed rows only appear via `GET /api/issues/trash` (admin-only).
+- `POST /api/issues/{id}/restore` clears `deleted_at` on that row alone — cascaded children stay trashed (restore is deliberately explicit).
+- `DELETE /api/issues/{id}/purge` hard-deletes a trashed row (and its cascade-bound rows: comments, history, tags, time_entries, attachments, issue_relations). Only works when already trashed, so the UI flow is always two-step.
+
+### `parent_id` behavior change
+
+| Relationship | Before (v1) | After (v2) |
+|-------------|-------------|-------------|
+| epic → ticket | `parent_id` | `issue_relations` (type=groups, M:N) |
+| cost_unit → ticket | free-text string | `issue_relations` (type=groups, M:N) |
+| release → ticket | free-text string | `issue_relations` (type=groups, M:N) |
+| sprint → ticket | n/a | `issue_relations` (type=sprint, M:N) |
+| ticket → task | `parent_id` | `parent_id` (unchanged, strict 1:1) |
+| depends_on | free-text issue keys | `issue_relations` (type=depends_on) |
+| impacts | free-text issue keys | `issue_relations` (type=impacts) |
+
+`parent_id` remains on `issues` but is now only used for the task→ticket relationship.
+
+---
+
+## Unified Status Model
+
+All issue types share one status enum. The enum grew beyond the
+original v2-rename plan to cover the full **billing lifecycle** needed
+by cost-unit / release reporting. Current CHECK constraint (source of
+truth: `backend/db/db.go`):
+
+```
+CHECK(status IN (
+    'new','backlog','in-progress','qa','done',
+    'delivered','accepted','invoiced','cancelled'
+))
+```
+
+| Status         | Meaning                                                    |
+| -------------- | ---------------------------------------------------------- |
+| `new`          | Just created; not yet triaged.                             |
+| `backlog`      | Triaged, not yet started. (renamed from v1 `open`)         |
+| `in-progress`  | Actively being worked.                                     |
+| `qa`           | Work done; under review / quality check.                   |
+| `done`         | QA passed; ready for delivery. (renamed from v1 `done`)    |
+| `delivered`    | Shipped to customer / stakeholder.                         |
+| `accepted`     | Customer / PO has signed off.                              |
+| `invoiced`     | Billed to customer (final lifecycle state).                |
+| `cancelled`    | Will not be done. (renamed from v1 `closed`; note double-L)|
+
+Migration history: v1→v2 renamed `open→backlog`, `done→complete`,
+`closed→canceled`; a later migration expanded the enum, renamed
+`complete→done`, and switched `canceled→cancelled` (double-L) to match
+the UK spelling used elsewhere.
+
+Additional type-specific states live in separate fields, not in `status`:
+- `group_state` on releases: `unreleased` / `released`
+- `sprint_state` on sprints: `planned` / `active` / `complete`
+
+---
+
+## Project Fields (additions)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `product_owner` | INTEGER NULL | FK→users — project lead |
+| `customer_id` | TEXT | External customer reference |
+
+---
+
+## New Table: `time_entries`
+
+Ticket-level time tracking. Per user, start/stop based.
+
+```sql
+time_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    started_at  TEXT NOT NULL,
+    stopped_at  TEXT NULL,           -- NULL = timer currently running
+    override    REAL NULL,           -- manual override in hours
+    comment     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+)
+```
+
+- Only tracks time on issues of type ticket/task (not groups)
+- A running timer has `stopped_at = NULL`
+- `override` allows manual correction without deleting the entry
+- `internal_rate_hourly` (REAL, nullable) added in a later migration for per-entry internal rate snapshots
+- **Shipped in v1.0.0.** API surface under `/api/time-entries` and `/api/issues/{id}/time-entries`
+
+---
+
+## Frontend View Model
+
+Same tickets, multiple views:
+
+```
+Project Detail View
+  ├── [Tab: Epics]       → tickets grouped by epic relations
+  ├── [Tab: Cost Units]  → tickets grouped by cost_unit relations
+  ├── [Tab: Releases]    → tickets grouped by release relations
+  ├── [Tab: Sprints]     → tickets grouped by sprint relations (deferred)
+  └── [Tab: All Tickets] → flat/filtered list (existing behavior)
+```
+
+Each tab shows the same ticket pool from a different organizational perspective. A ticket with no group relations appears as "ungrouped" in each view.
+
+---
+
+## Migration Strategy (high-level)
+
+1. **Before anything**: create a tagged backup on live (`pre-v2-migration`)
+2. Add new nullable columns to `issues` (group-level fields, sprint fields) — additive, safe
+3. Create `issue_relations` table — new table, safe
+4. Migrate existing `parent_id` epic→ticket relationships into `issue_relations` (type=groups) — data migration
+5. Migrate existing free-text `cost_unit` values: create group entities of type `cost_unit`, then insert relations — data migration
+6. Migrate existing free-text `release` values: create group entities of type `release`, then insert relations — data migration
+7. Migrate existing free-text `depends_on`/`impacts` values: parse issue keys, resolve IDs, insert relations — data migration
+8. Add `product_owner` (FK→users) and `customer_id` to `projects` — additive, safe
+9. Align status values: `UPDATE issues SET status='backlog' WHERE status='open'` etc. — data migration
+10. Deprecate old free-text columns (leave in DB, stop using in code) — or drop later
+11. Create `time_entries` table — new table, safe, deferred
+
+**Critical**: steps 4–7 and 9 are data migrations that transform existing live data. Each should be tested locally against a copy of the live DB before deploying.
+
+---
+
+## Implementation Priority
+
+| Phase | What | Risk |
+|-------|------|------|
+| 1 | `issue_relations` table + group-level columns + status rename | Medium — data migration of existing relationships |
+| 2 | Frontend views: epic/cost_unit/release tabs | Low — additive UI |
+| 3 | Sprint type + sprint view | Low — additive |
+| 4 | `time_entries` table + tracking UI | Low — new table, no migration |
+
+---
+
+## Open Questions (remaining)
+
+- Search index — do group-level fields (budget, rates) need to be FTS-searchable? **Deferred.**
+- Sprint Jira fields — **resolved**: keep both `jira_id` (numeric Jira ID) and `jira_text` (Jira text key) as separate columns on sprint issues. Reason: both may be needed during import for reliable mapping.
+
+---
+
+## Permission Model (v1.1.1)
+
+PAIMOS uses a **two-layer** permission model:
+
+1. **Role** (on `users.role`) — `admin` / `member` / `external`.
+2. **Per-project access level** (on `project_members.access_level`) —
+   `none` / `viewer` / `editor`.
+
+| Level    | Read | Write | Notes                                               |
+| -------- | ---- | ----- | --------------------------------------------------- |
+| `none`   | no   | no    | Explicit denial; overrides the member default.      |
+| `viewer` | yes  | no    | Read-only access to the project and its issues.    |
+| `editor` | yes  | yes   | Full read + write within the project.              |
+
+**Role defaults** when no `project_members` row exists:
+- **admin** — always bypasses per-project checks (effectively editor everywhere).
+- **member** — default `editor` on every non-deleted project.
+- **external** — default `none`; must be granted explicitly.
+
+**Auto-seeding:**
+- `CreateUser` (admin/member) seeds `editor` rows for every non-deleted project.
+- `CreateProject` seeds `editor` rows for every active admin/member.
+- Migration 64 backfilled existing portal grants as `viewer` and seeded
+  admin/member editors on pre-existing projects.
+
+**Access audit** (`access_audit` table) logs grant / update / revoke
+events with actor, old level, new level, and timestamp. Admin-only
+read via `GET /api/access-audit`.
+
+**Backend enforcement** — see `backend/auth/middleware_project.go` and
+`backend/auth/access.go`:
+- `RequireProjectView` / `RequireProjectEdit`
+- `RequireIssueAccess` / `RequireIssueEdit`
+- `RequireAttachmentAccess` / `RequireAttachmentEdit`
+- `RequireTimeEntryAccess` / `RequireTimeEntryEdit`
+- `RequireCommentAccess` / `RequireCommentEdit`
+- Admin-only routes (project CRUD, user CRUD, etc.) use `auth.RequireAdmin`.
+
+Response convention: **404** on no-view access (no existence oracle),
+**403** on view-only-when-edit-required.
+
+**Frontend:** `/auth/login`, `/auth/me`, `/auth/totp/verify` return
+`{ user, access }`. The Pinia store exposes `canView(pid)` / `canEdit(pid)`
+plus a hydrated `accessibleProjects` map. Router per-project guarding
+via `meta.projectIdParam`.
+
+See `docs/DEVELOPER_GUIDE.md` section 4a for the implementation walkthrough.
+
+---
+
+## Related
+
+- Legacy v0.3.5 schema snapshot: `docs/archive/DATA_MODEL.md`
+- Implementation guide: `docs/DEVELOPER_GUIDE.md`
