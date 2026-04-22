@@ -83,28 +83,44 @@ changes.
 
 ### Readings (what actually appears on the website)
 
-PAIMOS ships with **two co-equal readings** in Phase 1. Both are valid,
-both are documented, and the audience picks whichever fits them. Neither
-is primary.
+PAIMOS ships with **three co-equal readings** in Phase 1. All three
+share the same fixed anchors (`P · P · P` + `AI`) and differ only in
+how the `M · O · S` slots resolve. Each one lands with a different
+audience; none is primary. The homepage animates through all three
+and rests on reading 1 (the default).
 
-**Today's reading — *for developers, FOSS users, the default*:**
+**1. FOSS reading — *the default; for developers, FOSS users, solo builders*:**
 > **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anagement
-> / **O**nline **S**ystem
+> / **O**nline and **O**pen **S**ource
 
-**Services reading — *for teams where agents ship alongside humans*:**
+This is the brand's prescribed homepage claim, with `O` doing
+double-duty (online + open) and `S` resolving to Source. What SEO,
+social cards, noscript, and first paint show.
+
+**2. Services reading — *for teams where agents ship alongside humans*:**
 > **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anaged
 > / **O**nline **S**ervices
 
-Same name, same mark, same AI-first commitment — two entry narratives.
-One lands with engineers who want a FOSS tool for their boards; the
-other lands with engineering leads at companies who think in services
-and managed capabilities. The About page shows both side by side with
-equal visual weight.
+Lands with engineering leads and teams thinking in managed capabilities
+and service boundaries.
 
-### A potential third reading (Phase 2)
+**3. System reading — *for broader / serious-org audiences*:**
+> **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anaged
+> / **O**nline **S**ystem
 
-If platform features materialize (plugins, agent orchestration, public
-API, marketplace), a third reading becomes defensible:
+Neutral framing that fits serious production use (the AVL-scale segment
+covered in §*Enterprise-ready, not enterprise-framed*) without losing
+the solo-dev audience. The closest we come to "enterprise-grade" without
+using the word.
+
+Same name, same mark, same AI-first commitment — three entry narratives.
+The About page shows all three side by side with equal visual weight.
+
+### The reserved Platform reading (Phase 2)
+
+One further reading is deliberately **held back** until platform
+features materialize (plugins, agent orchestration, public API,
+marketplace):
 
 **Platform reading — *for teams building on top of PAIMOS*:**
 > **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anagement
@@ -120,7 +136,8 @@ until the product earns it. Trigger criteria (at least two must hold):
 - A marketplace or template store is live
 
 Until then: the Platform reading stays documented internally (here) but
-is **not shown on the website**. Today's + Services reading are enough.
+is **not shown on the website**. The three Phase 1 readings above are
+enough.
 
 ---
 
@@ -281,19 +298,23 @@ went too far.
 
 ### Which reading to lead with
 
-The two readings (Today's / Services) are co-equal on the About page,
-but in conversation, pitch, or copy outside of that page, pick
-deliberately:
+The three readings (FOSS / Services / System) are co-equal on the
+About page, but in conversation, pitch, or copy outside of that page,
+pick deliberately:
 
-- **Talking to developers, solo devs, FOSS folks:** lead with
-  **Today's reading**. Language: *system, tool, self-hosted,
-  FOSS, board, CLI.*
-- **Talking to engineering leads, CTOs, companies adopting agentic
+- **Talking to developers, solo devs, FOSS folks:** lead with the
+  **FOSS reading**. Language: *system, tool, self-hosted, open source,
+  board, CLI.*
+- **Talking to engineering leads, CTOs, teams adopting agentic
   engineering:** lead with the **Services reading**. Language:
-  *managed, services, capabilities, orchestration, platform.*
+  *managed, services, capabilities, orchestration.*
+- **Talking to serious / larger orgs (AVL-scale and up) where
+  enterprise-readiness matters without being the frame:** lead with
+  the **System reading**. Language: *system, production, self-hosted,
+  SSO, audit, air-gap* — kept matter-of-fact, not marketed.
 
-Same product. Same mark. Different first sentence. The other reading
-is always one click away on the About page, so no audience feels
+Same product. Same mark. Different first sentence. The other readings
+are always one click away on the About page, so no audience feels
 excluded — they just encounter the framing that speaks to them first.
 
 ### Tone
@@ -326,19 +347,36 @@ excluded — they just encounter the framing that speaks to them first.
 - Show the triple-P resolution **once** prominently (About page) and
   let it rest otherwise. Easter eggs lose their charm if explained on
   every page
-- On the About page, present Today's reading and Services reading
-  **side by side with equal visual weight** — neither is primary
-- Visually highlight what both readings share (`P · P · P` and `AI`)
+- On the About page, present all three Phase 1 readings (FOSS / Services
+  / System) **side by side with equal visual weight** — none is primary
+- Visually highlight what all readings share (`P · P · P` and `AI`)
   and let only the `M · O · S` slots differ in emphasis — the
   slot-based structure should be visible without needing explanation
-- Homepage claim: *"Professional and personal AI project management, online and open source."* — acronym-complete (P · P · P · AI · M · O · S with `O` carrying both "online" and "open" and `S` resolving to  "source"), avoids the "OS" landmine, and puts the FOSS commitment in the first sentence. Rendered on the site with the first word animating through P-P-P permutations (Professional ↔ Personal ↔ Project) to  echo the Triple-P mark.
+- Homepage claim defaults to the **FOSS reading**: *"Professional and
+  personal AI project management, online and open source."* —
+  acronym-complete (P · P · P · AI · M · O · S with `O` carrying both
+  "online" and "open" and `S` resolving to "source"), avoids the "OS"
+  landmine, and puts the FOSS commitment in the first sentence
+- Homepage **animation** is two-stage, echoing the "fixed anchors,
+  flexible slots" rule:
+  1. *Stage A (fixed anchor):* the first word drops in as a P-P-P
+     rotator — Project ↔ Professional ↔ Personal — matching the three
+     strokes of the mark
+  2. *Stage B (flexible slots):* once the P-word lands, the tail sweeps
+     left-to-right through the three readings and settles on the FOSS
+     reading at rest
+  Finite, not perpetual — cycle through each reading 1–2 times and
+  stop. Respect `prefers-reduced-motion`: static FOSS reading only.
+  Noscript and first paint always show the FOSS reading
 - Use the three strokes as icon / favicon / avatar from day one. It's
   the strongest visual asset
 - Put `mark.svg` prominently in the README header
 - When talking to engineering teams, lead with the **agentic
   engineering** angle and the **Services reading**
 - When talking to solo devs, lead with the **FOSS + no enterprise
-  bloat** angle and **Today's reading**
+  bloat** angle and the **FOSS reading**
+- When talking to serious / larger orgs, lead with the **System reading**
+  and let enterprise-readiness show up as capability, not identity
 
 ### Don't
 
@@ -409,9 +447,9 @@ opposition proceedings.
 
 | Phase | Readings shown on website | Claim | Brand color | Trademark |
 |---|---|---|---|---|
-| **1 — FOSS** | Today's + Services (co-equal) | *Professional and personal AI project management, online and open source.* | monochrome | none |
-| **2 — Platform** | Today's + Services + Platform (Operating System earned) | *The OS for how you ship work* (or similar) | 1 primary color | DE word mark, classes 9+42 |
-| **3 — Commercial** | Today's + Services + Platform | (product-specific) | full system | EU Union mark |
+| **1 — FOSS** | FOSS + Services + System (co-equal, homepage cycles) | *Professional and personal AI project management, online and open source.* | monochrome | none |
+| **2 — Platform** | + Platform reading (Operating System earned) | *The OS for how you ship work* (or similar) | 1 primary color | DE word mark, classes 9+42 |
+| **3 — Commercial** | all four readings | (product-specific) | full system | EU Union mark |
 
 Every transition is **additive**, not destructive: the logo stays, the
 domain stays, the name stays, existing readings stay. New readings are
