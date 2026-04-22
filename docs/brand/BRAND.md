@@ -166,8 +166,8 @@ opacity, creating a crescendo into the letterforms:
 
 | Element | Opacity |
 |---|---|
-| Stroke 1 (leftmost) | `0.35` |
-| Stroke 2 (middle) | `0.60` |
+| Stroke 1 (leftmost) | `0.40` |
+| Stroke 2 (middle) | `0.70` |
 | Stroke 3 (the `P` itself) + `AIMOS` | `1.00` |
 
 The effect: the three P's are visibly *ranked in presence* — the eye
@@ -205,12 +205,18 @@ wordmark setup.
 ### Typography
 
 Wordmark: a geometric sans with balanced stroke weights, so the drawn `P`
-construction doesn't feel foreign next to `AIMOS`. Strong candidates:
-**Inter**, **Söhne**, **Neue Haas Grotesk**, **Geist**. Avoid fluid serifs
-or typewriter-flavored grotesques.
+construction doesn't feel foreign next to `AIMOS`. Avoid fluid serifs or
+typewriter-flavored grotesques.
 
-Body text on the website and in the product: **Inter** is plenty — free,
-widely licensed, renders cleanly across platforms.
+| Face | Status | Note |
+|---|---|---|
+| **Geist** | ✅ selected | Used on the website and in the product. Free, open, pairs with `Geist Mono` for code/labels. |
+| Inter | rejected | Excellent typeface, but Geist's slightly warmer `P` bowl reads better next to the drawn strokes. |
+| Söhne | rejected | Commercial license; rules it out for a FOSS project. |
+| Neue Haas Grotesk | rejected | Commercial license; same reason. |
+
+Body text on the website and in the product: **Geist** for prose,
+**Geist Mono** for labels, code, and the `meta` / `mono` strip.
 
 ---
 
@@ -250,6 +256,29 @@ whose existing PM tool can't represent what the agents are doing. For
 those teams PAIMOS isn't competing with Jira; it's solving a problem
 Jira was never designed to solve.
 
+### Enterprise-ready, not enterprise-framed
+
+Some early users are serious engineering organisations (AVL-scale and
+comparable) who expect enterprise-grade substrate: SSO, RBAC, audit
+logs, air-gap deployment, self-hosting. PAIMOS has those and will keep
+them — we don't turn those teams away.
+
+But **enterprise is a capability, not the identity.** The pitch stays
+dev-native and agentic-engineering first. Enterprise-readiness shows up
+as a reassurance (a "*enterprise grade*" capability badge, an SSO line
+in the docs), not as the product frame. Concretely:
+
+- **Do:** list SSO/RBAC/audit/air-gap as capabilities; accept that
+  serious orgs will run PAIMOS in production.
+- **Don't:** lead with "Enterprise Solution"; build a dedicated
+  enterprise vertical; gate features behind a commercial tier while
+  Phase 1 is active.
+
+The test: a dev on a weekend project and a platform lead at a 5k-engineer
+company should both feel this tool was built for them. The moment
+enterprise framing makes the weekend-project dev feel out of place, we
+went too far.
+
 ### Which reading to lead with
 
 The two readings (Today's / Services) are co-equal on the About page,
@@ -279,7 +308,9 @@ excluded — they just encounter the framing that speaks to them first.
 
 ### What PAIMOS does **not** want to be
 
-- Not an "enterprise-grade project portfolio management solution"
+- Not positioned as an "enterprise-grade project portfolio management
+  solution" (the substrate supports serious orgs — see *Enterprise-ready,
+  not enterprise-framed*)
 - Not a clone of Jira, Asana, or Monday
 - Not a pure AI tool that falls apart without the LLMs
 - Not a desktop-only tool
