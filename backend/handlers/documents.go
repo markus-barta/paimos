@@ -284,6 +284,19 @@ func UpdateDocument(w http.ResponseWriter, r *http.Request) {
 
 // ── Download ─────────────────────────────────────────────────────────
 
+// DownloadDocument streams a document by id. PAI-111: must enforce
+// scope-aware access — historically the route only checked authentication,
+// which let any internal user enumerate ids and download any file. The
+// scope rules below match the routes used to list/upload:
+//
+//   - project-scoped: the user must have project view access.
+//   - customer-scoped: admins only OR the user can view at least one
+//     non-deleted project that belongs to this customer (the same access
+//     surface a member would have when working that engagement).
+//
+// 404 — never 403 — when access is denied, to match the project
+// middleware convention and avoid leaking document existence to
+// unauthorized users via id enumeration.
 func DownloadDocument(w http.ResponseWriter, r *http.Request) {
 	if !storage.Enabled() {
 		jsonError(w, "file storage not configured", http.StatusServiceUnavailable)
@@ -296,6 +309,10 @@ func DownloadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	d := getDocumentByID(id)
 	if d == nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !canAccessDocument(r, d) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -339,6 +356,46 @@ func DeleteDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
+
+// canAccessDocument enforces the PAI-111 scope-aware read check used by
+// DownloadDocument and the customer/project list endpoints. Admins always
+// pass. Project-scoped docs require project view access. Customer-scoped
+// docs require view access to at least one non-deleted project belonging
+// to that customer — the same engagement surface a member would already
+// see in the projects list.
+func canAccessDocument(r *http.Request, d *models.Document) bool {
+	user := auth.GetUser(r)
+	if user == nil || user.Status != "active" {
+		return false
+	}
+	if user.Role == "admin" {
+		return true
+	}
+	if d.Scope == "project" && d.ProjectID != nil {
+		return auth.CanViewProject(r, *d.ProjectID)
+	}
+	if d.Scope == "customer" && d.CustomerID != nil {
+		rows, err := db.DB.Query(
+			"SELECT id FROM projects WHERE customer_id=? AND status != 'deleted'",
+			*d.CustomerID,
+		)
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var pid int64
+			if err := rows.Scan(&pid); err != nil {
+				continue
+			}
+			if auth.CanViewProject(r, pid) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
 
 func getDocumentByID(id int64) *models.Document {
 	var d models.Document
