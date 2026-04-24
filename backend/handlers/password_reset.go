@@ -101,17 +101,27 @@ func hashResetToken(raw string) string {
 // ── SMTP sending ──────────────────────────────────────────────────────────
 
 // sendResetEmail either delivers the reset link via SMTP or, when SMTP is
-// unconfigured, logs the full link to stdout so the developer can grab
-// it from container logs during local/staging testing. Returns an error
-// only if the SMTP call itself failed — a missing SMTP config is not an
-// error, it's just dev mode.
+// explicitly running in local-dev mode (PAIMOS_DEV_MODE=true), logs the
+// full link to stdout so a developer can grab it from container output.
+//
+// PAI-115: previously the no-SMTP branch logged the raw link unconditionally.
+// That meant any shared staging or accidental production misconfiguration
+// dropped working magic links into application logs. The dev-only opt-in
+// closes that gap; in any other unconfigured-SMTP scenario we now refuse
+// to send and surface an error so operators notice the issue immediately
+// instead of silently routing reset links into log aggregators.
 func sendResetEmail(toEmail, link string) error {
 	host := os.Getenv("SMTP_HOST")
 	if host == "" {
-		// Dev/staging mode — no SMTP configured. Log the link so a
-		// developer can complete the flow by reading container output.
-		log.Printf("[password-reset] SMTP_HOST unset — reset link for %s: %s", toEmail, link)
-		return nil
+		if os.Getenv("PAIMOS_DEV_MODE") == "true" {
+			log.Printf("[password-reset] PAIMOS_DEV_MODE=true — reset link for %s: %s", toEmail, link)
+			return nil
+		}
+		// SMTP missing AND not in explicit dev mode. Don't log the link;
+		// surface the misconfiguration so the operator notices instead
+		// of leaking secrets into shared logs.
+		log.Printf("[password-reset] SMTP_HOST unset and PAIMOS_DEV_MODE not set — refusing to send reset link for %s", toEmail)
+		return fmt.Errorf("SMTP not configured")
 	}
 
 	port := os.Getenv("SMTP_PORT")

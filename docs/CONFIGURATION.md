@@ -39,16 +39,23 @@ All are optional; defaults produce "PAIMOS" out of the box.
 
 ## Email (SMTP — optional)
 
-When `SMTP_HOST` is unset, password-reset emails are logged to stdout
-instead of sent. This is the default dev-mode behavior and is safe for
-running PAIMOS without any email infrastructure.
+PAIMOS only sends password-reset emails when `SMTP_HOST` is set. With
+SMTP unconfigured the reset endpoint refuses to send and logs a
+misconfiguration warning — your users will see "If an account with
+that email exists, a reset link has been sent" but no link will reach
+them. To run a true local-dev flow without an SMTP server, also set
+`PAIMOS_DEV_MODE=true`; this prints the reset link to stdout so a
+developer can paste it into the browser. Never set `PAIMOS_DEV_MODE`
+in shared staging or production — the link is a one-shot password
+reset and anyone with log access can use it (PAI-115).
 
 | Var | Default | Notes |
 |---|---|---|
-| `SMTP_HOST` | *(unset)* | Unset = dev mode. Set to enable real sending. |
+| `SMTP_HOST` | *(unset)* | Unset = no email sent. Set to enable real sending. |
 | `SMTP_PORT` | `587` | STARTTLS submission port |
 | `SMTP_USER` | *(empty)* | Leave blank for unauthenticated relay |
 | `SMTP_PASS` | *(empty)* | Pair with `SMTP_USER` |
+| `PAIMOS_DEV_MODE` | *(unset)* | When `true` AND `SMTP_HOST` unset, log reset links to stdout. Local dev only. |
 
 ## Attachments (MinIO / S3 — optional)
 
