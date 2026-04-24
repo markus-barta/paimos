@@ -13,6 +13,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fontsource/bricolage-grotesque": "^5.2.10",
+    "@fontsource/dm-sans": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "dompurify": "^3.3.3",
     "lucide-vue-next": "^0.577.0",
     "marked": "^17.0.4",

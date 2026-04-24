@@ -89,15 +89,13 @@ func SecurityHeaders(next http.Handler) http.Handler {
 
 // csp builds the Report-Only policy. A function rather than a const so
 // the report-uri can pick up a runtime base path if the operator deploys
-// behind a non-root prefix.
+// behind a non-root prefix. PAI-118 removed the only known runtime
+// third-party resource (Google Fonts), so the policy is fully self-only.
 func csp() string {
-	// Until PAI-118 lands the third-party Google Fonts request still
-	// happens at runtime, so the policy intentionally allows it. The
-	// report-uri lets us log violations for the rest of the policy.
 	return "default-src 'self'; " +
 		"script-src 'self'; " +
-		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-		"font-src 'self' https://fonts.gstatic.com data:; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"font-src 'self' data:; " +
 		"img-src 'self' data: blob:; " +
 		"connect-src 'self'; " +
 		"frame-ancestors 'self'; " +
