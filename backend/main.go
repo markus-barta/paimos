@@ -341,6 +341,11 @@ func main() {
 			r.With(auth.RequireAdmin).Put("/documents/{id}", handlers.UpdateDocument)
 			r.With(auth.RequireAdmin).Delete("/documents/{id}", handlers.DeleteDocument)
 
+			// Cooperation metadata (PAI-61). Per-project engagement
+			// profile; informational only in v1.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/cooperation", handlers.GetCooperation)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/cooperation", handlers.PutCooperation)
+
 			// Mite import
 			r.With(auth.RequireAdmin).Post("/import/mite", handlers.ImportFromMite)
 			r.With(auth.RequireAdmin).Get("/import/mite/jobs/{id}", handlers.GetMiteImportJobStatus)

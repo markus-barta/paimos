@@ -96,6 +96,26 @@ export interface ExternalProviderConfigField extends ExternalProviderField {
   has_value: boolean
 }
 
+// PAI-61. Per-project cooperation metadata. Informational in v1 — no
+// behavioural effects elsewhere. Structured fields are nullable; the
+// backend's GET endpoint returns zero-value defaults so the UI never
+// has to special-case "no row yet".
+export interface CooperationMetadata {
+  project_id: number
+  engagement_type: 'consultancy' | 'project_delivery' | 'managed_service' | 'retainer' | null
+  code_ownership: 'client_repo' | 'own_repo' | 'mixed' | null
+  env_responsibility: 'dev_staging' | 'dev_staging_prod' | 'full_stack' | null
+  has_sla: boolean
+  uptime_sla: string
+  response_time_sla: string
+  backup_responsible: boolean
+  oncall: boolean
+  sla_details: string
+  cooperation_notes: string
+  created_at?: string
+  updated_at?: string
+}
+
 export interface Attachment {
   id: number
   issue_id: number

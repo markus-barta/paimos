@@ -20,6 +20,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
+import CooperationSection from '@/components/customer/CooperationSection.vue'
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -627,6 +628,14 @@ const lastChanged = computed(() => {
           :can-write="isAdmin && canEditProject"
         />
       </div>
+
+      <!-- PAI-62: cooperation profile (engagement type, SLA, notes). -->
+      <div class="pd-cooperation">
+        <CooperationSection
+          :project-id="projectId"
+          :can-write="isAdmin && canEditProject"
+        />
+      </div>
     <!-- Delete confirm modal -->
     <AppModal title="Delete Project" :open="showDeleteConfirm" @close="showDeleteConfirm=false" confirm-key="d" @confirm="deleteProject">
       <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
@@ -1019,7 +1028,8 @@ textarea { resize: vertical; min-height: 80px; }
   margin-top: .15rem;
 }
 
-.pd-documents {
+.pd-documents,
+.pd-cooperation {
   margin-top: 1.5rem;
 }
 </style>

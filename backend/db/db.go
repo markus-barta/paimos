@@ -3367,6 +3367,39 @@ func migrate(db *sql.DB) error {
 			updated_by            INTEGER REFERENCES users(id)
 		)`,
 	}},
+
+	// M71: per-project cooperation metadata (PAI-61). 1:1 with projects.
+	// Structured columns for the four dimensions PMs reach for repeatedly
+	// (engagement type, code ownership, env responsibility, SLA flags),
+	// plus two markdown freeform fields for the long tail. Informational
+	// only in v1 — no behavioural effects elsewhere.
+	{71, []string{
+		`CREATE TABLE IF NOT EXISTS project_cooperation (
+			id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id          INTEGER NOT NULL UNIQUE
+			                    REFERENCES projects(id) ON DELETE CASCADE,
+			engagement_type     TEXT
+			                    CHECK(engagement_type IN
+			                        ('consultancy','project_delivery','managed_service','retainer')),
+			code_ownership      TEXT
+			                    CHECK(code_ownership IN
+			                        ('client_repo','own_repo','mixed')),
+			env_responsibility  TEXT
+			                    CHECK(env_responsibility IN
+			                        ('dev_staging','dev_staging_prod','full_stack')),
+			has_sla             INTEGER NOT NULL DEFAULT 0,
+			uptime_sla          TEXT NOT NULL DEFAULT '',
+			response_time_sla   TEXT NOT NULL DEFAULT '',
+			backup_responsible  INTEGER NOT NULL DEFAULT 0,
+			oncall              INTEGER NOT NULL DEFAULT 0,
+			sla_details         TEXT NOT NULL DEFAULT '',
+			cooperation_notes   TEXT NOT NULL DEFAULT '',
+			created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_cooperation_project
+		 ON project_cooperation(project_id)`,
+	}},
 	}
 
 	for _, m := range migrations {

@@ -5,6 +5,34 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.5] — 2026-04-24
+
+### Added — cooperation metadata + CRM provider docs (PAI-61 / PAI-62 / PAI-107)
+
+Closes the PAI-28 epic frontend work plus the deferred plugin-layer
+docs.
+
+- **Per-project cooperation metadata** (PAI-61). New
+  `project_cooperation` table (1:1 with projects, M71): structured
+  fields for engagement type, code ownership, environment
+  responsibility, plus an SLA bundle (uptime, response time, backup
+  + on-call flags) and two markdown freeform fields. Two endpoints:
+  `GET /api/projects/:id/cooperation` returns the row or zero-value
+  defaults; `PUT /api/projects/:id/cooperation` upserts (admin-only).
+  CHECK constraints validated server-side; informational in v1, no
+  behavioural effects elsewhere.
+- **Cooperation profile section on project detail** (PAI-62).
+  View/edit toggle; structured fields shown as labelled value pills;
+  SLA section conditional on `has_sla`; freeform fields rendered
+  through the existing `useMarkdown` composable. Empty state shows a
+  "Set up profile" button for admins so first-time use isn't a
+  hidden form.
+- **CRM provider developer docs** (PAI-107). New
+  [`docs/CRM_PROVIDERS.md`](CRM_PROVIDERS.md) — interface
+  walkthrough, copy/paste skeleton, config schema field types, error
+  handling conventions, and a worked Pipedrive example. Linked from
+  `docs/AGENT_INTERFACE.md` and `docs/DEVELOPER_GUIDE.md`.
+
 ## [1.5.4] — 2026-04-24
 
 ### Added — customers + CRM provider UI (PAI-28 frontend; PAI-101 admin)

@@ -9,6 +9,10 @@ For contribution mechanics (DCO, PR flow, review criteria), see
 `paimos` CLI setup, schema discovery, bulk ops, MCP wiring, and
 failure-mode guarantees.
 
+**Adding a CRM sync provider** (HubSpot, Pipedrive, Salesforce, …):
+see [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
+plugin interface and a worked example.
+
 This guide is for people who want to understand, extend, or debug
 PAIMOS's internals.
 

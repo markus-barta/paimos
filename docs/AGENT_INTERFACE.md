@@ -10,6 +10,10 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 Most day-to-day agent work should go through the CLI.
 
+> **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
+> See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
+> plugin interface — `crm.Provider` + the registry — and a worked example.
+
 ---
 
 ## 1. Get set up
