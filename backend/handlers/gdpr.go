@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,8 +138,8 @@ func runRetentionSweep() {
 // own expires_at column without a parameter, the rest take "-N days".
 func sweepOlderThan(label, sqlText string, days int) {
 	var args []any
-	if hasParam := containsRune(sqlText, '?'); hasParam {
-		args = []any{negDays(days)}
+	if strings.Contains(sqlText, "?") {
+		args = []any{"-" + strconv.Itoa(days) + " days"}
 	}
 	res, err := db.DB.Exec(sqlText, args...)
 	if err != nil {
@@ -148,19 +149,6 @@ func sweepOlderThan(label, sqlText string, days int) {
 	if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("retention: %s removed %d rows", label, n)
 	}
-}
-
-func containsRune(s string, r rune) bool {
-	for _, c := range s {
-		if c == r {
-			return true
-		}
-	}
-	return false
-}
-
-func negDays(n int) string {
-	return "-" + strconv.Itoa(n) + " days"
 }
 
 // ── HTTP surface ─────────────────────────────────────────────────────
@@ -272,6 +260,9 @@ func EraseSubject(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := tx.Exec(`DELETE FROM password_reset_tokens WHERE user_id=?`, id); err != nil {
 		log.Printf("EraseSubject: delete reset tokens: %v", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM totp_pending WHERE user_id=?`, id); err != nil {
+		log.Printf("EraseSubject: delete totp_pending: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
 		jsonError(w, "commit failed", http.StatusInternalServerError)

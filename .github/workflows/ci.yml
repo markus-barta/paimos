@@ -105,10 +105,12 @@ jobs:
       # real release is being cut.
       - name: SBOM — Go (cyclonedx-gomod)
         if: github.ref_type == 'tag'
-        uses: CycloneDX/gh-gomod-generate-sbom@v2
-        with:
-          version: v1
-          args: app -licenses -json -output backend.sbom.json -main backend
+        working-directory: backend
+        run: |
+          # Run via `go run` so we don't depend on a third-party
+          # GitHub Action; matches what scripts/sbom.sh does locally.
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest \
+            app -licenses -json -output ../backend.sbom.json -main .
       - name: SBOM — npm (cyclonedx-npm)
         if: github.ref_type == 'tag'
         working-directory: frontend
