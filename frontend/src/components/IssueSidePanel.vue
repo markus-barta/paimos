@@ -27,7 +27,13 @@ import { formatDuration } from '@/composables/useDurationInput'
 import { useConfirm } from '@/composables/useConfirm'
 import { useIssueContext } from '@/composables/useIssueContext'
 import { useAttachmentUploads } from '@/composables/useAttachmentUploads'
-import { LS_SIDEBAR_WIDTH as LS_WIDTH_KEY } from '@/constants/storage'
+import {
+  useSidePanelWidth,
+  resetSidePanelWidth,
+  SIDE_PANEL_DEFAULT_WIDTH,
+  SIDE_PANEL_MIN_WIDTH,
+  SIDE_PANEL_MAX_WIDTH_RATIO,
+} from '@/composables/useSidePanelWidth'
 
 const ctx = useIssueContext(true)
 
@@ -57,7 +63,6 @@ const emit = defineEmits<{
   deleted: [id: number]
   navigate: [id: number]
   'update:pinned': [pinned: boolean]
-  'resize': [width: number]
 }>()
 
 const router = useRouter()
@@ -325,28 +330,30 @@ const typeIcon = computed(() => {
 })
 
 // ── Resizable sidebar ────────────────────────────────────────────────────────
-const DEFAULT_WIDTH = 520
-const MIN_WIDTH = 300
-const MAX_WIDTH_RATIO = 0.6
-
-const sidebarWidth = ref(parseInt(localStorage.getItem(LS_WIDTH_KEY) || String(DEFAULT_WIDTH), 10))
+// `width` is the committed (persisted, layout-affecting) value shared with
+// IssueList via useSidePanelWidth. During an active drag we use a local
+// `draftWidth` for smooth visual feedback so the IssueList offset doesn't
+// reflow on every mousemove — the new value lands in `width` only at drag-end.
+const { width } = useSidePanelWidth()
+const draftWidth = ref(width.value)
 const resizing = ref(false)
+
+watch(width, v => { if (!resizing.value) draftWidth.value = v })
 
 function onResizeStart(e: MouseEvent) {
   e.preventDefault()
   resizing.value = true
   const startX = e.clientX
-  const startW = sidebarWidth.value
-  const maxW = Math.round(window.innerWidth * MAX_WIDTH_RATIO)
+  const startW = draftWidth.value
+  const maxW = Math.round(window.innerWidth * SIDE_PANEL_MAX_WIDTH_RATIO)
 
   function onMove(ev: MouseEvent) {
     const delta = startX - ev.clientX // moving left = wider
-    sidebarWidth.value = Math.min(maxW, Math.max(MIN_WIDTH, startW + delta))
+    draftWidth.value = Math.min(maxW, Math.max(SIDE_PANEL_MIN_WIDTH, startW + delta))
   }
   function onUp() {
     resizing.value = false
-    localStorage.setItem(LS_WIDTH_KEY, String(sidebarWidth.value))
-    emit('resize', sidebarWidth.value)
+    width.value = draftWidth.value
     document.removeEventListener('mousemove', onMove)
     document.removeEventListener('mouseup', onUp)
   }
@@ -355,8 +362,8 @@ function onResizeStart(e: MouseEvent) {
 }
 
 function resetWidth() {
-  sidebarWidth.value = DEFAULT_WIDTH
-  localStorage.setItem(LS_WIDTH_KEY, String(DEFAULT_WIDTH))
+  resetSidePanelWidth()
+  draftWidth.value = SIDE_PANEL_DEFAULT_WIDTH
 }
 
 // ── Time entries (view mode) ────────────────────────────────────────────────
@@ -448,7 +455,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 <template>
   <Transition name="sidepanel">
     <aside v-if="issueId" :class="['side-panel', { 'side-panel--pinned': pinned, 'side-panel--resizing': resizing }]"
-      :style="{ width: sidebarWidth + 'px' }">
+      :style="{ width: draftWidth + 'px' }">
       <div v-if="!pinned" class="sp-backdrop"
            @click="guardAction(() => $emit('close'))"
            @wheel.passive="onBackdropWheel" />

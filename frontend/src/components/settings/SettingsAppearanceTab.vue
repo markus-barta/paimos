@@ -5,12 +5,8 @@ import { useSidebarColors, resetSidebarToDefaults } from '@/composables/useSideb
 import { useBranding } from '@/composables/useBranding'
 import { useIssueDisplay, TYPE_SVGS } from '@/composables/useIssueDisplay'
 import { useTableAppearance, resetTableAppearance } from '@/composables/useTableAppearance'
-import {
-  LS_TYPE_COLOR_EPIC,
-  LS_TYPE_COLOR_TICKET,
-  LS_TYPE_COLOR_TASK,
-  LS_ACCRUALS_ACCENT,
-} from '@/constants/storage'
+import { useTypeColors, resetTypeColors } from '@/composables/useTypeColors'
+import { LS_ACCRUALS_ACCENT } from '@/constants/storage'
 
 // ── Issue Display ────────────────────────────────────────────────────────────
 const { _rawIcon: typeIcon, _rawText: typeText } = useIssueDisplay()
@@ -32,33 +28,32 @@ const { branding, switchBranding, selectedFile } = useBranding()
 
 // ── Table Appearance ─────────────────────────────────────────────────────────
 const { showBorders, showStripes, borderColor, stripeColor } = useTableAppearance()
-const tableBorderColor = ref(borderColor.value || branding.value.colors.tableRowBorder)
-const tableStripeColor = ref(stripeColor.value || branding.value.colors.tableRowAlt)
-watch(tableBorderColor, v => { borderColor.value = v; document.documentElement.style.setProperty('--table-row-border', v) })
-watch(tableStripeColor, v => { stripeColor.value = v; document.documentElement.style.setProperty('--table-row-alt', v) })
-function resetTableColors() {
-  resetTableAppearance()
-  tableBorderColor.value = branding.value.colors.tableRowBorder
-  tableStripeColor.value = branding.value.colors.tableRowAlt
-}
+// Picker bindings: show the effective color (override or branding default)
+// when read; write back to the override ref. The composable's watcher handles
+// LS persistence and CSS-var application.
+const tableBorderColor = computed({
+  get: () => borderColor.value || branding.value.colors.tableRowBorder,
+  set: v => { borderColor.value = v },
+})
+const tableStripeColor = computed({
+  get: () => stripeColor.value || branding.value.colors.tableRowAlt,
+  set: v => { stripeColor.value = v },
+})
 
-// Issue type color overrides
-const typeColorEpic = ref(localStorage.getItem(LS_TYPE_COLOR_EPIC) || branding.value.colors.typeEpic)
-const typeColorTicket = ref(localStorage.getItem(LS_TYPE_COLOR_TICKET) || branding.value.colors.typeTicket)
-const typeColorTask = ref(localStorage.getItem(LS_TYPE_COLOR_TASK) || branding.value.colors.typeTask)
-
-watch(typeColorEpic, v => { localStorage.setItem(LS_TYPE_COLOR_EPIC, v); document.documentElement.style.setProperty('--type-epic', v) })
-watch(typeColorTicket, v => { localStorage.setItem(LS_TYPE_COLOR_TICKET, v); document.documentElement.style.setProperty('--type-ticket', v) })
-watch(typeColorTask, v => { localStorage.setItem(LS_TYPE_COLOR_TASK, v); document.documentElement.style.setProperty('--type-task', v) })
-
-function resetTypeColors() {
-  localStorage.removeItem(LS_TYPE_COLOR_EPIC)
-  localStorage.removeItem(LS_TYPE_COLOR_TICKET)
-  localStorage.removeItem(LS_TYPE_COLOR_TASK)
-  typeColorEpic.value = branding.value.colors.typeEpic
-  typeColorTicket.value = branding.value.colors.typeTicket
-  typeColorTask.value = branding.value.colors.typeTask
-}
+// ── Issue type colors ────────────────────────────────────────────────────────
+const { epicOverride, ticketOverride, taskOverride } = useTypeColors()
+const typeColorEpic = computed({
+  get: () => epicOverride.value || branding.value.colors.typeEpic,
+  set: v => { epicOverride.value = v },
+})
+const typeColorTicket = computed({
+  get: () => ticketOverride.value || branding.value.colors.typeTicket,
+  set: v => { ticketOverride.value = v },
+})
+const typeColorTask = computed({
+  get: () => taskOverride.value || branding.value.colors.typeTask,
+  set: v => { taskOverride.value = v },
+})
 
 // ── Reports / Accruals accent ────────────────────────────────────
 const ACCRUALS_DEFAULT = '#006497'
@@ -175,7 +170,7 @@ loadBrandings()
           <label class="color-label">Stripe color</label>
           <div class="color-input-group"><input type="color" v-model="tableStripeColor" class="color-picker" /><code class="icode">{{ tableStripeColor }}</code></div>
         </div>
-        <button class="btn btn-ghost btn-sm" @click="resetTableColors">Reset to defaults</button>
+        <button class="btn btn-ghost btn-sm" @click="resetTableAppearance">Reset to defaults</button>
       </div>
     </div>
   </div>

@@ -5,6 +5,38 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] — 2026-04-24
+
+### Changed — appearance-state ownership (PAI-84)
+
+Carved out of PAI-40. Three categories of appearance state previously
+had ~3 owners each, with `useBranding` and `useTableAppearance` racing
+to set the same `--table-row-*` CSS vars on first paint.
+
+- New `useTypeColors` composable: sole owner of `--type-{epic,ticket,task}`.
+  `SettingsAppearanceTab` now consumes it via thin computed get/set
+  wrappers instead of holding duplicate refs + watchers.
+- `useTableAppearance` is now sole owner of `--table-row-border` and
+  `--table-row-alt`. Reset via the settings tab now reverts the CSS
+  vars to branding defaults live (was a silent bug — required a page
+  reload).
+- New `useSidePanelWidth` composable shared by `IssueSidePanel` and
+  `IssueList`. `IssueList` no longer reaches past the panel boundary
+  to read `LS_SIDEBAR_WIDTH` directly. Double-click reset on the
+  resize handle now also updates the IssueList offset (previously
+  unsynced).
+- `useBranding.applyToDOM` no longer touches type or table-row CSS
+  vars — it only supplies the defaults the two composables fall back
+  to when no user override is set.
+
+Pure structural cleanup. No user-facing behavior changes.
+
+### Fixed — deploy script resilience
+
+- `scripts/deploy.sh` now tolerates fish-shell quirks in remote SSH
+  paths, strips PTY artifacts from captured output, and handles
+  root-owned bind mounts without aborting the backup step.
+
 ## [1.5.1] — 2026-04-24
 
 ### Added — agent interface docs (PAI-96, PAI-85 epic step K)

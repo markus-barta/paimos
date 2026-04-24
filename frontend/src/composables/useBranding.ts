@@ -37,6 +37,8 @@ import {
   LS_SIDEBAR_BG_COLOR,
   LS_SIDEBAR_PATTERN_COLOR,
 } from '@/constants/storage'
+import { applyTypeColorsToDOM } from './useTypeColors'
+import { applyTableAppearanceToDOM } from './useTableAppearance'
 
 export interface BrandingConfig {
   name: string
@@ -124,11 +126,11 @@ function applyToDOM(cfg: BrandingConfig) {
   root.setProperty('--bp-blue-pale', cfg.colors.primaryPale)
   root.setProperty('--bp-green', cfg.colors.accent)
   root.setProperty('--sidebar-text', cfg.colors.sidebarText)
-  root.setProperty('--type-epic', localStorage.getItem(LS_TYPE_COLOR_EPIC) || cfg.colors.typeEpic)
-  root.setProperty('--type-ticket', localStorage.getItem(LS_TYPE_COLOR_TICKET) || cfg.colors.typeTicket)
-  root.setProperty('--type-task', localStorage.getItem(LS_TYPE_COLOR_TASK) || cfg.colors.typeTask)
-  root.setProperty('--table-row-border', localStorage.getItem(LS_TABLE_ROW_BORDER_COLOR) || cfg.colors.tableRowBorder)
-  root.setProperty('--table-row-alt', localStorage.getItem(LS_TABLE_ROW_STRIPE_COLOR) || cfg.colors.tableRowAlt)
+  // Type colors and table-row colors are owned by their respective composables
+  // (useTypeColors, useTableAppearance). useBranding only supplies the defaults
+  // they fall back to when no user override is set.
+  applyTypeColorsToDOM(cfg.colors)
+  applyTableAppearanceToDOM(cfg.colors)
   // Accruals accent: localStorage override → branding default → fallback
   const accAccent = localStorage.getItem(LS_ACCRUALS_ACCENT) || cfg.colors.accrualsAccent || '#006497'
   root.setProperty('--accruals-accent', accAccent)

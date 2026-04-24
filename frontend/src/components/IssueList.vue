@@ -39,9 +39,9 @@ import EpicCascadeDialog from '@/components/EpicCascadeDialog.vue'
 import {
   LS_EPIC_DISPLAY_MODE as EPIC_MODE_KEY,
   LS_SIDEBAR_PINNED    as LS_PIN_KEY,
-  LS_SIDEBAR_WIDTH,
   lsFiltersKey,
 } from '@/constants/storage'
+import { useSidePanelWidth } from '@/composables/useSidePanelWidth'
 
 const props = defineProps<{
   projectId?: number
@@ -519,7 +519,7 @@ async function deleteRow(issue: Issue) {
 const sidePanelIssueId = ref<number | null>(null)
 const sidePanelEdit    = ref(false)
 const sidePanelPinned  = ref(localStorage.getItem(LS_PIN_KEY) === '1')
-const sidePanelWidth   = ref(parseInt(localStorage.getItem(LS_SIDEBAR_WIDTH) || '520', 10))
+const { width: sidePanelWidth } = useSidePanelWidth()
 
 const sidePanelIssueIds = computed(() => finalIssues.value.map(i => i.id))
 
@@ -568,7 +568,6 @@ function onSidePanelNavigate(id: number) {
 function onPinnedChange(pinned: boolean) {
   sidePanelPinned.value = pinned
   localStorage.setItem(LS_PIN_KEY, pinned ? '1' : '0')
-  sidePanelWidth.value = parseInt(localStorage.getItem(LS_SIDEBAR_WIDTH) || '520', 10)
 }
 
 function navigateTo(issue: Issue) { openSidePanel(issue) }
@@ -1181,7 +1180,6 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       @deleted="id => { emit('deleted', id); closeSidePanel() }"
       @navigate="onSidePanelNavigate"
       @update:pinned="onPinnedChange"
-      @resize="w => sidePanelWidth = w"
     />
 
     <!-- Sprint nav dropdown -->
