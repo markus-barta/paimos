@@ -18,11 +18,17 @@
 #   INSTANCE_URL          public URL for the external smoke test
 
 # Run a shell command on the remote host. Secrets are never printed.
+# The command is base64-encoded locally and decoded into `bash` on the
+# remote so it always runs under bash, even when the remote user's login
+# shell is something else (e.g. mba's login shell on csb1 is fish).
 deploy::ssh() {
   local cmd="$1"
+  local encoded
+  encoded=$(printf '%s' "$cmd" | base64 | tr -d '\n')
+  local remote="printf %s '$encoded' | base64 -d | bash"
   case "${SSH_AUTH:-}" in
     key)
-      ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" "$cmd"
+      ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" "$remote"
       ;;
     password)
       if [[ -z "${SSH_PASS_FILE:-}" || -z "${SSH_USER:-}" || -z "${SSH_PASS_VAR:-}" ]]; then
@@ -38,7 +44,13 @@ deploy::ssh() {
           exit 1
         fi
         export SSH_PASSWORD
-        "$ROOT/scripts/_ssh-pass.exp" "$SSH_USER" "$SSH_TARGET" "$cmd"
+        # expect uses a PTY, so ssh output gets \r\n line endings. After
+        # the password is sent, the first character in the log stream is
+        # the post-password newline echoed by the server. Normalize both
+        # so downstream grep/parsing works the same as key-auth mode.
+        "$ROOT/scripts/_ssh-pass.exp" "$SSH_USER" "$SSH_TARGET" "$remote" \
+          | tr -d '\r' \
+          | sed '/./,$!d'
       )
       ;;
     *)
@@ -90,18 +102,30 @@ deploy::run() {
   probe=$(deploy::ssh "
     set -e
     gzip -t $backup/data.tar.gz
-    entries=\$(tar -tzf $backup/data.tar.gz | wc -l)
+    entries=\$(tar -tzf $backup/data.tar.gz | wc -l | tr -d ' ')
     db_count=\$(tar -tzf $backup/data.tar.gz | grep -c '$DB_FILENAME\$' || true)
     wal_count=\$(tar -tzf $backup/data.tar.gz | grep -c '$DB_FILENAME-wal\$' || true)
     size=\$(stat -c %s $backup/data.tar.gz 2>/dev/null || stat -f %z $backup/data.tar.gz)
-    echo entries=\$entries
-    echo db_count=\$db_count
-    echo wal_count=\$wal_count
-    echo size=\$size
+    printf 'entries=%s\ndb_count=%s\nwal_count=%s\nsize=%s\n' \
+      \"\$entries\" \"\$db_count\" \"\$wal_count\" \"\$size\"
   ")
-  echo "$probe" | sed 's/^/    /'
-  if ! echo "$probe" | grep -q '^db_count=1$'; then
+  # Parse key=value lines into locals. Robust against leading blanks,
+  # trailing whitespace, or incidental log output from the ssh transport.
+  local entries=0 db_count=0 wal_count=0 size=0
+  while IFS='=' read -r k v; do
+    case "$k" in
+      entries)   entries="$v" ;;
+      db_count)  db_count="$v" ;;
+      wal_count) wal_count="$v" ;;
+      size)      size="$v" ;;
+    esac
+  done < <(printf '%s\n' "$probe" | grep -E '^[a-z_]+=[0-9]+$')
+  printf '    entries=%s db_count=%s wal_count=%s size=%s bytes\n' \
+    "$entries" "$db_count" "$wal_count" "$size"
+  if [[ "$db_count" != "1" ]]; then
     echo "error: backup does not contain $DB_FILENAME — aborting before deploy" >&2
+    echo "raw probe output:" >&2
+    printf '%s\n' "$probe" | sed 's/^/    /' >&2
     return 1
   fi
 
@@ -172,10 +196,15 @@ deploy::print_rollback() {
   echo "  docker compose stop $SERVICE"
   case "$STORAGE" in
     bind)
-      echo "  tar -xzf $backup/data.tar.gz -C $(dirname "$DATA_PATH")/ --overwrite"
+      # Use alpine+tar (running as root via docker) because bind-mounted
+      # data files are owned by root — plain `tar -x` as the ssh user
+      # hits permission-denied on overwrite. --strip-components=1 drops
+      # the leading "data/" dir from the archive so files land inside
+      # the mount rather than creating a nested data/data/.
+      echo "  docker run --rm -v $DATA_PATH:/dst -v $backup:/src:ro alpine sh -c 'cd /dst && rm -rf ./* && tar -xzf /src/data.tar.gz --strip-components=1'"
       ;;
     volume)
-      echo "  docker run --rm -v $VOLUME_NAME:/dst -v $backup:/src alpine sh -c 'cd /dst && rm -rf ./* && tar -xzf /src/data.tar.gz'"
+      echo "  docker run --rm -v $VOLUME_NAME:/dst -v $backup:/src:ro alpine sh -c 'cd /dst && rm -rf ./* && tar -xzf /src/data.tar.gz'"
       ;;
   esac
   echo "  sed -i 's|image: ghcr.io/markus-barta/paimos:[^ ]*|image: $pre_image|' docker-compose.yml"
