@@ -58,6 +58,7 @@ docs/
   CONFIGURATION.md     every env var
   CHANGELOG.md         release notes
   DEVELOPER_GUIDE.md   this file
+  DEPLOY.md            live-deploy + backup/rollback runbook (PMO, ppm)
   DATA_MODEL.md        current schema (tables, relations, enums)
   archive/
     DATA_MODEL.md      legacy v0.3.5 snapshot — archival only

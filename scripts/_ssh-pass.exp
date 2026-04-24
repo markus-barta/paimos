@@ -1,0 +1,36 @@
+#!/usr/bin/env expect -f
+# Run a command on a remote host via password auth. Password is read
+# from env var SSH_PASSWORD (set by the caller). Never echoed.
+#
+# Usage: _ssh-pass.exp <user> <host> <remote-command>
+
+log_user 0
+set timeout 120
+
+set user [lindex $argv 0]
+set host [lindex $argv 1]
+set cmd  [lindex $argv 2]
+
+if {![info exists env(SSH_PASSWORD)]} {
+  puts stderr "SSH_PASSWORD not set in environment"
+  exit 2
+}
+
+spawn ssh -o StrictHostKeyChecking=accept-new \
+          -o PreferredAuthentications=password \
+          -o PubkeyAuthentication=no \
+          -o NumberOfPasswordPrompts=1 \
+          $user@$host $cmd
+
+expect {
+  -re "(?i)password:" {
+    send -- "$env(SSH_PASSWORD)\r"
+    log_user 1
+    exp_continue
+  }
+  eof
+}
+
+catch wait result
+set rc [lindex $result 3]
+exit $rc
