@@ -17,6 +17,38 @@
 #   BACKUP_ROOT           remote dir under which timestamped backups go
 #   INSTANCE_URL          public URL for the external smoke test
 
+# Check whether an `<repo>:<tag>` exists on ghcr. Tries `docker manifest
+# inspect` first (fast, supports auth); falls back to a token-then-HEAD
+# probe via `curl` so the script works on machines that don't have a
+# Docker CLI installed (laptops without Docker Desktop, CI runners, etc.).
+# Public images only — that's all our registry hosts.
+ghcr::image_exists() {
+  local image="$1"
+  if command -v docker >/dev/null 2>&1; then
+    docker manifest inspect "$image" >/dev/null 2>&1
+    return $?
+  fi
+  # ghcr.io/<owner>/<repo>:<tag> → owner_repo + tag
+  local repo="${image%:*}"
+  local tag="${image##*:}"
+  local path="${repo#ghcr.io/}"
+  # URL-encode the slash in <owner>/<repo> for the token scope query string.
+  local scope_path="${path//\//%2F}"
+  local token
+  token=$(curl -fsS "https://ghcr.io/token?scope=repository%3A${scope_path}%3Apull&service=ghcr.io" 2>/dev/null \
+          | sed -nE 's/.*"token":"([^"]+)".*/\1/p')
+  [[ -n "$token" ]] || return 1
+  local code
+  code=$(curl -sS -o /dev/null -w '%{http_code}' \
+          -H "Authorization: Bearer $token" \
+          -H 'Accept: application/vnd.oci.image.index.v1+json' \
+          -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
+          -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+          -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+          "https://ghcr.io/v2/${path}/manifests/${tag}")
+  [[ "$code" == "200" ]]
+}
+
 # Run a shell command on the remote host. Secrets are never printed.
 # The command is base64-encoded locally and decoded into `bash` on the
 # remote so it always runs under bash, even when the remote user's login

@@ -120,9 +120,12 @@ git push origin "$NEW_TAG"
 
 echo
 echo "Pushed $NEW_TAG. Waiting for CI to publish ghcr.io/markus-barta/paimos:$NEW"
-# Public registry — anonymous manifest inspect works.
+# Public registry — works without local docker (curl-fallback in
+# ghcr::image_exists from _deploy-lib.sh).
+# shellcheck disable=SC1091
+source "$(dirname "$0")/_deploy-lib.sh"
 for i in $(seq 1 60); do
-  if docker manifest inspect "ghcr.io/markus-barta/paimos:$NEW" >/dev/null 2>&1; then
+  if ghcr::image_exists "ghcr.io/markus-barta/paimos:$NEW"; then
     echo "✔ ghcr.io/markus-barta/paimos:$NEW is live."
     echo
     echo "Next:"

@@ -51,13 +51,13 @@ fi
 TAG="${TAG#v}"
 IMAGE="ghcr.io/markus-barta/paimos:$TAG"
 
-if ! docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+# shellcheck disable=SC1091
+source "$ROOT/scripts/_deploy-lib.sh"
+
+if ! ghcr::image_exists "$IMAGE"; then
   echo "error: $IMAGE not found on ghcr — CI still running, or wrong tag" >&2
   exit 1
 fi
-
-# shellcheck disable=SC1091
-source "$ROOT/scripts/_deploy-lib.sh"
 
 echo "=== deploy $INSTANCE → $IMAGE ==="
 deploy::run "$INSTANCE" "$TAG" "$IMAGE"
