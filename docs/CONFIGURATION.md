@@ -57,6 +57,31 @@ reset and anyone with log access can use it (PAI-115).
 | `SMTP_PASS` | *(empty)* | Pair with `SMTP_USER` |
 | `PAIMOS_DEV_MODE` | *(unset)* | When `true` AND `SMTP_HOST` unset, log reset links to stdout. Local dev only. |
 
+## Audit & retention (PAI-116 / PAI-117)
+
+The session-mutation audit is on by default for NIS2 readiness. Set
+`PAIMOS_AUDIT_SESSIONS=false` (or `0`) to opt out — primarily useful in
+sandbox or local-dev runs where the noise is unwanted. The retention
+sweeper runs every 24 hours and trims rows older than the configured
+window for each class. Tune any variable below; defaults are the
+"careful operator" baseline, not regulator maxima.
+
+| Var | Default | Notes |
+|---|---|---|
+| `PAIMOS_AUDIT_SESSIONS` | `true` | Set `false`/`0` to disable the session-mutation audit middleware. |
+| `PAIMOS_RETENTION_DAYS_SESSIONS` | `30` | Sessions are also auto-expired by their own `expires_at`; this is the cleanup floor. |
+| `PAIMOS_RETENTION_DAYS_RESET_TOKENS` | `7` | Password-reset tokens are single-use; this caps the audit trail. |
+| `PAIMOS_RETENTION_DAYS_ACCESS_AUDIT` | `365` | Project membership-change audit log. |
+| `PAIMOS_RETENTION_DAYS_SESSION_ACTIVITY` | `90` | Per-mutation session activity rows. |
+| `PAIMOS_RETENTION_DAYS_INCIDENT_CLOSED` | `730` | Closed incidents only — open/investigating/resolved are kept until closed. |
+| `PAIMOS_RETENTION_DAYS_TOTP_PENDING_MIN` | `60` | Pending TOTP tokens; minutes, not days. |
+
+Per-subject GDPR endpoints (admin only):
+
+- `GET  /api/users/{id}/gdpr-export` — JSON dump of every row referencing the user.
+- `POST /api/users/{id}/gdpr-erase`  — replaces PII with placeholders, drops sessions/keys, sets `status='deleted'`.
+- `GET  /api/gdpr/retention`         — current retention policy (introspection).
+
 ## Attachments (MinIO / S3 — optional)
 
 When `MINIO_ENDPOINT` is unset, the attachments feature is disabled:

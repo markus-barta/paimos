@@ -53,6 +53,10 @@ func main() {
 		log.Printf("MinIO connected: bucket=%s", storage.Bucket)
 	}
 
+	// PAI-117: GDPR retention sweeper. Idempotent — first sweep runs
+	// after a 30-second warm-up so a cold start stays quiet.
+	handlers.StartRetentionSweeper()
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -261,6 +265,13 @@ func main() {
 			r.With(auth.RequireAdmin).Post("/users/{id}/disable", handlers.DisableUser)
 			r.With(auth.RequireAdmin).Delete("/users/{id}", handlers.DeleteUser)
 			r.With(auth.RequireAdmin).Post("/users/{id}/reset-totp", handlers.ResetUserTOTP)
+
+			// PAI-117: per-subject GDPR ops. Export streams every row that
+			// references the user; erase replaces PII with a placeholder
+			// instead of cascade-deleting historical project data.
+			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
+			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
+			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
 
 			// User project access (admin only). The legacy /users/{id}/projects
 			// endpoints drive the external-portal grants page; the new
