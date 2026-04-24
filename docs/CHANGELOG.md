@@ -5,7 +5,7 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.1] — 2026-04-21
+## [1.5.1] — 2026-04-24
 
 ### Added — agent interface docs (PAI-96, PAI-85 epic step K)
 
