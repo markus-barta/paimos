@@ -46,7 +46,11 @@ type Provider struct{}
 
 func (p *Provider) ID() string      { return "hubspot" }
 func (p *Provider) Name() string    { return "HubSpot" }
-func (p *Provider) LogoURL() string { return "/assets/crm/hubspot.svg" }
+// LogoURL is suffixed with `-v2` so a future re-skin can bump the suffix
+// instead of relying on cache-control to invalidate. The original
+// `/assets/crm/hubspot.svg` URL got a 404 on first deploy and that 404
+// was strongly cached by the static handler (now fixed in main.go).
+func (p *Provider) LogoURL() string { return "/assets/crm/hubspot-v2.svg" }
 
 func (p *Provider) ConfigSchema() crm.ConfigSchema {
 	return crm.ConfigSchema{Fields: []crm.ConfigField{

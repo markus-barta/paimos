@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -406,9 +407,27 @@ func main() {
 				http.ServeFile(w, r, indexPath)
 				return
 			}
-			// Hashed assets (assets/*) can be cached immutably
+			// Cache strategy under /assets/:
+			//   - Vite-hashed bundle files (e.g. `index-D6h5dtXR.js`)
+			//     have a content hash in the filename, so they're safe
+			//     to cache immutably — content can't change for a given
+			//     URL.
+			//   - Stable-name files dropped in via `public/` (e.g.
+			//     `crm/hubspot.svg`) keep the same URL across versions,
+			//     so caching them immutably is wrong: a future re-skin
+			//     under the same name would never reach the user, and
+			//     a transient 404 (e.g. asset added in v1.6.1 after a
+			//     v1.6.0 visit) would also be locked in.
+			// Hash check: Vite emits `<name>-<8+ char base64ish>.<ext>`.
 			if len(r.URL.Path) > 8 && r.URL.Path[:8] == "/assets/" {
-				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				if isViteHashed(r.URL.Path) {
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					// 1 hour cache for stable-name assets — long enough
+					// to be CDN-friendly, short enough to recover from
+					// a typo/404 within a coffee break.
+					w.Header().Set("Cache-Control", "public, max-age=3600")
+				}
 			}
 			fileServer.ServeHTTP(w, r)
 		}))
@@ -516,4 +535,15 @@ func getDataDir() string {
 		return dir
 	}
 	return "/app/data"
+}
+
+// viteHashedRe matches Vite's bundled-asset filename pattern:
+// `<name>-<8+ char base62 hash>.<ext>`. Hashed files are immutable —
+// the URL changes when content does, so the cache can never go stale.
+// Stable-name files dropped via `public/` (e.g. `crm/hubspot.svg`)
+// don't match and get a short cache so they can be re-skinned.
+var viteHashedRe = regexp.MustCompile(`-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$`)
+
+func isViteHashed(urlPath string) bool {
+	return viteHashedRe.MatchString(urlPath)
 }
