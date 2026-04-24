@@ -82,6 +82,9 @@ func main() {
 		r.Get("/health", healthHandler)                // (a) Docker + CI
 		r.Get("/branding", handlers.GetBranding)       // (b) login page logo + colors
 		r.Get("/schema", handlers.GetAPISchema)        // (c) CLI / MCP discovery (PAI-87)
+		// PAI-119: published OpenAPI 3.1 contract. Public so external
+		// clients can discover the API without an account.
+		r.Get("/openapi.json", handlers.GetOpenAPI)
 		// PAI-114: CSP violation reports. Browser-driven, unauthenticated.
 		r.Post("/csp-report", handlers.CSPReport)
 
