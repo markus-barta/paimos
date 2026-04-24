@@ -20,7 +20,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
-import { api, errMsg } from '@/api/client'
+import { api, csrfHeaders, errMsg } from '@/api/client'
 import type { Document } from '@/types'
 
 const props = defineProps<{
@@ -87,6 +87,7 @@ async function uploadFiles(files: FileList | File[]) {
       const resp = await fetch(uploadUrl.value, {
         method: 'POST',
         credentials: 'same-origin',
+        headers: csrfHeaders(),
         body: fd,
       })
       if (!resp.ok) {

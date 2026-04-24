@@ -66,14 +66,41 @@ function maybeMarkSessionExpired(path: string) {
 // the browser keeps the underlying fetch open in the background.
 const REQUEST_TIMEOUT_MS = 30_000
 
+// PAI-113: read the per-session CSRF token from the non-HttpOnly cookie
+// the backend sets at login, so we can echo it back on every mutating
+// request. Empty string when not yet authenticated — the backend does
+// not enforce CSRF on the public auth endpoints.
+export function readCsrfToken(): string {
+  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
+  return m ? decodeURIComponent(m[1]) : ''
+}
+
+// csrfHeaders returns a headers object pre-populated with the CSRF header
+// when a token is available. Use from any code that hits the backend
+// directly with fetch() instead of the `api` wrapper.
+export function csrfHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const tok = readCsrfToken()
+  return tok ? { ...extra, 'X-CSRF-Token': tok } : { ...extra }
+}
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+function withCsrfHeader(method: string, headers: Record<string, string>): Record<string, string> {
+  if (SAFE_METHODS.has(method)) return headers
+  const tok = readCsrfToken()
+  if (tok) headers['X-CSRF-Token'] = tok
+  return headers
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
   let res: Response
   try {
+    const headers: Record<string, string> = body ? { 'Content-Type': 'application/json' } : {}
     res = await fetch(`${BASE}${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : {},
+      headers: withCsrfHeader(method, headers),
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
       signal: ctrl.signal,
@@ -106,6 +133,10 @@ async function upload<T>(path: string, formData: FormData, onProgress?: (pct: nu
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${BASE}${path}`)
     xhr.withCredentials = true
+    // PAI-113: echo CSRF token on multipart uploads too. Cookie path
+    // doesn't trip Origin/Referer issues because the SPA is same-origin.
+    const csrf = readCsrfToken()
+    if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
     if (onProgress) {
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))

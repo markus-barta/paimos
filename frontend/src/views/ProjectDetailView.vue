@@ -11,7 +11,7 @@ import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
 import ImportCollisionModal from '@/components/ImportCollisionModal.vue'
 import type { PreflightResult, CollisionStrategy } from '@/components/ImportCollisionModal.vue'
-import { api, errMsg } from '@/api/client'
+import { api, csrfHeaders, errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useSearchStore } from '@/stores/search'
@@ -174,7 +174,7 @@ async function uploadLogo(e: Event) {
   const fd = new FormData()
   fd.append('logo', file)
   try {
-    const updated = await fetch(`/api/projects/${projectId.value}/logo`, { method: 'POST', body: fd, credentials: 'same-origin' })
+    const updated = await fetch(`/api/projects/${projectId.value}/logo`, { method: 'POST', body: fd, credentials: 'same-origin', headers: csrfHeaders() })
     if (!updated.ok) { const d = await updated.json(); throw new Error(d.error ?? 'Upload failed.') }
     project.value = await updated.json()
   } catch (ex: unknown) {
@@ -428,7 +428,7 @@ async function onImportFile(e: Event) {
     const fd = new FormData()
     fd.append('file', file)
     const resp = await fetch(`/api/projects/${projectId.value}/import/csv/preflight`, {
-      method: 'POST', credentials: 'include', body: fd,
+      method: 'POST', credentials: 'include', headers: csrfHeaders(), body: fd,
     })
     const data = await resp.json()
     if (!resp.ok) { importError.value = data.error ?? 'Preflight failed.'; return }
@@ -460,7 +460,7 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
     fd.append('file', pendingImportFile.value)
     fd.append('strategy', strategy)
     const resp = await fetch(`/api/projects/${projectId.value}/import/csv`, {
-      method: 'POST', credentials: 'include', body: fd,
+      method: 'POST', credentials: 'include', headers: csrfHeaders(), body: fd,
     })
     const data = await resp.json()
     if (!resp.ok) { importError.value = data.error ?? 'Import failed.'; return }

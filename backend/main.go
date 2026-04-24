@@ -88,6 +88,7 @@ func main() {
 		// Auth (authenticated but open to all roles, including external)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.CSRFMiddleware) // PAI-113
 
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
@@ -120,6 +121,7 @@ func main() {
 		// Portal (external + admin)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.CSRFMiddleware) // PAI-113
 			r.Use(auth.RequirePortalAccess)
 
 			r.Get("/portal/projects", handlers.PortalListProjects)
@@ -138,6 +140,7 @@ func main() {
 		// Internal (admin + member; blocked for external)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.CSRFMiddleware) // PAI-113
 			r.Use(auth.BlockExternal)
 
 			// Projects

@@ -3400,6 +3400,14 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_project_cooperation_project
 		 ON project_cooperation(project_id)`,
 	}},
+
+	// M72: per-session CSRF token (PAI-113). Bound to the session so
+	// rotation happens automatically on logout/reset. Existing sessions
+	// keep an empty token until the next sessionUser() call upgrades them
+	// — see auth.Middleware for the lazy-issue path.
+	{72, []string{
+		`ALTER TABLE sessions ADD COLUMN csrf_token TEXT NOT NULL DEFAULT ''`,
+	}},
 	}
 
 	for _, m := range migrations {

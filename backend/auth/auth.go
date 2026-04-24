@@ -89,13 +89,23 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		user, err := sessionUser(cookie.Value)
+		user, csrfTok, err := sessionUserAndCSRF(cookie.Value)
 		if err != nil {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
+		// PAI-113: lazy-upgrade pre-M72 sessions that have no token yet.
+		// The first authenticated request after deployment issues one and
+		// sets the cookie. Avoids forcing every existing session to log in
+		// again at deploy time; new sessions get a token at login.
+		if csrfTok == "" {
+			if t, err := IssueCSRFForSession(w, cookie.Value); err == nil {
+				csrfTok = t
+			}
+		}
 		ctx := context.WithValue(r.Context(), UserKey, user)
 		ctx = WithAccessCache(ctx)
+		ctx = withSessionAuth(ctx, csrfTok)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -129,23 +139,33 @@ func userScanDests(u *models.User) []any {
 const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses`
 
 func sessionUser(sessionID string) (*models.User, error) {
+	u, _, err := sessionUserAndCSRF(sessionID)
+	return u, err
+}
+
+// sessionUserAndCSRF resolves a session id to its user AND the per-session
+// CSRF token (PAI-113). The token is empty for sessions created before
+// migration 72 — Middleware lazy-upgrades those on the first authenticated
+// request so the user does not have to log in again at deploy time.
+func sessionUserAndCSRF(sessionID string) (*models.User, string, error) {
+	u := &models.User{}
+	var csrfTok string
+	dests := append([]any{&csrfTok}, userScanDests(u)...)
 	row := db.DB.QueryRow(`
-		SELECT `+userSelectCols+`
+		SELECT s.csrf_token, `+userSelectCols+`
 		FROM sessions s JOIN users u ON s.user_id = u.id
 		WHERE s.id = ? AND s.expires_at > datetime('now')
 	`, sessionID)
-	u := &models.User{}
-	if err := scanUser(row, u); err != nil {
-		return nil, err
+	if err := row.Scan(dests...); err != nil {
+		return nil, "", err
 	}
-	// Block inactive and deleted users even if session exists
 	if u.Status == "inactive" || u.Status == "deleted" {
 		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
 			log.Printf("sessionUser: delete session %s: %v", sessionID, err)
 		}
-		return nil, fmt.Errorf("account disabled")
+		return nil, "", fmt.Errorf("account disabled")
 	}
-	return u, nil
+	return u, csrfTok, nil
 }
 
 // Login handler
@@ -230,6 +250,12 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		Secure:   cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	// PAI-113: bind a fresh CSRF token to the new session and expose it
+	// to the SPA via a non-HttpOnly cookie. Do not fail the login if this
+	// fails — the lazy-upgrade path in Middleware will retry.
+	if _, err := IssueCSRFForSession(w, sid); err != nil {
+		log.Printf("LoginHandler: issue csrf token: %v", err)
+	}
 
 	// Update last_login_at
 	if _, err := db.DB.Exec("UPDATE users SET last_login_at=datetime('now') WHERE id=?", loginUser.ID); err != nil {
@@ -258,6 +284,7 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		Expires: time.Unix(0, 0),
 		MaxAge:  -1,
 	})
+	ClearCSRFCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
