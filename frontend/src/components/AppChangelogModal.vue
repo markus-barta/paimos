@@ -8,15 +8,18 @@
 
  PAI-145. Two-pane "What's new" modal.
 
- Left sidebar lists every release parsed from CHANGELOG.md (no
- truncation, no expand button — the sidebar IS the all-releases
- view); right pane renders only the selected version. Bump kind
- (patch / minor / major) is inferred from each version's diff to the
- next-older entry and surfaced as a small dot in the sidebar so the
- timeline reads at a glance.
+ Layout: narrow rail of versions (left) + content (right). The shell
+ owns a bounded height + `overflow: hidden` so the rail and the body
+ each scroll independently inside the modal frame. AppModal itself
+ doesn't constrain height — the previous attempt let the rail
+ overflow the modal entirely.
+
+ Keyboard nav (focus inside the rail): ↑/↓ step one version,
+ PgUp/PgDn step five, Home/End jump to newest / oldest. Selection
+ auto-scrolls into view via `scrollIntoView({ block: 'nearest' })`.
 -->
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import AppModal from '@/components/AppModal.vue'
@@ -32,13 +35,12 @@ interface VersionEntry {
   bumpKind: 'major' | 'minor' | 'patch' | 'unknown'
 }
 
-// Matches `## [X.Y.Z] — YYYY-MM-DD` (the format we write today). The
-// em-dash is canonical in the file; if a future entry sneaks in a hyphen
-// it will fall through silently rather than corrupting the parse.
+// Matches `## [X.Y.Z] — YYYY-MM-DD` (canonical em-dash). Anything else
+// is silently ignored — better to drop a malformed heading than to
+// corrupt the parse with a noisy fallback.
 const VERSION_HEADING_RE = /^## \[(\d+\.\d+\.\d+)\] — (\d{4}-\d{2}-\d{2})/m
 
 const entries = computed<VersionEntry[]>(() => {
-  // Split on each version heading; keep the heading with its section.
   const sections = changelogRaw
     .split(/(?=^## \[\d+\.\d+\.\d+\])/m)
     .map(s => s.trim())
@@ -54,9 +56,6 @@ const entries = computed<VersionEntry[]>(() => {
     }
   })
 
-  // Bump kind is each entry's diff vs the next-older entry. Newest gets
-  // 'unknown' if it has no predecessor (single-release case); otherwise
-  // patch / minor / major from the version triple.
   for (let i = 0; i < list.length - 1; i++) {
     const cur = list[i].version.split('.').map(Number)
     const prev = list[i + 1].version.split('.').map(Number)
@@ -67,23 +66,20 @@ const entries = computed<VersionEntry[]>(() => {
   return list
 })
 
-const selectedVersion = ref<string>('')
+const selectedIndex = ref(0)
+const selected = computed<VersionEntry | null>(() =>
+  entries.value[selectedIndex.value] ?? null,
+)
 
-// Default selection = newest. Watch on `open` so re-opening always lands
-// on the latest entry rather than wherever the user left off (matches
-// the user's most likely intent: "what's the latest?").
+// Re-anchor to newest on every open. Most users open this modal to
+// answer "what just shipped?", not to resume browsing where they left
+// off — picking up the previous selection would be the wrong default.
 watch(
   () => props.open,
   (open) => {
-    if (open && entries.value.length) {
-      selectedVersion.value = entries.value[0].version
-    }
+    if (open) selectedIndex.value = 0
   },
   { immediate: true },
-)
-
-const selected = computed<VersionEntry | null>(() =>
-  entries.value.find(e => e.version === selectedVersion.value) ?? entries.value[0] ?? null,
 )
 
 const renderedHtml = computed(() => {
@@ -91,60 +87,115 @@ const renderedHtml = computed(() => {
   return DOMPurify.sanitize(marked.parse(selected.value.bodyMd) as string)
 })
 
-// Pretty date for both sidebar + content header. Locale is left to the
-// browser deliberately — admins picking up an instance will read dates
-// in their own locale, no surprise.
-function fmtDate(iso: string): string {
+// Compact sidebar date — "24 Apr" / "24 Apr 25" if the year differs
+// from the current one. Saves horizontal pixels while staying readable.
+function fmtSidebarDate(iso: string): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  const sameYear = d.getUTCFullYear() === new Date().getUTCFullYear()
+  return d.toLocaleDateString(undefined, sameYear
+    ? { day: '2-digit', month: 'short' }
+    : { day: '2-digit', month: 'short', year: '2-digit' })
+}
+function fmtFullDate(iso: string): string {
   const d = new Date(iso + 'T00:00:00Z')
   return d.toLocaleDateString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
   })
 }
+
+// ── Keyboard nav ────────────────────────────────────────────────────
+// Wired on the rail itself (tabindex 0). Doesn't conflict with the
+// modal's Escape handler — different target, different keys.
+const railRef = ref<HTMLElement | null>(null)
+
+function onRailKey(e: KeyboardEvent) {
+  const max = entries.value.length - 1
+  if (max < 0) return
+  let next = selectedIndex.value
+  switch (e.key) {
+    case 'ArrowDown': next = Math.min(max, selectedIndex.value + 1); break
+    case 'ArrowUp':   next = Math.max(0,   selectedIndex.value - 1); break
+    case 'PageDown':  next = Math.min(max, selectedIndex.value + 5); break
+    case 'PageUp':    next = Math.max(0,   selectedIndex.value - 5); break
+    case 'Home':      next = 0; break
+    case 'End':       next = max; break
+    default: return
+  }
+  e.preventDefault()
+  if (next !== selectedIndex.value) {
+    selectedIndex.value = next
+    nextTick(() => {
+      // Scroll the freshly-selected button into view if it slipped past
+      // the viewport bounds — `block: 'nearest'` keeps the rail still
+      // when the active item is already visible.
+      const el = railRef.value?.querySelector<HTMLElement>(
+        `[data-version="${entries.value[next].version}"]`,
+      )
+      el?.scrollIntoView({ block: 'nearest' })
+    })
+  }
+}
+
+// Auto-focus the rail on open so arrow keys work without a click first.
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    nextTick(() => railRef.value?.focus())
+  },
+)
 </script>
 
 <template>
   <AppModal
     title="What's new"
     :open="open"
-    max-width="1080px"
+    max-width="980px"
     @close="$emit('close')"
   >
     <div class="cl-shell">
-      <!-- ── Sidebar: version list ───────────────────────────── -->
-      <aside class="cl-sidebar" aria-label="Version history">
-        <ol class="cl-versions">
-          <li
-            v-for="(e, i) in entries"
-            :key="e.version"
-          >
+      <!-- ── Rail: dense version list ────────────────────────── -->
+      <div
+        ref="railRef"
+        class="cl-rail"
+        tabindex="0"
+        role="listbox"
+        aria-label="Version history (use arrow keys to navigate)"
+        @keydown="onRailKey"
+      >
+        <ol class="cl-rail-list">
+          <li v-for="(e, i) in entries" :key="e.version" role="presentation">
             <button
               type="button"
               :class="[
-                'cl-version',
-                { 'cl-version--active': e.version === selectedVersion },
+                'cl-row',
+                `cl-row--${e.bumpKind}`,
+                { 'cl-row--active': i === selectedIndex },
               ]"
-              :aria-current="e.version === selectedVersion ? 'true' : undefined"
-              @click="selectedVersion = e.version"
+              role="option"
+              :aria-selected="i === selectedIndex"
+              :data-version="e.version"
+              @click="selectedIndex = i"
             >
-              <span :class="['cl-bump', `cl-bump--${e.bumpKind}`]" :title="e.bumpKind" />
-              <span class="cl-version-label">v{{ e.version }}</span>
-              <span v-if="i === 0" class="cl-latest">Latest</span>
-              <span class="cl-version-date">{{ fmtDate(e.date) }}</span>
+              <span class="cl-row-dot" />
+              <span class="cl-row-ver">{{ e.version }}</span>
+              <span class="cl-row-date">{{ fmtSidebarDate(e.date) }}</span>
             </button>
           </li>
         </ol>
-      </aside>
+        <p class="cl-rail-hint">↑ ↓ to navigate</p>
+      </div>
 
       <!-- ── Content pane ────────────────────────────────────── -->
       <section class="cl-content" aria-live="polite">
         <header v-if="selected" class="cl-content-head">
           <div class="cl-content-head-id">
-            <span :class="['cl-bump', 'cl-bump--lg', `cl-bump--${selected.bumpKind}`]" />
+            <span :class="['cl-row-dot', 'cl-row-dot--lg', `cl-row--${selected.bumpKind}`]" />
             <h2>v{{ selected.version }}</h2>
             <span v-if="selected.bumpKind !== 'unknown'" class="cl-bump-label">{{ selected.bumpKind }}</span>
           </div>
           <time class="cl-content-head-date" :datetime="selected.date">
-            {{ fmtDate(selected.date) }}
+            {{ fmtFullDate(selected.date) }}
           </time>
         </header>
 
@@ -161,145 +212,146 @@ function fmtDate(iso: string): string {
 </template>
 
 <style scoped>
-/* ── Shell ─────────────────────────────────────────────────── */
+/* ── Shell ─────────────────────────────────────────────────────────
+   Bleeds to the modal frame on all four sides (cancels modal-body's
+   1.5rem padding) so the rail can have its own background flush with
+   the modal edges. The fixed `height` is the critical bit: it caps
+   the layout so the children's `overflow: auto` actually engages.
+*/
 .cl-shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 0;
-  /* Pull the modal's inner padding so the sidebar bleeds to the
-     edge — visually heavier divider, more app-like. */
-  margin: -1.25rem -1.5rem;
-  min-height: min(70vh, 620px);
-  max-height: 80vh;
+  grid-template-columns: 168px 1fr;
+  margin: -1.5rem;
+  height: min(560px, 70vh);
+  overflow: hidden;
+  border-radius: 0 0 8px 8px; /* match the modal's bottom corners */
 }
 @media (max-width: 720px) {
   .cl-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: 152px 1fr;
+    height: min(640px, 80vh);
   }
 }
 
-/* ── Sidebar ───────────────────────────────────────────────── */
-.cl-sidebar {
+/* ── Rail (sidebar) ────────────────────────────────────────────── */
+.cl-rail {
   background: #fafbfc;
   border-right: 1px solid var(--border);
   overflow-y: auto;
-  padding: .85rem .5rem;
+  overflow-x: hidden;
+  padding: .5rem .25rem .25rem;
+  outline: none;
+  display: flex; flex-direction: column;
+  scrollbar-width: thin;
+}
+.cl-rail:focus-visible {
+  /* Inset focus ring — the rail is the keyboard handler, so it should
+     be visibly focusable without breaking the layout. */
+  box-shadow: inset 0 0 0 2px rgba(46, 109, 164, .35);
 }
 @media (max-width: 720px) {
-  .cl-sidebar {
+  .cl-rail {
     border-right: none;
     border-bottom: 1px solid var(--border);
-    max-height: 30vh;
-    padding: .65rem .5rem;
   }
 }
 
-.cl-versions {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: .15rem;
+.cl-rail-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
 }
 
-.cl-version {
+.cl-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 8px 1fr auto;
-  grid-template-areas:
-    "dot version  badge"
-    "dot date     date";
+  grid-template-columns: 7px 1fr auto;
   align-items: center;
-  gap: .15rem .5rem;
-  padding: .55rem .65rem .55rem .55rem;
+  gap: .45rem;
+  padding: .3rem .55rem;
   background: transparent;
   border: none;
   border-left: 2px solid transparent;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 4px 4px 0;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
   color: var(--text);
-  transition: background .12s, border-color .12s;
+  /* No height: row is content-tall (~26 px); dense by design. */
+  transition: background .1s, border-color .1s;
 }
-.cl-version:hover { background: rgba(46, 109, 164, .06); }
-.cl-version--active {
+.cl-row:hover { background: rgba(46, 109, 164, .06); }
+.cl-row--active {
   background: var(--bp-blue-pale);
   border-left-color: var(--bp-blue);
 }
-.cl-version--active .cl-version-label { color: var(--bp-blue-dark); }
+.cl-row--active .cl-row-ver {
+  color: var(--bp-blue-dark);
+}
 
-.cl-bump {
-  grid-area: dot;
-  width: 8px; height: 8px;
+.cl-row-dot {
+  width: 7px; height: 7px;
   border-radius: 50%;
-  background: var(--text-muted);
-  align-self: center;
-  /* Slight inner ring for hairline definition on white backgrounds. */
+  background: #cbd5e1;
+  /* Hairline ring for crispness on white. */
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08);
 }
-.cl-bump--patch    { background: #16a34a; }
-.cl-bump--minor    { background: var(--bp-blue); }
-.cl-bump--major    { background: #f59e0b; }
-.cl-bump--unknown  { background: #cbd5e1; }
-.cl-bump--lg {
-  width: 10px; height: 10px;
-  align-self: baseline;
-  margin-top: 6px;
-}
+.cl-row-dot--lg { width: 9px; height: 9px; align-self: center; }
 
-.cl-version-label {
-  grid-area: version;
+/* Bump-kind colors — applied to the row OR to the standalone dot. */
+.cl-row--patch  .cl-row-dot,
+.cl-row-dot.cl-row--patch  { background: #16a34a; }
+.cl-row--minor  .cl-row-dot,
+.cl-row-dot.cl-row--minor  { background: var(--bp-blue); }
+.cl-row--major  .cl-row-dot,
+.cl-row-dot.cl-row--major  { background: #f59e0b; }
+
+.cl-row-ver {
   font-family: 'DM Mono', 'Fira Code', monospace;
-  font-size: 13px; font-weight: 700;
+  font-size: 12px; font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -.01em;
+  /* No "v" prefix in the rail — saves 6 pixels per row and the column
+     header / content header carry the format already. */
 }
-
-.cl-latest {
-  grid-area: badge;
-  font-size: 9px; font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: #166534;
-  background: #dcfce7;
-  padding: .1rem .4rem;
-  border-radius: 999px;
-}
-
-.cl-version-date {
-  grid-area: date;
-  font-size: 11px;
+.cl-row-date {
+  font-size: 10.5px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cl-row--active .cl-row-date { color: var(--bp-blue-dark); opacity: .75; }
+
+.cl-rail-hint {
+  flex-shrink: 0;
+  margin: .5rem .25rem 0;
+  padding: .35rem .55rem;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: .03em;
+  text-align: center;
+  border-top: 1px dashed var(--border);
 }
 
-/* ── Content pane ──────────────────────────────────────────── */
+/* ── Content pane ──────────────────────────────────────────────── */
 .cl-content {
   overflow-y: auto;
   padding: 1.1rem 1.5rem 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0; /* allow grid child to shrink rather than overflow */
 }
 
 .cl-content-head {
-  display: flex; align-items: flex-start; justify-content: space-between;
+  display: flex; align-items: baseline; justify-content: space-between;
   gap: 1rem;
   padding-bottom: .85rem;
   border-bottom: 1px solid var(--border);
   position: sticky; top: -1.1rem;
-  /* Sticky header; subtle backdrop so content scrolling under it stays
-     legible. The negative `top` cancels the container padding so the
-     strip lands flush with the modal frame. */
-  background: linear-gradient(
-    to bottom,
-    var(--bg-card) 0%,
-    var(--bg-card) calc(100% - 4px),
-    rgba(255,255,255,0) 100%
-  );
+  background: var(--bg-card);
   z-index: 1;
   margin-top: -1.1rem;
   padding-top: 1.1rem;
@@ -330,10 +382,9 @@ function fmtDate(iso: string): string {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  align-self: center;
 }
 
-/* ── Markdown body ─────────────────────────────────────────── */
+/* ── Markdown body ─────────────────────────────────────────────── */
 .cl-body { font-size: 13px; color: var(--text); line-height: 1.6; }
 
 .cl-body :deep(h2) {
@@ -380,7 +431,7 @@ function fmtDate(iso: string): string {
 .cl-body :deep(a:hover) { color: var(--bp-blue-dark); }
 .cl-body :deep(hr) { display: none; }
 
-/* ── Cross-version transition ──────────────────────────────── */
+/* ── Cross-version transition ──────────────────────────────────── */
 .cl-fade-enter-active, .cl-fade-leave-active {
   transition: opacity .12s ease, transform .12s ease;
 }

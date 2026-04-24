@@ -54,6 +54,18 @@ const sprints   = ref<Sprint[]>([])
 // dropdown in the edit modal and the inherited-rate hints.
 const customers = ref<Customer[]>([])
 
+// PAI-145 follow-up. Documents + cooperation profile used to render
+// permanently below the IssueList — long page, lots of empty state.
+// A small segmented control in the page header now toggles between
+// `issues` (default), `documents`, and `cooperation` so each
+// concern gets the full content area when it's the focus. Badges on
+// the Documents / Cooperation segments surface when there's content
+// to find.
+type PageMode = 'issues' | 'documents' | 'cooperation'
+const pageMode = ref<PageMode>('issues')
+const docCount = ref(0)
+const cooperationPopulated = ref(false)
+
 provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sprints })
 
 const loading       = ref(true)
@@ -564,6 +576,36 @@ const lastChanged = computed(() => {
           <RouterLink :to="`/projects/${projectId}/issues/${lastChanged.id}`" class="ah-meta-link">{{ lastChanged.key }}</RouterLink>
         </span>
         <span :class="`badge badge-${project.status}`">{{ project.status }}</span>
+        <!-- PAI-145 follow-up: page-mode segmented control. Default is
+             Issues; the Documents / Cooperation segments surface badges
+             when there's content to find so the user can tell at a
+             glance whether switching modes is worthwhile. -->
+        <div class="segmented pd-mode-seg" role="tablist" aria-label="Project view">
+          <button
+            type="button" role="tab"
+            :class="['seg-btn', { active: pageMode === 'issues' }]"
+            :aria-selected="pageMode === 'issues'"
+            @click="pageMode = 'issues'"
+          >Issues</button>
+          <button
+            type="button" role="tab"
+            :class="['seg-btn', { active: pageMode === 'documents' }]"
+            :aria-selected="pageMode === 'documents'"
+            @click="pageMode = 'documents'"
+          >
+            Documents
+            <span v-if="docCount > 0" class="pd-mode-count">{{ docCount }}</span>
+          </button>
+          <button
+            type="button" role="tab"
+            :class="['seg-btn', { active: pageMode === 'cooperation' }]"
+            :aria-selected="pageMode === 'cooperation'"
+            @click="pageMode = 'cooperation'"
+          >
+            Cooperation
+            <span v-if="cooperationPopulated" class="pd-mode-info" title="Profile filled in">i</span>
+          </button>
+        </div>
         <TagChip v-for="t in project.tags" :key="t.id" :tag="t" />
         <button class="btn btn-ghost btn-sm icon-only" @click="exportCSV" :disabled="exporting" :title="exporting ? 'Preparing download…' : 'Export CSV'">
           <AppIcon v-if="!exporting" name="download" :size="14" />
@@ -592,48 +634,79 @@ const lastChanged = computed(() => {
       </div>
       <div v-if="importError" class="import-error">{{ importError }} <button class="import-dismiss" @click="importError=''"><AppIcon name="x" :size="14" /></button></div>
 
-      <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
-      <nav class="tab-nav">
-        <button
-          v-for="v in displayTabs"
-          :key="v.id"
-          class="tab-btn"
-          :class="{ active: activeTabId === v.id }"
-          :data-label="v.title"
-          @click="selectTab(v)"
-        >
-          {{ v.title }}
-          <AppIcon name="refresh-cw" :size="11" class="tab-refresh-icon" :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }" />
-        </button>
-      </nav>
+      <!-- ── Issues mode (default) ────────────────────────────── -->
+      <template v-if="pageMode === 'issues'">
+        <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
+        <nav class="tab-nav">
+          <button
+            v-for="v in displayTabs"
+            :key="v.id"
+            class="tab-btn"
+            :class="{ active: activeTabId === v.id }"
+            :data-label="v.title"
+            @click="selectTab(v)"
+          >
+            {{ v.title }}
+            <AppIcon name="refresh-cw" :size="11" class="tab-refresh-icon" :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }" />
+          </button>
+        </nav>
 
-      <!-- Single IssueList for all tabs -->
-      <IssueList
-        ref="issueListRef"
-        :project-id="projectId"
-        :issues="issues"
-        :initial-panel-issue-id="initialPanelIssueId"
-        @created="onCreated"
-        @updated="onUpdated"
-        @deleted="onDeleted"
-        @view-applied="onViewApplied"
-        @views-changed="refreshViews"
-      />
+        <!-- Single IssueList for all tabs -->
+        <IssueList
+          ref="issueListRef"
+          :project-id="projectId"
+          :issues="issues"
+          :initial-panel-issue-id="initialPanelIssueId"
+          @created="onCreated"
+          @updated="onUpdated"
+          @deleted="onDeleted"
+          @view-applied="onViewApplied"
+          @views-changed="refreshViews"
+        />
+      </template>
 
-      <!-- PAI-60: project documents — same component customer detail uses. -->
-      <div class="pd-documents">
+      <!-- ── Documents mode (PAI-60) ──────────────────────────── -->
+      <div v-else-if="pageMode === 'documents'" class="pd-mode-pane">
         <DocumentsSection
           scope="project"
           :scope-id="projectId"
           :can-write="isAdmin && canEditProject"
+          @count="(n: number) => docCount = n"
         />
       </div>
 
-      <!-- PAI-62: cooperation profile (engagement type, SLA, notes). -->
-      <div class="pd-cooperation">
+      <!-- ── Cooperation mode (PAI-62) ────────────────────────── -->
+      <div v-else-if="pageMode === 'cooperation'" class="pd-mode-pane">
         <CooperationSection
           :project-id="projectId"
           :can-write="isAdmin && canEditProject"
+          @populated="(v: boolean) => cooperationPopulated = v"
+        />
+      </div>
+
+      <!-- Always-mounted, visually-hidden sentinels: feed the badge
+           counts on the Documents / Cooperation segments regardless
+           of the current mode, so the user lands on Issues with the
+           indicators already populated. `display: none` keeps Vue
+           reactivity alive (watchers fire, emits propagate) while
+           taking no visual space.
+
+           When the user switches *to* a mode, the sentinel for that
+           mode unmounts and the full pane mounts in its place — one
+           wasted fetch per switch, acceptable for v1. -->
+      <div class="pd-sentinels" aria-hidden="true">
+        <DocumentsSection
+          v-if="pageMode !== 'documents'"
+          scope="project"
+          :scope-id="projectId"
+          :can-write="false"
+          @count="(n: number) => docCount = n"
+        />
+        <CooperationSection
+          v-if="pageMode !== 'cooperation'"
+          :project-id="projectId"
+          :can-write="false"
+          @populated="(v: boolean) => cooperationPopulated = v"
         />
       </div>
     <!-- Delete confirm modal -->
@@ -1028,8 +1101,48 @@ textarea { resize: vertical; min-height: 80px; }
   margin-top: .15rem;
 }
 
-.pd-documents,
-.pd-cooperation {
-  margin-top: 1.5rem;
+.pd-mode-pane { margin-top: 1rem; }
+
+/* Compact segmented control in the page header. Matches the existing
+   .segmented + .seg-btn pattern from ProjectsView so it visually slots
+   into the existing right-hand cluster of header chrome. */
+.pd-mode-seg { margin-left: .25rem; }
+
+/* Circled count badge on the Documents segment when docs exist. */
+.pd-mode-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px;
+  padding: 0 5px;
+  margin-left: .35rem;
+  border-radius: 999px;
+  background: var(--bp-blue);
+  color: #fff;
+  font-size: 10px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
+.seg-btn.active .pd-mode-count { background: var(--bp-blue-dark); }
+
+/* (i) info marker on the Cooperation segment when the profile has any
+   data. Uses a real serif italic 'i' for character — reads as info
+   without needing an extra icon font. */
+.pd-mode-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  margin-left: .35rem;
+  border-radius: 50%;
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+  font-family: 'Source Serif Pro', 'Charter', Georgia, serif;
+  font-style: italic;
+  font-size: 12px; font-weight: 700;
+  line-height: 1;
+}
+.seg-btn.active .pd-mode-info {
+  background: rgba(255, 255, 255, .35);
+  color: #fff;
+}
+
+/* Sentinel components keep reactivity but render no UI. */
+.pd-sentinels { display: none; }
 </style>

@@ -30,6 +30,11 @@ const props = defineProps<{
   canWrite: boolean
 }>()
 
+// Emit the current document count so a parent (e.g. ProjectDetailView's
+// segmented Issues/Docs/Coop control) can show a badge without
+// re-fetching the list itself.
+const emit = defineEmits<{ count: [n: number] }>()
+
 const docs = ref<Document[]>([])
 const loading = ref(true)
 const loadError = ref('')
@@ -54,8 +59,10 @@ async function load() {
   loadError.value = ''
   try {
     docs.value = await api.get<Document[]>(listUrl.value)
+    emit('count', docs.value.length)
   } catch (e: unknown) {
     loadError.value = errMsg(e, 'Failed to load documents.')
+    emit('count', 0)
   } finally {
     loading.value = false
   }
@@ -63,6 +70,9 @@ async function load() {
 
 onMounted(load)
 watch(() => [props.scope, props.scopeId], load)
+// Mutations (upload / delete) update docs.value directly; broadcast the
+// new count so the parent badge stays in sync without a full reload.
+watch(() => docs.value.length, (n) => emit('count', n))
 
 async function uploadFiles(files: FileList | File[]) {
   if (!files || !files.length) return

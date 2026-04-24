@@ -24,6 +24,11 @@ import type { CooperationMetadata } from '@/types'
 
 const props = defineProps<{ projectId: number; canWrite: boolean }>()
 
+// Emit `populated` so a parent (ProjectDetailView's segmented control)
+// can show an (i) badge on the Cooperation tab without inspecting the
+// row itself.
+const emit = defineEmits<{ populated: [v: boolean] }>()
+
 const data = ref<CooperationMetadata | null>(null)
 const loading = ref(true)
 const loadError = ref('')
@@ -60,7 +65,8 @@ function labelFor(options: ReadonlyArray<{ value: string; label: string }>, valu
 }
 
 // `populated` = at least one structured field, SLA flag, or freeform
-// note is set. Drives the empty-state vs. content branch.
+// note is set. Drives the empty-state vs. content branch — and feeds
+// the parent's segmented-control badge via the `populated` emit below.
 const populated = computed(() => {
   if (!data.value) return false
   const d = data.value
@@ -69,6 +75,8 @@ const populated = computed(() => {
             || d.backup_responsible || d.oncall
             || d.sla_details || d.cooperation_notes)
 })
+
+watch(populated, (v) => emit('populated', v), { immediate: true })
 
 async function load() {
   loading.value = true
