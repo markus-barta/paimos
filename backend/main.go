@@ -57,6 +57,10 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+	// PAI-114: baseline security headers on every response. Non-breaking
+	// (X-Frame-Options=SAMEORIGIN keeps the in-app PDF preview iframes
+	// working, CSP runs in Report-Only mode until PAI-118 lands).
+	r.Use(handlers.SecurityHeaders)
 	// PAI-97: session-scoped mutation audit. No-op unless
 	// PAIMOS_AUDIT_SESSIONS=true is set — off by default in v1.
 	r.Use(handlers.SessionAuditMiddleware)
@@ -74,6 +78,8 @@ func main() {
 		r.Get("/health", healthHandler)                // (a) Docker + CI
 		r.Get("/branding", handlers.GetBranding)       // (b) login page logo + colors
 		r.Get("/schema", handlers.GetAPISchema)        // (c) CLI / MCP discovery (PAI-87)
+		// PAI-114: CSP violation reports. Browser-driven, unauthenticated.
+		r.Post("/csp-report", handlers.CSPReport)
 
 		// Auth (public — no session possible yet)
 		r.Post("/auth/login", auth.LoginHandler)
