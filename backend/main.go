@@ -30,7 +30,13 @@ import (
 	"github.com/markus-barta/paimos/backend/brand"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/markus-barta/paimos/backend/handlers/crm"
 	"github.com/markus-barta/paimos/backend/storage"
+
+	// CRM provider plugins. Blank-import each provider so its init()
+	// registers it with the crm package's registry. Adding a new
+	// provider = one line here + one new subpackage under crm/.
+	_ "github.com/markus-barta/paimos/backend/handlers/crm/hubspot"
 )
 
 func main() {
@@ -303,6 +309,37 @@ func main() {
 			r.Get("/integrations/mite", handlers.GetMiteIntegration)
 			r.With(auth.RequireAdmin).Put("/integrations/mite", handlers.PutMiteIntegration)
 			r.With(auth.RequireAdmin).Post("/integrations/mite/test", handlers.TestMiteIntegration)
+
+			// CRM provider plugin layer (PAI-101). All admin-only.
+			// The plugin layer does not assume any specific provider —
+			// `crm.List()` only returns whatever was blank-imported in
+			// this binary.
+			r.With(auth.RequireAdmin).Get("/integrations/crm", crm.ListProviders)
+			r.With(auth.RequireAdmin).Get("/integrations/crm/{id}/config", crm.GetProviderConfig)
+			r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/config", crm.PutProviderConfig)
+			r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/enabled", crm.PutProviderEnabled)
+
+			// Customers (PAI-53). CRM-agnostic CRUD; manual customers
+			// fully supported (no provider required).
+			r.Get("/customers", handlers.ListCustomers)
+			r.Get("/customers/{id}", handlers.GetCustomer)
+			r.With(auth.RequireAdmin).Post("/customers", handlers.CreateCustomer)
+			r.With(auth.RequireAdmin).Put("/customers/{id}", handlers.UpdateCustomer)
+			r.With(auth.RequireAdmin).Delete("/customers/{id}", handlers.DeleteCustomer)
+			// Provider-driven import / sync (PAI-103).
+			r.With(auth.RequireAdmin).Post("/customers/import", crm.ImportCustomer)
+			r.With(auth.RequireAdmin).Post("/customers/{id}/sync", crm.SyncCustomer)
+
+			// Documents (PAI-55). Scoped under customer / project for
+			// list + upload; unscoped paths for read / mutate / delete
+			// since documents are uniquely id-addressable.
+			r.Get("/customers/{id}/documents", handlers.ListCustomerDocuments)
+			r.With(auth.RequireAdmin).Post("/customers/{id}/documents", handlers.UploadCustomerDocument)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/documents", handlers.ListProjectDocuments)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/documents", handlers.UploadProjectDocument)
+			r.Get("/documents/{id}/download", handlers.DownloadDocument)
+			r.With(auth.RequireAdmin).Put("/documents/{id}", handlers.UpdateDocument)
+			r.With(auth.RequireAdmin).Delete("/documents/{id}", handlers.DeleteDocument)
 
 			// Mite import
 			r.With(auth.RequireAdmin).Post("/import/mite", handlers.ImportFromMite)

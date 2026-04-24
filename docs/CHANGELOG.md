@@ -5,6 +5,54 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] — 2026-04-24
+
+### Added — customers + documents + CRM provider plugin layer (PAI-28 + PAI-101)
+
+Backend foundation for the customer-management epic, refined for CRM
+independence. PAIMOS now owns the customer / document / rate-cascading
+data model directly; external CRM sync (HubSpot is the first provider)
+plugs in through a small Go interface.
+
+- **Customers** (PAI-53): new `customers` table with CRM-agnostic
+  `external_*` columns (NULL = manual customer, fully supported as a
+  primary mode). Full CRUD endpoints under `/api/customers`. FTS5
+  indexed for search; admin-only writes; pair-validation triggers
+  enforce that `external_id` and `external_provider` are both set or
+  both null at the DB layer.
+- **Project ↔ customer FK + rate cascading** (PAI-54): legacy
+  freeform `projects.customer_id` column renamed to `customer_label`;
+  new `customer_id` is an INTEGER FK to `customers.id`. List + detail
+  responses now carry `effective_rate_hourly`, `effective_rate_lp`,
+  and `rate_inherited` so the UI can show inherited-vs-overridden
+  without computing it client-side.
+- **Documents** (PAI-55): new `documents` table with a `scope`
+  (`customer` | `project`) constraint that enforces exactly one of the
+  two FKs is set per row. File bytes go to MinIO under the
+  `documents/<scope>/<id>/…` key namespace (same bucket as
+  attachments — single object store for both). 20 MB cap; PDF / image
+  / Office MIME allowlist; status badges (`draft` | `active` |
+  `expired`) + validity dates.
+- **CRM provider plugin layer** (PAI-101 + children): new
+  `backend/handlers/crm` package defining the `Provider` Go
+  interface, in-process registry, generic
+  `POST /api/customers/import`, `POST /api/customers/:id/sync`, and
+  the admin Integrations endpoints (`/api/integrations/crm`).
+  Provider configs persist in a new `provider_configs` table with
+  AES-GCM-encrypted secrets at rest (key from `PAIMOS_SECRET_KEY` env
+  or auto-generated under `$DATA_DIR/.secret-key`). Secrets are never
+  echoed in API responses or log lines — only a `has_value` flag per
+  field so the admin UI can render "••••• has value".
+- **HubSpot provider** (PAI-56): first reference implementation.
+  Imports a HubSpot company by URL or bare ID, supports manual
+  re-sync (preserves PAIMOS-only fields), builds deep-link URLs back
+  into HubSpot. Wired in `main.go` via blank import — adding a new
+  provider is one line there + one new subpackage.
+
+Frontend types updated for the renamed `customer_label` column;
+sidebar / customer list / customer detail views (PAI-57 / PAI-58) and
+the admin CRM Integrations UI (PAI-105) ship in a follow-up.
+
 ## [1.5.2] — 2026-04-24
 
 ### Changed — appearance-state ownership (PAI-84)

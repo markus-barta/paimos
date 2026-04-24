@@ -3231,6 +3231,137 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_session_activity_occurred
 		 ON session_activity(occurred_at)`,
 	}},
+
+	// M69: customers table (PAI-53). CRM-agnostic by design — provider-side
+	// IDs and deep-link URLs live in generic columns (`external_*`) so the
+	// schema doesn't bind PAIMOS to any particular CRM. Manual customers
+	// are first-class: NULL `external_*` is the no-CRM mode (PAI-28
+	// audience #1). FTS5 entry built from name + contact + industry.
+	{69, []string{
+		`CREATE TABLE IF NOT EXISTS customers (
+			id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+			name               TEXT NOT NULL,
+			external_id        TEXT,
+			external_url       TEXT,
+			external_provider  TEXT,
+			synced_at          TEXT,
+			contact_name       TEXT NOT NULL DEFAULT '',
+			contact_email      TEXT NOT NULL DEFAULT '',
+			address            TEXT NOT NULL DEFAULT '',
+			country            TEXT NOT NULL DEFAULT '',
+			industry           TEXT NOT NULL DEFAULT '',
+			rate_hourly        REAL,
+			rate_lp            REAL,
+			notes              TEXT NOT NULL DEFAULT '',
+			created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// Same pair-must-be-set semantic as the API layer: a customer
+		// linked to an external CRM has both id and provider; a manual
+		// customer has neither. Enforced at the DB so a malformed
+		// migration / direct-write can't sneak past.
+		`CREATE TRIGGER IF NOT EXISTS trg_customers_external_pair_ai
+			BEFORE INSERT ON customers
+			WHEN (NEW.external_id IS NULL) <> (NEW.external_provider IS NULL)
+			BEGIN
+				SELECT RAISE(ABORT, 'external_id and external_provider must be both set or both null');
+			END`,
+		`CREATE TRIGGER IF NOT EXISTS trg_customers_external_pair_au
+			BEFORE UPDATE ON customers
+			WHEN (NEW.external_id IS NULL) <> (NEW.external_provider IS NULL)
+			BEGIN
+				SELECT RAISE(ABORT, 'external_id and external_provider must be both set or both null');
+			END`,
+		`CREATE INDEX IF NOT EXISTS idx_customers_external
+		 ON customers(external_provider, external_id)`,
+		// FTS triggers
+		`CREATE TRIGGER IF NOT EXISTS trg_customers_ai
+			AFTER INSERT ON customers BEGIN
+				INSERT INTO search_index(entity_type, entity_id, content)
+				VALUES('customer', NEW.id,
+					NEW.name || ' ' || NEW.contact_name || ' ' ||
+					NEW.contact_email || ' ' || NEW.industry || ' ' ||
+					NEW.country || ' ' || NEW.notes);
+			END`,
+		`CREATE TRIGGER IF NOT EXISTS trg_customers_au
+			AFTER UPDATE ON customers BEGIN
+				DELETE FROM search_index WHERE entity_type='customer' AND entity_id=OLD.id;
+				INSERT INTO search_index(entity_type, entity_id, content)
+				VALUES('customer', NEW.id,
+					NEW.name || ' ' || NEW.contact_name || ' ' ||
+					NEW.contact_email || ' ' || NEW.industry || ' ' ||
+					NEW.country || ' ' || NEW.notes);
+			END`,
+		`CREATE TRIGGER IF NOT EXISTS trg_customers_ad
+			AFTER DELETE ON customers BEGIN
+				DELETE FROM search_index WHERE entity_type='customer' AND entity_id=OLD.id;
+			END`,
+	}},
+
+	// M70: projects ↔ customers FK + documents + provider_configs.
+	// SQLite can't ALTER an existing column to add a FK on a populated
+	// table, and the existing `customer_id` is a freeform TEXT label
+	// (PMO26 legacy). Rename it to `customer_label` and add a clean
+	// `customer_id INTEGER` FK so the rate-cascading + assignment logic
+	// (PAI-54) works against the new customers table.
+	{70, []string{
+		// ── Rename existing customer_id → customer_label, add FK ────
+		// SQLite supports RENAME COLUMN since 3.25; this codebase uses
+		// modernc.org/sqlite which is well past that.
+		`ALTER TABLE projects RENAME COLUMN customer_id TO customer_label`,
+		`ALTER TABLE projects ADD COLUMN customer_id INTEGER REFERENCES customers(id)`,
+		`CREATE INDEX IF NOT EXISTS idx_projects_customer_id
+		 ON projects(customer_id)`,
+
+		// ── documents (PAI-55) ──────────────────────────────────────
+		// Single table for both customer- and project-scoped uploads.
+		// scope is checked so exactly one of customer_id / project_id
+		// is set; orphan docs (both NULL) are rejected.
+		`CREATE TABLE IF NOT EXISTS documents (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			scope         TEXT NOT NULL CHECK(scope IN ('customer','project')),
+			customer_id   INTEGER REFERENCES customers(id) ON DELETE CASCADE,
+			project_id    INTEGER REFERENCES projects(id)  ON DELETE CASCADE,
+			filename      TEXT NOT NULL,
+			mime_type     TEXT NOT NULL,
+			size_bytes    INTEGER NOT NULL,
+			-- object_key is the path inside the MinIO bucket (same storage
+			-- layer as attachments). Documents and attachments share one
+			-- bucket; the key namespace separates them ("documents/…" vs
+			-- the bare "<issueId>/…" attachments use).
+			object_key    TEXT NOT NULL,
+			label         TEXT NOT NULL DEFAULT '',
+			status        TEXT NOT NULL DEFAULT 'active'
+			              CHECK(status IN ('draft','active','expired')),
+			valid_from    TEXT,
+			valid_until   TEXT,
+			uploaded_by   INTEGER,
+			uploaded_at   TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			CHECK(
+				(scope = 'customer' AND customer_id IS NOT NULL AND project_id IS NULL) OR
+				(scope = 'project'  AND project_id  IS NOT NULL AND customer_id IS NULL)
+			)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_documents_customer
+		 ON documents(customer_id) WHERE customer_id IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_documents_project
+		 ON documents(project_id)  WHERE project_id  IS NOT NULL`,
+
+		// ── provider_configs (PAI-104) ──────────────────────────────
+		// Per-provider settings. config_json holds non-secret fields as
+		// a plain JSON map; secret fields are encrypted at rest with
+		// AES-GCM and stored separately under config_secret_json (so
+		// non-secret reads in the API never even touch the ciphertext).
+		`CREATE TABLE IF NOT EXISTS provider_configs (
+			provider_id           TEXT PRIMARY KEY,
+			enabled               INTEGER NOT NULL DEFAULT 0,
+			config_json           TEXT NOT NULL DEFAULT '{}',
+			config_secret_json    BLOB,
+			updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_by            INTEGER REFERENCES users(id)
+		)`,
+	}},
 	}
 
 	for _, m := range migrations {

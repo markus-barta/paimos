@@ -43,7 +43,11 @@ export interface Project {
   description: string
   status: 'active' | 'archived' | 'deleted'
   product_owner: number | null
-  customer_id: string
+  // PAI-54: customer_label is the freeform legacy text; customer_id is
+  // the FK into the customers table (PAI-53). Both nullable.
+  customer_label: string
+  customer_id: number | null
+  customer_name?: string
   created_at: string
   updated_at: string
   issue_count: number
@@ -55,6 +59,11 @@ export interface Project {
   tags: Tag[]
   rate_hourly?: number | null
   rate_lp?: number | null
+  // PAI-54: effective rates after customer→project cascading; the
+  // backend computes these so the UI doesn't have to.
+  effective_rate_hourly?: number | null
+  effective_rate_lp?: number | null
+  rate_inherited?: boolean
 }
 
 export interface IssueRelation {

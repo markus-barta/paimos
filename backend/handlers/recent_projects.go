@@ -68,7 +68,7 @@ func GetRecentProjects(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit)
 	rows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status,
-		       p.product_owner, p.customer_id,
+		       p.product_owner, p.customer_label, p.customer_id,
 		       p.created_at, p.updated_at,
 		       COALESCE(p.logo_path, '')
 		FROM user_recent_projects urp
@@ -87,7 +87,7 @@ func GetRecentProjects(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p models.Project
 		if err := rows.Scan(&p.ID, &p.Name, &p.Key, &p.Description, &p.Status,
-			&p.ProductOwner, &p.CustomerID,
+			&p.ProductOwner, &p.CustomerLabel, &p.CustomerID,
 			&p.CreatedAt, &p.UpdatedAt, &p.LogoPath); err != nil {
 			jsonError(w, "scan failed", http.StatusInternalServerError)
 			return

@@ -25,7 +25,9 @@ export interface Project {
   description: string
   status: 'active' | 'archived' | 'deleted'
   product_owner: number | null
-  customer_id: string
+  customer_label: string
+  customer_id: number | null
+  customer_name?: string
   created_at: string
   updated_at: string
   issue_count: number

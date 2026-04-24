@@ -124,7 +124,7 @@ async function refreshViews() {
 
 // Edit project
 const showEdit  = ref(false)
-const editForm  = ref({ name: '', key: '', description: '', status: 'active', product_owner: null as number | null, customer_id: '', rate_hourly: null as number | null, rate_lp: null as number | null })
+const editForm  = ref({ name: '', key: '', description: '', status: 'active', product_owner: null as number | null, customer_label: '', rate_hourly: null as number | null, rate_lp: null as number | null })
 const editError = ref('')
 const saving    = ref(false)
 
@@ -172,7 +172,7 @@ function openEdit() {
     description:   project.value.description,
     status:        project.value.status,
     product_owner: project.value.product_owner ?? null,
-    customer_id:   project.value.customer_id ?? '',
+    customer_label: project.value.customer_label ?? '',
     rate_hourly:   project.value.rate_hourly ?? null,
     rate_lp:       project.value.rate_lp ?? null,
   }
@@ -624,8 +624,8 @@ const lastChanged = computed(() => {
           </select>
         </div>
         <div class="field">
-          <label>Customer ID <span class="label-hint">— external reference</span></label>
-          <input v-model="editForm.customer_id" type="text" placeholder="e.g. CUST-123" />
+          <label>Customer label <span class="label-hint">— freeform reference</span></label>
+          <input v-model="editForm.customer_label" type="text" placeholder="e.g. CUST-123" />
         </div>
         <div style="display:flex;gap:.75rem">
           <div class="field" style="flex:1">
