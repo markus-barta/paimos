@@ -896,6 +896,10 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         <button :class="['btn btn-ghost btn-sm', { active: treeView }]" @click="treeView=!treeView">
           {{ treeView ? '≡ Flat' : '⌥ Tree' }}
         </button>
+        <!-- Slot for parent-injected toolbar buttons (e.g. ProjectDetailView's
+             Documents / Cooperation aux-panel toggles, PAI-145). Lives next
+             to Tree/Flat so toggles all share one visual cluster. -->
+        <slot name="toolbar-extra" />
         <button
           ref="colBtnEl"
           :class="['btn btn-ghost btn-sm filter-btn', { active: colPanelOpen }]"

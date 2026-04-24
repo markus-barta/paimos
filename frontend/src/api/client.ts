@@ -59,13 +59,35 @@ function maybeMarkSessionExpired(path: string) {
   }
 }
 
+// Hard ceiling on how long any single request can hang. Anything slower
+// than this is almost certainly the origin being unreachable (or a
+// route/Tailscale issue), not a slow query. Without this, components
+// with `loading.value` flags get stuck on "Loading…" indefinitely while
+// the browser keeps the underlying fetch open in the background.
+const REQUEST_TIMEOUT_MS = 30_000
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: 'same-origin',
-  })
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'same-origin',
+      signal: ctrl.signal,
+    })
+  } catch (e) {
+    // Surface the timeout case as a clean ApiError so callers can
+    // render it instead of the raw "AbortError" string.
+    if ((e as Error).name === 'AbortError') {
+      throw new ApiError(0, `request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (res.status === 401) {
     maybeMarkSessionExpired(path)

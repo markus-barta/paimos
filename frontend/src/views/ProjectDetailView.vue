@@ -21,6 +21,7 @@ import { provideIssueContext } from '@/composables/useIssueContext'
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
+import ProjectAuxPanel from '@/components/customer/ProjectAuxPanel.vue'
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -54,15 +55,22 @@ const sprints   = ref<Sprint[]>([])
 // dropdown in the edit modal and the inherited-rate hints.
 const customers = ref<Customer[]>([])
 
-// PAI-145 follow-up. Documents + cooperation profile used to render
-// permanently below the IssueList — long page, lots of empty state.
-// A small segmented control in the page header now toggles between
-// `issues` (default), `documents`, and `cooperation` so each
-// concern gets the full content area when it's the focus. Badges on
-// the Documents / Cooperation segments surface when there's content
-// to find.
-type PageMode = 'issues' | 'documents' | 'cooperation'
-const pageMode = ref<PageMode>('issues')
+// PAI-145. Documents and Cooperation panes don't belong inline in
+// the project body — they were always-visible and shouted empty-state
+// at the user. They now live in a slide-from-right aux panel
+// (ProjectAuxPanel) toggled from buttons in the IssueList toolbar
+// (next to Tree/Flat). Independent toggles, not tabs — but at most one
+// aux panel is shown at a time because they share the right-edge slot
+// with IssueSidePanel.
+type AuxPanel = 'docs' | 'cooperation' | null
+const auxPanel = ref<AuxPanel>(null)
+function toggleAux(p: 'docs' | 'cooperation') {
+  auxPanel.value = auxPanel.value === p ? null : p
+}
+
+// Live indicators on the toggle buttons — the always-mounted hidden
+// sentinels below feed these so the user sees signal without having to
+// open each panel first.
 const docCount = ref(0)
 const cooperationPopulated = ref(false)
 
@@ -576,36 +584,6 @@ const lastChanged = computed(() => {
           <RouterLink :to="`/projects/${projectId}/issues/${lastChanged.id}`" class="ah-meta-link">{{ lastChanged.key }}</RouterLink>
         </span>
         <span :class="`badge badge-${project.status}`">{{ project.status }}</span>
-        <!-- PAI-145 follow-up: page-mode segmented control. Default is
-             Issues; the Documents / Cooperation segments surface badges
-             when there's content to find so the user can tell at a
-             glance whether switching modes is worthwhile. -->
-        <div class="segmented pd-mode-seg" role="tablist" aria-label="Project view">
-          <button
-            type="button" role="tab"
-            :class="['seg-btn', { active: pageMode === 'issues' }]"
-            :aria-selected="pageMode === 'issues'"
-            @click="pageMode = 'issues'"
-          >Issues</button>
-          <button
-            type="button" role="tab"
-            :class="['seg-btn', { active: pageMode === 'documents' }]"
-            :aria-selected="pageMode === 'documents'"
-            @click="pageMode = 'documents'"
-          >
-            Documents
-            <span v-if="docCount > 0" class="pd-mode-count">{{ docCount }}</span>
-          </button>
-          <button
-            type="button" role="tab"
-            :class="['seg-btn', { active: pageMode === 'cooperation' }]"
-            :aria-selected="pageMode === 'cooperation'"
-            @click="pageMode = 'cooperation'"
-          >
-            Cooperation
-            <span v-if="cooperationPopulated" class="pd-mode-info" title="Profile filled in">i</span>
-          </button>
-        </div>
         <TagChip v-for="t in project.tags" :key="t.id" :tag="t" />
         <button class="btn btn-ghost btn-sm icon-only" @click="exportCSV" :disabled="exporting" :title="exporting ? 'Preparing download…' : 'Export CSV'">
           <AppIcon v-if="!exporting" name="download" :size="14" />
@@ -634,76 +612,110 @@ const lastChanged = computed(() => {
       </div>
       <div v-if="importError" class="import-error">{{ importError }} <button class="import-dismiss" @click="importError=''"><AppIcon name="x" :size="14" /></button></div>
 
-      <!-- ── Issues mode (default) ────────────────────────────── -->
-      <template v-if="pageMode === 'issues'">
-        <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
-        <nav class="tab-nav">
+      <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
+      <nav class="tab-nav">
+        <button
+          v-for="v in displayTabs"
+          :key="v.id"
+          class="tab-btn"
+          :class="{ active: activeTabId === v.id }"
+          :data-label="v.title"
+          @click="selectTab(v)"
+        >
+          {{ v.title }}
+          <AppIcon name="refresh-cw" :size="11" class="tab-refresh-icon" :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }" />
+        </button>
+      </nav>
+
+      <!-- Single IssueList for all tabs. The `toolbar-extra` slot drops
+           the Documents / Cooperation aux-panel toggles in next to the
+           Tree/Flat button so the whole toggle cluster lives together. -->
+      <IssueList
+        ref="issueListRef"
+        :project-id="projectId"
+        :issues="issues"
+        :initial-panel-issue-id="initialPanelIssueId"
+        @created="onCreated"
+        @updated="onUpdated"
+        @deleted="onDeleted"
+        @view-applied="onViewApplied"
+        @views-changed="refreshViews"
+      >
+        <template #toolbar-extra>
           <button
-            v-for="v in displayTabs"
-            :key="v.id"
-            class="tab-btn"
-            :class="{ active: activeTabId === v.id }"
-            :data-label="v.title"
-            @click="selectTab(v)"
+            type="button"
+            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', { active: auxPanel === 'docs' }]"
+            :title="docCount > 0 ? `${docCount} document${docCount === 1 ? '' : 's'}` : 'No documents yet'"
+            @click="toggleAux('docs')"
           >
-            {{ v.title }}
-            <AppIcon name="refresh-cw" :size="11" class="tab-refresh-icon" :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }" />
+            <AppIcon name="file-stack" :size="13" />
+            <span>Docs</span>
+            <span v-if="docCount > 0" class="pd-aux-count">{{ docCount }}</span>
           </button>
-        </nav>
+          <button
+            type="button"
+            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', { active: auxPanel === 'cooperation' }]"
+            :title="cooperationPopulated ? 'Cooperation profile filled in' : 'No cooperation profile yet'"
+            @click="toggleAux('cooperation')"
+          >
+            <AppIcon name="handshake" :size="13" />
+            <span>Coop</span>
+            <span v-if="cooperationPopulated" class="pd-aux-info" aria-hidden="true">i</span>
+          </button>
+        </template>
+      </IssueList>
 
-        <!-- Single IssueList for all tabs -->
-        <IssueList
-          ref="issueListRef"
-          :project-id="projectId"
-          :issues="issues"
-          :initial-panel-issue-id="initialPanelIssueId"
-          @created="onCreated"
-          @updated="onUpdated"
-          @deleted="onDeleted"
-          @view-applied="onViewApplied"
-          @views-changed="refreshViews"
-        />
-      </template>
-
-      <!-- ── Documents mode (PAI-60) ──────────────────────────── -->
-      <div v-else-if="pageMode === 'documents'" class="pd-mode-pane">
+      <!-- ── Aux side panels (PAI-145) ───────────────────────────
+           Slide in from the right; share width with IssueSidePanel
+           via useSidePanelWidth so they line up. The DocumentsSection
+           and CooperationSection live inside the panel slot so the
+           empty-states still read well — just no longer screaming for
+           attention from the page body. -->
+      <ProjectAuxPanel
+        :open="auxPanel === 'docs'"
+        title="Documents"
+        :subtitle="docCount > 0 ? `${docCount} file${docCount === 1 ? '' : 's'}` : ''"
+        @close="auxPanel = null"
+      >
         <DocumentsSection
           scope="project"
           :scope-id="projectId"
           :can-write="isAdmin && canEditProject"
           @count="(n: number) => docCount = n"
         />
-      </div>
+      </ProjectAuxPanel>
 
-      <!-- ── Cooperation mode (PAI-62) ────────────────────────── -->
-      <div v-else-if="pageMode === 'cooperation'" class="pd-mode-pane">
+      <ProjectAuxPanel
+        :open="auxPanel === 'cooperation'"
+        title="Cooperation"
+        :subtitle="cooperationPopulated ? 'profile set' : 'not set up'"
+        @close="auxPanel = null"
+      >
         <CooperationSection
           :project-id="projectId"
           :can-write="isAdmin && canEditProject"
           @populated="(v: boolean) => cooperationPopulated = v"
         />
-      </div>
+      </ProjectAuxPanel>
 
-      <!-- Always-mounted, visually-hidden sentinels: feed the badge
-           counts on the Documents / Cooperation segments regardless
-           of the current mode, so the user lands on Issues with the
-           indicators already populated. `display: none` keeps Vue
-           reactivity alive (watchers fire, emits propagate) while
-           taking no visual space.
+      <!-- Always-mounted, visually-hidden sentinels feed the toolbar
+           toggle badges (count + (i)) without forcing the user to open
+           the panels first. `display: none` on .pd-sentinels keeps Vue
+           reactivity alive while taking no visual space.
 
-           When the user switches *to* a mode, the sentinel for that
-           mode unmounts and the full pane mounts in its place — one
-           wasted fetch per switch, acceptable for v1. -->
+           When a panel opens, the sentinel for that scope unmounts and
+           the real component mounts inside the panel — one wasted
+           fetch per toggle, acceptable for v1. -->
       <div class="pd-sentinels" aria-hidden="true">
         <DocumentsSection
-          v-if="pageMode !== 'documents'"
+          v-if="auxPanel !== 'docs'"
           scope="project"
           :scope-id="projectId"
           :can-write="false"
           @count="(n: number) => docCount = n"
         />
         <CooperationSection
-          v-if="pageMode !== 'cooperation'"
+          v-if="auxPanel !== 'cooperation'"
           :project-id="projectId"
           :can-write="false"
           @populated="(v: boolean) => cooperationPopulated = v"
@@ -1101,19 +1113,23 @@ textarea { resize: vertical; min-height: 80px; }
   margin-top: .15rem;
 }
 
-.pd-mode-pane { margin-top: 1rem; }
+/* Aux-panel toggles in the IssueList toolbar. Sit next to Tree/Flat;
+   inherit .btn / .btn-ghost / .btn-sm sizing, so they line up with
+   their neighbours without bespoke metrics. */
+.pd-aux-btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.pd-aux-btn.active {
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+  border-color: var(--bp-blue-light);
+}
 
-/* Compact segmented control in the page header. Matches the existing
-   .segmented + .seg-btn pattern from ProjectsView so it visually slots
-   into the existing right-hand cluster of header chrome. */
-.pd-mode-seg { margin-left: .25rem; }
-
-/* Circled count badge on the Documents segment when docs exist. */
-.pd-mode-count {
+/* Circled count when there's at least one document. */
+.pd-aux-count {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 16px; height: 16px;
   padding: 0 5px;
-  margin-left: .35rem;
   border-radius: 999px;
   background: var(--bp-blue);
   color: #fff;
@@ -1121,15 +1137,12 @@ textarea { resize: vertical; min-height: 80px; }
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.seg-btn.active .pd-mode-count { background: var(--bp-blue-dark); }
+.pd-aux-btn.active .pd-aux-count { background: var(--bp-blue-dark); }
 
-/* (i) info marker on the Cooperation segment when the profile has any
-   data. Uses a real serif italic 'i' for character — reads as info
-   without needing an extra icon font. */
-.pd-mode-info {
+/* Italic 'i' marker when the cooperation profile has any data. */
+.pd-aux-info {
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px;
-  margin-left: .35rem;
   border-radius: 50%;
   background: var(--bp-blue-pale);
   color: var(--bp-blue-dark);
@@ -1138,8 +1151,8 @@ textarea { resize: vertical; min-height: 80px; }
   font-size: 12px; font-weight: 700;
   line-height: 1;
 }
-.seg-btn.active .pd-mode-info {
-  background: rgba(255, 255, 255, .35);
+.pd-aux-btn.active .pd-aux-info {
+  background: var(--bp-blue);
   color: #fff;
 }
 
