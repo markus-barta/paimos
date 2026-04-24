@@ -280,6 +280,16 @@ func main() {
 			// Access-change audit log (admin only).
 			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
 
+			// Incident log (PAI-116). Admin-only CRUD + JSON/CSV export
+			// for SIEM ingestion. Export route is registered before
+			// /incidents/{id} so the literal path wins the chi match.
+			r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)
+			r.With(auth.RequireAdmin).Get("/incidents", handlers.ListIncidents)
+			r.With(auth.RequireAdmin).Post("/incidents", handlers.CreateIncident)
+			r.With(auth.RequireAdmin).Get("/incidents/{id}", handlers.GetIncident)
+			r.With(auth.RequireAdmin).Patch("/incidents/{id}", handlers.UpdateIncident)
+			r.With(auth.RequireAdmin).Delete("/incidents/{id}", handlers.DeleteIncident)
+
 			// Session-scoped mutation audit (PAI-97). Admin only. Returns
 			// the mutations recorded under a session, keyset-paginated by
 			// `id > cursor`. Empty array for unknown sessions.

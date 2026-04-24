@@ -26,12 +26,17 @@ import (
 const SessionHeader = "X-PAIMOS-Session-Id"
 
 // auditEnabled returns whether session-activity logging is turned on.
-// Off by default in v1 per PAI-97 decision — flip once multi-agent use
-// makes the data actually useful. Reads the env var on every call so
-// an operator can flip it at runtime (useful for debugging).
+// PAI-116: defaults to ON for the NIS2 readiness target — the audit row
+// is small (a single insert per mutation) and multi-agent use is now the
+// expected operating mode. Operators who want to opt back out can set
+// PAIMOS_AUDIT_SESSIONS=false. Reads the env var on every call so an
+// operator can flip it at runtime without a restart.
 func auditEnabled() bool {
 	v := os.Getenv("PAIMOS_AUDIT_SESSIONS")
-	return v == "true" || v == "1"
+	if v == "" {
+		return true
+	}
+	return v != "false" && v != "0"
 }
 
 // SessionAuditMiddleware records mutation requests (POST/PUT/PATCH/DELETE)

@@ -36,16 +36,34 @@ func countActivity(t *testing.T, sessionID string) int {
 	return n
 }
 
-func TestSessionAudit_OffByDefault(t *testing.T) {
+// TestSessionAudit_OffWhenDisabled — PAI-116 flipped the default to ON.
+// The opt-OUT path is the one that needs verifying now: setting the env
+// var to "false" or "0" must keep the audit table empty.
+func TestSessionAudit_OffWhenDisabled(t *testing.T) {
+	t.Setenv("PAIMOS_AUDIT_SESSIONS", "false")
 	ts := newTestServer(t)
-	// No PAIMOS_AUDIT_SESSIONS env — middleware should no-op.
 	resp := ts.post(t, "/api/tags", ts.adminCookie, map[string]string{"name": "x"})
 	_ = resp
 
 	var n int
 	_ = db.DB.QueryRow(`SELECT COUNT(*) FROM session_activity`).Scan(&n)
 	if n != 0 {
-		t.Errorf("audit rows written despite PAIMOS_AUDIT_SESSIONS unset: %d", n)
+		t.Errorf("audit rows written despite PAIMOS_AUDIT_SESSIONS=false: %d", n)
+	}
+}
+
+// TestSessionAudit_OnByDefault — PAI-116. NIS2 readiness target wants
+// a complete audit trail by default; operators can opt out, but they
+// shouldn't have to opt in.
+func TestSessionAudit_OnByDefault(t *testing.T) {
+	ts := newTestServer(t)
+	resp := ts.post(t, "/api/tags", ts.adminCookie, map[string]string{"name": "default-on"})
+	_ = resp
+
+	var n int
+	_ = db.DB.QueryRow(`SELECT COUNT(*) FROM session_activity`).Scan(&n)
+	if n == 0 {
+		t.Errorf("expected audit rows by default; got %d", n)
 	}
 }
 
