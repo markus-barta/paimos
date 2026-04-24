@@ -20,6 +20,11 @@ status:
 release mode="":
     @./scripts/release.sh {{mode}}
 
+# Generate CycloneDX SBOMs locally (PAI-121). Mirrors the CI tag-push
+# step; useful for reviewing dependency exposure before cutting.
+sbom:
+    @./scripts/sbom.sh
+
 # Deploy a tag to ppm (pm.barta.cm). Default tag = latest on origin.
 deploy-ppm tag="":
     @./scripts/deploy.sh ppm {{tag}}
