@@ -5,9 +5,23 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.5] — 2026-04-24
+## [1.6.0] — 2026-04-24
 
-### Added — cooperation metadata + CRM provider docs (PAI-61 / PAI-62 / PAI-107)
+### Added — PAI-28 epic complete: cooperation metadata + CRM provider docs (PAI-61 / PAI-62 / PAI-107)
+
+This release closes the **PAI-28 customer-management epic**: data
+model + plugin layer + HubSpot provider + frontend + cooperation
+profile + developer docs all shipped. Bumped to **1.6.0** to mark the
+epic as feature-complete.
+
+What landed across 1.5.3 → 1.6.0:
+- 1.5.3 — backend foundation (customers, documents in MinIO, plugin
+  layer, HubSpot provider)
+- 1.5.4 — frontend (sidebar, customer views, admin Integrations CRM
+  tab, project polish)
+- **1.6.0 (this release)** — cooperation metadata + CRM developer docs
+
+### This release in detail (PAI-61 / PAI-62 / PAI-107)
 
 Closes the PAI-28 epic frontend work plus the deferred plugin-layer
 docs.
