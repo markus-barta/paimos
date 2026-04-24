@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="HubSpot integration">
+  <title>HubSpot</title>
+  <!--
+    Stylised mark used as an integration tile inside PAIMOS Settings → CRM.
+    Not the HubSpot brand asset — a tasteful neutral stand-in (rounded
+    square in HubSpot's signature orange + a clean "H" monogram in white)
+    that survives the monochrome filter the ProviderBadge applies in idle
+    state. Replace with the official asset if/when shipped under a
+    license that allows redistribution.
+  -->
+  <rect width="32" height="32" rx="7" fill="#FF7A59"/>
+  <path d="M11.4 8.5v6.1h9.2V8.5h2.4v15h-2.4v-6.5h-9.2v6.5H9V8.5z" fill="#fff"/>
+</svg>

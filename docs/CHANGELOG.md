@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] — 2026-04-24
+
+### Fixed
+- HubSpot provider tile in Settings → CRM and the customer-import
+  dropdown were rendering a broken-image placeholder — `LogoURL()`
+  pointed at `/assets/crm/hubspot.svg` but the asset wasn't shipped.
+  Added a stylised neutral mark under `frontend/public/assets/crm/`
+  so the tile reads as intentional. New providers ship their own
+  SVG under the same path; see `docs/CRM_PROVIDERS.md`.
+
 ## [1.6.0] — 2026-04-24
 
 ### Added — PAI-28 epic complete: cooperation metadata + CRM provider docs (PAI-61 / PAI-62 / PAI-107)
