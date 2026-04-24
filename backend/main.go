@@ -92,6 +92,14 @@ func main() {
 		r.Post("/auth/login", auth.LoginHandler)
 		r.Post("/auth/totp/verify", auth.TOTPVerify)
 
+		// PAI-120: OpenID Connect SSO. Status is always reachable so the
+		// SPA can decide whether to render the SSO button; login starts
+		// the flow and callback completes it. All three are public — no
+		// session can exist before the IdP redirects the user back.
+		r.Get("/auth/oidc/status", auth.OIDCStatus)
+		r.Get("/auth/oidc/login", auth.OIDCLogin)
+		r.Get("/auth/oidc/callback", auth.OIDCCallback)
+
 		// Forgot / reset password — all three must stay public since a
 		// user who has forgotten their password has no session cookie.
 		r.Post("/auth/forgot", handlers.ForgotPassword)

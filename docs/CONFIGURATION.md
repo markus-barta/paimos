@@ -57,6 +57,37 @@ reset and anyone with log access can use it (PAI-115).
 | `SMTP_PASS` | *(empty)* | Pair with `SMTP_USER` |
 | `PAIMOS_DEV_MODE` | *(unset)* | When `true` AND `SMTP_HOST` unset, log reset links to stdout. Local dev only. |
 
+## Single Sign-On (OpenID Connect — PAI-120)
+
+PAIMOS supports a single OIDC provider end-to-end with PKCE and JIT
+user provisioning. The flow is hidden from the login page until all
+three required vars are set; once configured, the SPA renders an
+"SSO" button alongside the password form.
+
+| Var | Default | Notes |
+|---|---|---|
+| `OIDC_ISSUER_URL` | *(unset)* | Required. e.g. `https://login.example.com` (no trailing slash). The discovery doc must be reachable at `${OIDC_ISSUER_URL}/.well-known/openid-configuration`. |
+| `OIDC_CLIENT_ID` | *(unset)* | Required. |
+| `OIDC_CLIENT_SECRET` | *(unset)* | Optional for public clients (PKCE-only); required for confidential clients. |
+| `OIDC_REDIRECT_URL` | *(unset)* | Required. Must exactly match the IdP-registered redirect (e.g. `https://paimos.example.com/api/auth/oidc/callback`). |
+| `OIDC_SCOPES` | `openid email profile` | Space-separated. |
+| `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Shown on the login page. |
+| `OIDC_POST_LOGIN_REDIRECT` | `/` | SPA path to land on after a successful SSO login. |
+
+JIT provisioning rules:
+- A returning user is matched by case-insensitive email.
+- A new user is created with role `member`, status `active`, no password,
+  username derived from `preferred_username` (or the email local-part),
+  with a random suffix on collision.
+- An OIDC user with no verified email is refused — operators who run
+  IdPs that omit `email_verified` should set the claim to `true` on the
+  IdP side or the redirect lands on `/login?sso_error=email_required`.
+
+The id_token signature is not verified locally; trust comes from the
+TLS-protected userinfo round trip back to the issuer. This trade-off
+keeps the dependency surface small. JWKS-based id_token verification
+is a follow-on if a future deployment requires it.
+
 ## Audit & retention (PAI-116 / PAI-117)
 
 The session-mutation audit is on by default for NIS2 readiness. Set
