@@ -18,7 +18,8 @@ import { useSearchStore } from '@/stores/search'
 import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
-import type { Tag, Issue, Project, User, SavedView, Sprint } from '@/types'
+import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
+import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -48,6 +49,9 @@ const allTags   = ref<Tag[]>([])
 const costUnits = ref<string[]>([])
 const releases  = ref<string[]>([])
 const sprints   = ref<Sprint[]>([])
+// PAI-58/59. Loaded once on mount; powers the customer assignment
+// dropdown in the edit modal and the inherited-rate hints.
+const customers = ref<Customer[]>([])
 
 provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sprints })
 
@@ -124,7 +128,14 @@ async function refreshViews() {
 
 // Edit project
 const showEdit  = ref(false)
-const editForm  = ref({ name: '', key: '', description: '', status: 'active', product_owner: null as number | null, customer_label: '', rate_hourly: null as number | null, rate_lp: null as number | null })
+const editForm  = ref({
+  name: '', key: '', description: '', status: 'active',
+  product_owner: null as number | null,
+  customer_label: '',
+  customer_id: null as number | null,
+  rate_hourly: null as number | null,
+  rate_lp: null as number | null,
+})
 const editError = ref('')
 const saving    = ref(false)
 
@@ -173,8 +184,9 @@ function openEdit() {
     status:        project.value.status,
     product_owner: project.value.product_owner ?? null,
     customer_label: project.value.customer_label ?? '',
-    rate_hourly:   project.value.rate_hourly ?? null,
-    rate_lp:       project.value.rate_lp ?? null,
+    customer_id:    project.value.customer_id ?? null,
+    rate_hourly:    project.value.rate_hourly ?? null,
+    rate_lp:        project.value.rate_lp ?? null,
   }
   editError.value = ''
   showEdit.value = true
@@ -185,13 +197,39 @@ async function saveProject() {
   if (!editForm.value.name.trim()) { editError.value = 'Name required.'; return }
   saving.value = true
   try {
-    project.value = await api.put<Project>(`/projects/${projectId.value}`, editForm.value)
+    // Build payload — `customer_id: null` plus `clear_customer: true`
+    // is the way the backend distinguishes "detach" from "leave alone"
+    // (handlers/projects.go UpdateProject; PAI-54).
+    const original = project.value?.customer_id ?? null
+    const next = editForm.value.customer_id ?? null
+    const detaching = original !== null && next === null
+    const payload = { ...editForm.value, clear_customer: detaching }
+    project.value = await api.put<Project>(`/projects/${projectId.value}`, payload)
     showEdit.value = false
   } catch (e: unknown) {
     editError.value = errMsg(e)
   } finally {
     saving.value = false
   }
+}
+
+// PAI-59. Effective rate display in the edit modal: when the project
+// rate is null and a customer is selected with a rate, show the
+// inherited value as a hint under the input.
+const linkedCustomer = computed<Customer | null>(() => {
+  const id = editForm.value.customer_id
+  if (!id) return null
+  return customers.value.find((c) => c.id === id) ?? null
+})
+function inheritedRateHint(kind: 'hourly' | 'lp'): string {
+  const cust = linkedCustomer.value
+  if (!cust) return ''
+  const value = kind === 'hourly' ? cust.rate_hourly : cust.rate_lp
+  if (value == null) return ''
+  // Only show the hint when the project rate is empty (i.e. would inherit).
+  const projRate = kind === 'hourly' ? editForm.value.rate_hourly : editForm.value.rate_lp
+  if (projRate != null) return ''
+  return `Inherits €${value.toFixed(2)} from ${cust.name}`
 }
 
 // ── Archive / Delete ──────────────────────────────────────────────────────────
@@ -417,7 +455,7 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
 
 async function load() {
   loading.value = true
-  const [p, iss, u, cu, rel, tags, views] = await Promise.all([
+  const [p, iss, u, cu, rel, tags, views, custs] = await Promise.all([
     api.get<Project>(`/projects/${projectId.value}`),
     api.get<Issue[]>(`/projects/${projectId.value}/issues?fields=list${search.query.length >= 2 ? '&q=' + encodeURIComponent(search.query) : ''}`),
     api.get<User[]>('/users'),
@@ -425,6 +463,10 @@ async function load() {
     api.get<string[]>(`/projects/${projectId.value}/releases`).catch(() => []),
     api.get<Tag[]>('/tags'),
     api.get<SavedView[]>('/views').catch(() => []),
+    // PAI-58/59. Customer list powers the assignment dropdown in the
+    // edit modal and the inherited-rate hints. Best-effort — non-admins
+    // 403 here and that's fine.
+    api.get<Customer[]>('/customers').catch(() => [] as Customer[]),
   ])
   project.value   = p
   issues.value    = iss
@@ -433,6 +475,7 @@ async function load() {
   releases.value  = rel
   allTags.value   = tags
   allViews.value = views as SavedView[]
+  customers.value = custs
   // activeTabId is set by IssueList's view-applied emit (MRU-based)
   loading.value   = false
 }
@@ -506,6 +549,15 @@ const lastChanged = computed(() => {
         <span v-if="project.description" class="ah-subtitle">{{ project.description }}</span>
       </Teleport>
       <Teleport defer to="#app-header-right">
+        <RouterLink
+          v-if="project.customer_id"
+          :to="`/customers/${project.customer_id}`"
+          class="pd-customer-pill"
+          :title="`Customer: ${project.customer_name ?? ''}`"
+        >
+          <AppIcon name="building-2" :size="12" />
+          <span>{{ project.customer_name }}</span>
+        </RouterLink>
         <span v-if="lastChanged" class="ah-meta-text">
           updated {{ lastChanged.when }}
           <RouterLink :to="`/projects/${projectId}/issues/${lastChanged.id}`" class="ah-meta-link">{{ lastChanged.key }}</RouterLink>
@@ -566,6 +618,15 @@ const lastChanged = computed(() => {
         @view-applied="onViewApplied"
         @views-changed="refreshViews"
       />
+
+      <!-- PAI-60: project documents — same component customer detail uses. -->
+      <div class="pd-documents">
+        <DocumentsSection
+          scope="project"
+          :scope-id="projectId"
+          :can-write="isAdmin && canEditProject"
+        />
+      </div>
     <!-- Delete confirm modal -->
     <AppModal title="Delete Project" :open="showDeleteConfirm" @close="showDeleteConfirm=false" confirm-key="d" @confirm="deleteProject">
       <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
@@ -624,17 +685,30 @@ const lastChanged = computed(() => {
           </select>
         </div>
         <div class="field">
-          <label>Customer label <span class="label-hint">— freeform reference</span></label>
+          <label>Customer <span class="label-hint">— links rates + documents to a Customer record</span></label>
+          <select v-model="editForm.customer_id">
+            <option :value="null">— Unassigned —</option>
+            <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Customer label <span class="label-hint">— legacy freeform reference (PMO26 era)</span></label>
           <input v-model="editForm.customer_label" type="text" placeholder="e.g. CUST-123" />
         </div>
         <div style="display:flex;gap:.75rem">
           <div class="field" style="flex:1">
             <label>Rate (€/h)</label>
             <input v-model.number="editForm.rate_hourly" type="number" step="0.01" placeholder="e.g. 120" />
+            <span v-if="inheritedRateHint('hourly')" class="pd-inherit-hint">
+              <AppIcon name="link" :size="11" /> {{ inheritedRateHint('hourly') }}
+            </span>
           </div>
           <div class="field" style="flex:1">
             <label>Rate (€/LP)</label>
             <input v-model.number="editForm.rate_lp" type="number" step="0.01" placeholder="e.g. 1200" />
+            <span v-if="inheritedRateHint('lp')" class="pd-inherit-hint">
+              <AppIcon name="link" :size="11" /> {{ inheritedRateHint('lp') }}
+            </span>
           </div>
         </div>
         <div class="field">
@@ -920,4 +994,32 @@ textarea { resize: vertical; min-height: 80px; }
 .group-meta { color: var(--text-muted); white-space: nowrap; }
 .group-link { color: var(--text); text-decoration: none; }
 .group-link:hover { color: var(--bp-blue); text-decoration: underline; }
+
+/* ── PAI-58/59 customer link + rate inheritance ───────────────────── */
+.pd-customer-pill {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .15rem .55rem;
+  border: 1px solid var(--border); border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  background: var(--bg-card);
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.pd-customer-pill:hover {
+  border-color: var(--bp-blue);
+  color: var(--bp-blue-dark);
+  background: var(--bp-blue-pale);
+}
+
+.pd-inherit-hint {
+  display: inline-flex; align-items: center; gap: .25rem;
+  font-size: 11px; color: var(--bp-blue);
+  margin-top: .15rem;
+}
+
+.pd-documents {
+  margin-top: 1.5rem;
+}
 </style>

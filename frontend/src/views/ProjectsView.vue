@@ -46,6 +46,20 @@ const statusFilter = ref<'active' | 'archived' | 'deleted'>('active')
 const projects = ref<Project[]>([])
 const loading = ref(true)
 
+// PAI-63. Customer filter dropdown. Special values:
+//   '' (empty)        — show all
+//   '__unassigned__'  — projects with no customer FK
+//   '<numeric id>'    — that specific customer
+const customerFilter = ref<string>('')
+const customers = ref<Array<{ id: number; name: string }>>([])
+
+async function loadCustomers() {
+  try {
+    customers.value = (await api.get<Array<{ id: number; name: string }>>('/customers'))
+      .map(c => ({ id: c.id, name: c.name }))
+  } catch { /* non-admin or no customers — fine */ }
+}
+
 const showCreate = ref(false)
 const form = ref({ name: '', key: '', description: '' })
 const formError = ref('')
@@ -76,7 +90,19 @@ async function load() {
   loading.value = false
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadCustomers()
+})
+
+const filteredProjects = computed(() => {
+  if (!customerFilter.value) return projects.value
+  if (customerFilter.value === '__unassigned__') {
+    return projects.value.filter(p => p.customer_id == null)
+  }
+  const id = Number(customerFilter.value)
+  return projects.value.filter(p => p.customer_id === id)
+})
 
 // Auto-suggest key when name changes (only if user hasn't typed a key)
 watch(() => form.value.name, async (name) => {
@@ -384,6 +410,16 @@ onMounted(() => {
       <span class="ah-title">Projects</span>
     </Teleport>
     <Teleport defer to="#app-header-right">
+      <select
+        v-if="customers.length"
+        v-model="customerFilter"
+        class="pv-customer-filter"
+        title="Filter by customer"
+      >
+        <option value="">All customers</option>
+        <option value="__unassigned__">— Unassigned</option>
+        <option v-for="c in customers" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+      </select>
       <div class="segmented">
         <button :class="['seg-btn', { active: statusFilter === 'active' }]" @click="statusFilter='active'; load()">Active</button>
         <button :class="['seg-btn', { active: statusFilter === 'archived' }]" @click="statusFilter='archived'; load()">Archived</button>
@@ -469,13 +505,23 @@ onMounted(() => {
     </div>
 
     <div v-else class="project-grid">
-      <div v-for="p in projects" :key="p.id" class="project-card" @click="router.push(`/projects/${p.id}`)">
+      <div v-for="p in filteredProjects" :key="p.id" class="project-card" @click="router.push(`/projects/${p.id}`)">
         <div class="project-card-top">
           <span class="project-key-badge">{{ p.key }}</span>
           <span v-if="p.status !== 'active'" :class="`badge badge-${p.status}`">{{ p.status }}</span>
           <img v-if="p.logo_path" :src="p.logo_path" class="project-card-logo" :alt="p.name" />
         </div>
         <div class="project-card-name">{{ p.name }}</div>
+        <RouterLink
+          v-if="p.customer_id && p.customer_name"
+          :to="`/customers/${p.customer_id}`"
+          class="project-card-customer"
+          @click.stop
+          :title="`Customer: ${p.customer_name}`"
+        >
+          <AppIcon name="building-2" :size="11" />
+          <span>{{ p.customer_name }}</span>
+        </RouterLink>
         <p class="project-card-desc">{{ p.description || '' }}</p>
         <div v-if="p.tags?.length" class="project-card-tags">
           <TagChip v-for="t in p.tags" :key="t.id" :tag="t" />
@@ -888,5 +934,30 @@ textarea { resize: vertical; min-height: 80px; }
   background: var(--accruals-accent-soft);
   border-color: var(--accruals-accent);
   box-shadow: 0 4px 18px rgba(0, 100, 151, .08);
+}
+
+/* PAI-63 customer filter + per-card customer pill */
+.pv-customer-filter {
+  width: auto; min-width: 160px;
+  padding: .35rem .65rem;
+  font-size: 13px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+.project-card-customer {
+  display: inline-flex; align-items: center; gap: .25rem;
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  text-decoration: none;
+  align-self: flex-start;
+  padding: .1rem .5rem .1rem .35rem;
+  background: var(--bg);
+  border-radius: 999px;
+  transition: color .15s, background .15s;
+}
+.project-card-customer:hover {
+  color: var(--bp-blue-dark);
+  background: var(--bp-blue-pale);
 }
 </style>

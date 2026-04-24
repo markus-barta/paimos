@@ -3314,7 +3314,12 @@ func migrate(db *sql.DB) error {
 		 ON projects(customer_id)`,
 
 		// ── documents (PAI-55) ──────────────────────────────────────
-		// Single table for both customer- and project-scoped uploads.
+		// Metadata-only table for customer- and project-scoped uploads;
+		// the file bytes live in MinIO (same bucket as attachments,
+		// namespaced under "documents/…"). object_key below is the
+		// pointer; handlers/documents.go does all the storage.Put /
+		// .Get / .Delete calls.
+		//
 		// scope is checked so exactly one of customer_id / project_id
 		// is set; orphan docs (both NULL) are rejected.
 		`CREATE TABLE IF NOT EXISTS documents (

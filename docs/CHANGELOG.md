@@ -5,6 +5,56 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] — 2026-04-24
+
+### Added — customers + CRM provider UI (PAI-28 frontend; PAI-101 admin)
+
+Frontend for the customer / document / CRM-plugin layer that landed in
+v1.5.3. Manual customers and CRM-linked customers render through the
+same components — provider affordances are conditional, not a
+missing-state stub.
+
+- **Customers in the sidebar** (PAI-57). New nav entry below Projects.
+  Card-grid list view at `/customers` with a search box and a
+  split "+ New customer" button: primary action is always manual
+  create (the no-CRM path); the dropdown only lights up when at
+  least one CRM provider is enabled + configured.
+- **Customer detail** (PAI-58). Sticky identity header with the
+  customer name, optional provider badge, default rates, and a
+  state-machine sync button (idle → loading → success / error).
+  Two-column contact + notes section. Project cards listed inline
+  with effective rates and an inheritance indicator. Documents
+  section reuses the same component as the project page.
+- **DocumentsSection** — scope-agnostic component used by both
+  customer and project detail. The whole section is the drop-target
+  (no separate dropzone modal). PDFs preview lazily via inline
+  `<iframe>` thumbnails; status pills (active / expired / draft);
+  20 MB cap; admin-only writes.
+- **Admin CRM tab** (PAI-105). New Settings → CRM tab. Each
+  registered provider gets a card with status pill (`Disabled` /
+  `Enabled` / `Needs configuration`), an enable toggle, and an
+  expandable config form rendered from the provider's
+  `ConfigSchema`. Secret fields are never echoed: stored values
+  show as `••••• currently set · Replace · Clear`. The toggle
+  refuses to enable a misconfigured provider both client- and
+  server-side.
+- **Project detail polish** (PAI-59 / PAI-60). Customer pill in the
+  page header (links through to the customer); customer
+  assignment dropdown in the edit modal; rate inputs show an
+  inline "Inherits €X from {Customer}" hint when left blank;
+  project documents section appended below the issue list.
+- **Projects view** (PAI-63). Customer filter dropdown in the
+  toolbar (with an "Unassigned" option); each project card shows
+  a small linked customer pill when assigned.
+- **`useExternalProvider`** composable (PAI-106). Single shared
+  fetch of `/api/integrations/crm`; consumers ask for a provider
+  by id, get back logo / name / deep-link template — no place in
+  the UI hardcodes a CRM name.
+
+Visual language stays consistent with the existing app — DM Sans,
+existing color tokens, card hover-lift, monospace numerals, sticky
+headers.
+
 ## [1.5.3] — 2026-04-24
 
 ### Added — customers + documents + CRM provider plugin layer (PAI-28 + PAI-101)

@@ -160,6 +160,9 @@ onMounted(() => {
           <RouterLink to="/projects" :class="['nav-item', { active: isActive('/projects') }]" :title="isExpanded ? '' : 'Projects'">
             <AppIcon name="folder" /><span class="sl">Projects</span>
           </RouterLink>
+          <RouterLink to="/customers" :class="['nav-item', { active: isActive('/customers') }]" :title="isExpanded ? '' : 'Customers'">
+            <AppIcon name="building-2" /><span class="sl">Customers</span>
+          </RouterLink>
           <RouterLink to="/issues"   :class="['nav-item', { active: isActive('/issues') }]"   :title="isExpanded ? '' : 'Issues'">
             <AppIcon name="layout-list" /><span class="sl">Issues</span>
           </RouterLink>

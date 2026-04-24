@@ -41,6 +41,8 @@ const router = createRouter({
     { path: '/projects/accruals/print', component: () => import('@/views/AccrualsPrintView.vue'), meta: { adminOnly: true } },
     { path: '/projects/:id', component: () => import('@/views/ProjectDetailView.vue'), meta: { projectIdParam: 'id' } },
     { path: '/projects/:id/issues/:issueId', component: () => import('@/views/IssueDetailView.vue'), meta: { projectIdParam: 'id' } },
+    { path: '/customers',     component: () => import('@/views/CustomersView.vue') },
+    { path: '/customers/:id', component: () => import('@/views/CustomerDetailView.vue') },
     { path: '/issues',   component: () => import('@/views/IssuesView.vue') },
     { path: '/sprints',       redirect: '/sprint-board' },
     { path: '/sprint-board', component: () => import('@/views/SprintBoardView.vue') },

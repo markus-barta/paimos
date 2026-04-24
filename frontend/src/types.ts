@@ -15,6 +15,87 @@
  * License along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// PAI-53. Customer record. CRM-agnostic by design — external_* and
+// synced_at are all nullable; NULL across all three = a manually-managed
+// customer. The provider plugin layer (PAI-101) populates the externals
+// when an admin imports from a CRM.
+export interface Customer {
+  id: number
+  name: string
+  external_id: string | null
+  external_url: string | null
+  external_provider: string | null
+  synced_at: string | null
+  contact_name: string
+  contact_email: string
+  address: string
+  country: string
+  industry: string
+  rate_hourly: number | null
+  rate_lp: number | null
+  notes: string
+  created_at: string
+  updated_at: string
+  project_count?: number
+}
+
+// PAI-55. Document metadata; the file bytes live in MinIO.
+export interface Document {
+  id: number
+  scope: 'customer' | 'project'
+  customer_id: number | null
+  project_id: number | null
+  filename: string
+  mime_type: string
+  size_bytes: number
+  label: string
+  status: 'draft' | 'active' | 'expired'
+  valid_from: string | null
+  valid_until: string | null
+  uploaded_by: number | null
+  uploaded_at: string
+  updated_at: string
+}
+
+// PAI-101. CRM provider metadata, as returned by /api/integrations/crm.
+// `useExternalProvider(id)` resolves a provider id (e.g. customer.external_provider)
+// to one of these so the UI never hardcodes "HubSpot" anywhere.
+export interface ExternalProvider {
+  id: string
+  name: string
+  logo_url: string
+  enabled: boolean
+  configured: boolean
+  schema: ExternalProviderSchema
+}
+
+export interface ExternalProviderSchema {
+  fields: ExternalProviderField[]
+}
+
+export interface ExternalProviderField {
+  key: string
+  label: string
+  type: 'string' | 'secret' | 'number' | 'select'
+  required: boolean
+  help?: string
+  placeholder?: string
+  options?: { value: string; label: string }[]
+}
+
+// Per-provider config view returned by /api/integrations/crm/:id/config.
+// Secret fields never carry the actual value — only `has_value: true`.
+export interface ExternalProviderConfig {
+  provider_id: string
+  enabled: boolean
+  fields: ExternalProviderConfigField[]
+}
+
+export interface ExternalProviderConfigField extends ExternalProviderField {
+  value?: string
+  has_value: boolean
+}
+
 export interface Attachment {
   id: number
   issue_id: number
