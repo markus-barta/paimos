@@ -413,13 +413,38 @@ func LinkAttachments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-112: a pending attachment can only be linked by its uploader,
+	// or by an admin. Without this check, any editor on the target project
+	// who guessed a pending attachment id could hijack a paste/drop the
+	// uploader had not yet committed to an issue.
+	user := auth.GetUser(r)
+	isAdmin := user != nil && user.Role == "admin"
+	var callerID int64
+	if user != nil {
+		callerID = user.ID
+	}
+
 	linked := 0
 	for _, aid := range body.AttachmentIDs {
-		// Only link attachments that are currently unlinked (prevents hijacking)
+		// Only link attachments that are currently unlinked AND owned by
+		// the caller (or any unlinked attachment, for admins). Combining
+		// the ownership check into the WHERE clause makes the lookup and
+		// the gate one atomic decision.
 		var oldKey string
-		err := db.DB.QueryRow("SELECT object_key FROM attachments WHERE id=? AND issue_id IS NULL", aid).Scan(&oldKey)
+		var err error
+		if isAdmin {
+			err = db.DB.QueryRow(
+				"SELECT object_key FROM attachments WHERE id=? AND issue_id IS NULL",
+				aid,
+			).Scan(&oldKey)
+		} else {
+			err = db.DB.QueryRow(
+				"SELECT object_key FROM attachments WHERE id=? AND issue_id IS NULL AND uploaded_by=?",
+				aid, callerID,
+			).Scan(&oldKey)
+		}
 		if err != nil {
-			continue // already linked or doesn't exist
+			continue // already linked, doesn't exist, or not owned by caller
 		}
 
 		// Move object from pending/ to {issue_id}/ namespace
