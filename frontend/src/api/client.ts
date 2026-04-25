@@ -92,9 +92,21 @@ function withCsrfHeader(method: string, headers: Record<string, string>): Record
   return headers
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * RequestOptions lets a small number of long-running endpoints opt in
+ * to a custom timeout. Default is REQUEST_TIMEOUT_MS (30s); the AI
+ * optimize endpoint (PAI-146) sets 90s because the backend itself
+ * waits up to 60s on the LLM call. Using fetch's signal here means
+ * cancellation still works the same way as the default path.
+ */
+export interface RequestOptions {
+  timeoutMs?: number
+}
+
+async function request<T>(method: string, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
+  const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   let res: Response
   try {
     const headers: Record<string, string> = body ? { 'Content-Type': 'application/json' } : {}
@@ -109,7 +121,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // Surface the timeout case as a clean ApiError so callers can
     // render it instead of the raw "AbortError" string.
     if ((e as Error).name === 'AbortError') {
-      throw new ApiError(0, `request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)
+      throw new ApiError(0, `request timed out after ${timeoutMs / 1000}s`)
     }
     throw e
   } finally {
@@ -170,10 +182,10 @@ export function errMsg(e: unknown, fallback = 'An error occurred'): string {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
-  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
-  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
-  delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
+  get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
+  post: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('POST', path, body, opts),
+  put: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('PUT', path, body, opts),
+  patch: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('PATCH', path, body, opts),
+  delete: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>('DELETE', path, body, opts),
   upload: <T>(path: string, formData: FormData, onProgress?: (pct: number) => void) => upload<T>(path, formData, onProgress),
 }

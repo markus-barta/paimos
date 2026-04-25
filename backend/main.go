@@ -342,6 +342,17 @@ func main() {
 			r.With(auth.RequireAdmin).Post("/branding/logo", handlers.UploadBrandingLogo)
 			r.With(auth.RequireAdmin).Post("/branding/favicon", handlers.UploadBrandingFavicon)
 
+			// AI text optimization (PAI-146). Admin-only settings + write
+			// surface; the per-call optimize endpoint is mounted in the
+			// authenticated group below so any logged-in user with edit
+			// rights on the target field can call it. AIStatus stays in
+			// the authenticated (non-admin) group as well — the SPA polls
+			// it on every render that shows an AI button.
+			r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
+			r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
+			r.Get("/ai/status", handlers.AIStatus)
+			r.Post("/ai/optimize", handlers.AIOptimize)
+
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)
 			r.With(auth.RequireAdmin).Put("/integrations/jira", handlers.PutJiraIntegration)

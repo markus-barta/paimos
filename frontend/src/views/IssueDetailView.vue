@@ -22,6 +22,9 @@ import {
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 import { vAutoGrow } from '@/directives/autoGrow'
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
 
 // Sub-components
 import IssueTimeEntries from '@/components/issue/IssueTimeEntries.vue'
@@ -540,6 +543,16 @@ const { html: descHtml  } = useMarkdown(descriptionRef, mdMode)
 const { html: acHtml    } = useMarkdown(acRef,          mdMode)
 const { html: notesHtml } = useMarkdown(notesRef,       mdMode)
 
+// PAI-146: AI text optimization. The composable manages availability,
+// in-flight state, and the overlay slot; we just provide the per-field
+// onAccept callback that writes the rewrite back into the form.
+const aiOptimize = useAiOptimize()
+function onOptimizeAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
+  return (text: string) => {
+    form.value[field] = text
+  }
+}
+
 // ── h/PT toggle + EUR calculations ───────────────────────────────────────────
 const { unit: timeUnit, toggle: toggleTimeUnit, formatHours, label: timeLabel } = useTimeUnit()
 
@@ -778,8 +791,25 @@ async function cancelEdit() {
         <!-- Edit layout -->
         <div v-else class="edit-layout">
           <div class="edit-content">
+            <!-- PAI-146: surface AI optimize failures inline so the user
+                 knows why the spinner stopped without a successful overlay.
+                 One banner for the whole edit pane — a single optimize
+                 call is in flight at a time. -->
+            <div v-if="aiOptimize.lastError" class="ai-error-banner">
+              <span>AI optimization failed: {{ aiOptimize.lastError }}</span>
+              <button type="button" class="ai-error-banner-x" @click="aiOptimize.clearError()">×</button>
+            </div>
             <div class="field">
-              <label>Description</label>
+              <div class="field-label-row">
+                <label>Description</label>
+                <AiOptimizeButton
+                  field="description"
+                  field-label="Description"
+                  :issue-id="issueId"
+                  :text="() => form.description"
+                  :on-accept="onOptimizeAccept('description')"
+                />
+              </div>
               <div v-if="jobsFor('description').length" class="upload-chips">
                 <div
                   v-for="job in jobsFor('description')"
@@ -824,7 +854,16 @@ async function cancelEdit() {
               </div>
             </div>
             <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
-              <label>Acceptance Criteria</label>
+              <div class="field-label-row">
+                <label>Acceptance Criteria</label>
+                <AiOptimizeButton
+                  field="acceptance_criteria"
+                  field-label="Acceptance Criteria"
+                  :issue-id="issueId"
+                  :text="() => form.acceptance_criteria"
+                  :on-accept="onOptimizeAccept('acceptance_criteria')"
+                />
+              </div>
               <div v-if="jobsFor('acceptance_criteria').length" class="upload-chips">
                 <div
                   v-for="job in jobsFor('acceptance_criteria')"
@@ -869,7 +908,16 @@ async function cancelEdit() {
               </div>
             </div>
             <div class="field">
-              <label>Notes</label>
+              <div class="field-label-row">
+                <label>Notes</label>
+                <AiOptimizeButton
+                  field="notes"
+                  field-label="Notes"
+                  :issue-id="issueId"
+                  :text="() => form.notes"
+                  :on-accept="onOptimizeAccept('notes')"
+                />
+              </div>
               <textarea
                 v-auto-grow
                 v-model="form.notes" rows="3"
@@ -1016,10 +1064,53 @@ async function cancelEdit() {
     :children="children"
     @completed="onEpicCompleted"
   />
+
+  <!-- PAI-146: AI optimize preview overlay. Mounted once for the page;
+       the composable is a singleton so all three field buttons share
+       this slot. v-if (not v-show) so the diff DP is only computed
+       when the overlay is actually open. -->
+  <AiOptimizeOverlay
+    v-if="aiOptimize.overlay.visible"
+    :original="aiOptimize.overlay.original"
+    :optimized="aiOptimize.overlay.optimized"
+    :field-label="aiOptimize.overlay.fieldLabel"
+    :model-name="aiOptimize.overlay.modelName"
+    :retrying="aiOptimize.overlay.retrying"
+    @accept="aiOptimize.accept()"
+    @reject="aiOptimize.reject()"
+    @retry="aiOptimize.retry()"
+  />
 </template>
 
 <style scoped>
 .loading { color: var(--text-muted); padding: 2rem 0; }
+
+/* PAI-147: per-field label row holds the label + the AI optimize
+   button on the right. Existing field labels were a bare <label>; the
+   wrapper keeps that semantic but lets the button share the row. */
+.field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .25rem;
+}
+.field-label-row > label { margin-bottom: 0; }
+
+/* PAI-146: inline error banner for failed optimize calls. Sits at the
+   top of the edit pane so the user sees it whichever field they hit. */
+.ai-error-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: .5rem;
+  background: #fef2f2; color: #b91c1c;
+  border: 1px solid #fecaca; border-radius: var(--radius);
+  padding: .45rem .75rem;
+  font-size: 13px;
+  margin-bottom: .75rem;
+}
+.ai-error-banner-x {
+  background: none; border: none; color: #b91c1c;
+  cursor: pointer; font-size: 16px; line-height: 1; padding: 0 .25rem;
+}
+.ai-error-banner-x:hover { color: #7f1d1d; }
 
 .issue-card {
   background: var(--bg-card); border: 1px solid var(--border);

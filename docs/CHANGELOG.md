@@ -5,6 +5,62 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — PAI-146 epic: LLM text optimization for multiline fields
+
+An inline AI-assisted writing affordance for the multiline fields
+authors reach for the most. Off by default; opt-in per deployment.
+
+- **PAI-147** — Reusable `<AiOptimizeButton>` (ghost-style "AI" pill)
+  appears on description, acceptance criteria, and notes editors in
+  the issue detail view. Disabled with a tooltip when the feature is
+  not configured.
+- **PAI-148** — Diff-preview overlay (`<AiOptimizeOverlay>`) compares
+  the current and optimized text side-by-side, anchored on unchanged
+  lines and tinted on changed ones. Accept / reject / retry, plus
+  Esc-closes-as-reject. Works on desktop and mobile (≥720px is two
+  columns; below stacks vertically). Inline LCS line diff — no new
+  npm dep.
+- **PAI-149** — Admin **Settings → AI** tab. Persisted in M74
+  `ai_settings` (singleton row): provider, model, API key,
+  optimization instruction, enabled flag. API key uses the same
+  "currently set / replace" pattern as the CRM secret fields so an
+  unrelated edit can't silently clear it.
+- **PAI-150** — Fixed PAIMOS-owned system wrapper carries the
+  invariants the product enforces: preserve technical meaning,
+  preserve markdown structure, preserve architecture-significance
+  phrasing (architecture change / breaking change / schema change /
+  infra change / new component, plus version-and-migration tokens
+  like `M74` / `v1.7.0`), do not translate, do not add scope. Admin
+  instruction layers inside via `{{INSTRUCTION}}`. Per-call context
+  block carries issue key/type/title, project name, parent epic,
+  and field-aware reminders (acceptance_criteria stays a checklist,
+  notes keeps the author's voice).
+- **PAI-151** — Provider abstraction (`backend/ai/Provider`) keeps
+  every vendor-specific concern off the editor flow, the prompt
+  wrapper, and the audit pipeline. PAI-122 (local backends) plugs in
+  by registering a new `Provider` — no other change required.
+- **PAI-152** — OpenRouter provider behind the abstraction. Talks the
+  OpenAI-compatible `/chat/completions` endpoint (no SDK, no extra
+  deps), maps 401/403 → `ErrProviderUnconfigured`, 429/5xx →
+  `ErrProviderUnavailable`, other 4xx surfaces the upstream message
+  verbatim ("model not found: foo/bar"). 256 KiB body cap, 60 s
+  per-call timeout owned by the handler.
+- **PAI-153** — Structured `audit: ai_optimize …` line per call with
+  user_id, field, issue_id, model, outcome (`ok` / `fail` / `denied`),
+  latency_ms, prompt_tokens, completion_tokens. Prompt and response
+  bodies are NOT logged. A regression test
+  (`backend/handlers/ai_optimize_audit_test.go`) enforces this.
+- **PAI-154** — Rollout to the three target fields in the issue detail
+  editor and operator documentation under
+  `docs/CONFIGURATION.md` ("AI text optimization (PAI-146)").
+
+**Operator quick-start:** Settings → AI → toggle Enabled → paste an
+OpenRouter API key from `openrouter.ai/keys` → pick a model
+(`anthropic/claude-3.5-haiku` is a reasonable default) → Save. The
+"AI" pill on multiline editors lights up immediately.
+
 ## [1.7.0] — 2026-04-25
 
 ### Added — PAI-109 epic: Enterprise Security & 03-Specs Readiness (8.5/10 target)
