@@ -5,6 +5,127 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-04-25
+
+### Added — PAI-109 epic: Enterprise Security & 03-Specs Readiness (8.5/10 target)
+
+Twelve of fourteen children land in this release; the remaining two
+(PAI-110 active-content upload hardening, PAI-122 paimos.com wording
+rollback) are tracked separately. The audit at `audit.md` is the
+companion document.
+
+**Shipped security defects:**
+
+- **PAI-111** — `GET /api/documents/{id}/download` enforces scope-aware
+  authorization. Project-scoped documents require project view access;
+  customer-scoped require admin OR view access to a project belonging
+  to that customer. 404 on deny so id enumeration cannot probe
+  existence.
+- **PAI-112** — `PATCH /api/attachments/link` requires `uploaded_by =
+  current_user` for non-admin callers, closing the cross-user
+  pending-attachment hijack window.
+- **PAI-113** — Per-session CSRF defenses for cookie-authenticated
+  browser flows. New `csrf_token` column on `sessions` (M72), bound at
+  login/TOTP-verify and exposed via a non-HttpOnly `csrf_token` cookie.
+  `auth.CSRFMiddleware` enforces same-origin (`Origin`/`Referer` host
+  matches `Host`) plus `X-CSRF-Token` match for every session-cookie
+  mutation. API-key callers and pre-existing sessions (created before
+  M72) are handled via a lazy-upgrade path that issues a token on the
+  first authenticated request after deploy.
+- **PAI-114** — Global response-header middleware applies `nosniff`,
+  `X-Frame-Options=SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`,
+  conditional HSTS (when `COOKIE_SECURE=true`), and a
+  Content-Security-Policy in **Report-Only** mode that posts violations
+  to `/api/csp-report`. Non-breaking: in-app PDF and dev-report iframes
+  continue to render.
+- **PAI-115** — Password-reset link logging requires explicit
+  `PAIMOS_DEV_MODE=true` opt-in. Without it, the handler refuses to
+  send when SMTP is unconfigured and surfaces the misconfiguration
+  rather than silently routing magic links into log aggregators.
+
+**Compliance / audit:**
+
+- **PAI-116** — `PAIMOS_AUDIT_SESSIONS` defaults to **on** (operators
+  opt out with `=false` / `=0`). New `incident_log` table (M73) plus
+  admin-only CRUD and JSON/CSV export at `/api/incidents/export` for
+  SIEM ingestion. Status transitions auto-stamp `resolved_at`.
+- **PAI-117** — GDPR ops pack. Background retention sweeper (24h loop)
+  with env-tunable windows for sessions, password reset tokens, access
+  audit, session activity, closed incidents, and pending TOTP. New
+  admin endpoints: `GET /api/users/{id}/gdpr-export` (full per-subject
+  JSON dump), `POST /api/users/{id}/gdpr-erase` (anonymisation rather
+  than cascade-delete, preserves historical project data), and `GET
+  /api/gdpr/retention` (introspect the active policy).
+- **PAI-118** — Bricolage Grotesque, JetBrains Mono and DM Sans now
+  bundle via `@fontsource` and ship as content-hashed `/assets/*.woff2`
+  files. All `fonts.googleapis.com` / `fonts.gstatic.com` runtime
+  requests are gone. CSP-Report-Only is now strictly self-only.
+
+**API contract / SSO:**
+
+- **PAI-119** — `/api/openapi.json` publishes a real OpenAPI 3.1
+  contract, embedded at build time so the document always matches the
+  binary it ships with. Coverage focuses on the canonical surface;
+  internal admin one-offs are intentionally omitted.
+- **PAI-120** — Single-provider OpenID Connect SSO end-to-end with
+  PKCE (`S256`) and JIT user provisioning. New routes:
+  `GET /api/auth/oidc/{status,login,callback}`. The login page renders
+  an "SSO" button only when `enabled=true` is reported by `/status`.
+  JIT matches existing users by case-insensitive email; new users land
+  as role=member with seeded project access. Configuration via
+  `OIDC_*` env vars, documented in `docs/CONFIGURATION.md`.
+
+**Release evidence:**
+
+- **PAI-121** — CI tag-push generates Go and npm CycloneDX SBOMs,
+  signs the published image keylessly via cosign + GitHub OIDC, and
+  attaches each SBOM as a cosign attestation against the image
+  digest. `scripts/sbom.sh` (`just sbom`) for local generation;
+  `docs/RELEASE.md` documents the verification commands.
+
+**Governance:**
+
+- **PAI-123** — `docs/claim-matrix.md` ties every paimos.com
+  `/03-specs` claim to its in-repo evidence and follow-on tickets.
+  `scripts/check-claims.sh` is wired into `scripts/release.sh` and
+  refuses to cut a release if any `aspirational` row lacks a follow-on
+  ticket reference. `--yolo` bypass is supported with the reason
+  recorded in the release commit message.
+
+### Configuration changes
+
+New environment variables documented in `docs/CONFIGURATION.md`:
+
+- `PAIMOS_DEV_MODE` — gate password-reset link logging.
+- `PAIMOS_AUDIT_SESSIONS` — default flipped to `true`; opt out with
+  `false` / `0`.
+- `PAIMOS_RETENTION_DAYS_*` — per-class retention windows.
+- `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
+  `OIDC_REDIRECT_URL`, `OIDC_SCOPES`, `OIDC_BUTTON_LABEL`,
+  `OIDC_POST_LOGIN_REDIRECT`.
+- `HSTS_INCLUDE_SUBDOMAINS` — opt-in HSTS subdomain inclusion.
+
+### Migrations
+
+- **M72** — `ALTER TABLE sessions ADD COLUMN csrf_token TEXT NOT NULL
+  DEFAULT ''`. Existing sessions are upgraded lazily on first use; no
+  forced re-login.
+- **M73** — `incident_log` with status/severity CHECK constraints,
+  plus indexes on `status` and `detected_at`.
+
+### Notes
+
+- The `id_token` signature is intentionally **not** verified locally;
+  trust comes from the TLS userinfo round trip back to the IdP. Adding
+  JWKS-based verification is straightforward when a deployment
+  requires it.
+- CSP runs in Report-Only mode in this release. After a clean
+  violation feed, a follow-up release will flip it to enforce.
+- PAI-110 (active-content upload hardening) is **postponed** because
+  the cleaning would reject SVG/markdown/text uploads existing UIs
+  depend on. It is the only Critical from the audit still open and
+  carries into the next phase.
+
 ## [1.6.1] — 2026-04-24
 
 ### Fixed
