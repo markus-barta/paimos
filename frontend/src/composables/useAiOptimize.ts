@@ -216,6 +216,70 @@ async function run(args: OptimizeArgs): Promise<void> {
   }
 }
 
+// PAI-168 / PAI-173: rewrite-style actions that produce new field
+// text. Posts to /api/ai/action with the chosen action key and
+// reuses the diff overlay state. Identical UX to optimize from the
+// user's point of view — the only difference is the backend
+// handler that produced the rewrite.
+interface RewriteActionArgs extends OptimizeArgs {
+  action: string
+  subAction?: string
+}
+async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
+  if (isOptimizing.value) return
+  if (overlay.visible) {
+    overlay.visible = false
+    overlay.optimized = ''
+    overlay.original = ''
+    overlay.modelName = ''
+    overlay.retrying = false
+  }
+  isOptimizing.value = true
+  lastError.value = null
+  // Stash the args for retry — the regular pendingArgs slot expects
+  // an OptimizeArgs shape, so we keep a parallel slot here.
+  pendingRewriteArgs = args
+  pendingArgs = null
+  try {
+    const env = await api.post<ActionEnvelope>(
+      '/ai/action',
+      {
+        action: args.action,
+        sub_action: args.subAction,
+        field: args.field,
+        text: args.text,
+        issue_id: args.issueId ?? 0,
+      },
+      { timeoutMs: OPTIMIZE_TIMEOUT_MS },
+    )
+    const optimized = env.body?.optimized ?? ''
+    overlay.field = args.field
+    overlay.fieldLabel = args.fieldLabel ?? args.field
+    overlay.original = args.text
+    overlay.optimized = optimized
+    overlay.modelName = env.model
+    overlay.retrying = false
+    overlay.visible = true
+    // The accept callback uses pendingArgs.onAccept; copy across.
+    pendingArgs = {
+      field: args.field,
+      fieldLabel: args.fieldLabel,
+      text: args.text,
+      issueId: args.issueId,
+      onAccept: args.onAccept,
+    }
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 503) {
+      void refreshStatus()
+    }
+    lastError.value = errMsg(e, 'Action failed')
+    pendingRewriteArgs = null
+  } finally {
+    isOptimizing.value = false
+  }
+}
+let pendingRewriteArgs: RewriteActionArgs | null = null
+
 async function retry(): Promise<void> {
   if (!pendingArgs) return
   overlay.retrying = true
@@ -261,6 +325,7 @@ export function useAiOptimize() {
     lastError,
     overlay,
     run,
+    runRewriteAction,
     retry,
     accept,
     reject,

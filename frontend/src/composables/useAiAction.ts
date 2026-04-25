@@ -193,10 +193,12 @@ async function run(args: RunArgs): Promise<void> {
 }
 
 async function runViaOptimize(args: RunArgs): Promise<void> {
-  // The legacy /api/ai/optimize path stays alive for backwards
-  // compatibility (PAI-164 plans to retire it). For now, "optimize"
-  // calls go through it; "translate" / "tone_check" land here once
-  // their backend handlers ship.
+  // Optimize uses the legacy composable's run() which posts to
+  // /api/ai/action with action="optimize" (PAI-164). Translate and
+  // tone_check both produce rewritten field text that should land
+  // in the same diff overlay, so they share the overlay state via
+  // runRewriteAction(); the composable internally posts to
+  // /api/ai/action with the right action key and unwraps the body.
   if (args.action === 'optimize') {
     await optimize.run({
       field: args.field,
@@ -207,8 +209,18 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
     })
     return
   }
-  // Future: fan out translate / tone_check via /ai/action and feed
-  // the rewritten text into the same overlay.
+  if (args.action === 'translate' || args.action === 'tone_check') {
+    await optimize.runRewriteAction({
+      action: args.action,
+      subAction: args.subAction,
+      field: args.field,
+      fieldLabel: args.fieldLabel,
+      text: args.text,
+      issueId: args.issueId,
+      onAccept: args.onAccept,
+    })
+    return
+  }
   lastError.value = `Action ${args.action} is not implemented yet — see PAI-162.`
 }
 
