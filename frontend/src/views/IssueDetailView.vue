@@ -22,7 +22,7 @@ import {
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 import { vAutoGrow } from '@/directives/autoGrow'
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
 
@@ -32,6 +32,7 @@ import IssueHistory from '@/components/issue/IssueHistory.vue'
 import IssueRelations from '@/components/issue/IssueRelations.vue'
 import IssueAttachments from '@/components/issue/IssueAttachments.vue'
 import IssueComments from '@/components/issue/IssueComments.vue'
+import IssueAnchors from '@/components/issue/IssueAnchors.vue'
 import IssueGroupMembers from '@/components/issue/IssueGroupMembers.vue'
 import IssueMetaGrid from '@/components/issue/IssueMetaGrid.vue'
 import IssueEditSidebar from '@/components/issue/IssueEditSidebar.vue'
@@ -811,9 +812,10 @@ async function cancelEdit() {
             <div class="field">
               <div class="field-label-row">
                 <label>Description</label>
-                <AiOptimizeButton
+                <AiActionMenu
                   field="description"
                   field-label="Description"
+                  surface="issue"
                   :issue-id="issueId"
                   :text="() => form.description"
                   :on-accept="onOptimizeAccept('description')"
@@ -865,9 +867,10 @@ async function cancelEdit() {
             <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
               <div class="field-label-row">
                 <label>Acceptance Criteria</label>
-                <AiOptimizeButton
+                <AiActionMenu
                   field="acceptance_criteria"
                   field-label="Acceptance Criteria"
+                  surface="issue"
                   :issue-id="issueId"
                   :text="() => form.acceptance_criteria"
                   :on-accept="onOptimizeAccept('acceptance_criteria')"
@@ -919,9 +922,10 @@ async function cancelEdit() {
             <div class="field">
               <div class="field-label-row">
                 <label>Notes</label>
-                <AiOptimizeButton
+                <AiActionMenu
                   field="notes"
                   field-label="Notes"
+                  surface="issue"
                   :issue-id="issueId"
                   :text="() => form.notes"
                   :on-accept="onOptimizeAccept('notes')"
@@ -1025,6 +1029,11 @@ async function cancelEdit() {
         :issue-id="issueId"
         :project-id="projectId"
         :project-issues="projectIssues"
+      />
+
+      <IssueAnchors
+        v-if="issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic'"
+        :issue-id="issueId"
       />
 
       <!-- Attachments -->

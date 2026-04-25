@@ -66,6 +66,19 @@ interface OptimizeResponse {
   finish_reason: string
 }
 
+// PAI-164: response envelope from the /api/ai/action dispatcher.
+// `body` is the action-specific payload — for the optimize action
+// it's `{optimized: string}`. Token counts and model live on the
+// envelope so the diff overlay can render the success banner.
+interface ActionEnvelope {
+  action: string
+  body: { optimized?: string }
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  finish_reason: string
+}
+
 interface AiOverlayState {
   visible: boolean
   field: string
@@ -123,15 +136,42 @@ async function refreshStatus(): Promise<void> {
 const OPTIMIZE_TIMEOUT_MS = 90_000
 
 async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
-  return api.post<OptimizeResponse>(
-    '/ai/optimize',
+  // PAI-164: the legacy /api/ai/optimize endpoint is gone; this
+  // composable now goes through the unified /api/ai/action
+  // dispatcher with `action=optimize`. The response envelope is
+  // shaped by the dispatcher; we flatten its `body` field here so
+  // existing diff-overlay callers don't need to know.
+  // Customer-surface fields use `optimize_customer` so the menu
+  // descriptor lights up under the customer surface in /api/ai/actions;
+  // both keys share the same backend handler.
+  const action = isCustomerField(args.field) ? 'optimize_customer' : 'optimize'
+  const env = await api.post<ActionEnvelope>(
+    '/ai/action',
     {
+      action,
       field: args.field,
       text: args.text,
       issue_id: args.issueId ?? 0,
     },
     { timeoutMs: OPTIMIZE_TIMEOUT_MS },
   )
+  return {
+    optimized: env.body?.optimized ?? '',
+    model: env.model,
+    prompt_tokens: env.prompt_tokens,
+    completion_tokens: env.completion_tokens,
+    finish_reason: env.finish_reason,
+  }
+}
+
+// PAI-164: customer-surface fields route through the
+// `optimize_customer` action key so the menu descriptor surfaces
+// it on customer-bound editors. The set is kept in lockstep with
+// the backend's customer-surface allow-list.
+function isCustomerField(field: string): boolean {
+  return field === 'customer_notes'
+      || field === 'cooperation_sla_details'
+      || field === 'cooperation_notes'
 }
 
 async function run(args: OptimizeArgs): Promise<void> {
@@ -175,6 +215,70 @@ async function run(args: OptimizeArgs): Promise<void> {
     isOptimizing.value = false
   }
 }
+
+// PAI-168 / PAI-173: rewrite-style actions that produce new field
+// text. Posts to /api/ai/action with the chosen action key and
+// reuses the diff overlay state. Identical UX to optimize from the
+// user's point of view — the only difference is the backend
+// handler that produced the rewrite.
+interface RewriteActionArgs extends OptimizeArgs {
+  action: string
+  subAction?: string
+}
+async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
+  if (isOptimizing.value) return
+  if (overlay.visible) {
+    overlay.visible = false
+    overlay.optimized = ''
+    overlay.original = ''
+    overlay.modelName = ''
+    overlay.retrying = false
+  }
+  isOptimizing.value = true
+  lastError.value = null
+  // Stash the args for retry — the regular pendingArgs slot expects
+  // an OptimizeArgs shape, so we keep a parallel slot here.
+  pendingRewriteArgs = args
+  pendingArgs = null
+  try {
+    const env = await api.post<ActionEnvelope>(
+      '/ai/action',
+      {
+        action: args.action,
+        sub_action: args.subAction,
+        field: args.field,
+        text: args.text,
+        issue_id: args.issueId ?? 0,
+      },
+      { timeoutMs: OPTIMIZE_TIMEOUT_MS },
+    )
+    const optimized = env.body?.optimized ?? ''
+    overlay.field = args.field
+    overlay.fieldLabel = args.fieldLabel ?? args.field
+    overlay.original = args.text
+    overlay.optimized = optimized
+    overlay.modelName = env.model
+    overlay.retrying = false
+    overlay.visible = true
+    // The accept callback uses pendingArgs.onAccept; copy across.
+    pendingArgs = {
+      field: args.field,
+      fieldLabel: args.fieldLabel,
+      text: args.text,
+      issueId: args.issueId,
+      onAccept: args.onAccept,
+    }
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 503) {
+      void refreshStatus()
+    }
+    lastError.value = errMsg(e, 'Action failed')
+    pendingRewriteArgs = null
+  } finally {
+    isOptimizing.value = false
+  }
+}
+let pendingRewriteArgs: RewriteActionArgs | null = null
 
 async function retry(): Promise<void> {
   if (!pendingArgs) return
@@ -221,6 +325,7 @@ export function useAiOptimize() {
     lastError,
     overlay,
     run,
+    runRewriteAction,
     retry,
     accept,
     reject,

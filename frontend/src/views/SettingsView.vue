@@ -14,6 +14,7 @@ import SettingsTrashTab from '@/components/settings/SettingsTrashTab.vue'
 import SettingsPermissionsTab from '@/components/settings/SettingsPermissionsTab.vue'
 import SettingsCRMTab from '@/components/settings/SettingsCRMTab.vue'
 import SettingsAITab from '@/components/settings/SettingsAITab.vue'
+import SettingsAIPromptsTab from '@/components/settings/SettingsAIPromptsTab.vue'
 
 const auth    = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'admin')
@@ -21,7 +22,7 @@ const route   = useRoute()
 const router  = useRouter()
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-type Tab = 'account' | 'tags' | 'appearance' | 'users' | 'permissions' | 'sprints' | 'views' | 'crm' | 'ai' | 'development' | 'trash'
+type Tab = 'account' | 'tags' | 'appearance' | 'users' | 'permissions' | 'sprints' | 'views' | 'crm' | 'ai' | 'ai-prompts' | 'development' | 'trash'
 type QueryTab = Tab | 'branding'
 
 const ALL_TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
@@ -34,6 +35,7 @@ const ALL_TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
   { id: 'views',        label: 'Views',        adminOnly: true },
   { id: 'crm',          label: 'CRM',          adminOnly: true },
   { id: 'ai',           label: 'AI',           adminOnly: true },
+  { id: 'ai-prompts',   label: 'AI prompts',   adminOnly: true },
   { id: 'development',  label: 'Development',  adminOnly: true },
   { id: 'trash',        label: 'Trash',        adminOnly: true },
 ]
@@ -81,6 +83,7 @@ function setTab(tab: Tab) {
     <SettingsSprintsTab     v-else-if="activeTab === 'sprints' && isAdmin" />
     <SettingsCRMTab         v-else-if="activeTab === 'crm' && isAdmin" />
     <SettingsAITab          v-else-if="activeTab === 'ai' && isAdmin" />
+    <SettingsAIPromptsTab   v-else-if="activeTab === 'ai-prompts' && isAdmin" />
     <SettingsDevelopmentTab v-else-if="activeTab === 'development' && isAdmin" />
     <SettingsTrashTab       v-else-if="activeTab === 'trash' && isAdmin" />
   </div>

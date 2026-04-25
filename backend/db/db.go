@@ -3454,6 +3454,150 @@ func migrate(db *sql.DB) error {
 		)`,
 		`INSERT OR IGNORE INTO ai_settings (id) VALUES (1)`,
 	}},
+
+	// M75: PAI-29 foundations — project repos, code anchors, and the
+	// PMO-hosted project manifest. The manifest is intentionally stored
+	// as a validated JSON blob in v1 so the API contract can stabilize
+	// before we explode it into many specialised tables.
+	{75, []string{
+		`CREATE TABLE IF NOT EXISTS project_repos (
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			url            TEXT NOT NULL,
+			default_branch TEXT NOT NULL DEFAULT 'main',
+			label          TEXT NOT NULL DEFAULT '',
+			sort_order     INTEGER NOT NULL DEFAULT 0,
+			created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_repos_project ON project_repos(project_id, sort_order, id)`,
+		`CREATE TABLE IF NOT EXISTS issue_anchors (
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			issue_id       INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+			repo_id        INTEGER NOT NULL REFERENCES project_repos(id) ON DELETE CASCADE,
+			file_path      TEXT NOT NULL,
+			line           INTEGER NOT NULL,
+			label          TEXT NOT NULL DEFAULT '',
+			confidence     TEXT NOT NULL DEFAULT 'declared'
+			               CHECK(confidence IN ('declared','derived','suggested')),
+			symbol_json    TEXT NOT NULL DEFAULT '',
+			schema_version TEXT NOT NULL DEFAULT '',
+			repo_revision  TEXT NOT NULL DEFAULT '',
+			generated_at   TEXT NOT NULL DEFAULT '',
+			hidden         INTEGER NOT NULL DEFAULT 0,
+			stale          INTEGER NOT NULL DEFAULT 0,
+			created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_issue_anchors_issue ON issue_anchors(issue_id, repo_id, file_path, line)`,
+		`CREATE INDEX IF NOT EXISTS idx_issue_anchors_repo ON issue_anchors(project_id, repo_id, issue_id)`,
+		`CREATE TABLE IF NOT EXISTS project_manifests (
+			project_id     INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+			manifest_json  TEXT NOT NULL DEFAULT '{}',
+			updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_by     INTEGER REFERENCES users(id)
+		)`,
+	}},
+
+	// M76: PAI-30 foundations — generic entity relations and embeddings.
+	// issue_relations remains in place for backward compatibility; the
+	// handlers layer can dual-write or bridge incrementally.
+	{76, []string{
+		`CREATE TABLE IF NOT EXISTS entity_relations (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			source_type   TEXT NOT NULL,
+			source_id     INTEGER NOT NULL,
+			target_type   TEXT NOT NULL,
+			target_id     INTEGER NOT NULL,
+			edge_type     TEXT NOT NULL,
+			confidence    TEXT NOT NULL CHECK(confidence IN ('declared','derived','suggested')),
+			metadata      TEXT NOT NULL DEFAULT '',
+			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(source_type, source_id, target_type, target_id, edge_type)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_src  ON entity_relations(source_type, source_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_tgt  ON entity_relations(target_type, target_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_type ON entity_relations(project_id, edge_type)`,
+		`CREATE TABLE IF NOT EXISTS entity_embeddings (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			entity_type     TEXT NOT NULL,
+			entity_id       INTEGER NOT NULL,
+			model           TEXT NOT NULL,
+			dim             INTEGER NOT NULL,
+			vector          BLOB NOT NULL,
+			source_hash     TEXT NOT NULL,
+			last_indexed_at TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(entity_type, entity_id, model)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_embeddings_lookup ON entity_embeddings(project_id, entity_type, entity_id)`,
+		`INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata)
+		 SELECT i.project_id, 'issue', ir.source_id, 'issue', ir.target_id, ir.type, 'declared', ''
+		 FROM issue_relations ir
+		 JOIN issues i ON i.id = ir.source_id
+		 WHERE i.project_id IS NOT NULL`,
+	}},
+
+	// PAI-161: per-user AI usage tracking and admin-overridable cap.
+	// One row per (user, day) — `day` is the YYYY-MM-DD UTC date so
+	// rolling-day windows are trivial. Numbers are append-only via
+	// ON CONFLICT increment, so a missed mid-call crash leaves the
+	// counter slightly low but never wrong by more than one call.
+	//
+	// users.ai_cap_override_tokens (nullable INT): null means
+	// "use the default daily cap" (configurable via env). Setting
+	// to 0 explicitly disables AI for that user; a positive integer
+	// raises the cap. Mirrors the pattern other per-user opt-in
+	// flags follow elsewhere in PAIMOS.
+	{77, []string{
+		`CREATE TABLE IF NOT EXISTS ai_usage (
+			user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			day               TEXT NOT NULL,
+			prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+			completion_tokens INTEGER NOT NULL DEFAULT 0,
+			request_count     INTEGER NOT NULL DEFAULT 0,
+			updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (user_id, day)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day)`,
+		`ALTER TABLE users ADD COLUMN ai_cap_override_tokens INTEGER`,
+	}},
+
+	// PAI-175: AI prompt CRUD. Each AI action's prompt template is
+	// admin-editable through Settings → AI. Built-in actions are
+	// code-defined (label / surface / parent / sub locked) but their
+	// prompt text is overridable via a row in this table. Custom
+	// actions are also stored here with `is_builtin = 0`.
+	//
+	// Schema notes:
+	//   - `key` is the action key the dispatcher resolves at request
+	//     time. Built-in keys mirror the registered actions
+	//     (PAI-164–172, PAI-173).
+	//   - `prompt_template` is the admin-edited override. Empty
+	//     string means "use the code-defined default" — keeps the
+	//     reset-to-default path trivial.
+	//   - `default_template_hash` is reserved for the change-detection
+	//     UI from PAI-176 ("default has shipped a change — review");
+	//     populated by handlers when seeding builtins.
+	{78, []string{
+		`CREATE TABLE IF NOT EXISTS ai_prompts (
+			id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+			key                   TEXT NOT NULL UNIQUE,
+			label                 TEXT NOT NULL,
+			surface               TEXT NOT NULL,
+			parent_action         TEXT,
+			sub_action            TEXT,
+			prompt_template       TEXT NOT NULL DEFAULT '',
+			enabled               INTEGER NOT NULL DEFAULT 1,
+			is_builtin            INTEGER NOT NULL DEFAULT 0,
+			default_template_hash TEXT NOT NULL DEFAULT '',
+			created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_prompts_surface ON ai_prompts(surface)`,
+	}},
 	}
 
 	for _, m := range migrations {

@@ -4,6 +4,7 @@ import { RouterView } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import PortalLayout from '@/components/PortalLayout.vue'
 import AppConfirmDialog from '@/components/AppConfirmDialog.vue'
+import AiActionResultModal from '@/components/ai/AiActionResultModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { sessionExpired } from '@/api/client'
 
@@ -40,6 +41,15 @@ onBeforeUnmount(() => {
 
 <template>
   <AppConfirmDialog />
+  <!-- PAI-165–172. Action result modal mounted once at app root so
+       every JSON-shape AI action lands the user in the same modal,
+       regardless of which editor surface fired it. The modal opens
+       when useAiAction().result is set; per-surface apply wiring
+       lands in a follow-up — for v1 the modal renders the result
+       and the apply buttons emit a callback that hosts can pick up.
+       Diff-overlay actions (optimize / translate / tone_check)
+       bypass this modal — they have their own UX. -->
+  <AiActionResultModal />
   <!-- Gate on auth.checked to prevent layout flash (sidebar visible before redirect) -->
   <div v-if="!auth.checked" class="app-loading">Loading…</div>
   <RouterView v-else v-slot="{ Component, route }">

@@ -172,6 +172,15 @@ func main() {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}", handlers.DeleteProject)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/logo", handlers.UploadProjectLogo)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/logo", handlers.DeleteProjectLogo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/repos", handlers.ListProjectRepos)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/repos", handlers.CreateProjectRepo)
+			r.With(auth.RequireProjectEdit).Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
+			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
+			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
+			r.With(auth.RequireProjectView).Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
 
 			// Project key suggestion
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
@@ -245,6 +254,7 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)
@@ -350,8 +360,29 @@ func main() {
 			// it on every render that shows an AI button.
 			r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
 			r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
+			// PAI-159: admin-only test-connection ping. Mounted in the
+			// admin group; CSRF middleware (PAI-113) covers it.
+			r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
+			// PAI-160: live OpenRouter model picker, server-cached 1h.
+			// Admin-only because the response shapes admin decisions
+			// (which model to enable for the whole instance).
+			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
+			// PAI-161: per-user usage summary for the admin dashboard.
+			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+			// PAI-175 / PAI-176 / PAI-177: prompt CRUD + dry-run.
+			// Admin-only. The list endpoint lazily seeds built-in
+			// rows so a fresh install never sees an empty list.
+			r.With(auth.RequireAdmin).Get("/ai/prompts", handlers.AIListPrompts)
+			r.With(auth.RequireAdmin).Post("/ai/prompts", handlers.AICreatePrompt)
+			r.With(auth.RequireAdmin).Put("/ai/prompts/{id}", handlers.AIUpdatePrompt)
+			r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
+			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
+			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
 			r.Get("/ai/status", handlers.AIStatus)
-			r.Post("/ai/optimize", handlers.AIOptimize)
+			// PAI-164: legacy /api/ai/optimize endpoint retired —
+			// the optimize behaviour now lives behind /api/ai/action
+			// with action="optimize". The frontend useAiOptimize
+			// composable was updated to call the dispatcher.
 
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)

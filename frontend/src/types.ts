@@ -167,6 +167,46 @@ export interface Project {
   rate_inherited?: boolean
 }
 
+export interface ProjectRepo {
+  id: number
+  project_id: number
+  url: string
+  default_branch: string
+  label: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectManifest {
+  project_id: number
+  data: Record<string, any>
+  updated_at?: string
+  updated_by?: number | null
+}
+
+export interface IssueAnchor {
+  id: number
+  project_id: number
+  issue_id: number
+  repo_id: number
+  repo_label: string
+  repo_url: string
+  default_branch: string
+  file_path: string
+  line: number
+  label: string
+  confidence: 'declared' | 'derived' | 'suggested'
+  symbol_json: string
+  schema_version: string
+  repo_revision: string
+  generated_at: string
+  hidden: boolean
+  stale: boolean
+  deep_link?: string | null
+  updated_at: string
+}
+
 export interface IssueRelation {
   source_id: number
   target_id: number

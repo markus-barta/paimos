@@ -57,12 +57,35 @@ interface AISettings {
   updated_at: string
 }
 
-type PresetTag = 'fast' | 'quality' | 'open' | 'cheap'
+// PAI-160: tags shipped by the backend. The picker accepts any
+// arbitrary string here so the backend can add new tags without a
+// frontend change; the styling map below covers the common cases
+// and falls back to a neutral pill for unknown tags.
+type PresetTag = string
 
-interface ModelPreset {
-  slug: string
+interface PickedModel {
+  id: string
   name: string
-  tags: PresetTag[]
+  context_length: number
+  pricing_prompt_per_mtok: number
+  pricing_completion_per_mtok: number
+  tags: string[]
+}
+
+interface ModelsResponse {
+  categories: {
+    free: PickedModel[]
+    open_weights: PickedModel[]
+    frontier: PickedModel[]
+    value: PickedModel[]
+    cheapest: PickedModel[]
+    fastest: PickedModel[]
+  }
+  fetched_at: string
+  stale: boolean
+  fastest_unofficial: boolean
+  source: string
+  upstream_latency_ms?: number
 }
 
 interface ProviderOption {
@@ -81,20 +104,35 @@ const PROVIDERS: ProviderOption[] = [
   { id: 'llamacpp',   label: 'llama.cpp',  available: false, pendingNote: 'PAI-122' },
 ]
 
-// Curated, NOT a catalog. Anything can be typed into the Model input.
-const MODEL_PRESETS: ModelPreset[] = [
-  { slug: 'anthropic/claude-3.5-haiku',          name: 'Claude 3.5 Haiku',  tags: ['fast', 'cheap'] },
-  { slug: 'anthropic/claude-sonnet-4.5',         name: 'Claude Sonnet 4.5', tags: ['quality'] },
-  { slug: 'openai/gpt-4o-mini',                  name: 'GPT-4o mini',       tags: ['fast', 'cheap'] },
-  { slug: 'openai/gpt-4o',                       name: 'GPT-4o',            tags: ['quality'] },
-  { slug: 'meta-llama/llama-3.3-70b-instruct',   name: 'Llama 3.3 70B',     tags: ['open'] },
+// PAI-160: category sections rendered in this order. The labels are
+// what admins see; the keys map to the backend response shape.
+const CATEGORIES: Array<{
+  key: keyof ModelsResponse['categories']
+  label: string
+  icon: string
+  hint: string
+}> = [
+  { key: 'frontier',     label: 'Frontier',      icon: 'sparkles',     hint: 'Top of the leaderboard right now — pick when output quality matters more than cost.' },
+  { key: 'value',        label: 'Value',         icon: 'gem',          hint: 'Big context (≥128k) + tools, cheapest in the band. The default for most teams.' },
+  { key: 'fastest',      label: 'Fastest',       icon: 'zap',          hint: 'Highest measured throughput. Source ranking is provided by an unofficial endpoint and can break.' },
+  { key: 'cheapest',     label: 'Cheapest',      icon: 'tag',          hint: 'Lowest combined prompt + completion price. Free models are listed separately.' },
+  { key: 'open_weights', label: 'Open weights',  icon: 'package',      hint: 'Models with public weights — useful when you may want to self-host (PAI-122) later.' },
+  { key: 'free',         label: 'Free',          icon: 'gift',         hint: 'Cost nothing per token. Often rate-limited; great for experimentation.' },
 ]
 
-const TAG_LABEL: Record<PresetTag, string> = {
-  fast: 'Fast',
-  quality: 'Quality',
-  open: 'Open weights',
-  cheap: 'Cheap',
+// PAI-160: tag styling. Falls back to a neutral pill if the backend
+// adds a tag the frontend hasn't styled yet.
+const TAG_LABEL: Record<string, string> = {
+  fast:         'Fast',
+  fastest:      'Fastest',
+  quality:      'Quality',
+  frontier:     'Frontier',
+  open:         'Open',
+  open_weights: 'Open weights',
+  cheap:        'Cheap',
+  cheapest:     'Cheapest',
+  value:        'Value',
+  free:         'Free',
 }
 
 const form = reactive<AISettings>({
@@ -114,6 +152,79 @@ const saving = ref(false)
 const saveError = ref('')
 const saveOK = ref(false)
 
+// PAI-159: Test connection state. The test endpoint accepts the
+// *unsaved* form values, so admins can verify a (provider, model, key)
+// triple before persisting. Result is rendered as a small inline
+// banner above the action footer.
+interface AITestResult {
+  ok: boolean
+  message: string
+  response_text?: string
+  model?: string
+  latency_ms?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  marker?: string
+}
+const testing = ref(false)
+const testResult = ref<AITestResult | null>(null)
+function clearTestResult() { testResult.value = null }
+
+// PAI-160: live model picker state. Loaded on mount; manual refresh
+// button forces a re-fetch through the backend cache.
+const modelsPayload = ref<ModelsResponse | null>(null)
+const modelsLoading = ref(false)
+const modelsError = ref('')
+async function loadModels(force = false) {
+  modelsLoading.value = true
+  modelsError.value = ''
+  try {
+    const path = force ? '/ai/models?force=1' : '/ai/models'
+    modelsPayload.value = await api.get<ModelsResponse>(path)
+  } catch (e) {
+    modelsError.value = errMsg(e, 'Failed to load model recommendations.')
+  } finally {
+    modelsLoading.value = false
+  }
+}
+
+// PAI-161: today's usage. Admin-only summary of how many tokens the
+// instance has spent against the daily cap. Loaded lazily; the
+// section is collapsible because most admins only check it once.
+interface AIUsageRow {
+  user_id: number
+  username: string
+  is_admin: boolean
+  prompt_tokens: number
+  completion_tokens: number
+  request_count: number
+  cap_effective: number
+  cap_override: number | null
+  over_cap: boolean
+}
+interface AIUsageResponse {
+  day: string
+  default_cap: number
+  org_prompt_tokens: number
+  org_completion_tokens: number
+  org_request_count: number
+  users: AIUsageRow[]
+}
+const usagePayload = ref<AIUsageResponse | null>(null)
+const usageLoading = ref(false)
+const usageError = ref('')
+async function loadUsage() {
+  usageLoading.value = true
+  usageError.value = ''
+  try {
+    usagePayload.value = await api.get<AIUsageResponse>('/ai/usage')
+  } catch (e) {
+    usageError.value = errMsg(e, 'Failed to load AI usage.')
+  } finally {
+    usageLoading.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -131,7 +242,11 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  loadModels()
+  loadUsage()
+})
 
 function startReplace() {
   replacingKey.value = true
@@ -146,6 +261,37 @@ function clearKey() {
   // to wipe the stored key. Mirrors the CRM tab's "Clear" affordance.
   form.api_key = ''
   replacingKey.value = true
+}
+
+// PAI-159: Test connection. Fires a single LLM round-trip with a
+// fixed prompt that asks for a witty one-liner containing the literal
+// token "OK". The handler returns 200 with a structured body whether
+// the call succeeded or failed — this lets us render success and
+// failure with the same component instead of branching on HTTP status.
+async function onTestConnection() {
+  if (testing.value) return
+  testing.value = true
+  testResult.value = null
+  // The backend treats `api_key=""` as "form is empty" (returns
+  // ok=false with a friendly message). For an admin testing without
+  // re-typing the saved key, we can't recover it (never echoed) — so
+  // the button is disabled in that case via canTest.
+  const body: Record<string, unknown> = {
+    provider: form.provider,
+    model: form.model.trim(),
+    api_key: form.api_key,
+  }
+  try {
+    const r = await api.post<AITestResult>('/ai/test', body)
+    testResult.value = r
+  } catch (e) {
+    testResult.value = {
+      ok: false,
+      message: errMsg(e, 'Test connection failed.'),
+    }
+  } finally {
+    testing.value = false
+  }
 }
 
 async function onSave() {
@@ -180,6 +326,22 @@ async function onSave() {
 }
 
 // ── Computed UI state ─────────────────────────────────────────────
+// PAI-159: The Test button is enabled when the form has the three
+// values needed for a roundtrip. We can only test what the admin
+// typed; the saved key cannot be re-used because the SPA never
+// receives it from the backend.
+const canTest = computed(() =>
+  form.provider !== '' &&
+  form.model.trim() !== '' &&
+  form.api_key.trim() !== ''
+)
+const testTooltip = computed(() => {
+  if (!form.api_key.trim()) {
+    return 'Enter an API key to test the connection. The saved key is never echoed back, so a test always uses the value typed in this form.'
+  }
+  if (!form.model.trim()) return 'Pick a model first.'
+  return 'Send a one-shot ping to the provider with the form values above.'
+})
 const canEnable = computed(() => hasStoredKey.value && form.model.trim() !== '')
 const enableHint = computed(() => {
   if (!hasStoredKey.value) return 'Add an OpenRouter API key first.'
@@ -207,6 +369,17 @@ const readiness = computed<{ label: string; tone: ReadinessTone }>(() => {
 
 function applyPreset(slug: string) {
   form.model = slug
+}
+
+// PAI-160: format a context window for the picker card. Models top
+// out around 2M tokens; a compact "200k" / "1.5M" reads better than
+// the full integer. Below 1k we just print the value to avoid
+// rounding 200 to "0k".
+function formatContext(ctx: number): string {
+  if (ctx <= 0) return '?'
+  if (ctx >= 1_000_000) return (ctx / 1_000_000).toFixed(ctx % 1_000_000 === 0 ? 0 : 1) + 'M'
+  if (ctx >= 1_000) return Math.round(ctx / 1_000) + 'k'
+  return String(ctx)
 }
 
 // Light relative-time formatter for the "last saved" stamp. Scope
@@ -361,6 +534,7 @@ function relTime(iso: string): string {
           <span class="ai-card-headicon"><AppIcon name="cpu" :size="15" /></span>
           <h3 class="ai-card-title">Model</h3>
         </header>
+        <!-- Manual model id — always visible per PAI-160 (escape hatch). -->
         <input
           v-model="form.model"
           type="text"
@@ -368,30 +542,89 @@ function relTime(iso: string): string {
           class="ai-input ai-input-mono"
           spellcheck="false"
         />
-        <div class="ai-presets-label">Quick picks</div>
-        <div class="ai-presets-grid">
+
+        <!-- PAI-160: live picker. Six categories, top-3 each, fed by
+             /api/ai/models with a 1h server-side cache. The "Refresh"
+             button busts that cache when an admin knows a new model
+             just dropped. Stale state is rendered honestly so admins
+             know when they're looking at last-known-good. -->
+        <div class="ai-presets-headrow">
+          <div class="ai-presets-headrow-left">
+            <span class="ai-presets-label">Recommendations</span>
+            <span v-if="modelsPayload?.stale" class="ai-stale-pill" title="Showing the last cached snapshot — the upstream lookup just now failed.">
+              <AppIcon name="alert-triangle" :size="11" /> stale
+            </span>
+            <span v-if="modelsPayload?.source === 'static-fallback'" class="ai-stale-pill" title="OpenRouter unreachable on first load — using a curated static fallback.">
+              <AppIcon name="alert-triangle" :size="11" /> fallback
+            </span>
+          </div>
           <button
-            v-for="p in MODEL_PRESETS" :key="p.slug"
             type="button"
-            :class="['ai-preset', { 'ai-preset--active': form.model.trim() === p.slug }]"
-            :title="p.slug"
-            @click="applyPreset(p.slug)"
+            class="btn btn-ghost btn-sm ai-presets-refresh"
+            :disabled="modelsLoading"
+            @click="loadModels(true)"
+            title="Re-fetch the model list from OpenRouter, bypassing the 1-hour server cache."
           >
-            <div class="ai-preset-row">
-              <strong class="ai-preset-name">{{ p.name }}</strong>
-              <span v-if="form.model.trim() === p.slug" class="ai-preset-checkdot" aria-hidden="true">
-                <AppIcon name="check" :size="10" />
-              </span>
-            </div>
-            <code class="ai-preset-slug">{{ p.slug }}</code>
-            <div class="ai-preset-tags">
-              <span
-                v-for="t in p.tags" :key="t"
-                :class="['ai-preset-tag', `ai-preset-tag--${t}`]"
-              >{{ TAG_LABEL[t] }}</span>
-            </div>
+            <AppIcon :name="modelsLoading ? 'loader-circle' : 'refresh-cw'" :size="12" :class="{ spin: modelsLoading }" />
+            {{ modelsLoading ? 'Loading…' : 'Refresh' }}
           </button>
         </div>
+
+        <p v-if="modelsError" class="ai-banner ai-banner--error">
+          <AppIcon name="alert-triangle" :size="14" /> {{ modelsError }}
+        </p>
+
+        <template v-if="modelsPayload">
+          <section
+            v-for="cat in CATEGORIES" :key="cat.key"
+            v-show="modelsPayload.categories[cat.key]?.length"
+            class="ai-cat"
+          >
+            <div class="ai-cat-headrow">
+              <span class="ai-cat-icon"><AppIcon :name="cat.icon" :size="13" /></span>
+              <strong class="ai-cat-label">{{ cat.label }}</strong>
+              <span v-if="cat.key === 'fastest' && modelsPayload.fastest_unofficial" class="ai-cat-betatag" title="Source ranking comes from an undocumented OpenRouter endpoint — best-effort.">unofficial source</span>
+              <span class="ai-cat-hint">{{ cat.hint }}</span>
+            </div>
+            <div class="ai-presets-grid">
+              <button
+                v-for="m in modelsPayload.categories[cat.key]" :key="m.id"
+                type="button"
+                :class="['ai-preset', { 'ai-preset--active': form.model.trim() === m.id }]"
+                :title="m.id"
+                @click="applyPreset(m.id)"
+              >
+                <div class="ai-preset-row">
+                  <strong class="ai-preset-name">{{ m.name || m.id }}</strong>
+                  <span v-if="form.model.trim() === m.id" class="ai-preset-checkdot" aria-hidden="true">
+                    <AppIcon name="check" :size="10" />
+                  </span>
+                </div>
+                <code class="ai-preset-slug">{{ m.id }}</code>
+                <div class="ai-preset-meta">
+                  <span class="ai-preset-meta-bit" :title="`${m.context_length.toLocaleString()} token context`">
+                    {{ formatContext(m.context_length) }} ctx
+                  </span>
+                  <span
+                    v-if="m.pricing_prompt_per_mtok || m.pricing_completion_per_mtok"
+                    class="ai-preset-meta-bit"
+                    title="USD per million tokens — prompt / completion"
+                  >
+                    ${{ m.pricing_prompt_per_mtok.toFixed(2) }} / ${{ m.pricing_completion_per_mtok.toFixed(2) }}
+                  </span>
+                  <span v-else class="ai-preset-meta-bit ai-preset-meta-bit--free" title="No per-token cost.">free</span>
+                </div>
+                <div class="ai-preset-tags">
+                  <span
+                    v-for="t in m.tags" :key="t"
+                    :class="['ai-preset-tag', `ai-preset-tag--${t}`]"
+                  >{{ TAG_LABEL[t] || t }}</span>
+                </div>
+              </button>
+            </div>
+          </section>
+        </template>
+        <p v-else-if="modelsLoading" class="ai-help">Loading recommendations from OpenRouter…</p>
       </section>
 
       <!-- ── 6. OPTIMIZATION INSTRUCTION ─────────────────────────── -->
@@ -429,6 +662,74 @@ function relTime(iso: string): string {
         ></textarea>
       </section>
 
+      <!-- ── 7. PAI-161: USAGE PANEL ─────────────────────────────── -->
+      <section class="ai-card">
+        <header class="ai-card-headrow">
+          <span class="ai-card-headicon"><AppIcon name="bar-chart-3" :size="15" /></span>
+          <h3 class="ai-card-title">Usage today</h3>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm ai-presets-refresh"
+            :disabled="usageLoading"
+            @click="loadUsage"
+            title="Refresh usage stats."
+          >
+            <AppIcon :name="usageLoading ? 'loader-circle' : 'refresh-cw'" :size="12" :class="{ spin: usageLoading }" />
+            {{ usageLoading ? 'Loading…' : 'Refresh' }}
+          </button>
+        </header>
+        <p class="ai-help">
+          Counts tokens against the per-user daily cap. Default cap is
+          set via <code>PAIMOS_AI_DAILY_CAP_TOKENS</code>; per-user
+          override is editable from the user admin panel.
+        </p>
+        <p v-if="usageError" class="ai-banner ai-banner--error">
+          <AppIcon name="alert-triangle" :size="14" /> {{ usageError }}
+        </p>
+        <template v-if="usagePayload">
+          <div class="ai-usage-summary">
+            <span class="ai-usage-pill" title="Aggregate across all users for the current UTC day">
+              <strong>{{ usagePayload.org_prompt_tokens.toLocaleString() }}p</strong> + <strong>{{ usagePayload.org_completion_tokens.toLocaleString() }}c</strong> tokens
+            </span>
+            <span class="ai-usage-pill">
+              <strong>{{ usagePayload.org_request_count }}</strong> calls
+            </span>
+            <span class="ai-usage-pill">
+              Default cap <strong>{{ usagePayload.default_cap.toLocaleString() }}</strong>/user/day
+            </span>
+            <span class="ai-usage-pill ai-usage-pill--day">UTC day {{ usagePayload.day }}</span>
+          </div>
+          <table v-if="usagePayload.users.length" class="ai-usage-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th class="ai-usage-num">Tokens (p+c)</th>
+                <th class="ai-usage-num">Calls</th>
+                <th class="ai-usage-num">Cap</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in usagePayload.users" :key="u.user_id" :class="{ 'ai-usage-row--over': u.over_cap }">
+                <td>
+                  {{ u.username }}
+                  <span v-if="u.is_admin" class="ai-usage-admin-tag">admin</span>
+                </td>
+                <td class="ai-usage-num">{{ (u.prompt_tokens + u.completion_tokens).toLocaleString() }}</td>
+                <td class="ai-usage-num">{{ u.request_count }}</td>
+                <td class="ai-usage-num">
+                  {{ u.cap_effective.toLocaleString() }}<span v-if="u.cap_override !== null" class="ai-usage-override-tag" title="Override is set on this user">override</span>
+                </td>
+                <td>
+                  <span v-if="u.over_cap && !u.is_admin" class="ai-usage-over-tag">over</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="ai-help">No AI calls today yet.</p>
+        </template>
+      </section>
+
       <!-- ── BANNERS ─────────────────────────────────────────────── -->
       <p v-if="saveError" class="ai-banner ai-banner--error">
         <AppIcon name="alert-triangle" :size="14" /> {{ saveError }}
@@ -436,6 +737,46 @@ function relTime(iso: string): string {
       <p v-if="saveOK" class="ai-banner ai-banner--ok">
         <AppIcon name="check-circle" :size="14" /> Settings saved.
       </p>
+
+      <!-- ── PAI-159: TEST RESULT ─────────────────────────────────
+           Detailed result card for the test connection ping. Lives
+           above the action footer so admins see latency + the
+           model's funny line right next to the button that fired
+           the call. -->
+      <div
+        v-if="testResult"
+        :class="['ai-test-result', testResult.ok ? 'ai-test-result--ok' : 'ai-test-result--fail']"
+        role="status"
+      >
+        <div class="ai-test-result-head">
+          <AppIcon :name="testResult.ok ? 'check-circle' : 'alert-triangle'" :size="16" />
+          <strong class="ai-test-result-msg">{{ testResult.message }}</strong>
+          <button
+            type="button"
+            class="ai-test-result-x"
+            aria-label="Dismiss"
+            @click="clearTestResult"
+          >×</button>
+        </div>
+        <div v-if="testResult.response_text" class="ai-test-result-body">
+          <span class="ai-test-result-label">Reply</span>
+          <span class="ai-test-result-quote">{{ testResult.response_text }}</span>
+        </div>
+        <div class="ai-test-result-meta">
+          <span v-if="testResult.model" class="ai-test-result-pill">
+            <AppIcon name="cpu" :size="11" /> {{ testResult.model }}
+          </span>
+          <span v-if="testResult.latency_ms" class="ai-test-result-pill">
+            <AppIcon name="zap" :size="11" /> {{ testResult.latency_ms }} ms
+          </span>
+          <span v-if="testResult.prompt_tokens != null && testResult.completion_tokens != null && (testResult.prompt_tokens + testResult.completion_tokens) > 0" class="ai-test-result-pill">
+            {{ testResult.prompt_tokens }}p + {{ testResult.completion_tokens }}c tokens
+          </span>
+          <span v-if="testResult.marker" :class="['ai-test-result-pill', `ai-test-result-pill--${testResult.marker.toLowerCase()}`]">
+            marker: {{ testResult.marker }}
+          </span>
+        </div>
+      </div>
 
       <!-- ── ACTIONS ─────────────────────────────────────────────── -->
       <footer class="ai-actions">
@@ -445,15 +786,28 @@ function relTime(iso: string): string {
           </template>
           <template v-else>—</template>
         </span>
-        <button
-          type="button"
-          class="btn btn-primary ai-save"
-          :disabled="saving"
-          @click="onSave"
-        >
-          <AppIcon v-if="saving" name="loader-circle" :size="13" class="spin" />
-          {{ saving ? 'Saving…' : 'Save changes' }}
-        </button>
+        <div class="ai-actions-buttons">
+          <button
+            type="button"
+            class="btn btn-ghost ai-test-btn"
+            :disabled="!canTest || testing"
+            :title="testTooltip"
+            @click="onTestConnection"
+          >
+            <AppIcon v-if="testing" name="loader-circle" :size="13" class="spin" />
+            <AppIcon v-else name="plug" :size="13" />
+            {{ testing ? 'Testing…' : 'Test connection' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary ai-save"
+            :disabled="saving"
+            @click="onSave"
+          >
+            <AppIcon v-if="saving" name="loader-circle" :size="13" class="spin" />
+            {{ saving ? 'Saving…' : 'Save changes' }}
+          </button>
+        </div>
       </footer>
     </template>
   </div>
@@ -854,10 +1208,107 @@ function relTime(iso: string): string {
   font-family: 'DM Sans', sans-serif;
   line-height: 1.25;
 }
-.ai-preset-tag--fast    { background: #dbeafe; color: #1e40af; }
-.ai-preset-tag--quality { background: #ede9fe; color: #5b21b6; }
-.ai-preset-tag--open    { background: #fef3c7; color: #92400e; }
-.ai-preset-tag--cheap   { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--fast         { background: #dbeafe; color: #1e40af; }
+.ai-preset-tag--fastest      { background: #dbeafe; color: #1e40af; }
+.ai-preset-tag--quality      { background: #ede9fe; color: #5b21b6; }
+.ai-preset-tag--frontier     { background: #ede9fe; color: #5b21b6; }
+.ai-preset-tag--open         { background: #fef3c7; color: #92400e; }
+.ai-preset-tag--open_weights { background: #fef3c7; color: #92400e; }
+.ai-preset-tag--cheap        { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--cheapest     { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--value        { background: #fce7f3; color: #9d174d; }
+.ai-preset-tag--free         { background: #ccfbf1; color: #115e59; }
+
+/* PAI-160: category sections inside the Model card. */
+.ai-cat {
+  display: flex; flex-direction: column;
+  gap: .55rem;
+  margin-top: .8rem;
+  padding-top: .8rem;
+  border-top: 1px dashed var(--border);
+}
+.ai-cat:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+.ai-cat-headrow {
+  display: flex; align-items: center; gap: .5rem;
+  flex-wrap: wrap;
+}
+.ai-cat-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+}
+.ai-cat-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.005em;
+}
+.ai-cat-betatag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .12rem .45rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+.ai-cat-hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+@media (max-width: 720px) {
+  .ai-cat-hint { flex: none; width: 100%; }
+}
+
+.ai-presets-headrow {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  margin-top: .25rem;
+}
+.ai-presets-headrow-left {
+  display: inline-flex; align-items: center; gap: .55rem;
+  flex-wrap: wrap;
+}
+.ai-presets-refresh {
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.ai-stale-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .12rem .45rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* PAI-160: extra meta line on each preset card. Keeps pricing +
+   context next to the slug without crowding the tag row. */
+.ai-preset-meta {
+  display: flex; gap: .4rem; flex-wrap: wrap;
+  margin-top: .15rem;
+}
+.ai-preset-meta-bit {
+  font-family: 'DM Mono', monospace;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .08rem .4rem;
+}
+.ai-preset-meta-bit--free {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #166534;
+}
 
 /* ── INVARIANTS DISCLOSURE ────────────────────────────────────── */
 .ai-invariants {
@@ -965,6 +1416,153 @@ function relTime(iso: string): string {
   display: inline-flex; align-items: center; gap: .4rem;
   font-weight: 600;
   padding: .55rem 1.15rem;
+}
+
+/* PAI-159: action footer holds Test + Save side by side. */
+.ai-actions-buttons {
+  display: flex; gap: .5rem; align-items: center;
+}
+.ai-test-btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-weight: 600;
+  padding: .55rem 1rem;
+}
+
+/* PAI-159: result card is its own surface — softer than a banner so
+   admins who click Test repeatedly aren't visually shouted at. */
+.ai-test-result {
+  display: flex; flex-direction: column; gap: .55rem;
+  padding: .85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-size: 13px;
+}
+.ai-test-result--ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+.ai-test-result--fail {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+.ai-test-result-head {
+  display: flex; align-items: center; gap: .55rem;
+}
+.ai-test-result-msg {
+  flex: 1;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  line-height: 1.4;
+}
+.ai-test-result-x {
+  background: none; border: none;
+  color: inherit; opacity: .65;
+  cursor: pointer; font-size: 18px; line-height: 1;
+  padding: 0 .25rem;
+}
+.ai-test-result-x:hover { opacity: 1; }
+.ai-test-result-body {
+  display: flex; gap: .55rem; align-items: baseline;
+  font-family: 'DM Mono', monospace;
+  font-size: 12.5px;
+  padding: .5rem .65rem;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(0,0,0,.04);
+  border-radius: 8px;
+  line-height: 1.55;
+}
+.ai-test-result-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: currentColor;
+  opacity: .7;
+  flex-shrink: 0;
+}
+.ai-test-result-quote {
+  word-break: break-word;
+  color: var(--text);
+}
+.ai-test-result-meta {
+  display: flex; gap: .35rem; flex-wrap: wrap;
+}
+.ai-test-result-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: .15rem .55rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,.7);
+  border: 1px solid rgba(0,0,0,.06);
+  color: currentColor;
+  font-family: 'DM Mono', monospace;
+}
+.ai-test-result-pill--ok   { background: #16a34a; color: white; border-color: transparent; }
+.ai-test-result-pill--fail { background: #dc2626; color: white; border-color: transparent; }
+
+/* PAI-161: usage card. */
+.ai-usage-summary {
+  display: flex; flex-wrap: wrap; gap: .4rem;
+  margin-bottom: .25rem;
+}
+.ai-usage-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 11.5px;
+  padding: .25rem .6rem;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.ai-usage-pill strong { color: var(--bp-blue-dark); font-weight: 700; }
+.ai-usage-pill--day { background: var(--bp-blue-pale); border-color: transparent; color: var(--bp-blue-dark); }
+.ai-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: .25rem;
+}
+.ai-usage-table thead th {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: .35rem .6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.ai-usage-table tbody td {
+  padding: .4rem .6rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: var(--text);
+}
+.ai-usage-num { text-align: right; font-family: 'DM Mono', monospace; }
+.ai-usage-row--over td { background: #fef2f2; }
+.ai-usage-admin-tag {
+  margin-left: .4rem;
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: #ede9fe; color: #5b21b6;
+  padding: .1rem .4rem; border-radius: 999px;
+}
+.ai-usage-override-tag {
+  margin-left: .35rem;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: #fef3c7; color: #92400e;
+  padding: .05rem .35rem; border-radius: 6px;
+}
+.ai-usage-over-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: #fee2e2; color: #991b1b;
+  padding: .1rem .4rem; border-radius: 999px;
 }
 
 .spin { animation: ai-tab-spin 1s linear infinite; }
