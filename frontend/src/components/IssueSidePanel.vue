@@ -34,6 +34,13 @@ import {
   SIDE_PANEL_MIN_WIDTH,
   SIDE_PANEL_MAX_WIDTH_RATIO,
 } from '@/composables/useSidePanelWidth'
+// PAI-146: AI text optimization on multiline editors. Same composable
+// + overlay singleton as the detail view; once mounted here, the side
+// panel surfaces the AI action for description / acceptance / notes.
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
 
 const ctx = useIssueContext(true)
 
@@ -172,6 +179,14 @@ const notesRef = computed(() => issue.value?.notes ?? '')
 const { html: descHtml } = useMarkdown(descRef, mdMode)
 const { html: acHtml } = useMarkdown(acRef, mdMode)
 const { html: notesHtml } = useMarkdown(notesRef, mdMode)
+
+// PAI-146: AI optimization. The form's id matches issue.value.id when
+// editing an existing issue (this panel never opens without one), so
+// pass it through for context assembly.
+const aiOptimize = useAiOptimize()
+function onAiAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
+  return (text: string) => { form.value[field] = text }
+}
 const search = useSearchStore()
 
 // DOM-based search highlighting — applied after v-html renders, walks text nodes only
@@ -721,16 +736,44 @@ async function deleteTimeEntry(entry: TimeEntry) {
               </div>
             </div>
 
+            <AiOptimizeBanner />
             <div class="field">
-              <label>Description</label>
+              <div class="field-label-row">
+                <label>Description</label>
+                <AiOptimizeButton
+                  field="description"
+                  field-label="Description"
+                  :issue-id="issue?.id ?? 0"
+                  :text="() => form.description"
+                  :on-accept="onAiAccept('description')"
+                />
+              </div>
               <textarea v-model="form.description" rows="5" />
             </div>
             <div class="field">
-              <label>Acceptance Criteria</label>
+              <div class="field-label-row">
+                <label>Acceptance Criteria</label>
+                <AiOptimizeButton
+                  field="acceptance_criteria"
+                  field-label="Acceptance Criteria"
+                  :issue-id="issue?.id ?? 0"
+                  :text="() => form.acceptance_criteria"
+                  :on-accept="onAiAccept('acceptance_criteria')"
+                />
+              </div>
               <textarea v-model="form.acceptance_criteria" rows="4" />
             </div>
             <div class="field">
-              <label>Notes</label>
+              <div class="field-label-row">
+                <label>Notes</label>
+                <AiOptimizeButton
+                  field="notes"
+                  field-label="Notes"
+                  :issue-id="issue?.id ?? 0"
+                  :text="() => form.notes"
+                  :on-accept="onAiAccept('notes')"
+                />
+              </div>
               <textarea v-model="form.notes" rows="3" />
             </div>
             <!-- Attachments (edit mode — drop, upload, remove) -->
@@ -763,9 +806,32 @@ async function deleteTimeEntry(entry: TimeEntry) {
       </div>
     </aside>
   </Transition>
+
+  <!-- PAI-146: AI optimize preview overlay. Single mount per panel
+       instance; the composable is a singleton so opening from a
+       textarea here uses the same slot as the detail view. -->
+  <AiOptimizeOverlay
+    v-if="aiOptimize.overlay.visible"
+    :original="aiOptimize.overlay.original"
+    :optimized="aiOptimize.overlay.optimized"
+    :field-label="aiOptimize.overlay.fieldLabel"
+    :model-name="aiOptimize.overlay.modelName"
+    :retrying="aiOptimize.overlay.retrying"
+    @accept="aiOptimize.accept()"
+    @reject="aiOptimize.reject()"
+    @retry="aiOptimize.retry()"
+  />
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row holds the label + the AI optimize
+   button on the right. Mirrors the IssueDetailView treatment. */
+.field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.field-label-row > label { margin-bottom: 0; }
+
 .side-panel {
   position: fixed; top: 0; right: 0; bottom: 0;
   z-index: 200;

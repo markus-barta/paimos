@@ -174,11 +174,28 @@ async function upload<T>(path: string, formData: FormData, onProgress?: (pct: nu
   })
 }
 
-/** Extract message from an unknown catch value. */
+/** Extract message from an unknown catch value.
+ *
+ * Never returns an empty / whitespace-only string — a blank banner
+ * ("Error: ") is worse than a generic one ("An error occurred")
+ * because it leaves the user wondering whether anything rendered.
+ * ApiError additionally surfaces its HTTP status when its own
+ * message is empty so an admin scanning logs has something to grep
+ * for ("request failed (HTTP 502)").
+ */
 export function errMsg(e: unknown, fallback = 'An error occurred'): string {
-  if (e instanceof Error) return e.message
-  if (typeof e === 'string') return e
-  return fallback
+  let raw = ''
+  if (e instanceof ApiError) {
+    raw = e.message
+    if (raw.trim() === '') {
+      raw = `request failed (HTTP ${e.status || 'network'})`
+    }
+  } else if (e instanceof Error) {
+    raw = e.message
+  } else if (typeof e === 'string') {
+    raw = e
+  }
+  return raw.trim() !== '' ? raw : fallback
 }
 
 export const api = {

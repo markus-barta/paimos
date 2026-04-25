@@ -19,6 +19,18 @@ import { useRecentProjects } from '@/composables/useRecentProjects'
 import { useTimeUnit } from '@/composables/useTimeUnit'
 import { useAttachmentUploads } from '@/composables/useAttachmentUploads'
 import { EPIC_COLOR_PALETTE } from '@/config/epicColors'
+// PAI-146: AI text optimization on multiline fields. issue_id is 0
+// here (no row exists yet); the backend skips context lookup for that
+// sentinel and works on the source text alone.
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
+
+const aiOptimize = useAiOptimize()
+function onAiAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
+  return (text: string) => { form.value[field] = text }
+}
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
 const { label: timeLabel, toggle: toggleTimeUnit } = useTimeUnit()
@@ -322,16 +334,44 @@ defineExpose({ openCreate })
         <label>Title</label>
         <input v-model="form.title" type="text" placeholder="Issue title" required autofocus />
       </div>
+      <AiOptimizeBanner />
       <div class="field">
-        <label>Description</label>
+        <div class="field-label-row">
+          <label>Description</label>
+          <AiOptimizeButton
+            field="description"
+            field-label="Description"
+            :issue-id="0"
+            :text="() => form.description"
+            :on-accept="onAiAccept('description')"
+          />
+        </div>
         <textarea v-auto-grow v-model="form.description" rows="2" placeholder="Optional description"></textarea>
       </div>
       <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
-        <label>Acceptance Criteria</label>
+        <div class="field-label-row">
+          <label>Acceptance Criteria</label>
+          <AiOptimizeButton
+            field="acceptance_criteria"
+            field-label="Acceptance Criteria"
+            :issue-id="0"
+            :text="() => form.acceptance_criteria"
+            :on-accept="onAiAccept('acceptance_criteria')"
+          />
+        </div>
         <textarea v-auto-grow v-model="form.acceptance_criteria" rows="2" placeholder="When is this done?"></textarea>
       </div>
       <div class="field">
-        <label>Notes</label>
+        <div class="field-label-row">
+          <label>Notes</label>
+          <AiOptimizeButton
+            field="notes"
+            field-label="Notes"
+            :issue-id="0"
+            :text="() => form.notes"
+            :on-accept="onAiAccept('notes')"
+          />
+        </div>
         <textarea v-auto-grow v-model="form.notes" rows="2" placeholder="Additional notes"></textarea>
       </div>
       <div class="form-row">
@@ -519,10 +559,32 @@ defineExpose({ openCreate })
       @retry="(job) => attachments.retryJob(job)"
     />
     </div>
+    <!-- PAI-146: AI optimize preview overlay. Mounted once for the
+         modal; the composable singleton ensures only one overlay can
+         be open at a time across the whole SPA. -->
+    <AiOptimizeOverlay
+      v-if="aiOptimize.overlay.visible"
+      :original="aiOptimize.overlay.original"
+      :optimized="aiOptimize.overlay.optimized"
+      :field-label="aiOptimize.overlay.fieldLabel"
+      :model-name="aiOptimize.overlay.modelName"
+      :retrying="aiOptimize.overlay.retrying"
+      @accept="aiOptimize.accept()"
+      @reject="aiOptimize.reject()"
+      @retry="aiOptimize.retry()"
+    />
   </AppModal>
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row holds the label + the AI optimize
+   button on the right. Mirrors the IssueDetailView treatment. */
+.field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.field-label-row > label { margin-bottom: 0; }
+
 .discard-confirm {
   display: flex; flex-direction: column; gap: 1.25rem;
   padding: .5rem 0;

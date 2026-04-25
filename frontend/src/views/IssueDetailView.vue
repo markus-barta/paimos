@@ -793,8 +793,9 @@ async function cancelEdit() {
           <div class="edit-content">
             <!-- PAI-146: surface AI optimize failures inline so the user
                  knows why the spinner stopped without a successful overlay.
-                 One banner for the whole edit pane — a single optimize
-                 call is in flight at a time. -->
+                 errMsg() in api/client.ts guarantees lastError is null or
+                 a non-empty, non-whitespace string — so no trim guard
+                 needed at the template level. -->
             <div v-if="aiOptimize.lastError" class="ai-error-banner">
               <span>AI optimization failed: {{ aiOptimize.lastError }}</span>
               <button type="button" class="ai-error-banner-x" @click="aiOptimize.clearError()">×</button>
