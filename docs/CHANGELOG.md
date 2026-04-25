@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] — 2026-04-25
+
+### Fixed
+- **Settings → AI** tab redesigned. The first 1.8.0 cut shipped with a
+  broken toggle row (checkbox, label, and hint distributed across the
+  page width) and form inputs stretched to the full tab area instead
+  of capping. Replaced with a card-stack layout: hero strip with
+  status pill (Ready / Configured · Off / Disabled / Needs
+  configuration), enable as a real switch, provider cards with
+  PAI-122 placeholders, model preset grid with category tags
+  (Fast / Quality / Open weights / Cheap), and a `<details>` disclosure
+  listing the six wrapper invariants admins cannot override. UI only —
+  no backend or payload-shape changes.
+
 ## [1.8.0] — 2026-04-25
 
 ### Added — PAI-146 epic: LLM text optimization for multiline fields
