@@ -5,6 +5,24 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] — 2026-04-25
+
+### Fixed
+- **AI optimize button now appears on every multiline issue editor** —
+  the v1.8.0 rollout only wired it into the issue-detail edit form.
+  Added to **CreateIssueModal** (the per-project + global "New issue"
+  flow) and **IssueSidePanel** (slide-out edit panel) so the action
+  is reachable wherever a user enters description / acceptance
+  criteria / notes text. For new issues `issue_id=0` is sent, which
+  the backend already handled by skipping context lookup.
+- **Empty error banner.** `errMsg()` could pass an empty/whitespace
+  string through to the UI, producing "AI optimization failed:" with
+  no message. Replaced with a guard that always returns a non-empty
+  string and, for `ApiError` with an empty payload, surfaces the HTTP
+  status as `request failed (HTTP <status>)` so admins have something
+  to grep. New `<AiOptimizeBanner>` component used by all three host
+  surfaces so the banner experience is consistent.
+
 ## [1.8.1] — 2026-04-25
 
 ### Fixed
