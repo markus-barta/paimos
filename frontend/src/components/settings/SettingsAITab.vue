@@ -188,6 +188,43 @@ async function loadModels(force = false) {
   }
 }
 
+// PAI-161: today's usage. Admin-only summary of how many tokens the
+// instance has spent against the daily cap. Loaded lazily; the
+// section is collapsible because most admins only check it once.
+interface AIUsageRow {
+  user_id: number
+  username: string
+  is_admin: boolean
+  prompt_tokens: number
+  completion_tokens: number
+  request_count: number
+  cap_effective: number
+  cap_override: number | null
+  over_cap: boolean
+}
+interface AIUsageResponse {
+  day: string
+  default_cap: number
+  org_prompt_tokens: number
+  org_completion_tokens: number
+  org_request_count: number
+  users: AIUsageRow[]
+}
+const usagePayload = ref<AIUsageResponse | null>(null)
+const usageLoading = ref(false)
+const usageError = ref('')
+async function loadUsage() {
+  usageLoading.value = true
+  usageError.value = ''
+  try {
+    usagePayload.value = await api.get<AIUsageResponse>('/ai/usage')
+  } catch (e) {
+    usageError.value = errMsg(e, 'Failed to load AI usage.')
+  } finally {
+    usageLoading.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -208,6 +245,7 @@ async function load() {
 onMounted(() => {
   load()
   loadModels()
+  loadUsage()
 })
 
 function startReplace() {
@@ -622,6 +660,74 @@ function relTime(iso: string): string {
           spellcheck="false"
           class="ai-textarea"
         ></textarea>
+      </section>
+
+      <!-- ── 7. PAI-161: USAGE PANEL ─────────────────────────────── -->
+      <section class="ai-card">
+        <header class="ai-card-headrow">
+          <span class="ai-card-headicon"><AppIcon name="bar-chart-3" :size="15" /></span>
+          <h3 class="ai-card-title">Usage today</h3>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm ai-presets-refresh"
+            :disabled="usageLoading"
+            @click="loadUsage"
+            title="Refresh usage stats."
+          >
+            <AppIcon :name="usageLoading ? 'loader-circle' : 'refresh-cw'" :size="12" :class="{ spin: usageLoading }" />
+            {{ usageLoading ? 'Loading…' : 'Refresh' }}
+          </button>
+        </header>
+        <p class="ai-help">
+          Counts tokens against the per-user daily cap. Default cap is
+          set via <code>PAIMOS_AI_DAILY_CAP_TOKENS</code>; per-user
+          override is editable from the user admin panel.
+        </p>
+        <p v-if="usageError" class="ai-banner ai-banner--error">
+          <AppIcon name="alert-triangle" :size="14" /> {{ usageError }}
+        </p>
+        <template v-if="usagePayload">
+          <div class="ai-usage-summary">
+            <span class="ai-usage-pill" title="Aggregate across all users for the current UTC day">
+              <strong>{{ usagePayload.org_prompt_tokens.toLocaleString() }}p</strong> + <strong>{{ usagePayload.org_completion_tokens.toLocaleString() }}c</strong> tokens
+            </span>
+            <span class="ai-usage-pill">
+              <strong>{{ usagePayload.org_request_count }}</strong> calls
+            </span>
+            <span class="ai-usage-pill">
+              Default cap <strong>{{ usagePayload.default_cap.toLocaleString() }}</strong>/user/day
+            </span>
+            <span class="ai-usage-pill ai-usage-pill--day">UTC day {{ usagePayload.day }}</span>
+          </div>
+          <table v-if="usagePayload.users.length" class="ai-usage-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th class="ai-usage-num">Tokens (p+c)</th>
+                <th class="ai-usage-num">Calls</th>
+                <th class="ai-usage-num">Cap</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in usagePayload.users" :key="u.user_id" :class="{ 'ai-usage-row--over': u.over_cap }">
+                <td>
+                  {{ u.username }}
+                  <span v-if="u.is_admin" class="ai-usage-admin-tag">admin</span>
+                </td>
+                <td class="ai-usage-num">{{ (u.prompt_tokens + u.completion_tokens).toLocaleString() }}</td>
+                <td class="ai-usage-num">{{ u.request_count }}</td>
+                <td class="ai-usage-num">
+                  {{ u.cap_effective.toLocaleString() }}<span v-if="u.cap_override !== null" class="ai-usage-override-tag" title="Override is set on this user">override</span>
+                </td>
+                <td>
+                  <span v-if="u.over_cap && !u.is_admin" class="ai-usage-over-tag">over</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="ai-help">No AI calls today yet.</p>
+        </template>
       </section>
 
       <!-- ── BANNERS ─────────────────────────────────────────────── -->
@@ -1399,6 +1505,65 @@ function relTime(iso: string): string {
 }
 .ai-test-result-pill--ok   { background: #16a34a; color: white; border-color: transparent; }
 .ai-test-result-pill--fail { background: #dc2626; color: white; border-color: transparent; }
+
+/* PAI-161: usage card. */
+.ai-usage-summary {
+  display: flex; flex-wrap: wrap; gap: .4rem;
+  margin-bottom: .25rem;
+}
+.ai-usage-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 11.5px;
+  padding: .25rem .6rem;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.ai-usage-pill strong { color: var(--bp-blue-dark); font-weight: 700; }
+.ai-usage-pill--day { background: var(--bp-blue-pale); border-color: transparent; color: var(--bp-blue-dark); }
+.ai-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: .25rem;
+}
+.ai-usage-table thead th {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: .35rem .6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.ai-usage-table tbody td {
+  padding: .4rem .6rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: var(--text);
+}
+.ai-usage-num { text-align: right; font-family: 'DM Mono', monospace; }
+.ai-usage-row--over td { background: #fef2f2; }
+.ai-usage-admin-tag {
+  margin-left: .4rem;
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: #ede9fe; color: #5b21b6;
+  padding: .1rem .4rem; border-radius: 999px;
+}
+.ai-usage-override-tag {
+  margin-left: .35rem;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: #fef3c7; color: #92400e;
+  padding: .05rem .35rem; border-radius: 6px;
+}
+.ai-usage-over-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: #fee2e2; color: #991b1b;
+  padding: .1rem .4rem; border-radius: 999px;
+}
 
 .spin { animation: ai-tab-spin 1s linear infinite; }
 @keyframes ai-tab-spin { to { transform: rotate(360deg); } }

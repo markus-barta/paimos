@@ -3539,6 +3539,31 @@ func migrate(db *sql.DB) error {
 		 JOIN issues i ON i.id = ir.source_id
 		 WHERE i.project_id IS NOT NULL`,
 	}},
+
+	// PAI-161: per-user AI usage tracking and admin-overridable cap.
+	// One row per (user, day) — `day` is the YYYY-MM-DD UTC date so
+	// rolling-day windows are trivial. Numbers are append-only via
+	// ON CONFLICT increment, so a missed mid-call crash leaves the
+	// counter slightly low but never wrong by more than one call.
+	//
+	// users.ai_cap_override_tokens (nullable INT): null means
+	// "use the default daily cap" (configurable via env). Setting
+	// to 0 explicitly disables AI for that user; a positive integer
+	// raises the cap. Mirrors the pattern other per-user opt-in
+	// flags follow elsewhere in PAIMOS.
+	{77, []string{
+		`CREATE TABLE IF NOT EXISTS ai_usage (
+			user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			day               TEXT NOT NULL,
+			prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+			completion_tokens INTEGER NOT NULL DEFAULT 0,
+			request_count     INTEGER NOT NULL DEFAULT 0,
+			updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (user_id, day)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day)`,
+		`ALTER TABLE users ADD COLUMN ai_cap_override_tokens INTEGER`,
+	}},
 	}
 
 	for _, m := range migrations {

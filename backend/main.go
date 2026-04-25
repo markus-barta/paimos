@@ -367,6 +367,8 @@ func main() {
 			// Admin-only because the response shapes admin decisions
 			// (which model to enable for the whole instance).
 			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
+			// PAI-161: per-user usage summary for the admin dashboard.
+			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
 			r.Get("/ai/status", handlers.AIStatus)
 			r.Post("/ai/optimize", handlers.AIOptimize)
 

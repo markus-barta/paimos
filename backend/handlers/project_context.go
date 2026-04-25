@@ -106,6 +106,7 @@ func CreateProjectRepo(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)
 		return
 	}
+	upsertEntityRelation(projectID, "project", projectID, "repo", id, "project_uses_repo", "declared", "")
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, repo)
 }
@@ -149,6 +150,8 @@ func DeleteProjectRepo(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid repo id", http.StatusBadRequest)
 		return
 	}
+	var projectID int64
+	_ = db.DB.QueryRow(`SELECT project_id FROM project_repos WHERE id=?`, repoID).Scan(&projectID)
 	res, err := db.DB.Exec(`DELETE FROM project_repos WHERE id=?`, repoID)
 	if err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
@@ -159,6 +162,9 @@ func DeleteProjectRepo(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE (source_type='project' AND source_id=? AND target_type='repo' AND target_id=?)
+		OR (source_type='repo' AND source_id=?)
+		OR (target_type='repo' AND target_id=?)`, projectID, repoID, repoID, repoID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -231,17 +237,52 @@ func IngestProjectAnchors(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	var oldAnchorIDs []int64
+	oldRows, err := tx.Query(`SELECT id FROM issue_anchors WHERE project_id=? AND repo_id=?`, projectID, body.RepoID)
+	if err != nil {
+		jsonError(w, "load existing anchors failed", http.StatusInternalServerError)
+		return
+	}
+	for oldRows.Next() {
+		var id int64
+		if err := oldRows.Scan(&id); err == nil {
+			oldAnchorIDs = append(oldAnchorIDs, id)
+		}
+	}
+	oldRows.Close()
+	for _, id := range oldAnchorIDs {
+		if _, err := tx.Exec(`DELETE FROM entity_relations WHERE source_type='anchor' AND source_id=?`, id); err != nil {
+			jsonError(w, "delete anchor edges failed", http.StatusInternalServerError)
+			return
+		}
+	}
 	if _, err := tx.Exec(`DELETE FROM issue_anchors WHERE project_id=? AND repo_id=?`, projectID, body.RepoID); err != nil {
 		jsonError(w, "delete existing anchors failed", http.StatusInternalServerError)
 		return
 	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	for _, it := range inserts {
-		if _, err := tx.Exec(`
+		res, err := tx.Exec(`
 			INSERT INTO issue_anchors(project_id, issue_id, repo_id, file_path, line, label, confidence, symbol_json, schema_version, repo_revision, generated_at, created_at, updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-		`, projectID, it.IssueID, body.RepoID, it.FilePath, it.Line, it.Label, it.Confidence, it.SymbolJSON, body.SchemaVersion, body.RepoRevision, body.GeneratedAt, now, now); err != nil {
+		`, projectID, it.IssueID, body.RepoID, it.FilePath, it.Line, it.Label, it.Confidence, it.SymbolJSON, body.SchemaVersion, body.RepoRevision, body.GeneratedAt, now, now)
+		if err != nil {
 			jsonError(w, "insert anchors failed", http.StatusInternalServerError)
+			return
+		}
+		anchorID, _ := res.LastInsertId()
+		if _, err := tx.Exec(`
+			INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at)
+			VALUES(?,?,?,?,?,?,?,?,?)
+		`, projectID, "anchor", anchorID, "issue", it.IssueID, "anchored_to_issue", it.Confidence, "", now); err != nil {
+			jsonError(w, "insert anchor issue edge failed", http.StatusInternalServerError)
+			return
+		}
+		if _, err := tx.Exec(`
+			INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at)
+			VALUES(?,?,?,?,?,?,?,?,?)
+		`, projectID, "anchor", anchorID, "repo", body.RepoID, "in_repo", it.Confidence, "", now); err != nil {
+			jsonError(w, "insert anchor repo edge failed", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -382,6 +423,7 @@ func PutProjectManifest(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "save failed", http.StatusInternalServerError)
 		return
 	}
+	upsertManifestContextRelations(projectID, data)
 	var dataDecoded any
 	_ = json.Unmarshal(raw, &dataDecoded)
 	var updatedBy *int64
@@ -434,6 +476,7 @@ func ListProjectEntityRelations(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	out := []models.EntityRelation{}
+	nodeSet := map[string]map[string]any{}
 	for rows.Next() {
 		var rel models.EntityRelation
 		if err := rows.Scan(&rel.ID, &rel.ProjectID, &rel.SourceType, &rel.SourceID, &rel.TargetType, &rel.TargetID, &rel.EdgeType, &rel.Confidence, &rel.Metadata, &rel.CreatedAt); err != nil {
@@ -441,8 +484,14 @@ func ListProjectEntityRelations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, rel)
+		nodeSet[nodeKey(rel.SourceType, rel.SourceID)] = resolveEntityNode(rel.SourceType, rel.SourceID)
+		nodeSet[nodeKey(rel.TargetType, rel.TargetID)] = resolveEntityNode(rel.TargetType, rel.TargetID)
 	}
-	jsonOK(w, map[string]any{"nodes": []any{}, "edges": out})
+	nodes := make([]map[string]any, 0, len(nodeSet))
+	for _, n := range nodeSet {
+		nodes = append(nodes, n)
+	}
+	jsonOK(w, map[string]any{"nodes": nodes, "edges": out})
 }
 
 func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
@@ -468,7 +517,7 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 		body.K = 20
 	}
 	like := "%" + q + "%"
-	issues := []map[string]any{}
+	hits := []map[string]any{}
 	rows, err := db.DB.Query(`
 		SELECT i.id, i.title, p.key, i.issue_number
 		FROM issues i
@@ -485,7 +534,7 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 			var title, key string
 			var num int
 			if err := rows.Scan(&id, &title, &key, &num); err == nil {
-				issues = append(issues, map[string]any{
+				hits = append(hits, map[string]any{
 					"entity_type": "issue",
 					"entity_id": id,
 					"title": title,
@@ -498,7 +547,47 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	jsonOK(w, map[string]any{"hits": issues})
+	anchorRows, err := db.DB.Query(`
+		SELECT a.id, a.file_path, a.line, a.label, COALESCE(pr.label,''), pr.url
+		FROM issue_anchors a
+		JOIN project_repos pr ON pr.id = a.repo_id
+		WHERE a.project_id = ? AND (a.file_path LIKE ? OR a.label LIKE ?)
+		ORDER BY a.updated_at DESC
+		LIMIT ?
+	`, projectID, like, like, body.K)
+	if err == nil {
+		defer anchorRows.Close()
+		for anchorRows.Next() {
+			var id int64
+			var filePath, label, repoLabel, repoURL string
+			var line int
+			if err := anchorRows.Scan(&id, &filePath, &line, &label, &repoLabel, &repoURL); err == nil {
+				hits = append(hits, map[string]any{
+					"entity_type": "anchor",
+					"entity_id": id,
+					"title": defaultString(label, filePath),
+					"snippet": fmt.Sprintf("%s:%d", filePath, line),
+					"score": nil,
+					"sources": []string{"bm25"},
+					"expanded_from": nil,
+					"repo_label": defaultString(repoLabel, deriveRepoLabel(repoURL)),
+				})
+			}
+		}
+	}
+	var manifestRaw string
+	if err := db.DB.QueryRow(`SELECT manifest_json FROM project_manifests WHERE project_id=?`, projectID).Scan(&manifestRaw); err == nil && strings.Contains(strings.ToLower(manifestRaw), strings.ToLower(q)) {
+		hits = append(hits, map[string]any{
+			"entity_type": "manifest",
+			"entity_id": projectID,
+			"title": "Project manifest",
+			"snippet": "Structured project context",
+			"score": nil,
+			"sources": []string{"bm25"},
+			"expanded_from": nil,
+		})
+	}
+	jsonOK(w, map[string]any{"hits": hits})
 }
 
 func projectIDFromRequest(r *http.Request) (int64, bool) {
@@ -583,4 +672,60 @@ func buildRepoDeepLink(repoURL, revision, branch, path string, line int) string 
 		return fmt.Sprintf("%s/-/blob/%s/%s#L%d", base, ref, strings.TrimLeft(path, "/"), line)
 	}
 	return fmt.Sprintf("%s/blob/%s/%s#L%d", base, ref, strings.TrimLeft(path, "/"), line)
+}
+
+func upsertEntityRelation(projectID int64, sourceType string, sourceID int64, targetType string, targetID int64, edgeType, confidence, metadata string) {
+	_, _ = db.DB.Exec(`
+		INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata)
+		VALUES(?,?,?,?,?,?,?,?)
+	`, projectID, sourceType, sourceID, targetType, targetID, edgeType, confidence, metadata)
+}
+
+func upsertManifestContextRelations(projectID int64, data any) {
+	obj, ok := data.(map[string]any)
+	if !ok {
+		return
+	}
+	if repos, ok := obj["repos"].([]any); ok {
+		for _, item := range repos {
+			if m, ok := item.(map[string]any); ok {
+				if idf, ok := m["id"].(float64); ok && idf > 0 {
+					upsertEntityRelation(projectID, "project", projectID, "repo", int64(idf), "project_uses_repo", "declared", "")
+				}
+			}
+		}
+	}
+}
+
+func nodeKey(typ string, id int64) string { return fmt.Sprintf("%s:%d", typ, id) }
+
+func resolveEntityNode(typ string, id int64) map[string]any {
+	node := map[string]any{"entity_type": typ, "entity_id": id}
+	switch typ {
+	case "issue":
+		var title, projectKey string
+		var num int
+		if err := db.DB.QueryRow(`SELECT i.title, p.key, i.issue_number FROM issues i JOIN projects p ON p.id = i.project_id WHERE i.id=?`, id).Scan(&title, &projectKey, &num); err == nil {
+			node["title"] = title
+			node["issue_key"] = fmt.Sprintf("%s-%d", projectKey, num)
+		}
+	case "repo":
+		var label, url string
+		if err := db.DB.QueryRow(`SELECT COALESCE(label,''), url FROM project_repos WHERE id=?`, id).Scan(&label, &url); err == nil {
+			node["title"] = defaultString(label, deriveRepoLabel(url))
+			node["url"] = url
+		}
+	case "anchor":
+		var filePath string
+		var line int
+		if err := db.DB.QueryRow(`SELECT file_path, line FROM issue_anchors WHERE id=?`, id).Scan(&filePath, &line); err == nil {
+			node["title"] = fmt.Sprintf("%s:%d", filePath, line)
+		}
+	case "project":
+		var name string
+		if err := db.DB.QueryRow(`SELECT name FROM projects WHERE id=?`, id).Scan(&name); err == nil {
+			node["title"] = name
+		}
+	}
+	return node
 }

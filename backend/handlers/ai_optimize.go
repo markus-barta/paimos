@@ -204,6 +204,20 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-161: per-user daily token cap. Check before settings so a
+	// capped user never sees a config-load failure when the real
+	// answer is "you're over budget today". Admins are exempt from
+	// the block (they get a header so the UI can warn) — they need
+	// to test before re-enabling for everyone.
+	isAdmin := user != nil && user.Role == "admin"
+	if ok, _, over, bypass := CheckUsageCap(userID, isAdmin); !ok {
+		auditOptimize(userID, "", 0, "", outcomeBadRequest, 0, 0, 0)
+		jsonError(w, "Daily AI limit reached. Ask an admin to raise the cap.", http.StatusTooManyRequests)
+		return
+	} else if bypass && over {
+		w.Header().Set("X-AI-Over-Cap", "true")
+	}
+
 	settings, err := LoadAISettings()
 	if err != nil {
 		log.Printf("ai_optimize: load settings: %v", err)
@@ -327,6 +341,9 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	cleaned := ai.StripFenceEcho(resp.Text)
 
 	auditOptimize(userID, body.Field, body.IssueID, resp.Model, outcomeOK, latency, resp.PromptTokens, resp.CompletionTokens)
+	// PAI-161: meter increments AFTER audit so log + DB row can never
+	// disagree about whether the call counted.
+	RecordUsage(userID, resp.PromptTokens, resp.CompletionTokens)
 
 	jsonOK(w, optimizeResponse{
 		Optimized:        cleaned,
