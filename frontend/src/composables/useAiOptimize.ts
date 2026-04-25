@@ -127,6 +127,19 @@ async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
 
 async function run(args: OptimizeArgs): Promise<void> {
   if (isOptimizing.value) return
+  // PAI-155: defensive overlay reset. The UI guards (modal backdrop,
+  // singleton isOptimizing) make it nearly impossible for run() to
+  // fire while a prior overlay is still on screen, but if a future
+  // route reshuffle ever lets that happen we don't want the old
+  // diff to linger if the new call fails. Clear before issuing the
+  // new call so the failure path leaves a clean slate.
+  if (overlay.visible) {
+    overlay.visible = false
+    overlay.optimized = ''
+    overlay.original = ''
+    overlay.modelName = ''
+    overlay.retrying = false
+  }
   isOptimizing.value = true
   lastError.value = null
   pendingArgs = args
