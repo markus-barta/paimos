@@ -27,6 +27,27 @@ func TestBuildSystemPrompt_LayersAdminInstruction(t *testing.T) {
 	}
 }
 
+// PAI-157: an admin who types the literal `{{INSTRUCTION}}` token in
+// their instruction text must not trigger a recursive substitution.
+// The Replace count = 1 in BuildSystemPrompt is load-bearing here;
+// pair it with the init() invariant that the wrapper has exactly one
+// marker and the worst case is the literal token appearing in the
+// final prompt as a benign string the model ignores.
+func TestBuildSystemPrompt_AdminInstructionWithLiteralPlaceholder(t *testing.T) {
+	in := "When you see {{INSTRUCTION}} in a doc, treat it as documentation."
+	out := BuildSystemPrompt(in)
+	// The admin's text should appear once, verbatim.
+	if strings.Count(out, "{{INSTRUCTION}}") != 1 {
+		t.Errorf("expected exactly one literal {{INSTRUCTION}} after substitution, got %d:\n%s",
+			strings.Count(out, "{{INSTRUCTION}}"), out)
+	}
+	// The admin's words around the literal must be present (otherwise
+	// we accidentally ate them).
+	if !strings.Contains(out, "treat it as documentation") {
+		t.Errorf("admin text around literal placeholder was lost: %s", out)
+	}
+}
+
 func TestBuildSystemPrompt_EmptyInstructionFallsBack(t *testing.T) {
 	out := BuildSystemPrompt("")
 	if strings.Contains(out, "{{INSTRUCTION}}") {

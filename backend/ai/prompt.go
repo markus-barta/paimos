@@ -44,12 +44,22 @@ package ai
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
+// instructionPlaceholder marks the spot in fixedSystemWrapper where
+// the admin-editable block is layered in. PAI-157: kept as a package
+// constant (rather than inlined) so init() below can assert at boot
+// that the wrapper contains exactly one occurrence — a refactor that
+// renames the marker or accidentally duplicates it fails loud
+// instead of silently shipping an incomplete prompt.
+const instructionPlaceholder = "{{INSTRUCTION}}"
+
 // fixedSystemWrapper is the PAIMOS-owned outer layer of every prompt.
-// Edits here are product changes, not config changes. The {{INSTRUCTION}}
-// marker is replaced by the admin-editable block at assemble time.
+// Edits here are product changes, not config changes. The
+// instructionPlaceholder marker is replaced by the admin-editable
+// block at assemble time.
 const fixedSystemWrapper = `You are an editorial assistant inside PAIMOS, a project-management tool used by software engineers and product owners.
 
 You will be given:
@@ -104,7 +114,28 @@ func BuildSystemPrompt(adminInstruction string) string {
 		// wrapper still parses cleanly.
 		instruction = "Optimize for clear, professional, project-appropriate wording."
 	}
-	return strings.Replace(fixedSystemWrapper, "{{INSTRUCTION}}", instruction, 1)
+	// Replace count = 1 (not ReplaceAll) is load-bearing: if an admin's
+	// instruction contains the literal token `{{INSTRUCTION}}` (uncommon
+	// but possible — e.g. they're documenting prompt structure), it's
+	// inserted as-is rather than triggering a recursive substitution.
+	// init() below guarantees the wrapper has exactly one occurrence,
+	// so the first-and-only Replace target is always the wrapper's slot.
+	return strings.Replace(fixedSystemWrapper, instructionPlaceholder, instruction, 1)
+}
+
+func init() {
+	// Boot-time invariant: the wrapper must contain exactly one
+	// placeholder. Zero means a refactor renamed/removed the marker
+	// (the admin instruction would never appear in the prompt); two
+	// or more means the marker was duplicated (the second copy would
+	// survive every BuildSystemPrompt call as a literal token leaking
+	// into the model's view).
+	count := strings.Count(fixedSystemWrapper, instructionPlaceholder)
+	if count != 1 {
+		panic("ai: fixedSystemWrapper must contain exactly one " +
+			instructionPlaceholder + " marker (found " +
+			strconv.Itoa(count) + ")")
+	}
 }
 
 // BuildUserPrompt assembles the user-facing message: a small context
