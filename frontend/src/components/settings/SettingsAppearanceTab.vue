@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { api } from '@/api/client'
 import { useSidebarColors, resetSidebarToDefaults } from '@/composables/useSidebarColors'
 import { useBranding } from '@/composables/useBranding'
@@ -7,6 +8,30 @@ import { useIssueDisplay, TYPE_SVGS } from '@/composables/useIssueDisplay'
 import { useTableAppearance, resetTableAppearance } from '@/composables/useTableAppearance'
 import { useTypeColors, resetTypeColors } from '@/composables/useTypeColors'
 import { LS_ACCRUALS_ACCENT } from '@/constants/storage'
+import SettingsBrandingTab from './SettingsBrandingTab.vue'
+
+const props = defineProps<{
+  isAdmin?: boolean
+}>()
+
+const route = useRoute()
+const router = useRouter()
+
+type VisualSection = 'personal' | 'branding'
+
+const activeSection = computed<VisualSection>({
+  get() {
+    const requested = route.query.section as string | undefined
+    if ((requested === 'branding' || route.query.tab === 'branding') && props.isAdmin) return 'branding'
+    return 'personal'
+  },
+  set(section) {
+    const next: LocationQueryRaw = { ...route.query, tab: 'appearance' }
+    if (section === 'branding') next.section = 'branding'
+    else delete next.section
+    router.replace({ query: next })
+  },
+})
 
 // ── Issue Display ────────────────────────────────────────────────────────────
 const { _rawIcon: typeIcon, _rawText: typeText } = useIssueDisplay()
@@ -102,8 +127,37 @@ loadBrandings()
 <template>
   <div class="section">
     <div class="section-header">
+      <h2 class="section-title">Visual Settings</h2>
+      <p class="section-desc">
+        <template v-if="isAdmin">
+          Personal appearance only affects this browser. Workspace branding controls the default identity and palette for everyone.
+        </template>
+        <template v-else>
+          These settings only affect your current browser unless noted otherwise.
+        </template>
+      </p>
+    </div>
+    <div v-if="isAdmin" class="card visual-mode-card">
+      <div class="visual-mode-copy">
+        <span class="visual-mode-title">Choose what you want to edit</span>
+        <span class="visual-mode-desc">Keep browser-local tweaks separate from instance-wide branding.</span>
+      </div>
+      <div class="visual-mode-switch">
+        <button :class="['mode-btn', { active: activeSection === 'personal' }]" @click="activeSection = 'personal'">
+          Personal Appearance
+        </button>
+        <button :class="['mode-btn', { active: activeSection === 'branding' }]" @click="activeSection = 'branding'">
+          Workspace Branding
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <template v-if="activeSection === 'personal'">
+  <div class="section">
+    <div class="section-header">
       <h2 class="section-title">Issue Display</h2>
-      <p class="section-desc">How issue types appear in lists. At least one option must be enabled.</p>
+      <p class="section-desc">How issue types appear in lists. Saved in your browser. At least one option must be enabled.</p>
     </div>
     <div class="card card-row" style="gap:2rem;flex-wrap:wrap;align-items:center">
       <label class="toggle-label">
@@ -235,10 +289,67 @@ loadBrandings()
       </button>
     </div>
   </div>
+  </template>
+
+  <template v-else>
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Workspace Branding</h2>
+        <p class="section-desc">These settings affect the whole workspace, including public/auth surfaces. Admin-only.</p>
+      </div>
+      <SettingsBrandingTab />
+    </div>
+  </template>
 </template>
 
 <style src="./settings-shared.css"></style>
 <style scoped>
+.visual-mode-card {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.visual-mode-copy {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+.visual-mode-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.visual-mode-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.visual-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .25rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+.mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: .45rem .9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.mode-btn:hover { color: var(--text); }
+.mode-btn.active {
+  background: var(--bp-blue);
+  color: #fff;
+}
 .appearance-controls { display: flex; flex-direction: column; gap: 1rem; min-width: 220px; }
 .color-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .color-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
@@ -280,4 +391,15 @@ loadBrandings()
   font-variant-numeric: tabular-nums;
 }
 .aap-unit { font-size: 9px; color: #8a909a; margin-left: 1px; }
+
+@media (max-width: 720px) {
+  .visual-mode-switch {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .mode-btn {
+    flex: 1;
+    text-align: center;
+  }
+}
 </style>
