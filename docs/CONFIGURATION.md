@@ -135,7 +135,10 @@ What's logged when the feature is used:
   Outcome is a closed enum (one bucket per exit path of the handler):
 
   - `ok` — provider returned a rewrite (token counts populated)
-  - `fail` — provider was reached but rejected (4xx / 5xx / timeout)
+  - `fail_timeout` — our handler-imposed deadline fired before the
+    provider responded (raise the cap or pick a faster model)
+  - `fail_upstream` — provider replied with 4xx / 5xx or a structurally
+    invalid body (transient: retry, or check provider status)
   - `denied` — caller cannot view the target issue
   - `unconfigured` — feature toggle off or settings incomplete
   - `bad_request` — body decode failed, field not in the allow-list,

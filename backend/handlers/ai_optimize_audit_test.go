@@ -118,10 +118,10 @@ func TestAuditOptimize_FailureLineEmitted(t *testing.T) {
 	buf, restore := captureLog(t)
 	defer restore()
 
-	auditOptimize(7, "notes", 0, "anthropic/claude-3.5-haiku", outcomeFail, 250*time.Millisecond, 0, 0)
+	auditOptimize(7, "notes", 0, "anthropic/claude-3.5-haiku", outcomeFailUpstream, 250*time.Millisecond, 0, 0)
 	got := buf.String()
-	if !strings.Contains(got, "outcome=fail") {
-		t.Errorf("expected outcome=fail, got: %s", got)
+	if !strings.Contains(got, "outcome=fail_upstream") {
+		t.Errorf("expected outcome=fail_upstream, got: %s", got)
 	}
 	// issue_id=0 is the agreed sentinel for "no issue context"; it
 	// MUST still be present so failures aggregate correctly in any
@@ -138,7 +138,8 @@ func TestAuditOptimize_FailureLineEmitted(t *testing.T) {
 func TestAuditOptimize_OutcomesAreStableEnum(t *testing.T) {
 	wantOutcomes := []string{
 		outcomeOK,
-		outcomeFail,
+		outcomeFailTimeout,
+		outcomeFailUpstream,
 		outcomeDenied,
 		outcomeUnauth,
 		outcomeCfgLoadFail,
@@ -151,7 +152,8 @@ func TestAuditOptimize_OutcomesAreStableEnum(t *testing.T) {
 	// break operators' grep patterns, so we pin a few.
 	wantValues := map[string]string{
 		outcomeOK:              "ok",
-		outcomeFail:            "fail",
+		outcomeFailTimeout:     "fail_timeout",
+		outcomeFailUpstream:    "fail_upstream",
 		outcomeDenied:          "denied",
 		outcomeUnconfigured:    "unconfigured",
 		outcomeBadRequest:      "bad_request",

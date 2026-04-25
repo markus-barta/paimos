@@ -129,9 +129,18 @@ const (
 const (
 	// Provider returned a rewrite. Token counts populated.
 	outcomeOK = "ok"
-	// Provider was reached but rejected the call (4xx / 5xx / timeout).
-	// Token counts NOT populated; latency_ms is the wall-clock attempt.
-	outcomeFail = "fail"
+	// Our handler-imposed deadline (optimizeRequestTimeout) fired
+	// before the provider produced a response. Distinct from
+	// fail_upstream so dashboards can spot timeout patterns without
+	// scraping latency_ms — a recurring fail_timeout on a specific
+	// model usually means the operator should pin a faster model
+	// or raise the cap.
+	outcomeFailTimeout = "fail_timeout"
+	// Provider was reached and replied with a non-success status
+	// (4xx / 5xx) or a structurally invalid body. Token counts NOT
+	// populated; latency_ms is the wall-clock attempt to the
+	// upstream's response.
+	outcomeFailUpstream = "fail_upstream"
 	// Caller asked to optimize text on an issue they cannot view.
 	// Mapped to HTTP 403 / 404 from loadOptimizeContext.
 	outcomeDenied = "denied"
@@ -271,7 +280,16 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	latency := time.Since(t0)
 
 	if err != nil {
-		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeFail, latency, 0, 0)
+		// Distinguish our own timeout from an upstream-driven failure.
+		// callCtx.Err() == DeadlineExceeded means our optimizeRequestTimeout
+		// fired before the provider could respond — distinct signal from
+		// "provider replied with 5xx" because the remediation is different
+		// (raise the cap / pick a faster model vs. retry / wait).
+		outcome := outcomeFailUpstream
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			outcome = outcomeFailTimeout
+		}
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcome, latency, 0, 0)
 		// Map sentinel errors to stable HTTP statuses so the SPA can
 		// branch on the response. The error message stays generic for
 		// non-admins; admins can find the upstream message in stdout.
