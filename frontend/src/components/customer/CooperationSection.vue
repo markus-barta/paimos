@@ -25,7 +25,7 @@ import type { CooperationMetadata } from '@/types'
 // SLA text gets a "preserve every number verbatim" reminder; the
 // cooperation notes get a "preserve named systems and ownership
 // boundaries" reminder. Both via dedicated field IDs in prompt.go.
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
@@ -289,7 +289,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
           <div class="coop-form-field coop-form-fullwidth">
             <div class="coop-field-label-row">
               <label>SLA details <span class="label-hint">— markdown supported</span></label>
-              <AiOptimizeButton
+              <AiActionMenu surface="customer"
                 field="cooperation_sla_details"
                 field-label="SLA details"
                 :issue-id="0"
@@ -305,7 +305,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
       <div class="coop-form-field">
         <div class="coop-field-label-row">
           <label>Cooperation notes <span class="label-hint">— markdown supported</span></label>
-          <AiOptimizeButton
+          <AiActionMenu surface="customer"
             field="cooperation_notes"
             field-label="Cooperation notes"
             :issue-id="0"

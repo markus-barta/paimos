@@ -18,7 +18,7 @@ import AppModal from '@/components/AppModal.vue'
 import { api, errMsg } from '@/api/client'
 import type { Customer } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes.
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
@@ -112,7 +112,7 @@ async function submit() {
       <div class="field">
         <div class="field-label-row">
           <label>Notes <span class="label-hint">— markdown supported</span></label>
-          <AiOptimizeButton
+          <AiActionMenu surface="customer"
             field="customer_notes"
             field-label="Customer notes"
             :issue-id="0"

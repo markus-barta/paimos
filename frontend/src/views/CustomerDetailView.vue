@@ -24,7 +24,7 @@ import SyncButton from '@/components/customer/SyncButton.vue'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import type { Customer, Project } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes (CRM context).
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
@@ -314,7 +314,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
       <div class="cd-form-field">
         <div class="cd-field-label-row">
           <label>Notes</label>
-          <AiOptimizeButton
+          <AiActionMenu surface="customer"
             field="customer_notes"
             field-label="Customer notes"
             :issue-id="0"

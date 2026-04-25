@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/auth'
 import TagChip from '@/components/TagChip.vue'
 import type { Tag } from '@/types'
 // PAI-146 expansion: AI optimize on the new-project description.
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
@@ -607,7 +607,7 @@ onMounted(() => {
         <div class="field">
           <div class="field-label-row">
             <label>Description</label>
-            <AiOptimizeButton
+            <AiActionMenu surface="issue"
               field="project_description"
               field-label="Project description"
               :issue-id="0"

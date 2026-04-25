@@ -26,7 +26,7 @@ import ProjectContextSection from '@/components/project/ProjectContextSection.vu
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
@@ -778,7 +778,7 @@ const lastChanged = computed(() => {
         <div class="field">
           <div class="field-label-row">
             <label>Description</label>
-            <AiOptimizeButton
+            <AiActionMenu surface="issue"
               field="project_description"
               field-label="Project description"
               :issue-id="0"

@@ -22,7 +22,7 @@ import {
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 import { vAutoGrow } from '@/directives/autoGrow'
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
 
@@ -812,9 +812,10 @@ async function cancelEdit() {
             <div class="field">
               <div class="field-label-row">
                 <label>Description</label>
-                <AiOptimizeButton
+                <AiActionMenu
                   field="description"
                   field-label="Description"
+                  surface="issue"
                   :issue-id="issueId"
                   :text="() => form.description"
                   :on-accept="onOptimizeAccept('description')"
@@ -866,9 +867,10 @@ async function cancelEdit() {
             <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
               <div class="field-label-row">
                 <label>Acceptance Criteria</label>
-                <AiOptimizeButton
+                <AiActionMenu
                   field="acceptance_criteria"
                   field-label="Acceptance Criteria"
+                  surface="issue"
                   :issue-id="issueId"
                   :text="() => form.acceptance_criteria"
                   :on-accept="onOptimizeAccept('acceptance_criteria')"
@@ -920,9 +922,10 @@ async function cancelEdit() {
             <div class="field">
               <div class="field-label-row">
                 <label>Notes</label>
-                <AiOptimizeButton
+                <AiActionMenu
                   field="notes"
                   field-label="Notes"
+                  surface="issue"
                   :issue-id="issueId"
                   :text="() => form.notes"
                   :on-accept="onOptimizeAccept('notes')"

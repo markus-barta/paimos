@@ -22,7 +22,7 @@ import { EPIC_COLOR_PALETTE } from '@/config/epicColors'
 // PAI-146: AI text optimization on multiline fields. issue_id is 0
 // here (no row exists yet); the backend skips context lookup for that
 // sentinel and works on the source text alone.
-import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
 import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
 import { useAiOptimize } from '@/composables/useAiOptimize'
@@ -338,7 +338,7 @@ defineExpose({ openCreate })
       <div class="field">
         <div class="field-label-row">
           <label>Description</label>
-          <AiOptimizeButton
+          <AiActionMenu surface="issue"
             field="description"
             field-label="Description"
             :issue-id="0"
@@ -351,7 +351,7 @@ defineExpose({ openCreate })
       <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
         <div class="field-label-row">
           <label>Acceptance Criteria</label>
-          <AiOptimizeButton
+          <AiActionMenu surface="issue"
             field="acceptance_criteria"
             field-label="Acceptance Criteria"
             :issue-id="0"
@@ -364,7 +364,7 @@ defineExpose({ openCreate })
       <div class="field">
         <div class="field-label-row">
           <label>Notes</label>
-          <AiOptimizeButton
+          <AiActionMenu surface="issue"
             field="notes"
             field-label="Notes"
             :issue-id="0"
