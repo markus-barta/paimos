@@ -17,6 +17,11 @@ import { ref, watch } from 'vue'
 import AppModal from '@/components/AppModal.vue'
 import { api, errMsg } from '@/api/client'
 import type { Customer } from '@/types'
+// PAI-146 expansion: AI optimize on customer notes.
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: []; created: [customer: Customer] }>()
@@ -29,6 +34,12 @@ const form = ref({
 })
 const error = ref('')
 const saving = ref(false)
+
+// PAI-146 expansion: AI optimize on customer notes.
+const aiOptimize = useAiOptimize()
+function onCustomerNotesAccept(text: string) {
+  form.value.notes = text
+}
 
 watch(() => props.open, (open) => {
   if (open) {
@@ -99,7 +110,17 @@ async function submit() {
       </div>
 
       <div class="field">
-        <label>Notes <span class="label-hint">— markdown supported</span></label>
+        <div class="field-label-row">
+          <label>Notes <span class="label-hint">— markdown supported</span></label>
+          <AiOptimizeButton
+            field="customer_notes"
+            field-label="Customer notes"
+            :issue-id="0"
+            :text="() => form.notes"
+            :on-accept="onCustomerNotesAccept"
+          />
+        </div>
+        <AiOptimizeBanner />
         <textarea v-model="form.notes" rows="3" placeholder="Anything worth remembering about this customer." />
       </div>
 
@@ -112,10 +133,30 @@ async function submit() {
         </button>
       </div>
     </form>
+
+    <!-- PAI-146 expansion: AI optimize overlay. -->
+    <AiOptimizeOverlay
+      v-if="aiOptimize.overlay.visible"
+      :original="aiOptimize.overlay.original"
+      :optimized="aiOptimize.overlay.optimized"
+      :field-label="aiOptimize.overlay.fieldLabel"
+      :model-name="aiOptimize.overlay.modelName"
+      :retrying="aiOptimize.overlay.retrying"
+      @accept="aiOptimize.accept()"
+      @reject="aiOptimize.reject()"
+      @retry="aiOptimize.retry()"
+    />
   </AppModal>
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row. */
+.field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.field-label-row > label { margin-bottom: 0; }
+
 .form { display: flex; flex-direction: column; gap: .85rem; }
 .field { display: flex; flex-direction: column; gap: .35rem; }
 .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }

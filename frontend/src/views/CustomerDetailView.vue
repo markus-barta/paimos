@@ -23,6 +23,11 @@ import ProviderBadge from '@/components/customer/ProviderBadge.vue'
 import SyncButton from '@/components/customer/SyncButton.vue'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import type { Customer, Project } from '@/types'
+// PAI-146 expansion: AI optimize on customer notes (CRM context).
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
 
 const route = useRoute()
 const router = useRouter()
@@ -75,6 +80,13 @@ const editForm = ref({
 })
 const editError = ref('')
 const editSaving = ref(false)
+
+// PAI-146 expansion: AI optimize on customer notes. CRM-tone reminder
+// in the prompt enforces PII discipline and non-fabrication.
+const aiOptimize = useAiOptimize()
+function onCustomerNotesAccept(text: string) {
+  editForm.value.notes = text
+}
 
 function openEdit() {
   if (!customer.value) return
@@ -299,7 +311,20 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
         <div class="cd-form-field"><label>Hourly rate (€/h)</label><input v-model.number="editForm.rate_hourly" type="number" step="0.01" /></div>
         <div class="cd-form-field"><label>LP rate (€/LP)</label><input v-model.number="editForm.rate_lp" type="number" step="0.01" /></div>
       </div>
-      <div class="cd-form-field"><label>Notes</label><textarea v-model="editForm.notes" rows="3" /></div>
+      <div class="cd-form-field">
+        <div class="cd-field-label-row">
+          <label>Notes</label>
+          <AiOptimizeButton
+            field="customer_notes"
+            field-label="Customer notes"
+            :issue-id="0"
+            :text="() => editForm.notes"
+            :on-accept="onCustomerNotesAccept"
+          />
+        </div>
+        <AiOptimizeBanner />
+        <textarea v-model="editForm.notes" rows="3" />
+      </div>
 
       <p v-if="editError" class="cd-form-error">{{ editError }}</p>
       <div class="cd-form-actions">
@@ -331,9 +356,32 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
       </button>
     </div>
   </AppModal>
+
+  <!-- PAI-146 expansion: AI optimize overlay for customer notes. -->
+  <AiOptimizeOverlay
+    v-if="aiOptimize.overlay.visible"
+    :original="aiOptimize.overlay.original"
+    :optimized="aiOptimize.overlay.optimized"
+    :field-label="aiOptimize.overlay.fieldLabel"
+    :model-name="aiOptimize.overlay.modelName"
+    :retrying="aiOptimize.overlay.retrying"
+    @accept="aiOptimize.accept()"
+    @reject="aiOptimize.reject()"
+    @retry="aiOptimize.retry()"
+  />
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row holds the label + the AI optimize
+   button on the right. Namespaced to .cd-field-label-row to avoid
+   colliding with the project-detail-view rule of the same purpose. */
+.cd-field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .25rem;
+}
+.cd-field-label-row > label { margin-bottom: 0; }
+
 .cd-loading { padding: 2rem; color: var(--text-muted); text-align: center; }
 .cd-error {
   background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;

@@ -21,6 +21,22 @@ import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useMarkdown } from '@/composables/useMarkdown'
 import type { CooperationMetadata } from '@/types'
+// PAI-146 expansion: AI optimize on the cooperation freeform fields.
+// SLA text gets a "preserve every number verbatim" reminder; the
+// cooperation notes get a "preserve named systems and ownership
+// boundaries" reminder. Both via dedicated field IDs in prompt.go.
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
+
+const aiOptimize = useAiOptimize()
+function onSlaDetailsAccept(text: string) {
+  if (draft.value) draft.value.sla_details = text
+}
+function onCooperationNotesAccept(text: string) {
+  if (draft.value) draft.value.cooperation_notes = text
+}
 
 const props = defineProps<{ projectId: number; canWrite: boolean }>()
 
@@ -271,17 +287,37 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
             </label>
           </div>
           <div class="coop-form-field coop-form-fullwidth">
-            <label>SLA details <span class="label-hint">— markdown supported</span></label>
+            <div class="coop-field-label-row">
+              <label>SLA details <span class="label-hint">— markdown supported</span></label>
+              <AiOptimizeButton
+                field="cooperation_sla_details"
+                field-label="SLA details"
+                :issue-id="0"
+                :text="() => draft?.sla_details ?? ''"
+                :on-accept="onSlaDetailsAccept"
+              />
+            </div>
             <textarea v-model="draft.sla_details" rows="4" placeholder="Detailed SLA terms, escalation path…" />
           </div>
         </div>
       </div>
 
       <div class="coop-form-field">
-        <label>Cooperation notes <span class="label-hint">— markdown supported</span></label>
+        <div class="coop-field-label-row">
+          <label>Cooperation notes <span class="label-hint">— markdown supported</span></label>
+          <AiOptimizeButton
+            field="cooperation_notes"
+            field-label="Cooperation notes"
+            :issue-id="0"
+            :text="() => draft?.cooperation_notes ?? ''"
+            :on-accept="onCooperationNotesAccept"
+          />
+        </div>
         <textarea v-model="draft.cooperation_notes" rows="4"
                   placeholder="Data retention, special arrangements, anything else worth knowing." />
       </div>
+
+      <AiOptimizeBanner />
 
       <p v-if="saveError" class="coop-error">{{ saveError }}</p>
 
@@ -293,9 +329,33 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
       </div>
     </form>
   </section>
+
+  <!-- PAI-146 expansion: AI optimize overlay shared by both
+       cooperation textareas (sla_details + cooperation_notes). -->
+  <AiOptimizeOverlay
+    v-if="aiOptimize.overlay.visible"
+    :original="aiOptimize.overlay.original"
+    :optimized="aiOptimize.overlay.optimized"
+    :field-label="aiOptimize.overlay.fieldLabel"
+    :model-name="aiOptimize.overlay.modelName"
+    :retrying="aiOptimize.overlay.retrying"
+    @accept="aiOptimize.accept()"
+    @reject="aiOptimize.reject()"
+    @retry="aiOptimize.retry()"
+  />
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row holds the label + the AI optimize
+   button. Namespaced (.coop-field-label-row) so it doesn't collide
+   with similarly-purposed rules in sibling components. */
+.coop-field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .25rem;
+}
+.coop-field-label-row > label { margin-bottom: 0; }
+
 .coop-section {
   background: var(--bg-card);
   border: 1px solid var(--border);

@@ -89,15 +89,25 @@ type optimizeResponse struct {
 	FinishReason     string `json:"finish_reason"`
 }
 
-// allowedOptimizeFields is the v1 scope for PAI-146. Other multiline
-// fields can be added one at a time as the rollout progresses; doing
-// it as an explicit allow-list (rather than a reject-list) means a new
-// field doesn't accidentally become AI-optimisable until it's been
-// vetted.
+// allowedOptimizeFields is the curated set of multiline fields that
+// AI optimization can rewrite. Each entry corresponds to a specific
+// product surface — the per-field reminder in ai/prompt.go is keyed
+// off this same identifier, so adding a new entry without a matching
+// reminder ships a generic prompt to the model. Reject-list-by-default
+// keeps any future textarea from becoming AI-optimisable until it has
+// been vetted for prompt fit.
 var allowedOptimizeFields = map[string]bool{
+	// Issue-scoped fields (PAI-146 v1 scope).
 	"description":         true,
 	"acceptance_criteria": true,
 	"notes":               true,
+	// Project + CRM scope (post-v1.8.2 expansion). Each has a
+	// dedicated per-field reminder so the model writes at the right
+	// register for the audience and format.
+	"project_description":     true,
+	"customer_notes":          true,
+	"cooperation_sla_details": true,
+	"cooperation_notes":       true,
 }
 
 const (
@@ -220,7 +230,11 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	body.Text = strings.TrimRight(body.Text, " \t")
 	if body.Field == "" || !allowedOptimizeFields[body.Field] {
 		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeBadRequest, 0, 0, 0)
-		jsonError(w, "field must be one of: description, acceptance_criteria, notes", http.StatusBadRequest)
+		// The error mentions the canonical field set so a curl-poker
+		// debugging via the network tab sees what's accepted, but we
+		// don't list every field here — that drift would lie. The
+		// admin-facing reference is the allowedOptimizeFields map.
+		jsonError(w, "field is not enabled for AI optimization", http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(body.Text) == "" {

@@ -159,13 +159,28 @@ func BuildUserPrompt(text string, ctx Context) string {
 		b.WriteString(fmt.Sprintf("- Field: %s\n", ctx.FieldName))
 		// Per-field reminders. Kept inline rather than templated so a
 		// new field type just needs one case here, not a registry.
+		// Each reminder identifies the entity, the audience, and one
+		// concrete preservation rule that's specific to the format —
+		// short, because long context blocks waste tokens.
 		switch ctx.FieldName {
-		case "acceptance_criteria":
-			b.WriteString("  - Keep checklist items as \"- [ ]\" or \"- [x]\"; do not collapse them into prose.\n")
+
+		// ── Issue-scoped (PAI-146 v1) ──────────────────────────────
 		case "description":
-			b.WriteString("  - Treat any embedded headings, lists, or code blocks as structural; do not flatten.\n")
+			b.WriteString("  - This is an issue description for a software-engineering team. Treat any embedded headings, lists, or code blocks as structural; do not flatten.\n")
+		case "acceptance_criteria":
+			b.WriteString("  - Keep checklist items as \"- [ ]\" or \"- [x]\"; do not collapse them into prose. Each item is a distinct testable condition.\n")
 		case "notes":
-			b.WriteString("  - Notes are informal; keep the author's voice and any informal markers intact.\n")
+			b.WriteString("  - Notes are informal scratchpad text; keep the author's voice, informal markers, and any inline links intact.\n")
+
+		// ── Project + CRM scope ────────────────────────────────────
+		case "project_description":
+			b.WriteString("  - This is a project-level summary read by stakeholders and team members joining the project. Keep scope crisp; preserve any explicit out-of-scope markers, deadline cues, named stakeholders, and contractual language verbatim. Don't add scope or commitments that aren't in the source.\n")
+		case "customer_notes":
+			b.WriteString("  - This is a CRM note about a customer (person or company). Keep PII (names, titles, emails, phone numbers, dates) and verbatim quotes intact. Do NOT invent details — job titles, decisions, dates, or commitments — that aren't in the source. Tone is matter-of-fact, not persuasive.\n")
+		case "cooperation_sla_details":
+			b.WriteString("  - This is operational SLA text for a customer engagement. Preserve every number verbatim: uptime percentages, response-time targets, hours-of-coverage windows, escalation steps, contractual penalties. Do not generalise specifics (\"4 hours\" must stay \"4 hours\", not \"a few hours\").\n")
+		case "cooperation_notes":
+			b.WriteString("  - This describes a working relationship with a customer: engagement type, code-ownership boundaries, environment responsibility, on-call expectations, exceptions. Preserve every named system, contractual line, ownership boundary, and exception exactly as written.\n")
 		}
 	}
 	if ctx.IssueKey != "" {

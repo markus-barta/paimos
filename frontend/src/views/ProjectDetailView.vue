@@ -22,6 +22,13 @@ import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/t
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectAuxPanel from '@/components/customer/ProjectAuxPanel.vue'
+// PAI-146 expansion: AI optimize on the project description.
+// project_description is its own field name (not aliased to
+// "description") so the prompt reminder fits a stakeholder audience.
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -159,6 +166,14 @@ const editForm  = ref({
 })
 const editError = ref('')
 const saving    = ref(false)
+
+// PAI-146 expansion: AI optimize composable + onAccept handler for
+// the project description. The edit modal is admin-gated, so the
+// button only appears for users who already have edit rights here.
+const aiOptimize = useAiOptimize()
+function onProjectDescriptionAccept(text: string) {
+  editForm.value.description = text
+}
 
 // Logo upload
 const logoInputRef   = ref<HTMLInputElement | null>(null)
@@ -755,7 +770,17 @@ const lastChanged = computed(() => {
           <input v-model="editForm.key" type="text" maxlength="6" style="text-transform:uppercase" />
         </div>
         <div class="field">
-          <label>Description</label>
+          <div class="field-label-row">
+            <label>Description</label>
+            <AiOptimizeButton
+              field="project_description"
+              field-label="Project description"
+              :issue-id="0"
+              :text="() => editForm.description"
+              :on-accept="onProjectDescriptionAccept"
+            />
+          </div>
+          <AiOptimizeBanner />
           <textarea v-model="editForm.description" rows="3"></textarea>
         </div>
         <div class="field">
@@ -916,9 +941,31 @@ const lastChanged = computed(() => {
         <div v-if="purgeError" class="form-error">{{ purgeError }}</div>
       </div>
     </AppModal>
+
+    <!-- PAI-146 expansion: AI optimize overlay for the project
+         description. Single mount per view. -->
+    <AiOptimizeOverlay
+      v-if="aiOptimize.overlay.visible"
+      :original="aiOptimize.overlay.original"
+      :optimized="aiOptimize.overlay.optimized"
+      :field-label="aiOptimize.overlay.fieldLabel"
+      :model-name="aiOptimize.overlay.modelName"
+      :retrying="aiOptimize.overlay.retrying"
+      @accept="aiOptimize.accept()"
+      @reject="aiOptimize.reject()"
+      @retry="aiOptimize.retry()"
+    />
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row holds the label + the AI optimize
+   button on the right. */
+.field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.field-label-row > label { margin-bottom: 0; }
+
 .loading { color: var(--text-muted); padding: 2rem 0; }
 
 /* ── Project logo ─────────────────────────────────────────────────────────── */

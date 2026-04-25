@@ -72,6 +72,48 @@ func TestBuildUserPrompt_OmitsEmptyContextLines(t *testing.T) {
 	}
 }
 
+// TestBuildUserPrompt_NonIssueFieldReminders pins the per-field
+// reminders for the post-1.8.2 expansion. Each reminder must be
+// distinguishable from the others — using a unique substring per
+// field — so a refactor that accidentally collapses two cases is
+// caught by the test rather than shipping a generic prompt.
+func TestBuildUserPrompt_NonIssueFieldReminders(t *testing.T) {
+	cases := map[string]string{
+		"project_description":     "stakeholders and team members joining",
+		"customer_notes":          "PII",
+		"cooperation_sla_details": "Preserve every number verbatim",
+		"cooperation_notes":       "ownership boundaries",
+	}
+	for field, want := range cases {
+		out := BuildUserPrompt("source text", Context{FieldName: field})
+		if !strings.Contains(out, want) {
+			t.Errorf("field %q: missing distinguishing substring %q\nfull prompt:\n%s",
+				field, want, out)
+		}
+		// All non-issue field prompts must still carry the
+		// architecture-significance reminder block (it's outside the
+		// switch and applies to every field).
+		if !strings.Contains(out, "architecture-significance") {
+			t.Errorf("field %q: missing architecture-significance reminder", field)
+		}
+	}
+}
+
+// TestBuildUserPrompt_UnknownFieldNoReminder confirms that a field
+// with no matching case in the switch falls through cleanly — the
+// prompt still works, it just lacks the per-field reminder. This
+// keeps the function tolerant of test fixtures and future fields
+// added to the allow-list before their reminder lands.
+func TestBuildUserPrompt_UnknownFieldNoReminder(t *testing.T) {
+	out := BuildUserPrompt("hello", Context{FieldName: "future_unknown_field"})
+	if !strings.Contains(out, "Field: future_unknown_field") {
+		t.Errorf("field name should still appear in context block: %s", out)
+	}
+	if !strings.Contains(out, "hello") {
+		t.Errorf("source text missing")
+	}
+}
+
 func TestBuildUserPrompt_FieldSpecificReminder(t *testing.T) {
 	out := BuildUserPrompt("- [ ] do thing", Context{FieldName: "acceptance_criteria"})
 	if !strings.Contains(out, "Keep checklist items") {

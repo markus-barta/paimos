@@ -11,6 +11,11 @@ import { api, csrfHeaders, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import TagChip from '@/components/TagChip.vue'
 import type { Tag } from '@/types'
+// PAI-146 expansion: AI optimize on the new-project description.
+import AiOptimizeButton from '@/components/ai/AiOptimizeButton.vue'
+import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
+import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
+import { useAiOptimize } from '@/composables/useAiOptimize'
 import {
   ACCRUALS_DEFAULT_STATUSES as ACCRUALS_DEFAULTS,
   ACCRUALS_EXTRA_STATUSES   as ACCRUALS_EXTRAS,
@@ -64,6 +69,12 @@ const showCreate = ref(false)
 const form = ref({ name: '', key: '', description: '' })
 const formError = ref('')
 const keyError = ref('')
+
+// PAI-146 expansion: AI optimize on project description.
+const aiOptimize = useAiOptimize()
+function onProjectDescriptionAccept(text: string) {
+  form.value.description = text
+}
 const saving = ref(false)
 const keySuggesting = ref(false)
 
@@ -594,7 +605,17 @@ onMounted(() => {
           <span v-if="keyError" class="field-error">{{ keyError }}</span>
         </div>
         <div class="field">
-          <label>Description</label>
+          <div class="field-label-row">
+            <label>Description</label>
+            <AiOptimizeButton
+              field="project_description"
+              field-label="Project description"
+              :issue-id="0"
+              :text="() => form.description"
+              :on-accept="onProjectDescriptionAccept"
+            />
+          </div>
+          <AiOptimizeBanner />
           <textarea v-model="form.description" rows="3" placeholder="Optional description"></textarea>
         </div>
         <div v-if="formError" class="form-error">{{ formError }}</div>
@@ -606,9 +627,29 @@ onMounted(() => {
         </div>
       </form>
     </AppModal>
+
+    <!-- PAI-146 expansion: AI optimize overlay for project description. -->
+    <AiOptimizeOverlay
+      v-if="aiOptimize.overlay.visible"
+      :original="aiOptimize.overlay.original"
+      :optimized="aiOptimize.overlay.optimized"
+      :field-label="aiOptimize.overlay.fieldLabel"
+      :model-name="aiOptimize.overlay.modelName"
+      :retrying="aiOptimize.overlay.retrying"
+      @accept="aiOptimize.accept()"
+      @reject="aiOptimize.reject()"
+      @retry="aiOptimize.retry()"
+    />
 </template>
 
 <style scoped>
+/* PAI-146: per-field label row holds the label + the AI optimize button. */
+.field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.field-label-row > label { margin-bottom: 0; }
+
 .loading { color: var(--text-muted); padding: 2rem 0; }
 
 .import-banner {
