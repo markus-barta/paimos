@@ -3434,6 +3434,26 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_incident_log_status ON incident_log(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_incident_log_detected_at ON incident_log(detected_at)`,
 	}},
+
+	// M74: ai_settings (PAI-149). Singleton row holding the system-wide
+	// configuration for the LLM text-optimization feature (PAI-146). One
+	// row, id=1, seeded by the handler on first read so the table is safe
+	// to query without a "no rows" branch. The api_key column is plaintext
+	// in the DB by design — operators who need stronger secrets handling
+	// should mount the SQLite volume on encrypted storage. Treating it as
+	// "secret" here would imply guarantees we don't actually keep.
+	{74, []string{
+		`CREATE TABLE IF NOT EXISTS ai_settings (
+			id                   INTEGER PRIMARY KEY CHECK(id = 1),
+			enabled              INTEGER NOT NULL DEFAULT 0,
+			provider             TEXT NOT NULL DEFAULT 'openrouter',
+			model                TEXT NOT NULL DEFAULT '',
+			api_key              TEXT NOT NULL DEFAULT '',
+			optimize_instruction TEXT NOT NULL DEFAULT '',
+			updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`INSERT OR IGNORE INTO ai_settings (id) VALUES (1)`,
+	}},
 	}
 
 	for _, m := range migrations {
