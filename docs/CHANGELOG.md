@@ -5,6 +5,116 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-04-25
+
+### Added — AI action suite (PAI-159 → PAI-177)
+
+The single-purpose AI optimize button (PAI-146) is now a **multi-action
+dropdown menu** with 9 actions on the issue editor surface and 2 on the
+customer surface. Behind it sits a unified action dispatcher, an
+admin-editable prompt store, and live model recommendations from
+OpenRouter — all configurable through the Settings → AI tabs.
+
+#### New endpoints
+
+- `POST /api/ai/test` (admin) — fixed-prompt smoke test that grades
+  via a literal `OK` / `FAIL` whole-word marker. 15 s timeout, 50 token
+  budget. Audited under `audit: ai_test ...`. **PAI-159**
+- `GET /api/ai/models` (admin) — server-cached top-3 OpenRouter
+  models in 6 categories: Frontier, Value, Fastest, Cheapest, Open
+  weights, Free. 1 h cache; `?force=1` busts it. Falls back to the
+  last-known-good snapshot (`stale: true`) and finally to a curated
+  static list when OpenRouter is unreachable. **PAI-160**
+- `GET /api/ai/usage` (admin) — per-user daily token totals, request
+  counts, effective cap, and admin-override flag. Surfaced in the
+  Settings → AI usage panel. **PAI-161**
+- `POST /api/ai/action` — unified dispatcher with action registry
+  (`ai_action_<key>.go` per action). Replaces the legacy
+  `/api/ai/optimize`. Per-action handlers receive a populated
+  `aiActionContext` so they focus on prompt + provider + response.
+  **PAI-163**
+- `GET /api/ai/actions` — catalogue endpoint so the menu renders from
+  server data and stays in sync as actions ship. Each entry carries
+  `implemented: bool`. **PAI-163**
+- `GET/POST/PUT/DELETE /api/ai/prompts` + `/{id}/reset` +
+  `/{id}/dry-run` (admin) — full CRUD for the new `ai_prompts`
+  table. Built-in rows lazily seed from the action registry; custom
+  rows added by admins appear in the menu via the catalogue.
+  **PAI-175 / PAI-177**
+
+#### New schema
+
+- M77 `ai_usage(user_id, day, prompt_tokens, completion_tokens,
+  request_count)` + `users.ai_cap_override_tokens`. **PAI-161**
+- M78 `ai_prompts(id, key UNIQUE, label, surface, parent_action,
+  sub_action, prompt_template, enabled, is_builtin,
+  default_template_hash, created_at, updated_at)`. **PAI-175**
+
+#### New actions (issue surface)
+
+| Action                   | Sub-actions                                                  | Result UX |
+| ------------------------ | ------------------------------------------------------------ | --------- |
+| **Optimize wording**     | —                                                            | diff overlay (default click) |
+| **Suggest enhancement**  | security · performance · ux · dx · flow · risks              | checklist modal, append to AC/notes |
+| **Spec-out**             | —                                                            | categorized checklist (4 categories) |
+| **Find parent/sibling**  | —                                                            | top-3 candidate cards |
+| **Translate**            | de_en · en_de                                                | diff overlay |
+| **Generate sub-tasks**   | —                                                            | editable checklist, batch-create children |
+| **Estimate effort**      | —                                                            | popover with h + LP + reasoning |
+| **Detect duplicates**    | —                                                            | top-5 cards with similarity tag |
+| **UI generation**        | —                                                            | markdown preview, append/replace |
+
+#### New actions (customer surface)
+
+- **Optimize wording** (existing, ported)
+- **Tone check (de-sales)** — strips persuasive / sales-y phrasing
+  while preserving every named entity, quote, and markdown structure
+  verbatim. Available on `customer_notes`,
+  `cooperation_sla_details`, `cooperation_notes`. **PAI-173**
+
+#### Settings → AI
+
+- **Test connection** button next to Save — pings the *unsaved* form
+  values so admins can verify a (provider, model, key) triple
+  before persisting. **PAI-159**
+- **Live model recommendations** replace the static 5-card list. Six
+  category sections, each with up to 3 cards showing name, slug,
+  context window, $/Mtok pricing, and tags. Manual **Refresh** button
+  bypasses the 1 h cache. Manual model-id input stays always-visible
+  (per the answer to "should manual override be hidden?" — no). **PAI-160**
+- **Usage today** panel: org tokens, request count, default cap, UTC
+  day pill, plus a per-user table that highlights over-cap rows in
+  red. **PAI-161**
+
+#### Settings → AI prompts (new tab)
+
+- List view grouped by built-in / custom. Each built-in row exposes
+  Edit + Reset (when overridden); custom rows expose Edit + Delete.
+- Edit modal with monospace template editor, per-surface variable
+  picker (clicking a variable inserts `{{.Var}}`), enabled toggle,
+  and dry-run launcher. **PAI-176**
+- Dry-run preview renders the template against a real issue using
+  Go `text/template`, calls the LLM once, and shows the rendered
+  prompt + response side-by-side without mutating any state.
+  **PAI-177**
+
+#### Audit
+
+The audit prefix moved from `audit: ai_optimize ...` to
+`audit: ai_action action=<key> sub_action=<sub>? ...`. Operators with
+grep patterns on `ai_optimize` need a one-line update. PAI-153
+invariant unchanged: NO body content ever appears in audit lines.
+A separate `audit: ai_test ...` covers the test-connection ping.
+
+#### Compatibility notes
+
+- The legacy `POST /api/ai/optimize` endpoint is **removed**. The
+  frontend `useAiOptimize` composable now POSTs to `/api/ai/action`
+  with `action="optimize"` (issue surface) or `action="optimize_customer"`
+  (customer surface).
+- Frontend `<AiOptimizeButton>` is **deleted**. All 13 host surfaces
+  use the new `<AiActionMenu surface="issue|customer">`.
+
 ## [1.9.1] — 2026-04-25
 
 ### Fixed
