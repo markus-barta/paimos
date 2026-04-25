@@ -351,6 +351,7 @@ func main() {
 			r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
 			r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
 			r.Get("/ai/status", handlers.AIStatus)
+			r.Post("/ai/optimize", handlers.AIOptimize)
 
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)
