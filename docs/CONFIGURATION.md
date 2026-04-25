@@ -132,9 +132,22 @@ What's logged when the feature is used:
          latency_ms=850 prompt_tokens=100 completion_tokens=50
   ```
 
-  Outcome is one of `ok` (provider returned a rewrite), `fail`
-  (provider error / timeout / rejection), or `denied` (caller asked
-  to optimize text on an issue they cannot view).
+  Outcome is a closed enum (one bucket per exit path of the handler):
+
+  - `ok` — provider returned a rewrite (token counts populated)
+  - `fail` — provider was reached but rejected (4xx / 5xx / timeout)
+  - `denied` — caller cannot view the target issue
+  - `unconfigured` — feature toggle off or settings incomplete
+  - `bad_request` — body decode failed, field not in the allow-list,
+    text empty, or text exceeded the 32 KiB cap
+  - `provider_missing` — configured provider name not registered
+  - `cfg_load_fail` — settings row failed to load (DB error)
+  - `ctx_fail` — issue-context lookup failed (DB error, not access)
+  - `unauth` — unauthenticated (defensive; the route is auth-gated so
+    this is unreachable in practice)
+
+  Every exit path of the handler emits exactly one line, so the line
+  count equals the attempt count regardless of outcome.
 
 - **Prompt and response bodies are NOT logged.** The audit line carries
   metadata only. PAI-146 explicitly forbids storing the optimization

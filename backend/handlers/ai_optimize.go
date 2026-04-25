@@ -119,14 +119,68 @@ const (
 	optimizeRequestTimeout = 60 * time.Second
 )
 
+// Audit outcome enum (PAI-153). Stable strings used by `audit:
+// ai_optimize ... outcome=<value>` lines so operators / log analysis
+// can group every attempt — successful, failed, denied, or rejected
+// before the provider was called — into the same dashboard.
+//
+// New values must be added here, never inlined at the call site, so a
+// grep for `outcome=` in this file lists the entire taxonomy.
+const (
+	// Provider returned a rewrite. Token counts populated.
+	outcomeOK = "ok"
+	// Provider was reached but rejected the call (4xx / 5xx / timeout).
+	// Token counts NOT populated; latency_ms is the wall-clock attempt.
+	outcomeFail = "fail"
+	// Caller asked to optimize text on an issue they cannot view.
+	// Mapped to HTTP 403 / 404 from loadOptimizeContext.
+	outcomeDenied = "denied"
+	// Defensive: middleware-bypass route would land here.
+	outcomeUnauth = "unauth"
+	// Settings row failed to load (DB error). Distinct from
+	// `unconfigured` so operators can tell "DB sick" from "admin
+	// hasn't enabled the feature".
+	outcomeCfgLoadFail = "cfg_load_fail"
+	// AvailableForOptimize returned false: feature flag off, missing
+	// key, or missing model.
+	outcomeUnconfigured = "unconfigured"
+	// Body decode failed, field not in allow-list, text empty, or
+	// text exceeds optimizeMaxInputBytes. The HTTP status varies
+	// (400 vs 413) but the audit bucket is the same — these are all
+	// "client sent input we won't process".
+	outcomeBadRequest = "bad_request"
+	// The configured provider name has no entry in the registry.
+	// Distinguishes a PAIMOS-side bug ("provider was removed") from
+	// a transient provider error.
+	outcomeProviderMissing = "provider_missing"
+	// loadOptimizeContext returned a non-userError (DB/SQL failure).
+	// Distinct from `denied` so the access-control vs. infra signal
+	// stays clean.
+	outcomeCtxFail = "ctx_fail"
+)
+
 // AIOptimize is POST /api/ai/optimize. Mounted in the authenticated
 // group; CSRF middleware (PAI-113) covers the cookie-auth path.
+//
+// PAI-153: every exit path emits exactly one audit line with a stable
+// `outcome` string so the operator can grep stdout to see every
+// attempt — successes, failures, denials, and validation rejections.
+// Outcomes are an enum maintained at the top of this file.
 func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUser(r)
+	// userID is 0 for the defensive-unauthenticated branch; downstream
+	// audit lines treat user_id=0 as "no actor recorded" rather than
+	// silently dropping the line.
+	var userID int64
+	if user != nil {
+		userID = user.ID
+	}
+
 	if user == nil {
 		// Defensive only — the route is mounted in the auth group so
 		// this should be unreachable in practice. Keep the branch so
 		// any future routing reshuffle fails loud.
+		auditOptimize(0, "", 0, "", outcomeUnauth, 0, 0, 0)
 		jsonError(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	}
@@ -134,6 +188,7 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	settings, err := LoadAISettings()
 	if err != nil {
 		log.Printf("ai_optimize: load settings: %v", err)
+		auditOptimize(userID, "", 0, "", outcomeCfgLoadFail, 0, 0, 0)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -141,26 +196,31 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 		// 503 (rather than 400) so the SPA can distinguish "you sent
 		// bad input" from "the operator hasn't configured this yet"
 		// and show the right banner.
+		auditOptimize(userID, "", 0, settings.Model, outcomeUnconfigured, 0, 0, 0)
 		jsonError(w, "AI optimization is not configured", http.StatusServiceUnavailable)
 		return
 	}
 
 	var body optimizeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		auditOptimize(userID, "", 0, settings.Model, outcomeBadRequest, 0, 0, 0)
 		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 	body.Field = strings.TrimSpace(body.Field)
 	body.Text = strings.TrimRight(body.Text, " \t")
 	if body.Field == "" || !allowedOptimizeFields[body.Field] {
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeBadRequest, 0, 0, 0)
 		jsonError(w, "field must be one of: description, acceptance_criteria, notes", http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(body.Text) == "" {
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeBadRequest, 0, 0, 0)
 		jsonError(w, "text must not be empty", http.StatusBadRequest)
 		return
 	}
 	if len(body.Text) > optimizeMaxInputBytes {
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeBadRequest, 0, 0, 0)
 		jsonError(w, fmt.Sprintf("text exceeds %d byte cap", optimizeMaxInputBytes), http.StatusRequestEntityTooLarge)
 		return
 	}
@@ -172,6 +232,7 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	provider, err := ai.Get(settings.Provider)
 	if err != nil {
 		log.Printf("ai_optimize: provider %q not registered: %v", settings.Provider, err)
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeProviderMissing, 0, 0, 0)
 		jsonError(w, "AI provider unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -179,16 +240,17 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	ctxData, ctxErr := loadOptimizeContext(r, body.IssueID, body.Field)
 	if ctxErr != nil {
 		// loadOptimizeContext returns a *userError when the caller
-		// can't see the issue; bubble that up as 403 so the audit
+		// can't see the issue; bubble that up as 403/404 so the audit
 		// trail records the attempt clearly. Other errors are
 		// internal and we log + 500.
 		var ue *userError
 		if errors.As(ctxErr, &ue) {
-			auditOptimize(user.ID, body.Field, body.IssueID, settings.Model, "denied", 0, 0, 0)
+			auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeDenied, 0, 0, 0)
 			jsonError(w, ue.msg, ue.status)
 			return
 		}
 		log.Printf("ai_optimize: context: %v", ctxErr)
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeCtxFail, 0, 0, 0)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -209,7 +271,7 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	latency := time.Since(t0)
 
 	if err != nil {
-		auditOptimize(user.ID, body.Field, body.IssueID, settings.Model, "fail", latency, 0, 0)
+		auditOptimize(userID, body.Field, body.IssueID, settings.Model, outcomeFail, latency, 0, 0)
 		// Map sentinel errors to stable HTTP statuses so the SPA can
 		// branch on the response. The error message stays generic for
 		// non-admins; admins can find the upstream message in stdout.
@@ -232,7 +294,7 @@ func AIOptimize(w http.ResponseWriter, r *http.Request) {
 	// Strip a wrap-everything fence echo if the model couldn't resist.
 	cleaned := ai.StripFenceEcho(resp.Text)
 
-	auditOptimize(user.ID, body.Field, body.IssueID, resp.Model, "ok", latency, resp.PromptTokens, resp.CompletionTokens)
+	auditOptimize(userID, body.Field, body.IssueID, resp.Model, outcomeOK, latency, resp.PromptTokens, resp.CompletionTokens)
 
 	jsonOK(w, optimizeResponse{
 		Optimized:        cleaned,

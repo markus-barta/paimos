@@ -118,7 +118,7 @@ func TestAuditOptimize_FailureLineEmitted(t *testing.T) {
 	buf, restore := captureLog(t)
 	defer restore()
 
-	auditOptimize(7, "notes", 0, "anthropic/claude-3.5-haiku", "fail", 250*time.Millisecond, 0, 0)
+	auditOptimize(7, "notes", 0, "anthropic/claude-3.5-haiku", outcomeFail, 250*time.Millisecond, 0, 0)
 	got := buf.String()
 	if !strings.Contains(got, "outcome=fail") {
 		t.Errorf("expected outcome=fail, got: %s", got)
@@ -128,5 +128,52 @@ func TestAuditOptimize_FailureLineEmitted(t *testing.T) {
 	// downstream log analysis.
 	if !strings.Contains(got, "issue_id=0") {
 		t.Errorf("expected issue_id=0, got: %s", got)
+	}
+}
+
+// TestAuditOptimize_OutcomesAreStableEnum verifies the documented
+// audit outcome taxonomy stays a closed set of stable strings. Adding
+// a new outcome means adding a row here too — that's intentional, so
+// dashboards / log analysis don't silently miss a new bucket.
+func TestAuditOptimize_OutcomesAreStableEnum(t *testing.T) {
+	wantOutcomes := []string{
+		outcomeOK,
+		outcomeFail,
+		outcomeDenied,
+		outcomeUnauth,
+		outcomeCfgLoadFail,
+		outcomeUnconfigured,
+		outcomeBadRequest,
+		outcomeProviderMissing,
+		outcomeCtxFail,
+	}
+	// Spot-check the canonical values: any rename here would silently
+	// break operators' grep patterns, so we pin a few.
+	wantValues := map[string]string{
+		outcomeOK:              "ok",
+		outcomeFail:            "fail",
+		outcomeDenied:          "denied",
+		outcomeUnconfigured:    "unconfigured",
+		outcomeBadRequest:      "bad_request",
+		outcomeProviderMissing: "provider_missing",
+	}
+	for k, want := range wantValues {
+		if k != want {
+			t.Errorf("outcome const = %q, want %q", k, want)
+		}
+	}
+	// Each outcome emits a syntactically identical audit line so
+	// downstream parsers don't need per-outcome branches.
+	for _, outcome := range wantOutcomes {
+		buf, restore := captureLog(t)
+		auditOptimize(1, "description", 5, "m", outcome, 10*time.Millisecond, 0, 0)
+		got := buf.String()
+		restore()
+		if !strings.Contains(got, "outcome="+outcome) {
+			t.Errorf("audit line missing outcome=%s\nfull line: %s", outcome, got)
+		}
+		if !strings.Contains(got, "audit: ai_optimize") {
+			t.Errorf("audit line missing prefix\nfull line: %s", got)
+		}
 	}
 }
