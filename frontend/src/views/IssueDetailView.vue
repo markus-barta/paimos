@@ -32,6 +32,7 @@ import IssueHistory from '@/components/issue/IssueHistory.vue'
 import IssueRelations from '@/components/issue/IssueRelations.vue'
 import IssueAttachments from '@/components/issue/IssueAttachments.vue'
 import IssueComments from '@/components/issue/IssueComments.vue'
+import IssueAnchors from '@/components/issue/IssueAnchors.vue'
 import IssueGroupMembers from '@/components/issue/IssueGroupMembers.vue'
 import IssueMetaGrid from '@/components/issue/IssueMetaGrid.vue'
 import IssueEditSidebar from '@/components/issue/IssueEditSidebar.vue'
@@ -1025,6 +1026,11 @@ async function cancelEdit() {
         :issue-id="issueId"
         :project-id="projectId"
         :project-issues="projectIssues"
+      />
+
+      <IssueAnchors
+        v-if="issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic'"
+        :issue-id="issueId"
       />
 
       <!-- Attachments -->

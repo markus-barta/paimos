@@ -172,6 +172,15 @@ func main() {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}", handlers.DeleteProject)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/logo", handlers.UploadProjectLogo)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/logo", handlers.DeleteProjectLogo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/repos", handlers.ListProjectRepos)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/repos", handlers.CreateProjectRepo)
+			r.With(auth.RequireProjectEdit).Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
+			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
+			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
+			r.With(auth.RequireProjectView).Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
 
 			// Project key suggestion
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
@@ -245,6 +254,7 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)
@@ -353,6 +363,10 @@ func main() {
 			// PAI-159: admin-only test-connection ping. Mounted in the
 			// admin group; CSRF middleware (PAI-113) covers it.
 			r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
+			// PAI-160: live OpenRouter model picker, server-cached 1h.
+			// Admin-only because the response shapes admin decisions
+			// (which model to enable for the whole instance).
+			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
 			r.Get("/ai/status", handlers.AIStatus)
 			r.Post("/ai/optimize", handlers.AIOptimize)
 

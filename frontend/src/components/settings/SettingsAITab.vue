@@ -57,12 +57,35 @@ interface AISettings {
   updated_at: string
 }
 
-type PresetTag = 'fast' | 'quality' | 'open' | 'cheap'
+// PAI-160: tags shipped by the backend. The picker accepts any
+// arbitrary string here so the backend can add new tags without a
+// frontend change; the styling map below covers the common cases
+// and falls back to a neutral pill for unknown tags.
+type PresetTag = string
 
-interface ModelPreset {
-  slug: string
+interface PickedModel {
+  id: string
   name: string
-  tags: PresetTag[]
+  context_length: number
+  pricing_prompt_per_mtok: number
+  pricing_completion_per_mtok: number
+  tags: string[]
+}
+
+interface ModelsResponse {
+  categories: {
+    free: PickedModel[]
+    open_weights: PickedModel[]
+    frontier: PickedModel[]
+    value: PickedModel[]
+    cheapest: PickedModel[]
+    fastest: PickedModel[]
+  }
+  fetched_at: string
+  stale: boolean
+  fastest_unofficial: boolean
+  source: string
+  upstream_latency_ms?: number
 }
 
 interface ProviderOption {
@@ -81,20 +104,35 @@ const PROVIDERS: ProviderOption[] = [
   { id: 'llamacpp',   label: 'llama.cpp',  available: false, pendingNote: 'PAI-122' },
 ]
 
-// Curated, NOT a catalog. Anything can be typed into the Model input.
-const MODEL_PRESETS: ModelPreset[] = [
-  { slug: 'anthropic/claude-3.5-haiku',          name: 'Claude 3.5 Haiku',  tags: ['fast', 'cheap'] },
-  { slug: 'anthropic/claude-sonnet-4.5',         name: 'Claude Sonnet 4.5', tags: ['quality'] },
-  { slug: 'openai/gpt-4o-mini',                  name: 'GPT-4o mini',       tags: ['fast', 'cheap'] },
-  { slug: 'openai/gpt-4o',                       name: 'GPT-4o',            tags: ['quality'] },
-  { slug: 'meta-llama/llama-3.3-70b-instruct',   name: 'Llama 3.3 70B',     tags: ['open'] },
+// PAI-160: category sections rendered in this order. The labels are
+// what admins see; the keys map to the backend response shape.
+const CATEGORIES: Array<{
+  key: keyof ModelsResponse['categories']
+  label: string
+  icon: string
+  hint: string
+}> = [
+  { key: 'frontier',     label: 'Frontier',      icon: 'sparkles',     hint: 'Top of the leaderboard right now — pick when output quality matters more than cost.' },
+  { key: 'value',        label: 'Value',         icon: 'gem',          hint: 'Big context (≥128k) + tools, cheapest in the band. The default for most teams.' },
+  { key: 'fastest',      label: 'Fastest',       icon: 'zap',          hint: 'Highest measured throughput. Source ranking is provided by an unofficial endpoint and can break.' },
+  { key: 'cheapest',     label: 'Cheapest',      icon: 'tag',          hint: 'Lowest combined prompt + completion price. Free models are listed separately.' },
+  { key: 'open_weights', label: 'Open weights',  icon: 'package',      hint: 'Models with public weights — useful when you may want to self-host (PAI-122) later.' },
+  { key: 'free',         label: 'Free',          icon: 'gift',         hint: 'Cost nothing per token. Often rate-limited; great for experimentation.' },
 ]
 
-const TAG_LABEL: Record<PresetTag, string> = {
-  fast: 'Fast',
-  quality: 'Quality',
-  open: 'Open weights',
-  cheap: 'Cheap',
+// PAI-160: tag styling. Falls back to a neutral pill if the backend
+// adds a tag the frontend hasn't styled yet.
+const TAG_LABEL: Record<string, string> = {
+  fast:         'Fast',
+  fastest:      'Fastest',
+  quality:      'Quality',
+  frontier:     'Frontier',
+  open:         'Open',
+  open_weights: 'Open weights',
+  cheap:        'Cheap',
+  cheapest:     'Cheapest',
+  value:        'Value',
+  free:         'Free',
 }
 
 const form = reactive<AISettings>({
@@ -132,6 +170,24 @@ const testing = ref(false)
 const testResult = ref<AITestResult | null>(null)
 function clearTestResult() { testResult.value = null }
 
+// PAI-160: live model picker state. Loaded on mount; manual refresh
+// button forces a re-fetch through the backend cache.
+const modelsPayload = ref<ModelsResponse | null>(null)
+const modelsLoading = ref(false)
+const modelsError = ref('')
+async function loadModels(force = false) {
+  modelsLoading.value = true
+  modelsError.value = ''
+  try {
+    const path = force ? '/ai/models?force=1' : '/ai/models'
+    modelsPayload.value = await api.get<ModelsResponse>(path)
+  } catch (e) {
+    modelsError.value = errMsg(e, 'Failed to load model recommendations.')
+  } finally {
+    modelsLoading.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -149,7 +205,10 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  loadModels()
+})
 
 function startReplace() {
   replacingKey.value = true
@@ -272,6 +331,17 @@ const readiness = computed<{ label: string; tone: ReadinessTone }>(() => {
 
 function applyPreset(slug: string) {
   form.model = slug
+}
+
+// PAI-160: format a context window for the picker card. Models top
+// out around 2M tokens; a compact "200k" / "1.5M" reads better than
+// the full integer. Below 1k we just print the value to avoid
+// rounding 200 to "0k".
+function formatContext(ctx: number): string {
+  if (ctx <= 0) return '?'
+  if (ctx >= 1_000_000) return (ctx / 1_000_000).toFixed(ctx % 1_000_000 === 0 ? 0 : 1) + 'M'
+  if (ctx >= 1_000) return Math.round(ctx / 1_000) + 'k'
+  return String(ctx)
 }
 
 // Light relative-time formatter for the "last saved" stamp. Scope
@@ -426,6 +496,7 @@ function relTime(iso: string): string {
           <span class="ai-card-headicon"><AppIcon name="cpu" :size="15" /></span>
           <h3 class="ai-card-title">Model</h3>
         </header>
+        <!-- Manual model id — always visible per PAI-160 (escape hatch). -->
         <input
           v-model="form.model"
           type="text"
@@ -433,30 +504,89 @@ function relTime(iso: string): string {
           class="ai-input ai-input-mono"
           spellcheck="false"
         />
-        <div class="ai-presets-label">Quick picks</div>
-        <div class="ai-presets-grid">
+
+        <!-- PAI-160: live picker. Six categories, top-3 each, fed by
+             /api/ai/models with a 1h server-side cache. The "Refresh"
+             button busts that cache when an admin knows a new model
+             just dropped. Stale state is rendered honestly so admins
+             know when they're looking at last-known-good. -->
+        <div class="ai-presets-headrow">
+          <div class="ai-presets-headrow-left">
+            <span class="ai-presets-label">Recommendations</span>
+            <span v-if="modelsPayload?.stale" class="ai-stale-pill" title="Showing the last cached snapshot — the upstream lookup just now failed.">
+              <AppIcon name="alert-triangle" :size="11" /> stale
+            </span>
+            <span v-if="modelsPayload?.source === 'static-fallback'" class="ai-stale-pill" title="OpenRouter unreachable on first load — using a curated static fallback.">
+              <AppIcon name="alert-triangle" :size="11" /> fallback
+            </span>
+          </div>
           <button
-            v-for="p in MODEL_PRESETS" :key="p.slug"
             type="button"
-            :class="['ai-preset', { 'ai-preset--active': form.model.trim() === p.slug }]"
-            :title="p.slug"
-            @click="applyPreset(p.slug)"
+            class="btn btn-ghost btn-sm ai-presets-refresh"
+            :disabled="modelsLoading"
+            @click="loadModels(true)"
+            title="Re-fetch the model list from OpenRouter, bypassing the 1-hour server cache."
           >
-            <div class="ai-preset-row">
-              <strong class="ai-preset-name">{{ p.name }}</strong>
-              <span v-if="form.model.trim() === p.slug" class="ai-preset-checkdot" aria-hidden="true">
-                <AppIcon name="check" :size="10" />
-              </span>
-            </div>
-            <code class="ai-preset-slug">{{ p.slug }}</code>
-            <div class="ai-preset-tags">
-              <span
-                v-for="t in p.tags" :key="t"
-                :class="['ai-preset-tag', `ai-preset-tag--${t}`]"
-              >{{ TAG_LABEL[t] }}</span>
-            </div>
+            <AppIcon :name="modelsLoading ? 'loader-circle' : 'refresh-cw'" :size="12" :class="{ spin: modelsLoading }" />
+            {{ modelsLoading ? 'Loading…' : 'Refresh' }}
           </button>
         </div>
+
+        <p v-if="modelsError" class="ai-banner ai-banner--error">
+          <AppIcon name="alert-triangle" :size="14" /> {{ modelsError }}
+        </p>
+
+        <template v-if="modelsPayload">
+          <section
+            v-for="cat in CATEGORIES" :key="cat.key"
+            v-show="modelsPayload.categories[cat.key]?.length"
+            class="ai-cat"
+          >
+            <div class="ai-cat-headrow">
+              <span class="ai-cat-icon"><AppIcon :name="cat.icon" :size="13" /></span>
+              <strong class="ai-cat-label">{{ cat.label }}</strong>
+              <span v-if="cat.key === 'fastest' && modelsPayload.fastest_unofficial" class="ai-cat-betatag" title="Source ranking comes from an undocumented OpenRouter endpoint — best-effort.">unofficial source</span>
+              <span class="ai-cat-hint">{{ cat.hint }}</span>
+            </div>
+            <div class="ai-presets-grid">
+              <button
+                v-for="m in modelsPayload.categories[cat.key]" :key="m.id"
+                type="button"
+                :class="['ai-preset', { 'ai-preset--active': form.model.trim() === m.id }]"
+                :title="m.id"
+                @click="applyPreset(m.id)"
+              >
+                <div class="ai-preset-row">
+                  <strong class="ai-preset-name">{{ m.name || m.id }}</strong>
+                  <span v-if="form.model.trim() === m.id" class="ai-preset-checkdot" aria-hidden="true">
+                    <AppIcon name="check" :size="10" />
+                  </span>
+                </div>
+                <code class="ai-preset-slug">{{ m.id }}</code>
+                <div class="ai-preset-meta">
+                  <span class="ai-preset-meta-bit" :title="`${m.context_length.toLocaleString()} token context`">
+                    {{ formatContext(m.context_length) }} ctx
+                  </span>
+                  <span
+                    v-if="m.pricing_prompt_per_mtok || m.pricing_completion_per_mtok"
+                    class="ai-preset-meta-bit"
+                    title="USD per million tokens — prompt / completion"
+                  >
+                    ${{ m.pricing_prompt_per_mtok.toFixed(2) }} / ${{ m.pricing_completion_per_mtok.toFixed(2) }}
+                  </span>
+                  <span v-else class="ai-preset-meta-bit ai-preset-meta-bit--free" title="No per-token cost.">free</span>
+                </div>
+                <div class="ai-preset-tags">
+                  <span
+                    v-for="t in m.tags" :key="t"
+                    :class="['ai-preset-tag', `ai-preset-tag--${t}`]"
+                  >{{ TAG_LABEL[t] || t }}</span>
+                </div>
+              </button>
+            </div>
+          </section>
+        </template>
+        <p v-else-if="modelsLoading" class="ai-help">Loading recommendations from OpenRouter…</p>
       </section>
 
       <!-- ── 6. OPTIMIZATION INSTRUCTION ─────────────────────────── -->
@@ -972,10 +1102,107 @@ function relTime(iso: string): string {
   font-family: 'DM Sans', sans-serif;
   line-height: 1.25;
 }
-.ai-preset-tag--fast    { background: #dbeafe; color: #1e40af; }
-.ai-preset-tag--quality { background: #ede9fe; color: #5b21b6; }
-.ai-preset-tag--open    { background: #fef3c7; color: #92400e; }
-.ai-preset-tag--cheap   { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--fast         { background: #dbeafe; color: #1e40af; }
+.ai-preset-tag--fastest      { background: #dbeafe; color: #1e40af; }
+.ai-preset-tag--quality      { background: #ede9fe; color: #5b21b6; }
+.ai-preset-tag--frontier     { background: #ede9fe; color: #5b21b6; }
+.ai-preset-tag--open         { background: #fef3c7; color: #92400e; }
+.ai-preset-tag--open_weights { background: #fef3c7; color: #92400e; }
+.ai-preset-tag--cheap        { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--cheapest     { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--value        { background: #fce7f3; color: #9d174d; }
+.ai-preset-tag--free         { background: #ccfbf1; color: #115e59; }
+
+/* PAI-160: category sections inside the Model card. */
+.ai-cat {
+  display: flex; flex-direction: column;
+  gap: .55rem;
+  margin-top: .8rem;
+  padding-top: .8rem;
+  border-top: 1px dashed var(--border);
+}
+.ai-cat:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+.ai-cat-headrow {
+  display: flex; align-items: center; gap: .5rem;
+  flex-wrap: wrap;
+}
+.ai-cat-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+}
+.ai-cat-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.005em;
+}
+.ai-cat-betatag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .12rem .45rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+.ai-cat-hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+@media (max-width: 720px) {
+  .ai-cat-hint { flex: none; width: 100%; }
+}
+
+.ai-presets-headrow {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  margin-top: .25rem;
+}
+.ai-presets-headrow-left {
+  display: inline-flex; align-items: center; gap: .55rem;
+  flex-wrap: wrap;
+}
+.ai-presets-refresh {
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.ai-stale-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .12rem .45rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* PAI-160: extra meta line on each preset card. Keeps pricing +
+   context next to the slug without crowding the tag row. */
+.ai-preset-meta {
+  display: flex; gap: .4rem; flex-wrap: wrap;
+  margin-top: .15rem;
+}
+.ai-preset-meta-bit {
+  font-family: 'DM Mono', monospace;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .08rem .4rem;
+}
+.ai-preset-meta-bit--free {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #166534;
+}
 
 /* ── INVARIANTS DISCLOSURE ────────────────────────────────────── */
 .ai-invariants {

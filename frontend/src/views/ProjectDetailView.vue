@@ -22,6 +22,7 @@ import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/t
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectAuxPanel from '@/components/customer/ProjectAuxPanel.vue'
+import ProjectContextSection from '@/components/project/ProjectContextSection.vue'
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
@@ -626,6 +627,11 @@ const lastChanged = computed(() => {
         <button class="import-dismiss" @click="importResult=null"><AppIcon name="x" :size="14" /></button>
       </div>
       <div v-if="importError" class="import-error">{{ importError }} <button class="import-dismiss" @click="importError=''"><AppIcon name="x" :size="14" /></button></div>
+
+      <ProjectContextSection
+        :project-id="projectId"
+        :can-write="isAdmin && canEditProject"
+      />
 
       <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
       <nav class="tab-nav">

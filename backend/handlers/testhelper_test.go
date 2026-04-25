@@ -172,6 +172,15 @@ func buildRouter() http.Handler {
 			r.Get("/projects/{id}", handlers.GetProject)
 			r.With(auth.RequireAdmin).Put("/projects/{id}", handlers.UpdateProject)
 			r.With(auth.RequireAdmin).Delete("/projects/{id}", handlers.DeleteProject)
+			r.Get("/projects/{id}/repos", handlers.ListProjectRepos)
+			r.Post("/projects/{id}/repos", handlers.CreateProjectRepo)
+			r.Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
+			r.Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
+			r.Get("/projects/{id}/manifest", handlers.GetProjectManifest)
+			r.Put("/projects/{id}/manifest", handlers.PutProjectManifest)
+			r.Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
+			r.Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
+			r.Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
 
 			r.Get("/projects/{id}/issues", handlers.ListIssues)
@@ -189,6 +198,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Delete("/issues/{id}/purge", handlers.PurgeIssue)
 			r.Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.Get("/issues/{id}/children", handlers.GetIssueChildren)
+			r.Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 
 			r.Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
