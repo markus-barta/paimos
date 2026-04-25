@@ -114,6 +114,24 @@ const saving = ref(false)
 const saveError = ref('')
 const saveOK = ref(false)
 
+// PAI-159: Test connection state. The test endpoint accepts the
+// *unsaved* form values, so admins can verify a (provider, model, key)
+// triple before persisting. Result is rendered as a small inline
+// banner above the action footer.
+interface AITestResult {
+  ok: boolean
+  message: string
+  response_text?: string
+  model?: string
+  latency_ms?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  marker?: string
+}
+const testing = ref(false)
+const testResult = ref<AITestResult | null>(null)
+function clearTestResult() { testResult.value = null }
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -148,6 +166,37 @@ function clearKey() {
   replacingKey.value = true
 }
 
+// PAI-159: Test connection. Fires a single LLM round-trip with a
+// fixed prompt that asks for a witty one-liner containing the literal
+// token "OK". The handler returns 200 with a structured body whether
+// the call succeeded or failed — this lets us render success and
+// failure with the same component instead of branching on HTTP status.
+async function onTestConnection() {
+  if (testing.value) return
+  testing.value = true
+  testResult.value = null
+  // The backend treats `api_key=""` as "form is empty" (returns
+  // ok=false with a friendly message). For an admin testing without
+  // re-typing the saved key, we can't recover it (never echoed) — so
+  // the button is disabled in that case via canTest.
+  const body: Record<string, unknown> = {
+    provider: form.provider,
+    model: form.model.trim(),
+    api_key: form.api_key,
+  }
+  try {
+    const r = await api.post<AITestResult>('/ai/test', body)
+    testResult.value = r
+  } catch (e) {
+    testResult.value = {
+      ok: false,
+      message: errMsg(e, 'Test connection failed.'),
+    }
+  } finally {
+    testing.value = false
+  }
+}
+
 async function onSave() {
   saving.value = true
   saveError.value = ''
@@ -180,6 +229,22 @@ async function onSave() {
 }
 
 // ── Computed UI state ─────────────────────────────────────────────
+// PAI-159: The Test button is enabled when the form has the three
+// values needed for a roundtrip. We can only test what the admin
+// typed; the saved key cannot be re-used because the SPA never
+// receives it from the backend.
+const canTest = computed(() =>
+  form.provider !== '' &&
+  form.model.trim() !== '' &&
+  form.api_key.trim() !== ''
+)
+const testTooltip = computed(() => {
+  if (!form.api_key.trim()) {
+    return 'Enter an API key to test the connection. The saved key is never echoed back, so a test always uses the value typed in this form.'
+  }
+  if (!form.model.trim()) return 'Pick a model first.'
+  return 'Send a one-shot ping to the provider with the form values above.'
+})
 const canEnable = computed(() => hasStoredKey.value && form.model.trim() !== '')
 const enableHint = computed(() => {
   if (!hasStoredKey.value) return 'Add an OpenRouter API key first.'
@@ -437,6 +502,46 @@ function relTime(iso: string): string {
         <AppIcon name="check-circle" :size="14" /> Settings saved.
       </p>
 
+      <!-- ── PAI-159: TEST RESULT ─────────────────────────────────
+           Detailed result card for the test connection ping. Lives
+           above the action footer so admins see latency + the
+           model's funny line right next to the button that fired
+           the call. -->
+      <div
+        v-if="testResult"
+        :class="['ai-test-result', testResult.ok ? 'ai-test-result--ok' : 'ai-test-result--fail']"
+        role="status"
+      >
+        <div class="ai-test-result-head">
+          <AppIcon :name="testResult.ok ? 'check-circle' : 'alert-triangle'" :size="16" />
+          <strong class="ai-test-result-msg">{{ testResult.message }}</strong>
+          <button
+            type="button"
+            class="ai-test-result-x"
+            aria-label="Dismiss"
+            @click="clearTestResult"
+          >×</button>
+        </div>
+        <div v-if="testResult.response_text" class="ai-test-result-body">
+          <span class="ai-test-result-label">Reply</span>
+          <span class="ai-test-result-quote">{{ testResult.response_text }}</span>
+        </div>
+        <div class="ai-test-result-meta">
+          <span v-if="testResult.model" class="ai-test-result-pill">
+            <AppIcon name="cpu" :size="11" /> {{ testResult.model }}
+          </span>
+          <span v-if="testResult.latency_ms" class="ai-test-result-pill">
+            <AppIcon name="zap" :size="11" /> {{ testResult.latency_ms }} ms
+          </span>
+          <span v-if="testResult.prompt_tokens != null && testResult.completion_tokens != null && (testResult.prompt_tokens + testResult.completion_tokens) > 0" class="ai-test-result-pill">
+            {{ testResult.prompt_tokens }}p + {{ testResult.completion_tokens }}c tokens
+          </span>
+          <span v-if="testResult.marker" :class="['ai-test-result-pill', `ai-test-result-pill--${testResult.marker.toLowerCase()}`]">
+            marker: {{ testResult.marker }}
+          </span>
+        </div>
+      </div>
+
       <!-- ── ACTIONS ─────────────────────────────────────────────── -->
       <footer class="ai-actions">
         <span class="ai-actions-meta">
@@ -445,15 +550,28 @@ function relTime(iso: string): string {
           </template>
           <template v-else>—</template>
         </span>
-        <button
-          type="button"
-          class="btn btn-primary ai-save"
-          :disabled="saving"
-          @click="onSave"
-        >
-          <AppIcon v-if="saving" name="loader-circle" :size="13" class="spin" />
-          {{ saving ? 'Saving…' : 'Save changes' }}
-        </button>
+        <div class="ai-actions-buttons">
+          <button
+            type="button"
+            class="btn btn-ghost ai-test-btn"
+            :disabled="!canTest || testing"
+            :title="testTooltip"
+            @click="onTestConnection"
+          >
+            <AppIcon v-if="testing" name="loader-circle" :size="13" class="spin" />
+            <AppIcon v-else name="plug" :size="13" />
+            {{ testing ? 'Testing…' : 'Test connection' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary ai-save"
+            :disabled="saving"
+            @click="onSave"
+          >
+            <AppIcon v-if="saving" name="loader-circle" :size="13" class="spin" />
+            {{ saving ? 'Saving…' : 'Save changes' }}
+          </button>
+        </div>
       </footer>
     </template>
   </div>
@@ -966,6 +1084,94 @@ function relTime(iso: string): string {
   font-weight: 600;
   padding: .55rem 1.15rem;
 }
+
+/* PAI-159: action footer holds Test + Save side by side. */
+.ai-actions-buttons {
+  display: flex; gap: .5rem; align-items: center;
+}
+.ai-test-btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-weight: 600;
+  padding: .55rem 1rem;
+}
+
+/* PAI-159: result card is its own surface — softer than a banner so
+   admins who click Test repeatedly aren't visually shouted at. */
+.ai-test-result {
+  display: flex; flex-direction: column; gap: .55rem;
+  padding: .85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-size: 13px;
+}
+.ai-test-result--ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+.ai-test-result--fail {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+.ai-test-result-head {
+  display: flex; align-items: center; gap: .55rem;
+}
+.ai-test-result-msg {
+  flex: 1;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  line-height: 1.4;
+}
+.ai-test-result-x {
+  background: none; border: none;
+  color: inherit; opacity: .65;
+  cursor: pointer; font-size: 18px; line-height: 1;
+  padding: 0 .25rem;
+}
+.ai-test-result-x:hover { opacity: 1; }
+.ai-test-result-body {
+  display: flex; gap: .55rem; align-items: baseline;
+  font-family: 'DM Mono', monospace;
+  font-size: 12.5px;
+  padding: .5rem .65rem;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(0,0,0,.04);
+  border-radius: 8px;
+  line-height: 1.55;
+}
+.ai-test-result-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: currentColor;
+  opacity: .7;
+  flex-shrink: 0;
+}
+.ai-test-result-quote {
+  word-break: break-word;
+  color: var(--text);
+}
+.ai-test-result-meta {
+  display: flex; gap: .35rem; flex-wrap: wrap;
+}
+.ai-test-result-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: .15rem .55rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,.7);
+  border: 1px solid rgba(0,0,0,.06);
+  color: currentColor;
+  font-family: 'DM Mono', monospace;
+}
+.ai-test-result-pill--ok   { background: #16a34a; color: white; border-color: transparent; }
+.ai-test-result-pill--fail { background: #dc2626; color: white; border-color: transparent; }
 
 .spin { animation: ai-tab-spin 1s linear infinite; }
 @keyframes ai-tab-spin { to { transform: rotate(360deg); } }

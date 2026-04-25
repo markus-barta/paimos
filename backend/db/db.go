@@ -3454,6 +3454,91 @@ func migrate(db *sql.DB) error {
 		)`,
 		`INSERT OR IGNORE INTO ai_settings (id) VALUES (1)`,
 	}},
+
+	// M75: PAI-29 foundations — project repos, code anchors, and the
+	// PMO-hosted project manifest. The manifest is intentionally stored
+	// as a validated JSON blob in v1 so the API contract can stabilize
+	// before we explode it into many specialised tables.
+	{75, []string{
+		`CREATE TABLE IF NOT EXISTS project_repos (
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			url            TEXT NOT NULL,
+			default_branch TEXT NOT NULL DEFAULT 'main',
+			label          TEXT NOT NULL DEFAULT '',
+			sort_order     INTEGER NOT NULL DEFAULT 0,
+			created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_repos_project ON project_repos(project_id, sort_order, id)`,
+		`CREATE TABLE IF NOT EXISTS issue_anchors (
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			issue_id       INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+			repo_id        INTEGER NOT NULL REFERENCES project_repos(id) ON DELETE CASCADE,
+			file_path      TEXT NOT NULL,
+			line           INTEGER NOT NULL,
+			label          TEXT NOT NULL DEFAULT '',
+			confidence     TEXT NOT NULL DEFAULT 'declared'
+			               CHECK(confidence IN ('declared','derived','suggested')),
+			symbol_json    TEXT NOT NULL DEFAULT '',
+			schema_version TEXT NOT NULL DEFAULT '',
+			repo_revision  TEXT NOT NULL DEFAULT '',
+			generated_at   TEXT NOT NULL DEFAULT '',
+			hidden         INTEGER NOT NULL DEFAULT 0,
+			stale          INTEGER NOT NULL DEFAULT 0,
+			created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_issue_anchors_issue ON issue_anchors(issue_id, repo_id, file_path, line)`,
+		`CREATE INDEX IF NOT EXISTS idx_issue_anchors_repo ON issue_anchors(project_id, repo_id, issue_id)`,
+		`CREATE TABLE IF NOT EXISTS project_manifests (
+			project_id     INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+			manifest_json  TEXT NOT NULL DEFAULT '{}',
+			updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_by     INTEGER REFERENCES users(id)
+		)`,
+	}},
+
+	// M76: PAI-30 foundations — generic entity relations and embeddings.
+	// issue_relations remains in place for backward compatibility; the
+	// handlers layer can dual-write or bridge incrementally.
+	{76, []string{
+		`CREATE TABLE IF NOT EXISTS entity_relations (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			source_type   TEXT NOT NULL,
+			source_id     INTEGER NOT NULL,
+			target_type   TEXT NOT NULL,
+			target_id     INTEGER NOT NULL,
+			edge_type     TEXT NOT NULL,
+			confidence    TEXT NOT NULL CHECK(confidence IN ('declared','derived','suggested')),
+			metadata      TEXT NOT NULL DEFAULT '',
+			created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(source_type, source_id, target_type, target_id, edge_type)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_src  ON entity_relations(source_type, source_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_tgt  ON entity_relations(target_type, target_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_type ON entity_relations(project_id, edge_type)`,
+		`CREATE TABLE IF NOT EXISTS entity_embeddings (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			entity_type     TEXT NOT NULL,
+			entity_id       INTEGER NOT NULL,
+			model           TEXT NOT NULL,
+			dim             INTEGER NOT NULL,
+			vector          BLOB NOT NULL,
+			source_hash     TEXT NOT NULL,
+			last_indexed_at TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(entity_type, entity_id, model)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_embeddings_lookup ON entity_embeddings(project_id, entity_type, entity_id)`,
+		`INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata)
+		 SELECT i.project_id, 'issue', ir.source_id, 'issue', ir.target_id, ir.type, 'declared', ''
+		 FROM issue_relations ir
+		 JOIN issues i ON i.id = ir.source_id
+		 WHERE i.project_id IS NOT NULL`,
+	}},
 	}
 
 	for _, m := range migrations {

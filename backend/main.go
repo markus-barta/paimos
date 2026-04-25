@@ -350,6 +350,9 @@ func main() {
 			// it on every render that shows an AI button.
 			r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
 			r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
+			// PAI-159: admin-only test-connection ping. Mounted in the
+			// admin group; CSRF middleware (PAI-113) covers it.
+			r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
 			r.Get("/ai/status", handlers.AIStatus)
 			r.Post("/ai/optimize", handlers.AIOptimize)
 
