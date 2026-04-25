@@ -230,7 +230,7 @@ env, and restart.
 ## Runtime branding
 
 The **preferred** way to brand a PAIMOS install is the admin UI at
-**Settings → Branding** — edit product name, tagline, URLs, page title,
+**Settings → Visual → Workspace Branding** — edit product name, tagline, URLs, page title,
 the full colour palette, and upload custom logo + favicon without a
 restart or redeploy. Changes apply live the moment you hit Save.
 
