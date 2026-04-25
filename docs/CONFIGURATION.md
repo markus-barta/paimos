@@ -113,6 +113,53 @@ Per-subject GDPR endpoints (admin only):
 - `POST /api/users/{id}/gdpr-erase`  — replaces PII with placeholders, drops sessions/keys, sets `status='deleted'`.
 - `GET  /api/gdpr/retention`         — current retention policy (introspection).
 
+## AI text optimization (PAI-146)
+
+The AI optimize feature (small "AI" action on multiline editors) is
+**off by default**. Configuration is in the database — admins set it
+under **Settings → AI**, not via env vars — so this section is here
+for reference rather than env tuning. Persistence lives in the M74
+`ai_settings` row; nothing else is required.
+
+What's logged when the feature is used:
+
+- One stdout audit line per call, in the structured `audit:` format
+  the rest of PAIMOS uses:
+
+  ```
+  audit: ai_optimize user_id=42 field=description issue_id=123
+         model="anthropic/claude-3.5-haiku" outcome=ok
+         latency_ms=850 prompt_tokens=100 completion_tokens=50
+  ```
+
+  Outcome is one of `ok` (provider returned a rewrite), `fail`
+  (provider error / timeout / rejection), or `denied` (caller asked
+  to optimize text on an issue they cannot view).
+
+- **Prompt and response bodies are NOT logged.** The audit line carries
+  metadata only. PAI-146 explicitly forbids storing the optimization
+  payload by default; a regression test in
+  `backend/handlers/ai_optimize_audit_test.go` enforces this and will
+  fail CI if a future refactor reintroduces body text into the line.
+
+- Provider-rejection responses (e.g. "model not found", "rate limited")
+  are logged separately at the call site, also without bodies. Admins
+  can see the upstream message in the SPA banner; operators can see
+  the full chain in `docker compose logs paimos`.
+
+Operational guidance:
+
+- Pin a specific model slug (e.g. `anthropic/claude-3.5-haiku`) — the
+  presets in the settings UI are starting points, not a curated catalog.
+- Token cost is on the operator's OpenRouter account. The endpoint
+  caps input at 32 KiB and output at ~3000 tokens per call; the
+  per-user rate is implicitly limited by the diff-overlay UX (one
+  call per click).
+- The api_key is stored unencrypted in the SQLite database. Keep the
+  data volume on encrypted storage if your threat model requires that
+  — the rest of the secrets surface (session cookies, OIDC client
+  secret, etc.) has the same property.
+
 ## Attachments (MinIO / S3 — optional)
 
 When `MINIO_ENDPOINT` is unset, the attachments feature is disabled:
