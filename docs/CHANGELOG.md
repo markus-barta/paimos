@@ -5,6 +5,40 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-04-25
+
+### Added — AI optimize on project / customer / cooperation fields
+
+The PAI-146 button now appears wherever a user enters longer-form
+prose, not just on issue editors. Each new field gets its own
+per-field prompt reminder so the model writes at the right register
+for the audience and format. The fixed PAIMOS wrapper and the
+admin-editable instruction stay shared (safety + tone are global);
+only the per-field reminder differs.
+
+New surfaces:
+
+- **Project description** — both the new-project modal and the
+  edit-project modal. Reminder: stakeholder audience, preserve
+  scope / out-of-scope markers / deadlines / contractual language;
+  do not add scope.
+- **Customer notes** — both the create-customer modal and the
+  edit-customer modal. Reminder: CRM tone, preserve PII and verbatim
+  quotes, do NOT invent titles / dates / decisions.
+- **Cooperation → SLA details** (PAI-61). Reminder: preserve every
+  number verbatim (uptime %, response-time targets, hours-of-coverage,
+  escalation steps); "4 hours" stays "4 hours", not "a few hours".
+- **Cooperation → Cooperation notes** (PAI-61). Reminder: preserve
+  named systems, contractual lines, ownership boundaries, and
+  exceptions exactly as written.
+
+Backend allow-list extended (`project_description`, `customer_notes`,
+`cooperation_sla_details`, `cooperation_notes`); each new field is
+audited under its own name in the `audit: ai_optimize` line so
+operators can attribute usage per surface.
+
+No schema or env changes.
+
 ## [1.8.2] — 2026-04-25
 
 ### Fixed
