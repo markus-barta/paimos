@@ -11,32 +11,33 @@
  The composable is a singleton, so `lastError` is shared across every
  surface (issue detail, create modal, side panel). Mounting this
  component anywhere a user can click an AI button gives them visible
- feedback when a request fails. Trim guard prevents whitespace-only
- errors from rendering as a blank banner — a defensive belt to the
- errMsg() suspenders in api/client.ts.
+ feedback when a request fails.
+
+ Refs are destructured into top-level bindings so Vue's <script setup>
+ template auto-unwrap kicks in: a nested access like
+ `aiOptimize.lastError` would yield the Ref object (always truthy) in
+ v-if, leaving an empty banner stuck on screen even when no error
+ exists. Top-level `lastError` is unwrapped to its value in both v-if
+ and interpolation.
 -->
 <script setup lang="ts">
 import { useAiOptimize } from '@/composables/useAiOptimize'
 
-const aiOptimize = useAiOptimize()
+const { lastError, clearError } = useAiOptimize()
 </script>
 
 <template>
-  <!-- v-if relies on `lastError` being either null or a non-empty
-       trimmed string. `errMsg()` in api/client.ts guarantees that
-       contract — never returns "" or whitespace-only — so the
-       template doesn't need to re-check. -->
   <div
-    v-if="aiOptimize.lastError"
+    v-if="lastError"
     class="ai-banner-error"
     role="alert"
   >
-    <span>AI optimization failed: {{ aiOptimize.lastError }}</span>
+    <span>AI optimization failed: {{ lastError }}</span>
     <button
       type="button"
       class="ai-banner-error-x"
       aria-label="Dismiss"
-      @click="aiOptimize.clearError()"
+      @click="clearError()"
     >×</button>
   </div>
 </template>

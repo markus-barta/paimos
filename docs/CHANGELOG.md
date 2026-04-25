@@ -5,6 +5,24 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] — 2026-04-25
+
+### Fixed
+- **AI error banner stuck on screen with empty message.** The 1.8.2 fix
+  to `errMsg()` was correct, but the banner's `v-if="aiOptimize.lastError"`
+  was checking the Vue `Ref` object itself — which is always truthy —
+  instead of its unwrapped value. Vue auto-unwraps refs in templates
+  only when they're top-level `<script setup>` bindings or live on a
+  `reactive()` proxy; nested access on the plain object returned by
+  `useAiOptimize()` skipped that. Symptom: a permanent red banner
+  reading "AI optimization failed:" with no detail, even on cold
+  page-loads where no optimize call had ever happened. The interpolation
+  `{{ ... }}` rendered empty correctly (Vue's `toDisplayString` does
+  unwrap refs), which masked the v-if defect. Fixed by destructuring
+  `lastError` (and `clearError`) into top-level bindings in
+  `AiOptimizeBanner.vue` and `IssueDetailView.vue`. Documented the
+  gotcha in `useAiOptimize.ts` so future consumers don't repeat it.
+
 ## [1.9.0] — 2026-04-25
 
 ### Added — AI optimize on project / customer / cooperation fields

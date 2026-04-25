@@ -546,7 +546,14 @@ const { html: notesHtml } = useMarkdown(notesRef,       mdMode)
 // PAI-146: AI text optimization. The composable manages availability,
 // in-flight state, and the overlay slot; we just provide the per-field
 // onAccept callback that writes the rewrite back into the form.
+//
+// `lastError`/`clearError` are destructured so they become top-level
+// bindings — Vue auto-unwraps top-level refs in templates. Accessing
+// the ref via `aiOptimize.lastError` would yield the Ref object
+// (always truthy) in v-if, which kept the error banner permanently
+// visible with empty content.
 const aiOptimize = useAiOptimize()
+const { lastError, clearError } = aiOptimize
 function onOptimizeAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
   return (text: string) => {
     form.value[field] = text
@@ -794,11 +801,12 @@ async function cancelEdit() {
             <!-- PAI-146: surface AI optimize failures inline so the user
                  knows why the spinner stopped without a successful overlay.
                  errMsg() in api/client.ts guarantees lastError is null or
-                 a non-empty, non-whitespace string — so no trim guard
-                 needed at the template level. -->
-            <div v-if="aiOptimize.lastError" class="ai-error-banner">
-              <span>AI optimization failed: {{ aiOptimize.lastError }}</span>
-              <button type="button" class="ai-error-banner-x" @click="aiOptimize.clearError()">×</button>
+                 a non-empty, non-whitespace string. Uses the destructured
+                 top-level `lastError` ref so Vue auto-unwraps it in
+                 v-if (see setup script for the why). -->
+            <div v-if="lastError" class="ai-error-banner">
+              <span>AI optimization failed: {{ lastError }}</span>
+              <button type="button" class="ai-error-banner-x" @click="clearError()">×</button>
             </div>
             <div class="field">
               <div class="field-label-row">

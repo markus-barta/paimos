@@ -34,6 +34,15 @@
 //   - retry(): re-run the same call (used by the overlay's Retry btn)
 //   - accept(): apply the optimized text via the saved onAccept cb
 //   - reject(): close the overlay without applying
+//
+// IMPORTANT consumer note: the returned object is a plain object,
+// NOT a reactive() proxy. Vue auto-unwraps refs in templates only
+// when they're top-level <script setup> bindings or live on a
+// reactive() proxy. Accessing the refs (`available`, `isOptimizing`,
+// `lastError`) via `obj.lastError` in a template gives the Ref
+// itself — always truthy in v-if. Always destructure the refs you
+// need at the top of setup so the template treats them as top-level
+// refs. `overlay` is reactive() and CAN be accessed via the object.
 
 import { ref, reactive } from 'vue'
 import { api, errMsg, ApiError } from '@/api/client'
