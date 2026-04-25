@@ -66,6 +66,19 @@ interface OptimizeResponse {
   finish_reason: string
 }
 
+// PAI-164: response envelope from the /api/ai/action dispatcher.
+// `body` is the action-specific payload — for the optimize action
+// it's `{optimized: string}`. Token counts and model live on the
+// envelope so the diff overlay can render the success banner.
+interface ActionEnvelope {
+  action: string
+  body: { optimized?: string }
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  finish_reason: string
+}
+
 interface AiOverlayState {
   visible: boolean
   field: string
@@ -123,15 +136,42 @@ async function refreshStatus(): Promise<void> {
 const OPTIMIZE_TIMEOUT_MS = 90_000
 
 async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
-  return api.post<OptimizeResponse>(
-    '/ai/optimize',
+  // PAI-164: the legacy /api/ai/optimize endpoint is gone; this
+  // composable now goes through the unified /api/ai/action
+  // dispatcher with `action=optimize`. The response envelope is
+  // shaped by the dispatcher; we flatten its `body` field here so
+  // existing diff-overlay callers don't need to know.
+  // Customer-surface fields use `optimize_customer` so the menu
+  // descriptor lights up under the customer surface in /api/ai/actions;
+  // both keys share the same backend handler.
+  const action = isCustomerField(args.field) ? 'optimize_customer' : 'optimize'
+  const env = await api.post<ActionEnvelope>(
+    '/ai/action',
     {
+      action,
       field: args.field,
       text: args.text,
       issue_id: args.issueId ?? 0,
     },
     { timeoutMs: OPTIMIZE_TIMEOUT_MS },
   )
+  return {
+    optimized: env.body?.optimized ?? '',
+    model: env.model,
+    prompt_tokens: env.prompt_tokens,
+    completion_tokens: env.completion_tokens,
+    finish_reason: env.finish_reason,
+  }
+}
+
+// PAI-164: customer-surface fields route through the
+// `optimize_customer` action key so the menu descriptor surfaces
+// it on customer-bound editors. The set is kept in lockstep with
+// the backend's customer-surface allow-list.
+function isCustomerField(field: string): boolean {
+  return field === 'customer_notes'
+      || field === 'cooperation_sla_details'
+      || field === 'cooperation_notes'
 }
 
 async function run(args: OptimizeArgs): Promise<void> {

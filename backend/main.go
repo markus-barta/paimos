@@ -370,7 +370,10 @@ func main() {
 			// PAI-161: per-user usage summary for the admin dashboard.
 			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
 			r.Get("/ai/status", handlers.AIStatus)
-			r.Post("/ai/optimize", handlers.AIOptimize)
+			// PAI-164: legacy /api/ai/optimize endpoint retired —
+			// the optimize behaviour now lives behind /api/ai/action
+			// with action="optimize". The frontend useAiOptimize
+			// composable was updated to call the dispatcher.
 
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)

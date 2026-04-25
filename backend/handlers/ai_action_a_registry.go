@@ -27,6 +27,8 @@
 
 package handlers
 
+import "log"
+
 // init registers a stub for every action key in the PAI-162 menu
 // catalogue. Real handlers replace these via re-registration in
 // their own init() (registerAction panics on dup, so each action
@@ -56,13 +58,20 @@ func init() {
 	}
 }
 
-// replaceAction overrides an existing registry entry. Used by real
-// action handlers to upgrade their stub registration to the real
-// implementation. Panics if the key wasn't already registered —
-// catches typos that would leave the menu showing a stub forever.
+// replaceAction overrides an existing registry entry, or creates a
+// fresh one if no stub had registered first. Lenient by design: Go
+// orders init() alphabetically by file name, and a strict
+// "stub-must-exist" check would couple the stubs file's name to
+// every action file. Last-write-wins keeps the registration
+// semantics order-independent.
+//
+// We log a console line if there was no stub: the catalog endpoint
+// relies on stubs to surface "Coming soon" items in the menu, so a
+// real handler that lands without one means the menu never showed
+// the item as planned — usually a typo on the key.
 func replaceAction(d actionDescriptor) {
 	if _, ok := actionRegistry[d.Key]; !ok {
-		panic("ai_action: replaceAction called for unregistered key " + d.Key)
+		log.Printf("ai_action: replaceAction registered new key %q with no prior stub", d.Key)
 	}
 	actionRegistry[d.Key] = d
 }
