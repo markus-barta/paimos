@@ -43,8 +43,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/markus-barta/paimos/backend/ai"
 	"github.com/markus-barta/paimos/backend/db"
 )
 
@@ -381,26 +384,184 @@ FROM ai_prompts WHERE id = ?
 // in the request body) and calls the LLM. Returns BOTH the
 // rendered prompt and the LLM response side-by-side. NO state
 // changes — strictly preview.
+//
+// The renderer uses Go's text/template against an "issue snapshot"
+// pulled from loadOptimizeContext. Variables exposed are the same
+// surface-specific set the Settings UI's variable picker lists; we
+// pin them here so a future schema change ripples through one
+// definition.
 type dryRunRequest struct {
 	IssueID int64 `json:"issue_id"`
 }
 type dryRunResponse struct {
-	RenderedSystem    string `json:"rendered_system"`
-	RenderedUser      string `json:"rendered_user"`
-	Response          string `json:"response"`
-	Model             string `json:"model"`
-	LatencyMs         int64  `json:"latency_ms"`
-	PromptTokens      int    `json:"prompt_tokens"`
-	CompletionTokens  int    `json:"completion_tokens"`
-	UsedDefault       bool   `json:"used_default"`
+	RenderedSystem   string `json:"rendered_system"`
+	RenderedUser     string `json:"rendered_user"`
+	Response         string `json:"response"`
+	Model            string `json:"model"`
+	LatencyMs        int64  `json:"latency_ms"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	UsedDefault      bool   `json:"used_default"`
 }
 
+// dryRunContext is the data shape exposed to admin templates. We
+// keep it deliberately narrow — admins should write prompts
+// against documented variables, not the wide internal models.
+type dryRunContext struct {
+	Title              string
+	Description        string
+	AcceptanceCriteria string
+	Notes              string
+	Type               string
+	Status             string
+	IssueKey           string
+	ProjectName        string
+	ParentEpic         string
+	// Customer-surface placeholders. Populated when the prompt's
+	// surface is "customer" — until those handlers ship the
+	// variables exist with empty strings so admins can still
+	// preview the wrapper.
+	CustomerName     string
+	Industry         string
+	CooperationType  string
+	SLADetails       string
+	CooperationNotes string
+}
+
+// AIDryRunPrompt renders the prompt template against a real issue
+// and POSTs to the configured provider. Strictly preview — no
+// state changes.
 func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
-	// PAI-177 lands in a follow-on commit that wires the rendered
-	// prompt through provider.Optimize against an issue selected by
-	// the admin. Stubbed for now so the endpoint exists and the
-	// settings UI can render its form against a known shape.
-	jsonError(w, "dry-run preview lands with PAI-177 — stay tuned", http.StatusNotImplemented)
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var existing promptRow
+	if err := readPromptRowByID(id, &existing); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			jsonError(w, "prompt not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("ai_prompts: read for dry-run: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var body dryRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	settings, err := LoadAISettings()
+	if err != nil {
+		log.Printf("ai_prompts: load settings: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !settings.AvailableForOptimize() {
+		jsonError(w, "AI is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	template := strings.TrimSpace(existing.PromptTemplate)
+	usedDefault := template == ""
+	if usedDefault {
+		template = defaultPreviewTemplate(existing)
+	}
+
+	dctx := dryRunContext{}
+	if body.IssueID > 0 {
+		ictx, ctxErr := loadOptimizeContext(r, body.IssueID, "")
+		if ctxErr != nil {
+			var ue *userError
+			if errors.As(ctxErr, &ue) {
+				jsonError(w, ue.msg, ue.status)
+				return
+			}
+			log.Printf("ai_prompts: dry-run context: %v", ctxErr)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		dctx.Title = ictx.IssueTitle
+		dctx.Type = ictx.IssueType
+		dctx.IssueKey = ictx.IssueKey
+		dctx.ProjectName = ictx.ProjectName
+		dctx.ParentEpic = ictx.ParentEpic
+	}
+
+	rendered, rerr := renderPromptTemplate(template, dctx)
+	if rerr != nil {
+		jsonError(w, "template render failed: "+rerr.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// We feed the rendered text as the system prompt. The user
+	// prompt is a thin "render this" instruction so dry-runs work
+	// without an issue selected (admins can sanity-check a template
+	// just by clicking Run with issue_id = 0).
+	systemPrompt := rendered
+	userPrompt := "Run the template above and return your shaped output."
+
+	provider, perr := ai.Get(settings.Provider)
+	if perr != nil {
+		jsonError(w, "AI provider unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	t0 := time.Now()
+	resp, err := provider.Optimize(r.Context(), ai.OptimizeRequest{
+		Model:           settings.Model,
+		APIKey:          settings.APIKey,
+		SystemPrompt:    systemPrompt,
+		UserPrompt:      userPrompt,
+		MaxOutputTokens: 1500,
+	})
+	latency := time.Since(t0)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	jsonOK(w, dryRunResponse{
+		RenderedSystem:   systemPrompt,
+		RenderedUser:     userPrompt,
+		Response:         resp.Text,
+		Model:            resp.Model,
+		LatencyMs:        latency.Milliseconds(),
+		PromptTokens:     resp.PromptTokens,
+		CompletionTokens: resp.CompletionTokens,
+		UsedDefault:      usedDefault,
+	})
+}
+
+// renderPromptTemplate evaluates the admin-edited template against
+// the dry-run context. Uses Go's text/template syntax — we don't
+// invent a new mini-language because admins reading PAIMOS source
+// already have to deal with text/template anyway.
+func renderPromptTemplate(tmplText string, ctx dryRunContext) (string, error) {
+	tmpl, err := template.New("ai_prompt").Parse(tmplText)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	if err := tmpl.Execute(&b, ctx); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+// defaultPreviewTemplate is what we render when an admin clicks
+// Dry-run on a built-in row that hasn't been overridden. The
+// product's "real" defaults live in code per action; for dry-run
+// purposes we fabricate a simple wrapper that demonstrates the
+// variable substitution mechanic without pulling in the real
+// per-action prompt logic (which would import the action package
+// for one preview).
+func defaultPreviewTemplate(row promptRow) string {
+	return "Default-template preview for built-in action " + row.Key + ".\n\n" +
+		"Issue: {{.IssueKey}} ({{.Type}}) — {{.Title}}\n" +
+		"Project: {{.ProjectName}}\n\n" +
+		"To override this default, fill in the prompt template in Settings → AI prompts."
 }
 
 // helpers used by shape pinning + tests
