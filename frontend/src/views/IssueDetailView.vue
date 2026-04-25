@@ -791,6 +791,14 @@ async function cancelEdit() {
         <!-- Edit layout -->
         <div v-else class="edit-layout">
           <div class="edit-content">
+            <!-- PAI-146: surface AI optimize failures inline so the user
+                 knows why the spinner stopped without a successful overlay.
+                 One banner for the whole edit pane — a single optimize
+                 call is in flight at a time. -->
+            <div v-if="aiOptimize.lastError" class="ai-error-banner">
+              <span>AI optimization failed: {{ aiOptimize.lastError }}</span>
+              <button type="button" class="ai-error-banner-x" @click="aiOptimize.clearError()">×</button>
+            </div>
             <div class="field">
               <div class="field-label-row">
                 <label>Description</label>
@@ -1086,6 +1094,23 @@ async function cancelEdit() {
   margin-bottom: .25rem;
 }
 .field-label-row > label { margin-bottom: 0; }
+
+/* PAI-146: inline error banner for failed optimize calls. Sits at the
+   top of the edit pane so the user sees it whichever field they hit. */
+.ai-error-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: .5rem;
+  background: #fef2f2; color: #b91c1c;
+  border: 1px solid #fecaca; border-radius: var(--radius);
+  padding: .45rem .75rem;
+  font-size: 13px;
+  margin-bottom: .75rem;
+}
+.ai-error-banner-x {
+  background: none; border: none; color: #b91c1c;
+  cursor: pointer; font-size: 16px; line-height: 1; padding: 0 .25rem;
+}
+.ai-error-banner-x:hover { color: #7f1d1d; }
 
 .issue-card {
   background: var(--bg-card); border: 1px solid var(--border);

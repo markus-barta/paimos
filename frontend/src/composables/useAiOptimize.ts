@@ -185,6 +185,10 @@ function reject(): void {
   pendingArgs = null
 }
 
+function clearError(): void {
+  lastError.value = null
+}
+
 export function useAiOptimize() {
   // Lazy first-load. Subsequent callers get the cached value
   // immediately; available will flip when refreshStatus resolves.
@@ -198,6 +202,7 @@ export function useAiOptimize() {
     retry,
     accept,
     reject,
+    clearError,
     refreshStatus,
   }
 }
