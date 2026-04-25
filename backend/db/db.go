@@ -3564,6 +3564,40 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(day)`,
 		`ALTER TABLE users ADD COLUMN ai_cap_override_tokens INTEGER`,
 	}},
+
+	// PAI-175: AI prompt CRUD. Each AI action's prompt template is
+	// admin-editable through Settings → AI. Built-in actions are
+	// code-defined (label / surface / parent / sub locked) but their
+	// prompt text is overridable via a row in this table. Custom
+	// actions are also stored here with `is_builtin = 0`.
+	//
+	// Schema notes:
+	//   - `key` is the action key the dispatcher resolves at request
+	//     time. Built-in keys mirror the registered actions
+	//     (PAI-164–172, PAI-173).
+	//   - `prompt_template` is the admin-edited override. Empty
+	//     string means "use the code-defined default" — keeps the
+	//     reset-to-default path trivial.
+	//   - `default_template_hash` is reserved for the change-detection
+	//     UI from PAI-176 ("default has shipped a change — review");
+	//     populated by handlers when seeding builtins.
+	{78, []string{
+		`CREATE TABLE IF NOT EXISTS ai_prompts (
+			id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+			key                   TEXT NOT NULL UNIQUE,
+			label                 TEXT NOT NULL,
+			surface               TEXT NOT NULL,
+			parent_action         TEXT,
+			sub_action            TEXT,
+			prompt_template       TEXT NOT NULL DEFAULT '',
+			enabled               INTEGER NOT NULL DEFAULT 1,
+			is_builtin            INTEGER NOT NULL DEFAULT 0,
+			default_template_hash TEXT NOT NULL DEFAULT '',
+			created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_prompts_surface ON ai_prompts(surface)`,
+	}},
 	}
 
 	for _, m := range migrations {

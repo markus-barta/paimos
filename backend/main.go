@@ -369,6 +369,15 @@ func main() {
 			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
 			// PAI-161: per-user usage summary for the admin dashboard.
 			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+			// PAI-175 / PAI-176 / PAI-177: prompt CRUD + dry-run.
+			// Admin-only. The list endpoint lazily seeds built-in
+			// rows so a fresh install never sees an empty list.
+			r.With(auth.RequireAdmin).Get("/ai/prompts", handlers.AIListPrompts)
+			r.With(auth.RequireAdmin).Post("/ai/prompts", handlers.AICreatePrompt)
+			r.With(auth.RequireAdmin).Put("/ai/prompts/{id}", handlers.AIUpdatePrompt)
+			r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
+			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
+			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
 			r.Get("/ai/status", handlers.AIStatus)
 			// PAI-164: legacy /api/ai/optimize endpoint retired —
 			// the optimize behaviour now lives behind /api/ai/action
