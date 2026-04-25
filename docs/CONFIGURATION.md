@@ -39,16 +39,79 @@ All are optional; defaults produce "PAIMOS" out of the box.
 
 ## Email (SMTP — optional)
 
-When `SMTP_HOST` is unset, password-reset emails are logged to stdout
-instead of sent. This is the default dev-mode behavior and is safe for
-running PAIMOS without any email infrastructure.
+PAIMOS only sends password-reset emails when `SMTP_HOST` is set. With
+SMTP unconfigured the reset endpoint refuses to send and logs a
+misconfiguration warning — your users will see "If an account with
+that email exists, a reset link has been sent" but no link will reach
+them. To run a true local-dev flow without an SMTP server, also set
+`PAIMOS_DEV_MODE=true`; this prints the reset link to stdout so a
+developer can paste it into the browser. Never set `PAIMOS_DEV_MODE`
+in shared staging or production — the link is a one-shot password
+reset and anyone with log access can use it (PAI-115).
 
 | Var | Default | Notes |
 |---|---|---|
-| `SMTP_HOST` | *(unset)* | Unset = dev mode. Set to enable real sending. |
+| `SMTP_HOST` | *(unset)* | Unset = no email sent. Set to enable real sending. |
 | `SMTP_PORT` | `587` | STARTTLS submission port |
 | `SMTP_USER` | *(empty)* | Leave blank for unauthenticated relay |
 | `SMTP_PASS` | *(empty)* | Pair with `SMTP_USER` |
+| `PAIMOS_DEV_MODE` | *(unset)* | When `true` AND `SMTP_HOST` unset, log reset links to stdout. Local dev only. |
+
+## Single Sign-On (OpenID Connect — PAI-120)
+
+PAIMOS supports a single OIDC provider end-to-end with PKCE and JIT
+user provisioning. The flow is hidden from the login page until all
+three required vars are set; once configured, the SPA renders an
+"SSO" button alongside the password form.
+
+| Var | Default | Notes |
+|---|---|---|
+| `OIDC_ISSUER_URL` | *(unset)* | Required. e.g. `https://login.example.com` (no trailing slash). The discovery doc must be reachable at `${OIDC_ISSUER_URL}/.well-known/openid-configuration`. |
+| `OIDC_CLIENT_ID` | *(unset)* | Required. |
+| `OIDC_CLIENT_SECRET` | *(unset)* | Optional for public clients (PKCE-only); required for confidential clients. |
+| `OIDC_REDIRECT_URL` | *(unset)* | Required. Must exactly match the IdP-registered redirect (e.g. `https://paimos.example.com/api/auth/oidc/callback`). |
+| `OIDC_SCOPES` | `openid email profile` | Space-separated. |
+| `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Shown on the login page. |
+| `OIDC_POST_LOGIN_REDIRECT` | `/` | SPA path to land on after a successful SSO login. |
+
+JIT provisioning rules:
+- A returning user is matched by case-insensitive email.
+- A new user is created with role `member`, status `active`, no password,
+  username derived from `preferred_username` (or the email local-part),
+  with a random suffix on collision.
+- An OIDC user with no verified email is refused — operators who run
+  IdPs that omit `email_verified` should set the claim to `true` on the
+  IdP side or the redirect lands on `/login?sso_error=email_required`.
+
+The id_token signature is not verified locally; trust comes from the
+TLS-protected userinfo round trip back to the issuer. This trade-off
+keeps the dependency surface small. JWKS-based id_token verification
+is a follow-on if a future deployment requires it.
+
+## Audit & retention (PAI-116 / PAI-117)
+
+The session-mutation audit is on by default for NIS2 readiness. Set
+`PAIMOS_AUDIT_SESSIONS=false` (or `0`) to opt out — primarily useful in
+sandbox or local-dev runs where the noise is unwanted. The retention
+sweeper runs every 24 hours and trims rows older than the configured
+window for each class. Tune any variable below; defaults are the
+"careful operator" baseline, not regulator maxima.
+
+| Var | Default | Notes |
+|---|---|---|
+| `PAIMOS_AUDIT_SESSIONS` | `true` | Set `false`/`0` to disable the session-mutation audit middleware. |
+| `PAIMOS_RETENTION_DAYS_SESSIONS` | `30` | Sessions are also auto-expired by their own `expires_at`; this is the cleanup floor. |
+| `PAIMOS_RETENTION_DAYS_RESET_TOKENS` | `7` | Password-reset tokens are single-use; this caps the audit trail. |
+| `PAIMOS_RETENTION_DAYS_ACCESS_AUDIT` | `365` | Project membership-change audit log. |
+| `PAIMOS_RETENTION_DAYS_SESSION_ACTIVITY` | `90` | Per-mutation session activity rows. |
+| `PAIMOS_RETENTION_DAYS_INCIDENT_CLOSED` | `730` | Closed incidents only — open/investigating/resolved are kept until closed. |
+| `PAIMOS_RETENTION_DAYS_TOTP_PENDING_MIN` | `60` | Pending TOTP tokens; minutes, not days. |
+
+Per-subject GDPR endpoints (admin only):
+
+- `GET  /api/users/{id}/gdpr-export` — JSON dump of every row referencing the user.
+- `POST /api/users/{id}/gdpr-erase`  — replaces PII with placeholders, drops sessions/keys, sets `status='deleted'`.
+- `GET  /api/gdpr/retention`         — current retention policy (introspection).
 
 ## Attachments (MinIO / S3 — optional)
 

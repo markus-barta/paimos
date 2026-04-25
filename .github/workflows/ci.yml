@@ -16,6 +16,10 @@ on:
 permissions:
   contents: read
   packages: write
+  # PAI-121: keyless signing via GitHub's OIDC token + sigstore. The
+  # cosign step on tag pushes signs the published image and attaches
+  # the CycloneDX SBOMs as attestations.
+  id-token: write
 
 jobs:
   test:
@@ -87,9 +91,61 @@ jobs:
             type=sha,format=short
 
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # PAI-121: SBOM + signed release. Run only on tag pushes — main
+      # builds keep the existing latest/sha tags untouched, and the
+      # heavy work (cyclonedx + cosign + sigstore) only runs when a
+      # real release is being cut.
+      - name: SBOM — Go (cyclonedx-gomod)
+        if: github.ref_type == 'tag'
+        working-directory: backend
+        run: |
+          # Run via `go run` so we don't depend on a third-party
+          # GitHub Action; matches what scripts/sbom.sh does locally.
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest \
+            app -licenses -json -output ../backend.sbom.json -main .
+      - name: SBOM — npm (cyclonedx-npm)
+        if: github.ref_type == 'tag'
+        working-directory: frontend
+        run: |
+          npm ci
+          npx --yes @cyclonedx/cyclonedx-npm \
+            --output-format JSON --output-file ../frontend.sbom.json
+      - name: Upload SBOMs to release artifacts
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.ref_name }}
+          path: |
+            backend.sbom.json
+            frontend.sbom.json
+      - uses: sigstore/cosign-installer@v3
+        if: github.ref_type == 'tag'
+      - name: Cosign — sign image (keyless via GitHub OIDC)
+        if: github.ref_type == 'tag'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          # Sign every meta tag we just pushed by digest so the
+          # signature pins the immutable manifest, not a moving label.
+          for tag in $(echo "${{ steps.meta.outputs.tags }}"); do
+            cosign sign --yes "$tag@$DIGEST"
+          done
+      - name: Cosign — attach SBOM attestations
+        if: github.ref_type == 'tag'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          cosign attest --yes --predicate backend.sbom.json \
+            --type cyclonedx "$IMAGE@$DIGEST"
+          cosign attest --yes --predicate frontend.sbom.json \
+            --type cyclonedx "$IMAGE@$DIGEST"

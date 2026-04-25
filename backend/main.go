@@ -53,10 +53,18 @@ func main() {
 		log.Printf("MinIO connected: bucket=%s", storage.Bucket)
 	}
 
+	// PAI-117: GDPR retention sweeper. Idempotent — first sweep runs
+	// after a 30-second warm-up so a cold start stays quiet.
+	handlers.StartRetentionSweeper()
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+	// PAI-114: baseline security headers on every response. Non-breaking
+	// (X-Frame-Options=SAMEORIGIN keeps the in-app PDF preview iframes
+	// working, CSP runs in Report-Only mode until PAI-118 lands).
+	r.Use(handlers.SecurityHeaders)
 	// PAI-97: session-scoped mutation audit. No-op unless
 	// PAIMOS_AUDIT_SESSIONS=true is set — off by default in v1.
 	r.Use(handlers.SessionAuditMiddleware)
@@ -74,10 +82,23 @@ func main() {
 		r.Get("/health", healthHandler)                // (a) Docker + CI
 		r.Get("/branding", handlers.GetBranding)       // (b) login page logo + colors
 		r.Get("/schema", handlers.GetAPISchema)        // (c) CLI / MCP discovery (PAI-87)
+		// PAI-119: published OpenAPI 3.1 contract. Public so external
+		// clients can discover the API without an account.
+		r.Get("/openapi.json", handlers.GetOpenAPI)
+		// PAI-114: CSP violation reports. Browser-driven, unauthenticated.
+		r.Post("/csp-report", handlers.CSPReport)
 
 		// Auth (public — no session possible yet)
 		r.Post("/auth/login", auth.LoginHandler)
 		r.Post("/auth/totp/verify", auth.TOTPVerify)
+
+		// PAI-120: OpenID Connect SSO. Status is always reachable so the
+		// SPA can decide whether to render the SSO button; login starts
+		// the flow and callback completes it. All three are public — no
+		// session can exist before the IdP redirects the user back.
+		r.Get("/auth/oidc/status", auth.OIDCStatus)
+		r.Get("/auth/oidc/login", auth.OIDCLogin)
+		r.Get("/auth/oidc/callback", auth.OIDCCallback)
 
 		// Forgot / reset password — all three must stay public since a
 		// user who has forgotten their password has no session cookie.
@@ -88,6 +109,7 @@ func main() {
 		// Auth (authenticated but open to all roles, including external)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.CSRFMiddleware) // PAI-113
 
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
@@ -120,6 +142,7 @@ func main() {
 		// Portal (external + admin)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.CSRFMiddleware) // PAI-113
 			r.Use(auth.RequirePortalAccess)
 
 			r.Get("/portal/projects", handlers.PortalListProjects)
@@ -138,6 +161,7 @@ func main() {
 		// Internal (admin + member; blocked for external)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.CSRFMiddleware) // PAI-113
 			r.Use(auth.BlockExternal)
 
 			// Projects
@@ -253,6 +277,13 @@ func main() {
 			r.With(auth.RequireAdmin).Delete("/users/{id}", handlers.DeleteUser)
 			r.With(auth.RequireAdmin).Post("/users/{id}/reset-totp", handlers.ResetUserTOTP)
 
+			// PAI-117: per-subject GDPR ops. Export streams every row that
+			// references the user; erase replaces PII with a placeholder
+			// instead of cascade-deleting historical project data.
+			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
+			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
+			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+
 			// User project access (admin only). The legacy /users/{id}/projects
 			// endpoints drive the external-portal grants page; the new
 			// /users/{id}/memberships endpoints drive the full matrix editor
@@ -270,6 +301,16 @@ func main() {
 
 			// Access-change audit log (admin only).
 			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
+
+			// Incident log (PAI-116). Admin-only CRUD + JSON/CSV export
+			// for SIEM ingestion. Export route is registered before
+			// /incidents/{id} so the literal path wins the chi match.
+			r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)
+			r.With(auth.RequireAdmin).Get("/incidents", handlers.ListIncidents)
+			r.With(auth.RequireAdmin).Post("/incidents", handlers.CreateIncident)
+			r.With(auth.RequireAdmin).Get("/incidents/{id}", handlers.GetIncident)
+			r.With(auth.RequireAdmin).Patch("/incidents/{id}", handlers.UpdateIncident)
+			r.With(auth.RequireAdmin).Delete("/incidents/{id}", handlers.DeleteIncident)
 
 			// Session-scoped mutation audit (PAI-97). Admin only. Returns
 			// the mutations recorded under a session, keyset-paginated by

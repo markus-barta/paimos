@@ -6,10 +6,10 @@
     <title>PAIMOS</title>
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
-    <!-- Accruals report fonts — scoped to .accruals-zone -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <!-- PAI-118: fonts are bundled via @fontsource in src/main.ts so the
+         SPA never makes a runtime request to fonts.googleapis.com /
+         fonts.gstatic.com. Air-gap and zero-tracking deployments work
+         without any further configuration. -->
   </head>
   <body>
     <div id="app"></div>

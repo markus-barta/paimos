@@ -79,6 +79,11 @@ if [[ -n "$(git log HEAD..origin/main 2>/dev/null || true)" ]]; then
   exit 1
 fi
 
+# PAI-123: claim/evidence gate. Refuses to cut a release if any
+# `aspirational` row in docs/claim-matrix.md lacks a follow-on ticket.
+# Bypass (with reason in the commit message): scripts/check-claims.sh --yolo
+"$ROOT/scripts/check-claims.sh"
+
 echo "Bumping $LAST_TAG → $NEW_TAG"
 TODAY=$(date -u +%Y-%m-%d)
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { useRouter, RouterLink } from 'vue-router'
+import { ref, watch, computed, onMounted } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ApiError, api } from '@/api/client'
 import { useBranding } from '@/composables/useBranding'
@@ -9,8 +9,41 @@ import AppIcon from '@/components/AppIcon.vue'
 
 const { branding } = useBranding()
 const { bgColor, patternColor } = useSidebarColors()
+const route = useRoute()
 
 const version = __APP_VERSION__
+
+// PAI-120: SSO probe. The button only appears once /api/auth/oidc/status
+// reports enabled=true, so an instance with no IdP configured looks
+// identical to today.
+const ssoEnabled = ref(false)
+const ssoLabel = ref('Sign in with SSO')
+onMounted(async () => {
+  try {
+    const r = await api.get<{ enabled: boolean; label: string }>('/auth/oidc/status')
+    ssoEnabled.value = r.enabled
+    if (r.label) ssoLabel.value = r.label
+  } catch {
+    /* no-op — SSO simply stays hidden */
+  }
+})
+
+const ssoError = computed(() => {
+  const e = route.query.sso_error
+  if (!e) return ''
+  const code = Array.isArray(e) ? e[0] : e
+  switch (code) {
+    case 'bad_state':
+    case 'missing_verifier':
+      return 'SSO handshake expired — please try again.'
+    case 'email_required':
+      return 'SSO did not return a verified email; sign in with a password instead.'
+    case 'not_configured':
+      return 'SSO is not configured on this server.'
+    default:
+      return 'SSO sign-in failed. Please try again.'
+  }
+})
 
 const hexPatternSvg = computed(() => {
   const c = patternColor.value.replace(/#/g, '%23')
@@ -124,9 +157,13 @@ function backToLogin() {
           />
         </div>
         <div v-if="error" class="login-error">{{ error }}</div>
+        <div v-else-if="ssoError" class="login-error">{{ ssoError }}</div>
         <button type="submit" class="btn btn-primary login-btn" :disabled="loading">
           {{ loading ? 'Signing in…' : 'Sign in' }}
         </button>
+        <a v-if="ssoEnabled" href="/api/auth/oidc/login" class="btn btn-ghost login-btn login-sso-btn">
+          {{ ssoLabel }}
+        </a>
         <RouterLink to="/forgot" class="login-forgot-link">Forgot password?</RouterLink>
       </form>
 
@@ -239,6 +276,7 @@ function backToLogin() {
 }
 
 .login-btn { width: 100%; justify-content: center; padding: .65rem; font-size: 14px; margin-top: .25rem; }
+.login-sso-btn { display: inline-flex; align-items: center; text-decoration: none; }
 .login-btn-back { width: 100%; justify-content: center; font-size: 12px; color: var(--text-muted); margin-top: .25rem; }
 .login-forgot-link {
   align-self: center;

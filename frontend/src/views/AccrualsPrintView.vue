@@ -185,7 +185,9 @@ function closeWindow() {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* PAI-118: fonts are bundled via @fontsource in src/main.ts. Importing
+   the CSS again here is unnecessary because the @font-face rules are
+   already global by the time this view mounts. */
 
 /* Local cool palette + accent variable from the theming engine */
 .broadsheet {

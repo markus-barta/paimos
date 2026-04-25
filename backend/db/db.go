@@ -3400,6 +3400,40 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_project_cooperation_project
 		 ON project_cooperation(project_id)`,
 	}},
+
+	// M72: per-session CSRF token (PAI-113). Bound to the session so
+	// rotation happens automatically on logout/reset. Existing sessions
+	// keep an empty token until the next sessionUser() call upgrades them
+	// — see auth.Middleware for the lazy-issue path.
+	{72, []string{
+		`ALTER TABLE sessions ADD COLUMN csrf_token TEXT NOT NULL DEFAULT ''`,
+	}},
+
+	// M73: incident_log for first-class operator-recorded security and
+	// availability incidents (PAI-116). Intentionally minimal — admins
+	// can insert/update/close rows; export endpoints stream the table to
+	// JSON or CSV for SIEM ingestion. severity / status are CHECK-bounded
+	// so the API layer can rely on them without re-validating.
+	{73, []string{
+		`CREATE TABLE IF NOT EXISTS incident_log (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			severity        TEXT NOT NULL
+			                CHECK(severity IN ('low','medium','high','critical')),
+			kind            TEXT NOT NULL DEFAULT 'other',
+			title           TEXT NOT NULL,
+			summary         TEXT NOT NULL DEFAULT '',
+			details         TEXT NOT NULL DEFAULT '',
+			reported_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			status          TEXT NOT NULL DEFAULT 'open'
+			                CHECK(status IN ('open','investigating','resolved','closed')),
+			detected_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			resolved_at     TEXT,
+			created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_incident_log_status ON incident_log(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_incident_log_detected_at ON incident_log(detected_at)`,
+	}},
 	}
 
 	for _, m := range migrations {

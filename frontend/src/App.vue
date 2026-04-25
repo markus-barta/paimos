@@ -54,7 +54,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+/* PAI-118: DM Sans is bundled via @fontsource in src/main.ts. */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

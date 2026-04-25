@@ -283,6 +283,10 @@ func TOTPVerify(w http.ResponseWriter, r *http.Request) {
 		Secure:   cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	// PAI-113: bind a fresh CSRF token to the new session.
+	if _, err := IssueCSRFForSession(w, sid); err != nil {
+		log.Printf("TOTPVerify: issue csrf token: %v", err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MeResponse{

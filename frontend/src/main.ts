@@ -24,6 +24,22 @@ import { vAutoGrow } from '@/directives/autoGrow'
 import { useBranding } from '@/composables/useBranding'
 import { syncSidebarWithBranding } from '@/composables/useSidebarColors'
 
+// PAI-118: bundle fonts at build time so the SPA never makes a runtime
+// request to fonts.googleapis.com / fonts.gstatic.com. Each weight is a
+// separate import so Vite can drop unused weights from the bundle.
+import '@fontsource/bricolage-grotesque/400.css'
+import '@fontsource/bricolage-grotesque/500.css'
+import '@fontsource/bricolage-grotesque/600.css'
+import '@fontsource/bricolage-grotesque/700.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/500.css'
+import '@fontsource/jetbrains-mono/600.css'
+import '@fontsource/dm-sans/300.css'
+import '@fontsource/dm-sans/400.css'
+import '@fontsource/dm-sans/500.css'
+import '@fontsource/dm-sans/600.css'
+import '@fontsource/dm-sans/700.css'
+
 // Load branding config before mounting so CSS vars and title are set early
 const { init: initBranding } = useBranding()
 initBranding().then(() => {

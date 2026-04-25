@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { api, errMsg } from '@/api/client'
+import { api, csrfHeaders, errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
@@ -70,7 +70,7 @@ async function uploadAvatar(e: Event) {
   const fd = new FormData()
   fd.append('avatar', file)
   try {
-    const res = await fetch('/api/auth/avatar', { method: 'POST', body: fd, credentials: 'same-origin' })
+    const res = await fetch('/api/auth/avatar', { method: 'POST', body: fd, credentials: 'same-origin', headers: csrfHeaders() })
     if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Upload failed.') }
     await auth.refreshMe()
   } catch (e: unknown) {
