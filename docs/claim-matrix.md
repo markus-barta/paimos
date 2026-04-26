@@ -27,7 +27,9 @@ without an open follow-on ticket.
 | Zero tracking: no analytics, no 3rd-party JS, no telemetry | shipped | no analytics/telemetry libs; fonts bundled via `@fontsource` (PAI-118); CSP-Report-Only is fully self-only (PAI-114) | — |
 | Open API: REST + OpenAPI spec; scriptable from day one | shipped | `/api/openapi.json` (PAI-119), `/api/schema` (PAI-87), `paimos` CLI | — |
 | SBOM · CycloneDX manifest of every dependency, published with each release | shipped | CI tag-push generates `backend.sbom.json` + `frontend.sbom.json`, signs the image keylessly via cosign + GitHub OIDC, attaches each SBOM as a cosign attestation (PAI-121); `just sbom` for local generation | — |
-| Local AI-ready integrates with Ollama, LM Studio, vLLM, llama.cpp | aspirational → wording rolled back | not implemented in code; copy change recommended in `docs/website-claims-rollback.md` (PAI-122) | PAI-122 (close once paimos.com updated) |
+| Code-aware agents · structured project facts agents can read (linked repos, manifests, issue-to-file anchors, mixed-context retrieval) | shipped | `/api/projects/{id}/{repos,manifest,anchors,graph,retrieve}` + `/api/issues/{id}/anchors` documented in `docs/AGENT_INTEGRATION.md` §1a and `docs/api-minimal.md` § Agent Context (PAI-29 / PAI-30, contract-promoted in v2.0.0) | — |
+| Built-in AI assist · in-app prose optimize, translate, spec-out, suggest-enhancement, sub-task generation; admin-tunable, audit-clean | shipped | 11 actions registered via `POST /api/ai/action` dispatcher; admin-tunable prompts via `/api/ai/prompts` CRUD; daily token cap (`PAIMOS_AI_DAILY_CAP_TOKENS`); audit invariant — bodies never logged (PAI-146 / PAI-159 → PAI-183, see `docs/CONFIGURATION.md` § AI assist) | — |
+| Local AI roadmap; designed to run alongside Ollama / LM Studio / vLLM / llama.cpp, not in today's build | shipped (rolled back) | paimos.com `/03 / specs` badge re-worded per `docs/website-claims-rollback.md` (PAI-122) — public copy now matches what the audited build ships | — |
 
 ## Where the security defects from the 2026-04-24 audit landed
 

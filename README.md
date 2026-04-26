@@ -48,7 +48,24 @@ port, backed by SQLite. Docker up, browser open, done.
 
 ## Highlights
 
-- **Agent-native toolchain (new).** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
+- **Project Context for code-aware agents (new in v2.0).** A
+  structured surface above tickets: linked `repos`, project
+  `manifests` (stack, commands, services, owners, NFRs, ADRs),
+  issue→file `anchors`, a typed entity `graph`, and a mixed-context
+  `retrieve` API. Agents stop grepping six issues to figure out
+  which repo to clone and where the work actually lives. See
+  [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
+  and the route group in [`api-minimal.md`](docs/api-minimal.md#agent-context).
+- **In-app AI assist.** Eleven admin-tunable text actions —
+  optimize · translate · spec-out · suggest-enhancement (six sub-actions)
+  · find parent · generate sub-tasks · estimate effort · detect
+  duplicates · UI generation · tone check — across textareas and
+  issue-level menus. Live model picker (frontier / value / fastest /
+  cheapest / open-weights / free) backed by OpenRouter. Per-user
+  daily token cap with admin-override header. Audit lines are
+  metadata-only — prompt and response bodies are never logged. See
+  [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
+- **Agent-native toolchain.** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
   [`paimos-mcp`](docs/AGENT_INTERFACE.md#6-mcp-integration) facade for
   Claude Desktop and friends. File-first multi-line inputs, `--dry-run`,
   `--json`, idempotent transitions, declarative YAML `apply` — no more
@@ -419,6 +436,19 @@ obligation.
 <details>
 <summary>API surface (route groups)</summary>
 
+- **Agent Context (new in v2.0)**: per-project `/api/projects/{id}/repos`
+  (CRUD), `/api/projects/{id}/manifest` (GET/PUT structured project
+  facts), `/api/projects/{id}/anchors` (POST bulk-ingest of issue→file
+  locations), `/api/projects/{id}/graph` (typed entity graph
+  traversal), `/api/projects/{id}/retrieve` (mixed-context query),
+  plus per-issue `/api/issues/{id}/anchors`
+- **AI assist**: `POST /api/ai/action` (unified action dispatcher),
+  `GET /api/ai/actions` (catalogue), `GET /api/ai/models`
+  (server-cached vendor-diverse picks), `GET /api/ai/usage`
+  (per-user daily token totals), full CRUD on `/api/ai/prompts`
+  with `/{id}/dry-run` and `/{id}/reset`, `POST /api/ai/test`
+  (smoke test the configured provider/model). Admin-only;
+  audit lines are metadata-only
 - **Schema discovery**: `GET /api/schema` — versioned enums,
   transitions, entity shapes, conventions. Public, strong-ETagged,
   `Cache-Control: public, max-age=300`
