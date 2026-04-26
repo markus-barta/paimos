@@ -37,13 +37,30 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	})
 	assertStatus(t, issueResp, http.StatusCreated)
 	var issue struct {
+		ID       int64  `json:"id"`
 		IssueKey string `json:"issue_key"`
 	}
 	decode(t, issueResp, &issue)
 
+	relatedResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/issues", ts.adminCookie, map[string]any{
+		"title": "Neighbor issue",
+		"type":  "ticket",
+	})
+	assertStatus(t, relatedResp, http.StatusCreated)
+	var related struct {
+		ID int64 `json:"id"`
+	}
+	decode(t, relatedResp, &related)
+
+	linkResp := ts.post(t, "/api/issues/"+strconv.FormatInt(issue.ID, 10)+"/relations", ts.adminCookie, map[string]any{
+		"target_id": related.ID,
+		"type":      "related",
+	})
+	assertStatus(t, linkResp, http.StatusCreated)
+
 	manifestResp := ts.put(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/manifest", ts.adminCookie, map[string]any{
 		"data": map[string]any{
-			"stack": map[string]any{"languages": []string{"Go", "TypeScript"}},
+			"stack":    map[string]any{"languages": []string{"Go", "TypeScript"}},
 			"commands": map[string]any{"build": "make build", "test": "make test"},
 		},
 	})
@@ -76,6 +93,17 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 		t.Fatalf("deep_link missing: %#v", anchors[0])
 	}
 
+	graphResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/graph?root=issue:"+strconv.FormatInt(issue.ID, 10)+"&depth=2", ts.adminCookie)
+	assertStatus(t, graphResp, http.StatusOK)
+	var graph struct {
+		Nodes []map[string]any `json:"nodes"`
+		Edges []map[string]any `json:"edges"`
+	}
+	decode(t, graphResp, &graph)
+	if len(graph.Edges) < 3 {
+		t.Fatalf("graph edges: got %d want at least 3", len(graph.Edges))
+	}
+
 	retrieveResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
 		"q": "Anchored",
 		"k": 10,
@@ -87,5 +115,15 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	decode(t, retrieveResp, &retrieve)
 	if len(retrieve.Hits) == 0 {
 		t.Fatalf("retrieve hits empty")
+	}
+	foundExpanded := false
+	for _, hit := range retrieve.Hits {
+		if hit["expanded_from"] != nil {
+			foundExpanded = true
+			break
+		}
+	}
+	if !foundExpanded {
+		t.Fatalf("retrieve missing expanded graph hit: %#v", retrieve.Hits)
 	}
 }

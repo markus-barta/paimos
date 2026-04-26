@@ -807,6 +807,7 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 			); err != nil {
 				log.Printf("JiraImport: insert relation id=%d linked=%d type=%s: %v", issueID, linkedID, relationType, err)
 			}
+			upsertIssueEntityRelation(issueID, linkedID, relationType)
 		}
 	}
 

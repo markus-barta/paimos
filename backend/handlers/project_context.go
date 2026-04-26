@@ -152,6 +152,7 @@ func DeleteProjectRepo(w http.ResponseWriter, r *http.Request) {
 	}
 	var projectID int64
 	_ = db.DB.QueryRow(`SELECT project_id FROM project_repos WHERE id=?`, repoID).Scan(&projectID)
+	deleteAnchorEntityRelationsByRepo(repoID)
 	res, err := db.DB.Exec(`DELETE FROM project_repos WHERE id=?`, repoID)
 	if err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
@@ -198,12 +199,12 @@ func IngestProjectAnchors(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 	type row struct {
-		IssueID     int64
-		FilePath    string
-		Line        int
-		Label       string
-		Confidence  string
-		SymbolJSON  string
+		IssueID    int64
+		FilePath   string
+		Line       int
+		Label      string
+		Confidence string
+		SymbolJSON string
 	}
 	var inserts []row
 	for issueKey, anchors := range body.Anchors {
@@ -291,11 +292,11 @@ func IngestProjectAnchors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]any{
-		"repo_id": body.RepoID,
-		"replaced": len(inserts),
-		"generated_at": body.GeneratedAt,
+		"repo_id":        body.RepoID,
+		"replaced":       len(inserts),
+		"generated_at":   body.GeneratedAt,
 		"schema_version": body.SchemaVersion,
-		"repo_revision": body.RepoRevision,
+		"repo_revision":  body.RepoRevision,
 	})
 }
 
@@ -446,44 +447,17 @@ func ListProjectEntityRelations(w http.ResponseWriter, r *http.Request) {
 			depth = n
 		}
 	}
-	_ = depth // reserved for future BFS expansion; current v1 graph is edge-local.
-
-	query := `
-		SELECT id, project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at
-		FROM entity_relations
-		WHERE project_id = ?
-	`
-	args := []any{projectID}
-	if root != "" {
-		parts := strings.SplitN(root, ":", 2)
-		if len(parts) != 2 {
+	out, err := fetchEntityGraph(projectID, root, depth)
+	if err != nil {
+		if err == errInvalidRoot {
 			jsonError(w, "invalid root", http.StatusBadRequest)
 			return
 		}
-		rootID, err := strconv.ParseInt(parts[1], 10, 64)
-		if err != nil {
-			jsonError(w, "invalid root id", http.StatusBadRequest)
-			return
-		}
-		query += ` AND ((source_type=? AND source_id=?) OR (target_type=? AND target_id=?))`
-		args = append(args, parts[0], rootID, parts[0], rootID)
-	}
-	query += ` ORDER BY id ASC LIMIT 500`
-	rows, err := db.DB.Query(query, args...)
-	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-	out := []models.EntityRelation{}
 	nodeSet := map[string]map[string]any{}
-	for rows.Next() {
-		var rel models.EntityRelation
-		if err := rows.Scan(&rel.ID, &rel.ProjectID, &rel.SourceType, &rel.SourceID, &rel.TargetType, &rel.TargetID, &rel.EdgeType, &rel.Confidence, &rel.Metadata, &rel.CreatedAt); err != nil {
-			jsonError(w, "scan failed", http.StatusInternalServerError)
-			return
-		}
-		out = append(out, rel)
+	for _, rel := range out {
 		nodeSet[nodeKey(rel.SourceType, rel.SourceID)] = resolveEntityNode(rel.SourceType, rel.SourceID)
 		nodeSet[nodeKey(rel.TargetType, rel.TargetID)] = resolveEntityNode(rel.TargetType, rel.TargetID)
 	}
@@ -517,7 +491,7 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 		body.K = 20
 	}
 	like := "%" + q + "%"
-	hits := []map[string]any{}
+	issueHits := []map[string]any{}
 	rows, err := db.DB.Query(`
 		SELECT i.id, i.title, p.key, i.issue_number
 		FROM issues i
@@ -534,18 +508,31 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 			var title, key string
 			var num int
 			if err := rows.Scan(&id, &title, &key, &num); err == nil {
-				hits = append(hits, map[string]any{
-					"entity_type": "issue",
-					"entity_id": id,
-					"title": title,
-					"snippet": title,
-					"score": nil,
-					"sources": []string{"bm25"},
+				issueHits = append(issueHits, map[string]any{
+					"entity_type":   "issue",
+					"entity_id":     id,
+					"title":         title,
+					"snippet":       title,
+					"score":         nil,
+					"sources":       []string{"bm25"},
 					"expanded_from": nil,
-					"issue_key": fmt.Sprintf("%s-%d", key, num),
+					"issue_key":     fmt.Sprintf("%s-%d", key, num),
 				})
 			}
 		}
+	}
+	hits := make([]map[string]any, 0, body.K)
+	seen := map[string]bool{}
+	addHit := func(hit map[string]any) {
+		key := fmt.Sprintf("%v:%v", hit["entity_type"], hit["entity_id"])
+		if seen[key] || len(hits) >= body.K {
+			return
+		}
+		seen[key] = true
+		hits = append(hits, hit)
+	}
+	for _, hit := range issueHits {
+		addHit(hit)
 	}
 	anchorRows, err := db.DB.Query(`
 		SELECT a.id, a.file_path, a.line, a.label, COALESCE(pr.label,''), pr.url
@@ -562,30 +549,41 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 			var filePath, label, repoLabel, repoURL string
 			var line int
 			if err := anchorRows.Scan(&id, &filePath, &line, &label, &repoLabel, &repoURL); err == nil {
-				hits = append(hits, map[string]any{
-					"entity_type": "anchor",
-					"entity_id": id,
-					"title": defaultString(label, filePath),
-					"snippet": fmt.Sprintf("%s:%d", filePath, line),
-					"score": nil,
-					"sources": []string{"bm25"},
+				addHit(map[string]any{
+					"entity_type":   "anchor",
+					"entity_id":     id,
+					"title":         defaultString(label, filePath),
+					"snippet":       fmt.Sprintf("%s:%d", filePath, line),
+					"score":         nil,
+					"sources":       []string{"bm25"},
 					"expanded_from": nil,
-					"repo_label": defaultString(repoLabel, deriveRepoLabel(repoURL)),
+					"repo_label":    defaultString(repoLabel, deriveRepoLabel(repoURL)),
 				})
 			}
 		}
 	}
 	var manifestRaw string
 	if err := db.DB.QueryRow(`SELECT manifest_json FROM project_manifests WHERE project_id=?`, projectID).Scan(&manifestRaw); err == nil && strings.Contains(strings.ToLower(manifestRaw), strings.ToLower(q)) {
-		hits = append(hits, map[string]any{
-			"entity_type": "manifest",
-			"entity_id": projectID,
-			"title": "Project manifest",
-			"snippet": "Structured project context",
-			"score": nil,
-			"sources": []string{"bm25"},
+		addHit(map[string]any{
+			"entity_type":   "manifest",
+			"entity_id":     projectID,
+			"title":         "Project manifest",
+			"snippet":       "Structured project context",
+			"score":         nil,
+			"sources":       []string{"bm25"},
 			"expanded_from": nil,
 		})
+	}
+	for _, hit := range issueHits {
+		issueID, _ := hit["entity_id"].(int64)
+		for _, expanded := range expandContextNeighbors(projectID, "issue", issueID) {
+			expanded["expanded_from"] = map[string]any{
+				"entity_type": "issue",
+				"entity_id":   issueID,
+				"title":       hit["title"],
+			}
+			addHit(expanded)
+		}
 	}
 	jsonOK(w, map[string]any{"hits": hits})
 }
@@ -681,6 +679,13 @@ func upsertEntityRelation(projectID int64, sourceType string, sourceID int64, ta
 	`, projectID, sourceType, sourceID, targetType, targetID, edgeType, confidence, metadata)
 }
 
+func deleteEntityRelation(projectID int64, sourceType string, sourceID int64, targetType string, targetID int64, edgeType string) {
+	_, _ = db.DB.Exec(`
+		DELETE FROM entity_relations
+		WHERE project_id=? AND source_type=? AND source_id=? AND target_type=? AND target_id=? AND edge_type=?
+	`, projectID, sourceType, sourceID, targetType, targetID, edgeType)
+}
+
 func upsertManifestContextRelations(projectID int64, data any) {
 	obj, ok := data.(map[string]any)
 	if !ok {
@@ -728,4 +733,195 @@ func resolveEntityNode(typ string, id int64) map[string]any {
 		}
 	}
 	return node
+}
+
+var errInvalidRoot = fmt.Errorf("invalid root")
+
+func fetchEntityGraph(projectID int64, root string, depth int) ([]models.EntityRelation, error) {
+	if root == "" {
+		return queryEntityRelations(`
+			SELECT id, project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at
+			FROM entity_relations
+			WHERE project_id = ?
+			ORDER BY id ASC
+			LIMIT 500
+		`, projectID)
+	}
+	parts := strings.SplitN(root, ":", 2)
+	if len(parts) != 2 {
+		return nil, errInvalidRoot
+	}
+	rootID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || rootID <= 0 {
+		return nil, errInvalidRoot
+	}
+	type queueItem struct {
+		typ   string
+		id    int64
+		depth int
+	}
+	queue := []queueItem{{typ: parts[0], id: rootID, depth: 0}}
+	visitedNodes := map[string]bool{nodeKey(parts[0], rootID): true}
+	visitedEdges := map[int64]bool{}
+	out := make([]models.EntityRelation, 0, 32)
+	for len(queue) > 0 && len(out) < 500 {
+		item := queue[0]
+		queue = queue[1:]
+		rows, err := queryEntityRelations(`
+			SELECT id, project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at
+			FROM entity_relations
+			WHERE project_id = ? AND ((source_type=? AND source_id=?) OR (target_type=? AND target_id=?))
+			ORDER BY id ASC
+			LIMIT 200
+		`, projectID, item.typ, item.id, item.typ, item.id)
+		if err != nil {
+			return nil, err
+		}
+		for _, rel := range rows {
+			if visitedEdges[rel.ID] {
+				continue
+			}
+			visitedEdges[rel.ID] = true
+			out = append(out, rel)
+			if item.depth >= depth-1 {
+				continue
+			}
+			srcKey := nodeKey(rel.SourceType, rel.SourceID)
+			if !visitedNodes[srcKey] {
+				visitedNodes[srcKey] = true
+				queue = append(queue, queueItem{typ: rel.SourceType, id: rel.SourceID, depth: item.depth + 1})
+			}
+			tgtKey := nodeKey(rel.TargetType, rel.TargetID)
+			if !visitedNodes[tgtKey] {
+				visitedNodes[tgtKey] = true
+				queue = append(queue, queueItem{typ: rel.TargetType, id: rel.TargetID, depth: item.depth + 1})
+			}
+		}
+	}
+	return out, nil
+}
+
+func queryEntityRelations(query string, args ...any) ([]models.EntityRelation, error) {
+	rows, err := db.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []models.EntityRelation{}
+	for rows.Next() {
+		var rel models.EntityRelation
+		if err := rows.Scan(&rel.ID, &rel.ProjectID, &rel.SourceType, &rel.SourceID, &rel.TargetType, &rel.TargetID, &rel.EdgeType, &rel.Confidence, &rel.Metadata, &rel.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, rel)
+	}
+	return out, nil
+}
+
+func expandContextNeighbors(projectID int64, entityType string, entityID int64) []map[string]any {
+	rows, err := queryEntityRelations(`
+		SELECT id, project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at
+		FROM entity_relations
+		WHERE project_id = ? AND ((source_type=? AND source_id=?) OR (target_type=? AND target_id=?))
+		ORDER BY id ASC
+		LIMIT 12
+	`, projectID, entityType, entityID, entityType, entityID)
+	if err != nil {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, rel := range rows {
+		neighborType := rel.TargetType
+		neighborID := rel.TargetID
+		if rel.SourceType != entityType || rel.SourceID != entityID {
+			neighborType = rel.SourceType
+			neighborID = rel.SourceID
+		}
+		node := resolveEntityNode(neighborType, neighborID)
+		title, _ := node["title"].(string)
+		out = append(out, map[string]any{
+			"entity_type":   neighborType,
+			"entity_id":     neighborID,
+			"title":         defaultString(title, fmt.Sprintf("%s:%d", neighborType, neighborID)),
+			"snippet":       rel.EdgeType,
+			"score":         nil,
+			"sources":       []string{"graph"},
+			"expanded_from": nil,
+			"edge_type":     rel.EdgeType,
+		})
+	}
+	return out
+}
+
+func upsertIssueEntityRelation(sourceID, targetID int64, edgeType string) {
+	var projectID int64
+	if err := db.DB.QueryRow(`
+		SELECT project_id
+		FROM issues
+		WHERE id=? AND project_id = (SELECT project_id FROM issues WHERE id=?)
+	`, sourceID, targetID).Scan(&projectID); err != nil || projectID == 0 {
+		return
+	}
+	upsertEntityRelation(projectID, "issue", sourceID, "issue", targetID, edgeType, "declared", "")
+}
+
+func deleteIssueEntityRelation(sourceID, targetID int64, edgeType string) {
+	var projectID int64
+	if err := db.DB.QueryRow(`
+		SELECT project_id
+		FROM issues
+		WHERE id=? AND project_id = (SELECT project_id FROM issues WHERE id=?)
+	`, sourceID, targetID).Scan(&projectID); err != nil || projectID == 0 {
+		return
+	}
+	deleteEntityRelation(projectID, "issue", sourceID, "issue", targetID, edgeType)
+}
+
+func deleteAnchorEntityRelationsByRepo(repoID int64) {
+	rows, err := db.DB.Query(`SELECT id FROM issue_anchors WHERE repo_id=?`, repoID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var anchorID int64
+		if rows.Scan(&anchorID) == nil {
+			_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE source_type='anchor' AND source_id=?`, anchorID)
+			_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE target_type='anchor' AND target_id=?`, anchorID)
+		}
+	}
+}
+
+func deleteAnchorEntityRelationsByIssueIDs(issueIDs []int64) {
+	if len(issueIDs) == 0 {
+		return
+	}
+	ph := makePlaceholders(len(issueIDs))
+	args := make([]any, 0, len(issueIDs))
+	for _, id := range issueIDs {
+		args = append(args, id)
+	}
+	rows, err := db.DB.Query(`SELECT id FROM issue_anchors WHERE issue_id IN (`+ph+`)`, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var anchorID int64
+		if rows.Scan(&anchorID) == nil {
+			_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE source_type='anchor' AND source_id=?`, anchorID)
+			_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE target_type='anchor' AND target_id=?`, anchorID)
+		}
+	}
+}
+
+func makePlaceholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = "?"
+	}
+	return strings.Join(parts, ",")
 }

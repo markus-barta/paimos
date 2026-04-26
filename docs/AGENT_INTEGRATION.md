@@ -88,6 +88,45 @@ curl -s -H "Authorization: Bearer $KEY" \
 Search also accepts issue keys — `?q=PAI-42` will find that specific
 issue, and partial keys (`PAI-4`) prefix-match.
 
+### 1a. Reading project context for coding agents
+
+PAIMOS now has a dedicated project-context layer for code-aware agents.
+Use it when an issue needs repository locations, canonical commands, or
+structured environment facts instead of just prose.
+
+```bash
+# List linked repos for a project
+curl -s -H "Authorization: Bearer $KEY" \
+  https://paimos.example.com/api/projects/2/repos
+
+# Read the structured manifest
+curl -s -H "Authorization: Bearer $KEY" \
+  https://paimos.example.com/api/projects/2/manifest
+
+# Retrieve mixed context hits for a question
+curl -s -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  https://paimos.example.com/api/projects/2/retrieve \
+  -d '{"q":"where is the auth middleware and how do I run tests?","k":8}'
+
+# Inspect anchors for one issue
+curl -s -H "Authorization: Bearer $KEY" \
+  https://paimos.example.com/api/issues/PAI-42/anchors
+```
+
+Recommended manifest fields in v1:
+
+- `repos` — linked repos or subtrees relevant to the project
+- `commands` — build/test/dev/deploy commands an agent can run
+- `stack` — languages, frameworks, runtime versions, major libraries
+- `services` — databases, queues, third-party systems, local ports
+- `owners` — humans or teams responsible for code areas or environments
+- `nfrs` — uptime/perf/security constraints worth preserving
+- `adrs` — decision records or architectural notes
+
+Anchors are uploaded to `/api/projects/:id/anchors` by a repo-side tool
+that maps issue keys to file/line locations. Each anchor carries repo
+revision and schema metadata so deep links and provenance stay explicit.
+
 ### 2. Creating and updating issues
 
 ```bash
@@ -229,6 +268,10 @@ description so it knows how to reach a PAIMOS instance:
 - Comment:       `POST /issues/{id}/comments`
 - Log time:      `POST /issues/{id}/time-entries`
 - Search:        `GET  /search?q=...`
+- Project ctx:   `GET  /projects/{id}/repos`
+- Manifest:      `GET  /projects/{id}/manifest`
+- Retrieve:      `POST /projects/{id}/retrieve`
+- Anchors:       `GET  /issues/{id}/anchors`
 
 Before creating a new issue, always search for the title first.
 Post a build report as a comment on the issue you just finished.
