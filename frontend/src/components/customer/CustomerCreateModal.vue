@@ -19,9 +19,7 @@ import { api, errMsg } from '@/api/client'
 import type { Customer } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: []; created: [customer: Customer] }>()
@@ -36,7 +34,6 @@ const error = ref('')
 const saving = ref(false)
 
 // PAI-146 expansion: AI optimize on customer notes.
-const aiOptimize = useAiOptimize()
 function onCustomerNotesAccept(text: string) {
   form.value.notes = text
 }
@@ -113,6 +110,7 @@ async function submit() {
         <div class="field-label-row">
           <label>Notes <span class="label-hint">— markdown supported</span></label>
           <AiActionMenu surface="customer"
+            host-key="customer-create:notes"
             field="customer_notes"
             field-label="Customer notes"
             :issue-id="0"
@@ -120,7 +118,7 @@ async function submit() {
             :on-accept="onCustomerNotesAccept"
           />
         </div>
-        <AiOptimizeBanner />
+        <AiSurfaceFeedback host-key="customer-create:notes" />
         <textarea v-model="form.notes" rows="3" placeholder="Anything worth remembering about this customer." />
       </div>
 
@@ -133,19 +131,6 @@ async function submit() {
         </button>
       </div>
     </form>
-
-    <!-- PAI-146 expansion: AI optimize overlay. -->
-    <AiOptimizeOverlay
-      v-if="aiOptimize.overlay.visible"
-      :original="aiOptimize.overlay.original"
-      :optimized="aiOptimize.overlay.optimized"
-      :field-label="aiOptimize.overlay.fieldLabel"
-      :model-name="aiOptimize.overlay.modelName"
-      :retrying="aiOptimize.overlay.retrying"
-      @accept="aiOptimize.accept()"
-      @reject="aiOptimize.reject()"
-      @retry="aiOptimize.retry()"
-    />
   </AppModal>
 </template>
 

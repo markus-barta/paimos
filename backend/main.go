@@ -256,6 +256,7 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)
@@ -370,6 +371,9 @@ func main() {
 			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
 			// PAI-161: per-user usage summary for the admin dashboard.
 			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+			r.With(auth.RequireAdmin).Get("/ai/calls", handlers.AIListCalls)
+			r.With(auth.RequireAdmin).Get("/ai/calls/export.csv", handlers.AIExportCallsCSV)
+			r.With(auth.RequireAdmin).Get("/ai/calls/{id}", handlers.AIGetCall)
 			// PAI-175 / PAI-176 / PAI-177: prompt CRUD + dry-run.
 			// Admin-only. The list endpoint lazily seeds built-in
 			// rows so a fresh install never sees an empty list.
@@ -381,11 +385,14 @@ func main() {
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
 			r.Get("/ai/actions", handlers.AIListActions)
 			r.Get("/ai/status", handlers.AIStatus)
+			r.Get("/ai/calls/me", handlers.AIListMyCalls)
+			r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
 			// PAI-164: legacy /api/ai/optimize endpoint retired —
 			// the optimize behaviour now lives behind /api/ai/action
 			// with action="optimize". The frontend useAiOptimize
 			// composable was updated to call the dispatcher.
 			r.Post("/ai/action", handlers.AIAction)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
 
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)

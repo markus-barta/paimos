@@ -55,6 +55,9 @@ const props = defineProps<{
   placement?: 'text' | 'issue'
   /** Current field content. Read at click time, not at mount time. */
   text: () => string
+  /** Stable host identifier so AI feedback renders on the surface
+   *  that initiated the action instead of a different editor copy. */
+  hostKey?: string
   /** Called with optimized text when the user clicks Accept. Used by
    *  actions whose result is "rewritten field text" (optimize, tone-check,
    *  translate). */
@@ -143,6 +146,8 @@ function runDefault() {
 async function invoke(actionKey: string, subAction?: string) {
   closeMenu()
   await aiAction.run({
+    hostKey: props.hostKey,
+    surface: surface.value,
     action: actionKey,
     subAction,
     field: props.field,

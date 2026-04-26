@@ -3643,6 +3643,45 @@ func migrate(db *sql.DB) error {
 			tokenize='porter ascii'
 		)`,
 	}},
+	// PAI-208: per-call AI paper trail. Metadata only — never prompt or
+	// response bodies. Historical cost is captured at record-time in
+	// micro-USD to avoid floating-point drift.
+	{81, []string{
+		`CREATE TABLE IF NOT EXISTS ai_calls (
+			id                INTEGER PRIMARY KEY AUTOINCREMENT,
+			request_id        TEXT NOT NULL,
+			user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			action_key        TEXT NOT NULL,
+			sub_action        TEXT NOT NULL DEFAULT '',
+			surface           TEXT NOT NULL,
+			issue_id          INTEGER REFERENCES issues(id) ON DELETE SET NULL,
+			project_id        INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			customer_id       INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+			cooperation_id    INTEGER REFERENCES project_cooperation(id) ON DELETE SET NULL,
+			provider          TEXT NOT NULL,
+			model             TEXT NOT NULL,
+			prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+			completion_tokens INTEGER NOT NULL DEFAULT 0,
+			total_tokens      INTEGER NOT NULL DEFAULT 0,
+			cost_micro_usd    INTEGER NOT NULL DEFAULT 0,
+			outcome           TEXT NOT NULL,
+			error_class       TEXT NOT NULL DEFAULT '',
+			latency_ms        INTEGER NOT NULL DEFAULT 0,
+			created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_calls_user_time
+		 ON ai_calls(user_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_calls_time
+		 ON ai_calls(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_calls_action_time
+		 ON ai_calls(action_key, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_calls_model_time
+		 ON ai_calls(model, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_calls_request
+		 ON ai_calls(request_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_calls_issue_time
+		 ON ai_calls(issue_id, created_at DESC)`,
+	}},
 	}
 
 	for _, m := range migrations {

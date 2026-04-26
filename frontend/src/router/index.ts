@@ -58,6 +58,9 @@ const router = createRouter({
     { path: '/portal/projects/:id/issues/:issueId', component: () => import('@/views/portal/PortalIssueView.vue'), meta: { portal: true } },
     { path: '/reporting', component: () => import('@/views/ReportingView.vue') },
     { path: '/reporting/lieferbericht', component: () => import('@/views/LieferberichtView.vue') },
+    ...(import.meta.env.DEV
+      ? [{ path: '/dev/ai-ux', component: () => import('@/components/ai/AiUxDevReference.vue') }]
+      : []),
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

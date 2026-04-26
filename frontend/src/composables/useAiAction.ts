@@ -69,6 +69,7 @@ interface ActionsCatalog {
 }
 
 export interface ActionEnvelope<T = unknown> {
+  request_id?: string
   action: string
   sub_action?: string
   body: T
@@ -79,6 +80,8 @@ export interface ActionEnvelope<T = unknown> {
 }
 
 export interface RunArgs {
+  hostKey?: string
+  surface?: 'issue' | 'customer'
   action: string
   subAction?: string
   field: string
@@ -97,10 +100,26 @@ let actionsInflight: Promise<void> | null = null
 
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
+const lastErrorHostKey = ref('')
+
+export interface AiActionActivity {
+  hostKey: string
+  action: string
+  subAction?: string
+  field: string
+  fieldLabel: string
+  startedAt: number
+  surface: string
+}
+const activity = ref<AiActionActivity | null>(null)
 
 // `result` holds the last action's response. Host pages watch it
 // to render the matching modal. `null` = no modal open.
 interface ActiveResult {
+  requestId?: string
+  hostKey: string
+  promptTokens?: number
+  completionTokens?: number
   action: string
   subAction?: string
   fieldLabel: string
@@ -182,7 +201,17 @@ async function run(args: RunArgs): Promise<void> {
   if (!actionsLoaded.value) await loadActions()
   isRunning.value = true
   lastError.value = null
+  lastErrorHostKey.value = ''
   result.value = null
+  activity.value = {
+    hostKey: args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`,
+    action: args.action,
+    subAction: args.subAction,
+    field: args.field,
+    fieldLabel: args.fieldLabel ?? args.field,
+    startedAt: Date.now(),
+    surface: args.surface ?? 'issue',
+  }
 
   try {
     if (DIFF_OVERLAY_ACTIONS.has(args.action)) {
@@ -206,6 +235,10 @@ async function run(args: RunArgs): Promise<void> {
     }, { timeoutMs: 90_000 })
 
     result.value = {
+      requestId: env.request_id,
+      hostKey: activity.value?.hostKey ?? (args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`),
+      promptTokens: env.prompt_tokens,
+      completionTokens: env.completion_tokens,
       action: env.action,
       subAction: env.sub_action,
       fieldLabel: args.fieldLabel ?? args.field,
@@ -221,7 +254,9 @@ async function run(args: RunArgs): Promise<void> {
       void optimize.refreshStatus()
     }
     lastError.value = errMsg(e, 'AI action failed')
+    lastErrorHostKey.value = args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`
   } finally {
+    activity.value = null
     isRunning.value = false
   }
 }
@@ -235,6 +270,8 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
   // /api/ai/action with the right action key and unwraps the body.
   if (args.action === 'optimize') {
     await optimize.run({
+      hostKey: args.hostKey,
+      surface: args.surface,
       field: args.field,
       fieldLabel: args.fieldLabel,
       text: args.text,
@@ -247,6 +284,8 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
     await optimize.runRewriteAction({
       action: args.action,
       subAction: args.subAction,
+      hostKey: args.hostKey,
+      surface: args.surface,
       field: args.field,
       fieldLabel: args.fieldLabel,
       text: args.text,
@@ -265,6 +304,7 @@ function reset(): void {
 
 function clearError(): void {
   lastError.value = null
+  lastErrorHostKey.value = ''
 }
 
 // First import triggers the catalogue load.
@@ -278,6 +318,8 @@ export function useAiAction() {
     available,
     isRunning,
     lastError,
+    lastErrorHostKey,
+    activity,
     result,
     run,
     reset,

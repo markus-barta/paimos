@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { fmtShortDateTime } from '@/utils/formatTime'
 import { loadIssueHistory, type IssueHistoryEntry as HistoryEntry } from '@/services/issueHistory'
+import { loadIssueAICalls, type AICallRow } from '@/services/aiPaperTrail'
 
 const props = defineProps<{
   issueId: number
@@ -16,12 +17,14 @@ const emit = defineEmits<{
 const historyLoading = ref(false)
 const historyEntries = ref<HistoryEntry[]>([])
 const historyIndex   = ref(0)
+const aiCalls = ref<AICallRow[]>([])
 
 async function load() {
   historyLoading.value = true
   try {
     historyEntries.value = await loadIssueHistory(props.issueId)
     historyIndex.value = Math.max(0, historyEntries.value.length - 1)
+    aiCalls.value = (await loadIssueAICalls(props.issueId, { limit: 25 })).rows
   } finally {
     historyLoading.value = false
   }
@@ -121,6 +124,28 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
               </template>
               <span v-else class="hist-text">{{ currentSnapshot[f] || '—' }}</span>
             </div>
+
+            <div class="hist-ai">
+              <div class="hist-ai-head">
+                <span class="hist-label">AI activity</span>
+              </div>
+              <div v-if="aiCalls.length" class="hist-ai-list">
+                <div v-for="call in aiCalls" :key="call.id" class="hist-ai-item">
+                  <div class="hist-ai-main">
+                    <strong>{{ call.action_key }}</strong>
+                    <span v-if="call.sub_action" class="hist-ai-sub">{{ call.sub_action }}</span>
+                    <span class="hist-ai-outcome">{{ call.outcome }}</span>
+                  </div>
+                  <div class="hist-ai-meta">
+                    <span>{{ call.model || '—' }}</span>
+                    <span>{{ call.total_tokens }} tokens</span>
+                    <span>${{ (call.cost_micro_usd / 1_000_000).toFixed(4) }}</span>
+                    <span>{{ fmtShortDateTime(call.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+              <p v-else class="hist-old">No AI calls recorded for this issue yet.</p>
+            </div>
           </div>
           <div class="history-body" v-else>
             <span class="history-loading">No history yet.</span>
@@ -217,6 +242,42 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
 .hist-text     { font-size: 13px; color: var(--text); line-height: 1.6; white-space: pre-wrap; }
 .hist-text-old { font-size: 12px; color: var(--text-muted); background: #fde8e8; padding: .4rem .5rem; border-radius: 4px; white-space: pre-wrap; line-height: 1.5; text-decoration: line-through; }
 .hist-text-new { font-size: 13px; color: var(--text); background: #fffbeb; padding: .4rem .5rem; border-radius: 4px; white-space: pre-wrap; line-height: 1.6; border-left: 3px solid #f5d66a; }
+
+.hist-ai {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
+}
+.hist-ai-list {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+.hist-ai-item {
+  padding: .55rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.hist-ai-main,
+.hist-ai-meta {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.hist-ai-main {
+  font-size: 12px;
+  color: var(--text);
+}
+.hist-ai-sub,
+.hist-ai-outcome,
+.hist-ai-meta {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
 
 .history-fade-enter-active, .history-fade-leave-active { transition: opacity .18s; }
 .history-fade-enter-from, .history-fade-leave-to { opacity: 0; }

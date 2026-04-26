@@ -10,7 +10,7 @@ import { useDirtyGuard } from '@/composables/useDirtyGuard'
 import { useConfirm } from '@/composables/useConfirm'
 import { useMarkdown } from '@/composables/useMarkdown'
 import { useTimeUnit } from '@/composables/useTimeUnit'
-import { errMsg } from '@/api/client'
+import { api, errMsg } from '@/api/client'
 import { attachmentsEnabled } from '@/api/instance'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { provideIssueContext } from '@/composables/useIssueContext'
@@ -38,8 +38,8 @@ import {
 } from '@/composables/useIssueDisplay'
 import { vAutoGrow } from '@/directives/autoGrow'
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
+import { applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
 
 // Sub-components
 import IssueTimeEntries from '@/components/issue/IssueTimeEntries.vue'
@@ -496,11 +496,64 @@ const { html: notesHtml } = useMarkdown(notesRef,       mdMode)
 // the ref via `aiOptimize.lastError` would yield the Ref object
 // (always truthy) in v-if, which kept the error banner permanently
 // visible with empty content.
-const aiOptimize = useAiOptimize()
-const { lastError, clearError } = aiOptimize
 function onOptimizeAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
   return (text: string) => {
     form.value[field] = text
+  }
+}
+
+async function applyAiResult(info: AiApplyInfo) {
+  if (info.action === 'estimate_effort') {
+    const hours = Number(info.values?.hours ?? (info.body as any)?.hours ?? 0)
+    const lp = Number(info.values?.lp ?? (info.body as any)?.lp ?? 0)
+    if (editing.value) {
+      form.value.estimate_hours = hours
+      form.value.estimate_lp = lp
+      return
+    }
+    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { estimate_hours: hours, estimate_lp: lp })
+    return
+  }
+  if (info.action === 'find_parent') {
+    const issueKey = String(info.values?.issue_key ?? '')
+    const parent = projectIssues.value.find(i => i.issue_key === issueKey)
+    if (!parent) return
+    if (editing.value) {
+      form.value.parent_id = parent.id
+      return
+    }
+    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { parent_id: parent.id })
+    parentIssue.value = parent
+    return
+  }
+  if (info.action === 'generate_subtasks') {
+    const suggestions = (info.body as any)?.suggestions ?? []
+    const selected = info.selection?.length ? info.selection : suggestions.map((_: unknown, idx: number) => idx)
+    const overrides = (info.values?.titleOverrides ?? {}) as Record<string, string>
+    for (const idx of selected) {
+      const item = suggestions[idx]
+      if (!item) continue
+      await api.post(`/projects/${projectId.value}/issues`, {
+        parent_id: issueId.value,
+        title: overrides[idx] || item.title,
+        description: item.description || '',
+        type: item.type || 'task',
+        status: 'backlog',
+        priority: 'medium',
+      })
+    }
+    children.value = await api.get<Issue[]>(`/issues/${issueId.value}/children`).catch(() => children.value)
+    return
+  }
+  if (editing.value) {
+    const next = applyIssueTextMutations(info, {
+      description: form.value.description,
+      acceptance_criteria: form.value.acceptance_criteria,
+      notes: form.value.notes,
+    })
+    form.value.description = next.description
+    form.value.acceptance_criteria = next.acceptance_criteria
+    form.value.notes = next.notes
   }
 }
 
@@ -618,6 +671,7 @@ async function cancelEdit() {
               <AiActionMenu
                 surface="issue"
                 placement="issue"
+                :host-key="`issue-detail:${issueId}:record`"
                 field=""
                 field-label="Issue"
                 :issue-id="issueId"
@@ -643,6 +697,7 @@ async function cancelEdit() {
               <AiActionMenu
                 surface="issue"
                 placement="issue"
+                :host-key="`issue-detail:${issueId}:record`"
                 field=""
                 field-label="Issue"
                 :issue-id="issueId"
@@ -666,6 +721,7 @@ async function cancelEdit() {
             </template>
           </div>
         </div>
+        <AiSurfaceFeedback :host-key="`issue-detail:${issueId}:record`" :apply="applyAiResult" />
 
         <!-- Meta (view mode) -->
         <div class="meta-section">
@@ -761,20 +817,11 @@ async function cancelEdit() {
         <!-- Edit layout -->
         <div v-else class="edit-layout">
           <div class="edit-content">
-            <!-- PAI-146: surface AI optimize failures inline so the user
-                 knows why the spinner stopped without a successful overlay.
-                 errMsg() in api/client.ts guarantees lastError is null or
-                 a non-empty, non-whitespace string. Uses the destructured
-                 top-level `lastError` ref so Vue auto-unwraps it in
-                 v-if (see setup script for the why). -->
-            <div v-if="lastError" class="ai-error-banner">
-              <span>AI optimization failed: {{ lastError }}</span>
-              <button type="button" class="ai-error-banner-x" @click="clearError()">×</button>
-            </div>
             <div class="field">
               <div class="field-label-row">
                 <label>Description</label>
                 <AiActionMenu
+                  :host-key="`issue-detail:${issueId}:description`"
                   field="description"
                   field-label="Description"
                   surface="issue"
@@ -825,11 +872,13 @@ async function cancelEdit() {
                   <AppIcon name="upload" :size="20" /> Drop files here
                 </div>
               </div>
+              <AiSurfaceFeedback :host-key="`issue-detail:${issueId}:description`" :apply="applyAiResult" />
             </div>
             <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
               <div class="field-label-row">
                 <label>Acceptance Criteria</label>
                 <AiActionMenu
+                  :host-key="`issue-detail:${issueId}:acceptance_criteria`"
                   field="acceptance_criteria"
                   field-label="Acceptance Criteria"
                   surface="issue"
@@ -880,11 +929,13 @@ async function cancelEdit() {
                   <AppIcon name="upload" :size="20" /> Drop files here
                 </div>
               </div>
+              <AiSurfaceFeedback :host-key="`issue-detail:${issueId}:acceptance_criteria`" :apply="applyAiResult" />
             </div>
             <div class="field">
               <div class="field-label-row">
                 <label>Notes</label>
                 <AiActionMenu
+                  :host-key="`issue-detail:${issueId}:notes`"
                   field="notes"
                   field-label="Notes"
                   surface="issue"
@@ -899,6 +950,7 @@ async function cancelEdit() {
                 :class="{ 'textarea--mono': isMonospace }"
                 placeholder="Additional context, links, etc."
               ></textarea>
+              <AiSurfaceFeedback :host-key="`issue-detail:${issueId}:notes`" :apply="applyAiResult" />
             </div>
           </div>
 
@@ -1045,21 +1097,6 @@ async function cancelEdit() {
     @completed="onEpicCompleted"
   />
 
-  <!-- PAI-146: AI optimize preview overlay. Mounted once for the page;
-       the composable is a singleton so all three field buttons share
-       this slot. v-if (not v-show) so the diff DP is only computed
-       when the overlay is actually open. -->
-  <AiOptimizeOverlay
-    v-if="aiOptimize.overlay.visible"
-    :original="aiOptimize.overlay.original"
-    :optimized="aiOptimize.overlay.optimized"
-    :field-label="aiOptimize.overlay.fieldLabel"
-    :model-name="aiOptimize.overlay.modelName"
-    :retrying="aiOptimize.overlay.retrying"
-    @accept="aiOptimize.accept()"
-    @reject="aiOptimize.reject()"
-    @retry="aiOptimize.retry()"
-  />
 </template>
 
 <style scoped>

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
 import AppModal from '@/components/AppModal.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
 
 const auth = useAuthStore()
 const { confirm } = useConfirm()
@@ -471,6 +472,14 @@ init()
       </table>
     </div>
     <p v-else-if="!newKeyResult" class="empty-hint">No API keys yet.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">My AI Activity</h2>
+      <p class="section-desc">Every AI call you triggered, with model, token, latency, and cost metadata.</p>
+    </div>
+    <AiPaperTrailPanel mode="self" />
   </div>
 
   <!-- ── Modals ──────────────────────────────────────────────────────────── -->

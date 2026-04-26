@@ -12,6 +12,7 @@ import TagSelector from '@/components/TagSelector.vue'
 import TagChip from '@/components/TagChip.vue'
 import SprintChips from '@/components/issue/SprintChips.vue'
 import AttachmentSidebar from '@/components/issue/AttachmentSidebar.vue'
+import IssueAiActivity from '@/components/issue/IssueAiActivity.vue'
 import { api, errMsg } from '@/api/client'
 import { attachmentsEnabled } from '@/api/instance'
 import type { Issue, User, Tag, Sprint, TimeEntry, Attachment } from '@/types'
@@ -38,9 +39,8 @@ import {
 // + overlay singleton as the detail view; once mounted here, the side
 // panel surfaces the AI action for description / acceptance / notes.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
+import { applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
 
 const ctx = useIssueContext(true)
 
@@ -183,9 +183,31 @@ const { html: notesHtml } = useMarkdown(notesRef, mdMode)
 // PAI-146: AI optimization. The form's id matches issue.value.id when
 // editing an existing issue (this panel never opens without one), so
 // pass it through for context assembly.
-const aiOptimize = useAiOptimize()
 function onAiAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
   return (text: string) => { form.value[field] = text }
+}
+async function applyAiPanelResult(info: AiApplyInfo) {
+  if (!issue.value) return
+  if (info.action === 'estimate_effort') {
+    form.value.estimate_hours = Number(info.values?.hours ?? (info.body as any)?.hours ?? 0)
+    form.value.estimate_lp = Number(info.values?.lp ?? (info.body as any)?.lp ?? 0)
+    return
+  }
+  if (info.action === 'find_parent') {
+    await loadParentCandidates()
+    const issueKey = String(info.values?.issue_key ?? '')
+    const parent = parentCandidates.value.find(i => i.issue_key === issueKey)
+    if (parent) form.value.parent_id = String(parent.id)
+    return
+  }
+  const next = applyIssueTextMutations(info, {
+    description: form.value.description,
+    acceptance_criteria: form.value.acceptance_criteria,
+    notes: form.value.notes,
+  })
+  form.value.description = next.description
+  form.value.acceptance_criteria = next.acceptance_criteria
+  form.value.notes = next.notes
 }
 const search = useSearchStore()
 
@@ -493,6 +515,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
             v-if="issue && !readonly"
             surface="issue"
             placement="issue"
+            :host-key="`issue-side:${issue.id}:record`"
             field=""
             field-label="Issue"
             :issue-id="issue.id"
@@ -618,6 +641,8 @@ async function deleteTimeEntry(entry: TimeEntry) {
           </div>
 
           <MarkdownToolbar v-model="mdMode" :subtle="true" />
+
+          <IssueAiActivity v-if="issue" :issue-id="issue.id" />
 
           <!-- Tag selector (view mode, not readonly) -->
           <div v-if="allTags && !readonly" class="sp-tag-selector">
@@ -749,11 +774,12 @@ async function deleteTimeEntry(entry: TimeEntry) {
               </div>
             </div>
 
-            <AiOptimizeBanner />
+            <AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:record`" :apply="applyAiPanelResult" />
             <div class="field">
               <div class="field-label-row">
                 <label>Description</label>
                 <AiActionMenu surface="issue"
+                  :host-key="`issue-side:${issue?.id ?? 0}:description`"
                   field="description"
                   field-label="Description"
                   :issue-id="issue?.id ?? 0"
@@ -762,11 +788,13 @@ async function deleteTimeEntry(entry: TimeEntry) {
                 />
               </div>
               <textarea v-model="form.description" rows="5" />
+              <AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:description`" :apply="applyAiPanelResult" />
             </div>
             <div class="field">
               <div class="field-label-row">
                 <label>Acceptance Criteria</label>
                 <AiActionMenu surface="issue"
+                  :host-key="`issue-side:${issue?.id ?? 0}:acceptance_criteria`"
                   field="acceptance_criteria"
                   field-label="Acceptance Criteria"
                   :issue-id="issue?.id ?? 0"
@@ -775,11 +803,13 @@ async function deleteTimeEntry(entry: TimeEntry) {
                 />
               </div>
               <textarea v-model="form.acceptance_criteria" rows="4" />
+              <AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:acceptance_criteria`" :apply="applyAiPanelResult" />
             </div>
             <div class="field">
               <div class="field-label-row">
                 <label>Notes</label>
                 <AiActionMenu surface="issue"
+                  :host-key="`issue-side:${issue?.id ?? 0}:notes`"
                   field="notes"
                   field-label="Notes"
                   :issue-id="issue?.id ?? 0"
@@ -788,6 +818,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
                 />
               </div>
               <textarea v-model="form.notes" rows="3" />
+              <AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:notes`" :apply="applyAiPanelResult" />
             </div>
             <!-- Attachments (edit mode — drop, upload, remove) -->
             <AttachmentSidebar
@@ -814,6 +845,8 @@ async function deleteTimeEntry(entry: TimeEntry) {
                     : 'Save' }}
               </button>
             </div>
+
+            <IssueAiActivity v-if="issue" :issue-id="issue.id" />
           </div>
         </template>
       </div>
@@ -823,17 +856,6 @@ async function deleteTimeEntry(entry: TimeEntry) {
   <!-- PAI-146: AI optimize preview overlay. Single mount per panel
        instance; the composable is a singleton so opening from a
        textarea here uses the same slot as the detail view. -->
-  <AiOptimizeOverlay
-    v-if="aiOptimize.overlay.visible"
-    :original="aiOptimize.overlay.original"
-    :optimized="aiOptimize.overlay.optimized"
-    :field-label="aiOptimize.overlay.fieldLabel"
-    :model-name="aiOptimize.overlay.modelName"
-    :retrying="aiOptimize.overlay.retrying"
-    @accept="aiOptimize.accept()"
-    @reject="aiOptimize.reject()"
-    @retry="aiOptimize.retry()"
-  />
 </template>
 
 <style scoped>

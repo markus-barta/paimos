@@ -25,9 +25,7 @@ import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import type { Customer, Project } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes (CRM context).
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -83,7 +81,6 @@ const editSaving = ref(false)
 
 // PAI-146 expansion: AI optimize on customer notes. CRM-tone reminder
 // in the prompt enforces PII discipline and non-fabrication.
-const aiOptimize = useAiOptimize()
 function onCustomerNotesAccept(text: string) {
   editForm.value.notes = text
 }
@@ -315,6 +312,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
         <div class="cd-field-label-row">
           <label>Notes</label>
           <AiActionMenu surface="customer"
+            host-key="customer-detail:notes"
             field="customer_notes"
             field-label="Customer notes"
             :issue-id="0"
@@ -322,7 +320,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
             :on-accept="onCustomerNotesAccept"
           />
         </div>
-        <AiOptimizeBanner />
+        <AiSurfaceFeedback host-key="customer-detail:notes" />
         <textarea v-model="editForm.notes" rows="3" />
       </div>
 
@@ -356,19 +354,6 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
       </button>
     </div>
   </AppModal>
-
-  <!-- PAI-146 expansion: AI optimize overlay for customer notes. -->
-  <AiOptimizeOverlay
-    v-if="aiOptimize.overlay.visible"
-    :original="aiOptimize.overlay.original"
-    :optimized="aiOptimize.overlay.optimized"
-    :field-label="aiOptimize.overlay.fieldLabel"
-    :model-name="aiOptimize.overlay.modelName"
-    :retrying="aiOptimize.overlay.retrying"
-    @accept="aiOptimize.accept()"
-    @reject="aiOptimize.reject()"
-    @retry="aiOptimize.retry()"
-  />
 </template>
 
 <style scoped>

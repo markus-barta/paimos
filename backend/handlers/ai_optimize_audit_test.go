@@ -48,6 +48,7 @@ func TestAuditAction_LineShape(t *testing.T) {
 	defer restore()
 
 	auditAction(
+		/*requestID*/ "req-1",
 		/*userID*/ 42,
 		/*action*/ "optimize",
 		/*subAction*/ "",
@@ -63,6 +64,7 @@ func TestAuditAction_LineShape(t *testing.T) {
 	got := buf.String()
 	for _, want := range []string{
 		"audit: ai_action",
+		"request_id=req-1",
 		"action=optimize",
 		"user_id=42",
 		"field=description",
@@ -83,7 +85,7 @@ func TestAuditAction_SubActionRendered(t *testing.T) {
 	buf, restore := captureLog(t)
 	defer restore()
 
-	auditAction(7, "suggest_enhancement", "security", "description", 9, "m", outcomeOK, time.Second, 0, 0)
+	auditAction("req-2", 7, "suggest_enhancement", "security", "description", 9, "m", outcomeOK, time.Second, 0, 0)
 	got := buf.String()
 	for _, want := range []string{
 		"action=suggest_enhancement",
@@ -107,7 +109,7 @@ func TestAuditAction_NoBodiesLeak(t *testing.T) {
 	const sourceSentinel = "SOURCE_BODY_SENTINEL_DO_NOT_LOG"
 	const responseSentinel = "RESPONSE_BODY_SENTINEL_DO_NOT_LOG"
 
-	auditAction(1, "optimize", "", "description", 99, "m", outcomeOK, time.Second, 0, 0)
+	auditAction("req-3", 1, "optimize", "", "description", 99, "m", outcomeOK, time.Second, 0, 0)
 
 	got := buf.String()
 	if strings.Contains(got, sourceSentinel) || strings.Contains(got, responseSentinel) {
@@ -122,7 +124,7 @@ func TestAuditAction_FailureLineEmitted(t *testing.T) {
 	buf, restore := captureLog(t)
 	defer restore()
 
-	auditAction(7, "optimize", "", "notes", 0, "anthropic/claude-3.5-haiku", outcomeFailUpstream, 250*time.Millisecond, 0, 0)
+	auditAction("req-4", 7, "optimize", "", "notes", 0, "anthropic/claude-3.5-haiku", outcomeFailUpstream, 250*time.Millisecond, 0, 0)
 	got := buf.String()
 	if !strings.Contains(got, "outcome=fail_upstream") {
 		t.Errorf("expected outcome=fail_upstream, got: %s", got)
@@ -158,7 +160,7 @@ func TestOutcomesAreStableEnum(t *testing.T) {
 	// downstream parser doesn't have to special-case any of them.
 	for _, outcome := range []string{outcomeOK, outcomeFailTimeout, outcomeFailUpstream, outcomeDenied, outcomeBadRequest} {
 		buf, restore := captureLog(t)
-		auditAction(1, "optimize", "", "description", 5, "m", outcome, 10*time.Millisecond, 0, 0)
+		auditAction("req-x", 1, "optimize", "", "description", 5, "m", outcome, 10*time.Millisecond, 0, 0)
 		got := buf.String()
 		restore()
 		if !strings.Contains(got, "outcome="+outcome) {

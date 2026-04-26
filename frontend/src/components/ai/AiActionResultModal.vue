@@ -27,7 +27,7 @@
  wires up only the actions it cares about.
 -->
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import { useAiAction } from '@/composables/useAiAction'
@@ -52,10 +52,17 @@ interface ActionApplyArgs {
   values?: Record<string, unknown>
 }
 const props = defineProps<{
+  hostKey?: string
   apply?: (info: ActionApplyArgs) => void | Promise<void>
 }>()
 
-const open = computed(() => aiAction.result.value !== null && !shouldUseDiffOverlay.value)
+const activeResult = computed(() => {
+  const r = aiAction.result.value
+  if (!r) return null
+  if (props.hostKey && r.hostKey !== props.hostKey) return null
+  return r
+})
+const open = computed(() => activeResult.value !== null && !shouldUseDiffOverlay.value)
 // Close = clear the result; the composable's reset() is the canonical path.
 function close() { aiAction.reset() }
 
@@ -63,15 +70,15 @@ function close() { aiAction.reset() }
 // those have their own UX (see useAiOptimize). The composable already
 // avoids storing a `result` for them, but keep the guard for safety.
 const shouldUseDiffOverlay = computed(() => {
-  const a = aiAction.result.value?.action
+  const a = activeResult.value?.action
   return a === 'optimize' || a === 'optimize_customer' || a === 'translate' || a === 'tone_check'
 })
 
-const action = computed(() => aiAction.result.value?.action ?? '')
-const subAction = computed(() => aiAction.result.value?.subAction)
-const fieldLabel = computed(() => aiAction.result.value?.fieldLabel ?? '')
-const sourceText = computed(() => aiAction.result.value?.sourceText ?? '')
-const body = computed<any>(() => aiAction.result.value?.body ?? null)
+const action = computed(() => activeResult.value?.action ?? '')
+const subAction = computed(() => activeResult.value?.subAction)
+const fieldLabel = computed(() => activeResult.value?.fieldLabel ?? '')
+const sourceText = computed(() => activeResult.value?.sourceText ?? '')
+const body = computed<any>(() => activeResult.value?.body ?? null)
 
 // Per-action selection state. Each action that needs the user to
 // pick which suggestions to apply uses `selected` as a Set of
@@ -109,6 +116,7 @@ const headerTitle = computed(() => {
 
 function emitApply(intent: string, values?: Record<string, unknown>) {
   const r = aiAction.result.value
+  if (props.hostKey && r?.hostKey !== props.hostKey) return
   if (!r) return
   const sel = Array.from(selected.value).sort((a, b) => a - b)
   props.apply?.({
@@ -131,33 +139,15 @@ function emitApply(intent: string, values?: Record<string, unknown>) {
 const subtaskOverrides = ref<Record<number, string>>({})
 
 // Reset selection / overrides whenever a fresh result lands.
-function watchResult() {
+function resetResultState() {
   reset()
   subtaskOverrides.value = {}
 }
-
-// Reactive watcher via a computed dependency
-const _resultKey = computed(() => `${action.value}-${aiAction.result.value?.model ?? ''}`)
-watchResultEffect(_resultKey, watchResult)
-
-// Tiny replacement for `watch(immediate:true)` to avoid pulling in
-// a `watch` for one-line side-effects. Triggers `cb` on the first
-// access and on every subsequent dependency change.
-let _lastKey: string | null = null
-function watchResultEffect(key: { value: string }, cb: () => void) {
-  // Vue runs setup once on mount; we hook into the computed's
-  // effect by reading it inside a getter inside `computed` indirectly
-  // here. The simplest approach is a watch — but to stay zero-import
-  // we use a setter that re-runs on every access via a computed
-  // wrapper. Since this is exclusively used in a script-setup with
-  // a stable identity, the watcher below is equivalent.
-  const v = computed(() => key.value)
-  // Run once on first access
-  if (v.value !== _lastKey) {
-    _lastKey = v.value
-    cb()
-  }
-}
+watch(
+  () => [activeResult.value?.requestId ?? '', action.value, activeResult.value?.model ?? ''].join('|'),
+  () => resetResultState(),
+  { immediate: true },
+)
 </script>
 
 <template>

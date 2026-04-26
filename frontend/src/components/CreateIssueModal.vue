@@ -23,13 +23,22 @@ import { EPIC_COLOR_PALETTE } from '@/config/epicColors'
 // here (no row exists yet); the backend skips context lookup for that
 // sentinel and works on the source text alone.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
+import { applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
 
-const aiOptimize = useAiOptimize()
 function onAiAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
   return (text: string) => { form.value[field] = text }
+}
+
+async function applyAiCreateResult(info: AiApplyInfo) {
+  const next = applyIssueTextMutations(info, {
+    description: form.value.description,
+    acceptance_criteria: form.value.acceptance_criteria,
+    notes: form.value.notes,
+  })
+  form.value.description = next.description
+  form.value.acceptance_criteria = next.acceptance_criteria
+  form.value.notes = next.notes
 }
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
@@ -334,11 +343,12 @@ defineExpose({ openCreate })
         <label>Title</label>
         <input v-model="form.title" type="text" placeholder="Issue title" required autofocus />
       </div>
-      <AiOptimizeBanner />
+      <AiSurfaceFeedback host-key="create-issue:record" :apply="applyAiCreateResult" />
       <div class="field">
         <div class="field-label-row">
           <label>Description</label>
           <AiActionMenu surface="issue"
+            host-key="create-issue:description"
             field="description"
             field-label="Description"
             :issue-id="0"
@@ -347,11 +357,13 @@ defineExpose({ openCreate })
           />
         </div>
         <textarea v-auto-grow v-model="form.description" rows="2" placeholder="Optional description"></textarea>
+        <AiSurfaceFeedback host-key="create-issue:description" :apply="applyAiCreateResult" />
       </div>
       <div class="field" v-if="['epic','cost_unit','ticket'].includes(form.type)">
         <div class="field-label-row">
           <label>Acceptance Criteria</label>
           <AiActionMenu surface="issue"
+            host-key="create-issue:acceptance_criteria"
             field="acceptance_criteria"
             field-label="Acceptance Criteria"
             :issue-id="0"
@@ -360,11 +372,13 @@ defineExpose({ openCreate })
           />
         </div>
         <textarea v-auto-grow v-model="form.acceptance_criteria" rows="2" placeholder="When is this done?"></textarea>
+        <AiSurfaceFeedback host-key="create-issue:acceptance_criteria" :apply="applyAiCreateResult" />
       </div>
       <div class="field">
         <div class="field-label-row">
           <label>Notes</label>
           <AiActionMenu surface="issue"
+            host-key="create-issue:notes"
             field="notes"
             field-label="Notes"
             :issue-id="0"
@@ -373,6 +387,7 @@ defineExpose({ openCreate })
           />
         </div>
         <textarea v-auto-grow v-model="form.notes" rows="2" placeholder="Additional notes"></textarea>
+        <AiSurfaceFeedback host-key="create-issue:notes" :apply="applyAiCreateResult" />
       </div>
       <div class="form-row">
         <div class="field">
@@ -559,20 +574,6 @@ defineExpose({ openCreate })
       @retry="(job) => attachments.retryJob(job)"
     />
     </div>
-    <!-- PAI-146: AI optimize preview overlay. Mounted once for the
-         modal; the composable singleton ensures only one overlay can
-         be open at a time across the whole SPA. -->
-    <AiOptimizeOverlay
-      v-if="aiOptimize.overlay.visible"
-      :original="aiOptimize.overlay.original"
-      :optimized="aiOptimize.overlay.optimized"
-      :field-label="aiOptimize.overlay.fieldLabel"
-      :model-name="aiOptimize.overlay.modelName"
-      :retrying="aiOptimize.overlay.retrying"
-      @accept="aiOptimize.accept()"
-      @reject="aiOptimize.reject()"
-      @retry="aiOptimize.retry()"
-    />
   </AppModal>
 </template>
 

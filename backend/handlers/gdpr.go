@@ -71,6 +71,7 @@ type retentionPolicy struct {
 	AccessAudit       int `json:"access_audit_days"`
 	SessionActivity   int `json:"session_activity_days"`
 	IncidentClosed    int `json:"incident_closed_days"`
+	AICalls           int `json:"ai_calls_days"`
 	TOTPPending       int `json:"totp_pending_minutes"`
 }
 
@@ -81,6 +82,7 @@ func currentPolicy() retentionPolicy {
 		AccessAudit:     retentionDays("ACCESS_AUDIT", 365),
 		SessionActivity: retentionDays("SESSION_ACTIVITY", 90),
 		IncidentClosed:  retentionDays("INCIDENT_CLOSED", 730),
+		AICalls:         retentionDays("AI_CALLS", 365),
 		TOTPPending:     retentionDays("TOTP_PENDING_MIN", 60), // minutes, not days
 	}
 }
@@ -124,6 +126,9 @@ func runRetentionSweep() {
 	sweepOlderThan("incident_log_closed",
 		"DELETE FROM incident_log WHERE status='closed' AND updated_at < datetime('now', ?)",
 		p.IncidentClosed)
+	sweepOlderThan("ai_calls",
+		"DELETE FROM ai_calls WHERE created_at < datetime('now', ?)",
+		p.AICalls)
 	// TOTP pending is measured in minutes — already gated by expires_at;
 	// this just trims rows that the verify path never got around to.
 	if _, err := db.DB.Exec(
@@ -196,6 +201,7 @@ func ExportSubject(w http.ResponseWriter, r *http.Request) {
 		"incidents":        gdprRows(`SELECT id, severity, title, detected_at, status FROM incident_log WHERE reported_by=?`, id),
 		"recent_projects":  gdprRows(`SELECT user_id, project_id, visited_at FROM user_recent_projects WHERE user_id=?`, id),
 		"project_members":  gdprRows(`SELECT user_id, project_id, access_level FROM project_members WHERE user_id=?`, id),
+		"ai_calls":         gdprRows(`SELECT id, request_id, action_key, sub_action, surface, issue_id, project_id, customer_id, cooperation_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_micro_usd, outcome, error_class, latency_ms, created_at FROM ai_calls WHERE user_id=?`, id),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -263,6 +269,9 @@ func EraseSubject(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := tx.Exec(`DELETE FROM totp_pending WHERE user_id=?`, id); err != nil {
 		log.Printf("EraseSubject: delete totp_pending: %v", err)
+	}
+	if _, err := tx.Exec(`UPDATE ai_calls SET user_id=NULL WHERE user_id=?`, id); err != nil {
+		log.Printf("EraseSubject: null ai_calls: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
 		jsonError(w, "commit failed", http.StatusInternalServerError)

@@ -72,6 +72,7 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"entity_relations",
 		"entity_embeddings",
 		"ai_prompts",
+		"ai_calls",
 		"project_members",
 	} {
 		if !tableExists(t, db, table) {
@@ -129,6 +130,8 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_entity_relations_project_src",
 		"idx_entity_relations_project_tgt",
 		"idx_ai_prompts_key_enabled",
+		"idx_ai_calls_time",
+		"idx_ai_calls_issue_time",
 		"idx_documents_project",
 		"idx_time_entries_mite_id",
 	} {
