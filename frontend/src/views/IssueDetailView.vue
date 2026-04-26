@@ -30,6 +30,7 @@ import {
   type IssueAggregation as Aggregation,
 } from '@/services/issueDetail'
 import { uploadInlineIssueAttachment } from '@/services/issueInlineAttachments'
+import { addIssueRelation } from '@/services/issueRelations'
 import {
   useIssueDisplay,
   TYPE_SVGS,
@@ -507,23 +508,61 @@ async function applyAiResult(info: AiApplyInfo) {
     const hours = Number(info.values?.hours ?? (info.body as any)?.hours ?? 0)
     const lp = Number(info.values?.lp ?? (info.body as any)?.lp ?? 0)
     if (editing.value) {
+      const prevHours = form.value.estimate_hours
+      const prevLp = form.value.estimate_lp
       form.value.estimate_hours = hours
       form.value.estimate_lp = lp
-      return
+      return {
+        undoLabel: `Estimate ${hours}h / ${lp} LP applied`,
+        undo: () => {
+          form.value.estimate_hours = prevHours
+          form.value.estimate_lp = prevLp
+        },
+      }
     }
+    const prevHours = issue.value?.estimate_hours ?? null
+    const prevLp = issue.value?.estimate_lp ?? null
     issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { estimate_hours: hours, estimate_lp: lp })
-    return
+    return {
+      undoLabel: `Estimate ${hours}h / ${lp} LP applied`,
+      undo: async () => {
+        issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { estimate_hours: prevHours, estimate_lp: prevLp })
+      },
+    }
   }
   if (info.action === 'find_parent') {
     const issueKey = String(info.values?.issue_key ?? '')
     const parent = projectIssues.value.find(i => i.issue_key === issueKey)
     if (!parent) return
     if (editing.value) {
+      const prevParent = form.value.parent_id
       form.value.parent_id = parent.id
-      return
+      return {
+        undoLabel: `Parent set to ${parent.issue_key}`,
+        undo: () => {
+          form.value.parent_id = prevParent
+        },
+      }
     }
+    const prevParent = issue.value?.parent_id ?? null
+    const prevParentIssue = parentIssue.value
     issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { parent_id: parent.id })
     parentIssue.value = parent
+    return {
+      undoLabel: `Parent set to ${parent.issue_key}`,
+      undo: async () => {
+        issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { parent_id: prevParent })
+        parentIssue.value = prevParentIssue
+      },
+    }
+  }
+  if (info.action === 'detect_duplicates') {
+    const issueKey = String(info.values?.issue_key ?? '')
+    const relationType = String(info.values?.relation_type ?? 'related') as 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'
+    const target = projectIssues.value.find(i => i.issue_key === issueKey)
+    if (!target) return
+    await addIssueRelation(issueId.value, target.id, relationType)
+    relationsRef.value?.load()
     return
   }
   if (info.action === 'generate_subtasks') {

@@ -41,6 +41,7 @@ import {
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 import { applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
+import { addIssueRelation } from '@/services/issueRelations'
 
 const ctx = useIssueContext(true)
 
@@ -136,6 +137,8 @@ async function loadAttachments() {
 // switching issues never shows stale candidates from the previous project.
 const parentCandidates = ref<Issue[]>([])
 const parentCandidatesForIssueId = ref<number | null>(null)
+const relationCandidates = ref<Issue[]>([])
+const relationCandidatesForProjectId = ref<number | null>(null)
 async function loadParentCandidates() {
   if (!issue.value) return
   if (parentCandidatesForIssueId.value === issue.value.id) return
@@ -157,6 +160,17 @@ async function loadParentCandidates() {
     if (issue.value?.id !== fetchingForId) return
     parentCandidates.value = []
     parentCandidatesForIssueId.value = fetchingForId
+  }
+}
+async function loadRelationCandidates() {
+  if (!issue.value) return
+  if (relationCandidatesForProjectId.value === issue.value.project_id) return
+  try {
+    relationCandidates.value = await api.get<Issue[]>(`/projects/${issue.value.project_id}/issues`)
+    relationCandidatesForProjectId.value = issue.value.project_id
+  } catch {
+    relationCandidates.value = []
+    relationCandidatesForProjectId.value = issue.value.project_id
   }
 }
 const parentOptions = computed<MetaOption[]>(() => {
@@ -189,15 +203,39 @@ function onAiAccept(field: 'description' | 'acceptance_criteria' | 'notes') {
 async function applyAiPanelResult(info: AiApplyInfo) {
   if (!issue.value) return
   if (info.action === 'estimate_effort') {
+    const prevHours = form.value.estimate_hours
+    const prevLp = form.value.estimate_lp
     form.value.estimate_hours = Number(info.values?.hours ?? (info.body as any)?.hours ?? 0)
     form.value.estimate_lp = Number(info.values?.lp ?? (info.body as any)?.lp ?? 0)
-    return
+    return {
+      undoLabel: `Estimate ${form.value.estimate_hours}h / ${form.value.estimate_lp} LP applied`,
+      undo: () => {
+        form.value.estimate_hours = prevHours
+        form.value.estimate_lp = prevLp
+      },
+    }
   }
   if (info.action === 'find_parent') {
     await loadParentCandidates()
     const issueKey = String(info.values?.issue_key ?? '')
     const parent = parentCandidates.value.find(i => i.issue_key === issueKey)
-    if (parent) form.value.parent_id = String(parent.id)
+    if (!parent) return
+    const prevParent = form.value.parent_id
+    form.value.parent_id = String(parent.id)
+    return {
+      undoLabel: `Parent set to ${parent.issue_key}`,
+      undo: () => {
+        form.value.parent_id = prevParent
+      },
+    }
+  }
+  if (info.action === 'detect_duplicates') {
+    const issueKey = String(info.values?.issue_key ?? '')
+    const relationType = String(info.values?.relation_type ?? 'related') as 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'
+    await loadRelationCandidates()
+    const target = relationCandidates.value.find(i => i.issue_key === issueKey)
+    if (!target) return
+    await addIssueRelation(issue.value.id, target.id, relationType)
     return
   }
   const next = applyIssueTextMutations(info, {

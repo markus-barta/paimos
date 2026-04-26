@@ -51,9 +51,13 @@ interface ActionApplyArgs {
   selection?: number[]
   values?: Record<string, unknown>
 }
+interface ActionApplyResult {
+  undoLabel?: string
+  undo?: () => void | Promise<void>
+}
 const props = defineProps<{
   hostKey?: string
-  apply?: (info: ActionApplyArgs) => void | Promise<void>
+  apply?: (info: ActionApplyArgs) => void | Promise<void> | ActionApplyResult | Promise<ActionApplyResult | void>
 }>()
 
 const activeResult = computed(() => {

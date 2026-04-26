@@ -19,6 +19,7 @@ const error = ref('')
 const payload = ref<AICallListResponse | null>(null)
 const query = ref<AICallQuery>({ limit: 25 })
 const selected = ref<AICallRow | null>(null)
+const draft = ref<AICallQuery>({ limit: 25 })
 
 const rows = computed(() => payload.value?.rows ?? [])
 const totalCost = computed(() => ((payload.value?.total_cost_micro_usd ?? 0) / 1_000_000).toFixed(4))
@@ -39,6 +40,29 @@ async function load() {
 }
 
 onMounted(() => { void load() })
+
+function applyFilters() {
+  query.value = {
+    ...draft.value,
+    limit: draft.value.limit || 25,
+    cursor: '',
+  }
+  selected.value = null
+  void load()
+}
+
+function resetFilters() {
+  draft.value = { limit: 25 }
+  applyFilters()
+}
+
+function nextPage() {
+  if (!payload.value?.next_cursor) return
+  query.value = { ...query.value, cursor: payload.value.next_cursor }
+  draft.value = { ...query.value }
+  selected.value = null
+  void load()
+}
 </script>
 
 <template>
@@ -61,6 +85,24 @@ onMounted(() => { void load() })
     <div class="aipt-totals">
       <span>{{ payload?.total_count ?? 0 }} calls</span>
       <span>${{ totalCost }}</span>
+    </div>
+
+    <div class="aipt-filters">
+      <input v-model="draft.from" type="date" class="aipt-input" placeholder="From" />
+      <input v-model="draft.to" type="date" class="aipt-input" placeholder="To" />
+      <input v-model="draft.action_key" type="text" class="aipt-input" placeholder="Action key" />
+      <input v-model="draft.model" type="text" class="aipt-input" placeholder="Model" />
+      <select v-model="draft.outcome" class="aipt-input">
+        <option value="">Any outcome</option>
+        <option value="ok">ok</option>
+        <option value="bad_request">bad_request</option>
+        <option value="denied">denied</option>
+        <option value="fail_upstream">fail_upstream</option>
+        <option value="unconfigured">unconfigured</option>
+      </select>
+      <input v-model="draft.surface" type="text" class="aipt-input" placeholder="Surface" />
+      <button class="btn btn-primary btn-sm" @click="applyFilters" :disabled="loading">Apply</button>
+      <button class="btn btn-ghost btn-sm" @click="resetFilters" :disabled="loading">Reset</button>
     </div>
 
     <div v-if="error" class="aipt-error">{{ error }}</div>
@@ -119,6 +161,10 @@ onMounted(() => { void load() })
         <div><dt>Error class</dt><dd class="aipt-mono">{{ selected.error_class || '—' }}</dd></div>
       </dl>
     </aside>
+
+    <div v-if="payload?.next_cursor" class="aipt-pager">
+      <button type="button" class="btn btn-ghost btn-sm" @click="nextPage" :disabled="loading">Next page</button>
+    </div>
   </section>
 </template>
 
@@ -147,6 +193,20 @@ onMounted(() => { void load() })
 .aipt-actions {
   display: flex;
   gap: .5rem;
+}
+.aipt-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: .5rem;
+}
+.aipt-input {
+  min-height: 34px;
+  padding: .45rem .55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
 }
 .aipt-totals {
   font-family: "DM Mono", "JetBrains Mono", monospace;
@@ -226,5 +286,9 @@ onMounted(() => { void load() })
   margin: 0;
   font-size: 12px;
   color: var(--text);
+}
+.aipt-pager {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

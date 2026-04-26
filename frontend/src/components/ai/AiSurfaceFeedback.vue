@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AiActivityStrip from '@/components/ai/AiActivityStrip.vue'
 import AiActionResultModal from '@/components/ai/AiActionResultModal.vue'
@@ -21,14 +21,21 @@ interface ActionApplyArgs {
   values?: Record<string, unknown>
 }
 
+interface ActionApplyResult {
+  undoLabel?: string
+  undo?: () => void | Promise<void>
+}
+
 const props = defineProps<{
   hostKey: string
-  apply?: (info: ActionApplyArgs) => void | Promise<void>
+  apply?: (info: ActionApplyArgs) => void | Promise<void> | ActionApplyResult | Promise<ActionApplyResult | void>
 }>()
 
 const { t } = useI18n()
 const aiAction = useAiAction()
 const aiOptimize = useAiOptimize()
+const undoState = ref<ActionApplyResult | null>(null)
+let undoTimer: number | null = null
 
 const actionActivity = computed(() => aiAction.activity.value?.hostKey === props.hostKey ? aiAction.activity.value : null)
 const optimizeActivity = computed(() => aiOptimize.activity.value?.hostKey === props.hostKey ? aiOptimize.activity.value : null)
@@ -46,6 +53,7 @@ const resultSummary = computed(() => {
     action: actionResult.value.action,
     body: actionResult.value.body,
     sourceText: actionResult.value.sourceText,
+    optimizedText: (actionResult.value.body as any)?.optimized_text ?? '',
   })
 })
 
@@ -58,7 +66,7 @@ const actionDecision = computed(() => {
       copy: t('ai.setAsParent', { issueKey: top.issue_key }),
       primary: {
         label: t('ai.apply'),
-        action: () => props.apply?.({
+        action: () => runApply({
           action: r.action,
           subAction: r.subAction,
           field: r.field,
@@ -69,6 +77,23 @@ const actionDecision = computed(() => {
           values: { issue_key: top.issue_key },
         }),
       },
+      secondary: ((r.body as any)?.candidates ?? []).slice(1, 3).map((candidate: any) => ({
+        label: candidate.issue_key,
+        action: () => runApply({
+          action: r.action,
+          subAction: r.subAction,
+          field: r.field,
+          fieldLabel: r.fieldLabel,
+          issueId: r.issueId,
+          body: r.body,
+          intent: 'move-under',
+          values: { issue_key: candidate.issue_key },
+        }),
+      })),
+      explain: {
+        label: t('ai.details'),
+        action: () => undefined,
+      },
     }
   }
   if (r.action === 'estimate_effort') {
@@ -76,7 +101,7 @@ const actionDecision = computed(() => {
       copy: t('ai.applyEstimate'),
       primary: {
         label: t('ai.apply'),
-        action: () => props.apply?.({
+        action: () => runApply({
           action: r.action,
           subAction: r.subAction,
           field: r.field,
@@ -87,6 +112,44 @@ const actionDecision = computed(() => {
           values: { hours: (r.body as any)?.hours, lp: (r.body as any)?.lp },
         }),
       },
+      secondary: [
+        {
+          label: t('ai.dismiss'),
+          action: () => aiAction.reset(),
+        },
+      ],
+      explain: {
+        label: t('ai.showReasoning'),
+        action: () => undefined,
+      },
+    }
+  }
+  if (r.action === 'detect_duplicates' && Array.isArray((r.body as any)?.matches) && (r.body as any).matches.length > 0) {
+    const top = (r.body as any).matches[0]
+    const relationAction = (type: string, issueKey: string) => runApply({
+      action: r.action,
+      subAction: r.subAction,
+      field: r.field,
+      fieldLabel: r.fieldLabel,
+      issueId: r.issueId,
+      body: r.body,
+      intent: 'link-relation',
+      values: { issue_key: issueKey, relation_type: type },
+    })
+    return {
+      copy: t('ai.linkAsRelated', { issueKey: top.issue_key }),
+      primary: {
+        label: t('ai.linkRelated'),
+        action: () => relationAction('related', top.issue_key),
+      },
+      secondary: [
+        { label: t('ai.linkBlocks'), action: () => relationAction('blocks', top.issue_key) },
+        { label: t('ai.linkDependsOn'), action: () => relationAction('depends_on', top.issue_key) },
+      ],
+      explain: {
+        label: t('ai.moreRelations'),
+        action: () => undefined,
+      },
     }
   }
   return null
@@ -95,6 +158,34 @@ const actionDecision = computed(() => {
 function clearError() {
   aiAction.clearError()
   aiOptimize.clearError()
+}
+
+async function runApply(args: ActionApplyArgs) {
+  if (!props.apply) return
+  const res = await props.apply(args)
+  if (undoTimer) {
+    window.clearTimeout(undoTimer)
+    undoTimer = null
+  }
+  if (res?.undo) {
+    undoState.value = res
+    undoTimer = window.setTimeout(() => {
+      undoState.value = null
+      undoTimer = null
+    }, 5000)
+  } else {
+    undoState.value = null
+  }
+}
+
+async function undoLastApply() {
+  if (!undoState.value?.undo) return
+  await undoState.value.undo()
+  undoState.value = null
+  if (undoTimer) {
+    window.clearTimeout(undoTimer)
+    undoTimer = null
+  }
 }
 </script>
 
@@ -127,6 +218,8 @@ function clearError() {
       :summary="resultSummary"
       :details-label="t('ai.details')"
       :primary="actionDecision?.primary"
+      :secondary="actionDecision?.secondary"
+      :explain="actionDecision?.explain"
       :dismissable="true"
       :auto-dismiss-ms="actionDecision ? undefined : 12000"
       @dismiss="aiAction.reset()"
@@ -139,11 +232,45 @@ function clearError() {
           <span>{{ t('ai.modelLabel') }}: {{ actionResult.model || '—' }}</span>
           <span>{{ t('ai.tokensLabel') }}: {{ (actionResult.promptTokens ?? 0) + (actionResult.completionTokens ?? 0) }}</span>
         </div>
-        <p>{{ t('ai.detailsHint') }}</p>
+        <template v-if="actionResult.action === 'find_parent'">
+          <div class="ai-inline-list">
+            <div v-for="candidate in (actionResult.body as any)?.candidates ?? []" :key="candidate.issue_key" class="ai-inline-card">
+              <strong>{{ candidate.issue_key }} — {{ candidate.title }}</strong>
+              <span class="ai-inline-card__meta">{{ candidate.confidence || 'candidate' }}</span>
+              <p>{{ candidate.rationale }}</p>
+            </div>
+          </div>
+        </template>
+        <template v-else-if="actionResult.action === 'estimate_effort'">
+          <p>{{ (actionResult.body as any)?.reasoning || t('ai.detailsHint') }}</p>
+        </template>
+        <template v-else-if="actionResult.action === 'detect_duplicates'">
+          <div class="ai-inline-list">
+            <div v-for="match in (actionResult.body as any)?.matches ?? []" :key="match.issue_key" class="ai-inline-card">
+              <strong>{{ match.issue_key }} — {{ match.title }}</strong>
+              <span class="ai-inline-card__meta">{{ match.similarity || 'match' }}</span>
+              <p>{{ match.rationale }}</p>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <p>{{ t('ai.detailsHint') }}</p>
+        </template>
       </div>
     </AiResultStrip>
 
     <AiActionResultModal :host-key="hostKey" :apply="apply" />
+
+    <AiResultStrip
+      v-if="undoState?.undo"
+      action-key="undo"
+      :title="t('ai.undoTitle')"
+      :summary="undoState.undoLabel || t('ai.undoReady')"
+      :primary="{ label: t('ai.undo'), action: undoLastApply }"
+      :dismissable="true"
+      :auto-dismiss-ms="5000"
+      @dismiss="undoState = null"
+    />
 
     <AiOptimizeOverlay
       v-if="optimizeOverlay"
@@ -194,6 +321,30 @@ function clearError() {
 }
 .ai-surface-detail p {
   font-size: 12px;
+  color: var(--text-muted);
+}
+.ai-inline-list {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+.ai-inline-card {
+  padding: .55rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.ai-inline-card strong {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+}
+.ai-inline-card__meta {
+  display: inline-block;
+  margin-top: .15rem;
+  margin-bottom: .2rem;
+  font-family: "DM Mono", "JetBrains Mono", monospace;
+  font-size: 10px;
   color: var(--text-muted);
 }
 </style>
