@@ -129,8 +129,8 @@ revision and schema metadata so deep links and provenance stay explicit.
 
 `/api/projects/:id/retrieve` now fuses project-scoped lexical hits from
 issue text plus a dedicated context index for anchors, manifest content,
-ADR entries, and NFR entries, then appends graph-neighbor expansion. It
-does not perform vector retrieval yet.
+ADR entries, and NFR entries, then blends in deterministic local vector
+matches and appends graph-neighbor expansion.
 
 Blast-radius queries are available at
 `GET /api/projects/:id/graph/blast-radius?issue=PAI-79&depth=3` for the

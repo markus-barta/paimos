@@ -98,7 +98,11 @@ func retrieveProjectContextHits(projectID int64, q string, k int) ([]map[string]
 	if err != nil {
 		return nil, err
 	}
-	hits := fuseProjectContextHits(k, issueHits, contextHits)
+	vectorHits, err := retrieveProjectContextVectorHits(projectID, q, k)
+	if err != nil {
+		return nil, err
+	}
+	hits := fuseProjectContextHits(k, issueHits, contextHits, vectorHits)
 	expanded := appendGraphExpandedHits(projectID, hits, k)
 	if len(expanded) > 0 {
 		hits = fuseProjectContextHits(k, hits, expanded)

@@ -14,7 +14,8 @@ curl -s -H "Authorization: Bearer $PAIMOS_API_KEY" \
 ```
 
 This currently fuses lexical hits across issue text, anchors, manifest
-content, ADRs, and NFRs, then expands related graph neighbors.
+content, ADRs, and NFRs, blends in deterministic local vector matches,
+then expands related graph neighbors.
 
 ## Traverse the project graph
 

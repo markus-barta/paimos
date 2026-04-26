@@ -195,6 +195,21 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if !foundADR {
 		t.Fatalf("retrieve missing adr hit: %#v", adrSearch.Hits)
 	}
+	foundVectorSource := false
+	for _, hit := range adrSearch.Hits {
+		if hit["entity_type"] == "adr" {
+			if rawSources, ok := hit["sources"].([]any); ok {
+				for _, src := range rawSources {
+					if s, ok := src.(string); ok && s == "vector" {
+						foundVectorSource = true
+					}
+				}
+			}
+		}
+	}
+	if !foundVectorSource {
+		t.Fatalf("retrieve missing vector source on adr hit: %#v", adrSearch.Hits)
+	}
 
 	blastResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/graph/blast-radius?issue="+issue.IssueKey+"&depth=2", ts.adminCookie)
 	assertStatus(t, blastResp, http.StatusOK)
