@@ -186,6 +186,7 @@ func buildRouter() http.Handler {
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
 
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/issues", handlers.CreateIssue)
 
 			r.Get("/issues/recent", handlers.RecentIssues)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useRouter } from "vue-router";
 import AppIcon from "@/components/AppIcon.vue";
@@ -18,6 +18,9 @@ const paletteRef = ref<InstanceType<typeof SearchPalette> | null>(null);
 const paletteVisible = ref(false);
 
 const hasQuery = computed(() => search.query.length >= 2);
+const undoStackCount = computed(
+  () => undo.undoRows.length + undo.redoRows.length + undo.historyRows.length,
+);
 
 function onFocus() {
   searchFocused.value = true;
@@ -77,6 +80,10 @@ function onPaletteClose() {
   paletteVisible.value = false;
 }
 
+onMounted(() => {
+  void undo.refresh();
+});
+
 // Exposed so AppLayout can focus on / shortcut
 defineExpose({
   focus() {
@@ -93,49 +100,63 @@ defineExpose({
 
     <!-- CENTER: persistent search -->
     <div class="ah-center">
-      <div
-        :class="[
-          'ah-search-wrap',
-          { focused: searchFocused, active: hasQuery },
-        ]"
-      >
-        <AppIcon name="search" :size="13" class="ah-search-icon" />
-        <input
-          ref="topbarInput"
-          v-model="search.query"
-          type="search"
-          class="ah-search-input"
-          placeholder="Search issues… (/ or ⌘K)"
-          autocomplete="off"
-          spellcheck="false"
-          @focus="onFocus"
-          @blur="onBlur"
-          @input="onInput"
-          @keydown="onKeydown"
-        />
-        <button
-          class="ah-search-history"
-          :title="undo.panelOpen ? 'Close recent activity' : 'Recent activity'"
-          @mousedown.prevent="
-            undo.panelOpen ? undo.closePanel() : undo.openPanel()
-          "
+      <div class="ah-center-row">
+        <div
+          :class="[
+            'ah-search-wrap',
+            { focused: searchFocused, active: hasQuery },
+          ]"
         >
-          <AppIcon name="rewind" :size="12" />
-        </button>
+          <AppIcon name="search" :size="13" class="ah-search-icon" />
+          <input
+            ref="topbarInput"
+            v-model="search.query"
+            type="search"
+            class="ah-search-input"
+            placeholder="Search issues… (/ or ⌘K)"
+            autocomplete="off"
+            spellcheck="false"
+            @focus="onFocus"
+            @blur="onBlur"
+            @input="onInput"
+            @keydown="onKeydown"
+          />
+          <button
+            class="ah-search-history"
+            :title="undo.panelOpen ? 'Close recent activity' : 'Recent activity'"
+            @mousedown.prevent="
+              undo.panelOpen ? undo.closePanel() : undo.openPanel()
+            "
+          >
+            <AppIcon name="rewind" :size="12" />
+          </button>
+          <button
+            v-if="search.query"
+            class="ah-search-clear"
+            title="Clear search"
+            @mousedown.prevent="clear"
+          >
+            <AppIcon name="x" :size="12" :stroke-width="2.5" />
+          </button>
+          <SearchPalette
+            ref="paletteRef"
+            :visible="paletteVisible"
+            @navigate="onPaletteNavigate"
+            @close="onPaletteClose"
+          />
+        </div>
         <button
-          v-if="search.query"
-          class="ah-search-clear"
-          title="Clear search"
-          @mousedown.prevent="clear"
+          class="ah-undo-button"
+          :class="{ 'ah-undo-button--active': undo.panelOpen }"
+          :title="undo.panelOpen ? 'Close undo history' : 'Open undo history'"
+          @click="undo.panelOpen ? undo.closePanel() : undo.openPanel()"
         >
-          <AppIcon name="x" :size="12" :stroke-width="2.5" />
+          <AppIcon name="rewind" :size="13" />
+          <span>Undo</span>
+          <span v-if="undoStackCount" class="ah-undo-count">
+            {{ undoStackCount }}
+          </span>
         </button>
-        <SearchPalette
-          ref="paletteRef"
-          :visible="paletteVisible"
-          @navigate="onPaletteNavigate"
-          @close="onPaletteClose"
-        />
       </div>
     </div>
 
@@ -147,14 +168,17 @@ defineExpose({
 <style scoped>
 .app-header {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 1rem;
   padding: 0 2.5rem;
-  height: 52px;
+  min-height: 52px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-card);
   flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  transition: padding 0.2s ease;
 }
 
 /* LEFT */
@@ -170,6 +194,15 @@ defineExpose({
 .ah-center {
   display: flex;
   justify-content: center;
+  min-width: 0;
+}
+
+.ah-center-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-width: 0;
 }
 
 .ah-search-wrap {
@@ -177,6 +210,7 @@ defineExpose({
   display: flex;
   align-items: center;
   width: 280px;
+  max-width: min(48vw, 420px);
   transition: width 0.2s;
 }
 .ah-search-wrap.focused {
@@ -253,5 +287,108 @@ defineExpose({
   justify-content: flex-end;
   gap: 0.5rem;
   min-width: 0;
+  flex-wrap: wrap;
+}
+
+.ah-undo-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 32px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+
+.ah-undo-button:hover {
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.ah-undo-button--active {
+  border-color: color-mix(in srgb, var(--bp-blue) 35%, var(--border));
+  background: color-mix(in srgb, var(--bp-blue) 10%, var(--bg-card));
+  color: var(--bp-blue-dark);
+}
+
+.ah-undo-count {
+  min-width: 1.25rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bp-blue) 16%, transparent);
+  color: inherit;
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .app-header {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "left right"
+      "center center";
+    gap: 0.75rem 1rem;
+    padding: 0.75rem 1.25rem;
+  }
+
+  .ah-left {
+    grid-area: left;
+  }
+
+  .ah-center {
+    grid-area: center;
+    justify-content: stretch;
+  }
+
+  .ah-center-row {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .ah-right {
+    grid-area: right;
+  }
+
+  .ah-search-wrap,
+  .ah-search-wrap.focused {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "left"
+      "center"
+      "right";
+    gap: 0.65rem;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .ah-left,
+  .ah-right {
+    justify-content: flex-start;
+  }
+
+  .ah-center-row {
+    flex-wrap: wrap;
+  }
+
+  .ah-undo-button {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

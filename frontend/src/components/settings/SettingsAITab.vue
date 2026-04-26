@@ -48,6 +48,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
+import { useNumberFormat } from '@/composables/useNumberFormat'
 
 interface AISettings {
   enabled: boolean
@@ -231,6 +232,7 @@ interface AIUsageResponse {
 const usagePayload = ref<AIUsageResponse | null>(null)
 const usageLoading = ref(false)
 const usageError = ref('')
+const { formatNumber } = useNumberFormat()
 async function loadUsage() {
   usageLoading.value = true
   usageError.value = ''
@@ -241,6 +243,10 @@ async function loadUsage() {
   } finally {
     usageLoading.value = false
   }
+}
+
+function formatTokenBreakdown(promptTokens: number, completionTokens: number) {
+  return `${formatNumber(promptTokens)} prompt + ${formatNumber(completionTokens)} completion tokens`
 }
 
 async function load() {
@@ -526,7 +532,7 @@ function relTime(iso: string): string {
             <AppIcon name="zap" :size="11" /> {{ testResult.latency_ms }} ms
           </span>
           <span v-if="testResult.prompt_tokens != null && testResult.completion_tokens != null && (testResult.prompt_tokens + testResult.completion_tokens) > 0" class="ai-test-result-pill">
-            {{ testResult.prompt_tokens }}p + {{ testResult.completion_tokens }}c tokens
+            {{ formatTokenBreakdown(testResult.prompt_tokens, testResult.completion_tokens) }}
           </span>
           <span v-if="testResult.marker" :class="['ai-test-result-pill', `ai-test-result-pill--${testResult.marker.toLowerCase()}`]">
             marker: {{ testResult.marker }}
@@ -708,7 +714,7 @@ function relTime(iso: string): string {
                 </div>
                 <code class="ai-preset-slug">{{ m.id }}</code>
                 <div class="ai-preset-meta">
-                  <span class="ai-preset-meta-bit" :title="`${m.context_length.toLocaleString()} token context`">
+                  <span class="ai-preset-meta-bit" :title="`${formatNumber(m.context_length)} token context`">
                     {{ formatContext(m.context_length) }} ctx
                   </span>
                   <span
@@ -795,13 +801,13 @@ function relTime(iso: string): string {
         <template v-if="usagePayload">
           <div class="ai-usage-summary">
             <span class="ai-usage-pill" title="Aggregate across all users for the current UTC day">
-              <strong>{{ usagePayload.org_prompt_tokens.toLocaleString() }}p</strong> + <strong>{{ usagePayload.org_completion_tokens.toLocaleString() }}c</strong> tokens
+              <strong>{{ formatTokenBreakdown(usagePayload.org_prompt_tokens, usagePayload.org_completion_tokens) }}</strong>
             </span>
             <span class="ai-usage-pill">
-              <strong>{{ usagePayload.org_request_count }}</strong> calls
+              <strong>{{ formatNumber(usagePayload.org_request_count) }}</strong> calls
             </span>
             <span class="ai-usage-pill">
-              Default cap <strong>{{ usagePayload.default_cap.toLocaleString() }}</strong>/user/day
+              Default cap <strong>{{ formatNumber(usagePayload.default_cap) }}</strong>/user/day
             </span>
             <span class="ai-usage-pill ai-usage-pill--day">UTC day {{ usagePayload.day }}</span>
           </div>
@@ -809,7 +815,7 @@ function relTime(iso: string): string {
             <thead>
               <tr>
                 <th>User</th>
-                <th class="ai-usage-num">Tokens (p+c)</th>
+                <th class="ai-usage-num">Prompt + completion</th>
                 <th class="ai-usage-num">Calls</th>
                 <th class="ai-usage-num">Cap</th>
                 <th></th>
@@ -821,10 +827,12 @@ function relTime(iso: string): string {
                   {{ u.username }}
                   <span v-if="u.is_admin" class="ai-usage-admin-tag">admin</span>
                 </td>
-                <td class="ai-usage-num">{{ (u.prompt_tokens + u.completion_tokens).toLocaleString() }}</td>
-                <td class="ai-usage-num">{{ u.request_count }}</td>
+                <td class="ai-usage-num" :title="formatTokenBreakdown(u.prompt_tokens, u.completion_tokens)">
+                  {{ formatNumber(u.prompt_tokens + u.completion_tokens) }}
+                </td>
+                <td class="ai-usage-num">{{ formatNumber(u.request_count) }}</td>
                 <td class="ai-usage-num">
-                  {{ u.cap_effective.toLocaleString() }}<span v-if="u.cap_override !== null" class="ai-usage-override-tag" title="Override is set on this user">override</span>
+                  {{ formatNumber(u.cap_effective) }}<span v-if="u.cap_override !== null" class="ai-usage-override-tag" title="Override is set on this user">override</span>
                 </td>
                 <td>
                   <span v-if="u.over_cap && !u.is_admin" class="ai-usage-over-tag">over</span>

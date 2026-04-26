@@ -561,14 +561,14 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := issueSelectCore + ` WHERE i.project_id = ? AND ` + liveIssuesWhere
+	whereSQL := `i.project_id = ? AND ` + liveIssuesWhere
 	args := []any{projectID}
 
-	query, args = applyIssueFilters(query, args, r.URL.Query())
+	whereSQL, args = applyIssueFilters(whereSQL, args, r.URL.Query())
 
 	if fts := strings.TrimSpace(r.URL.Query().Get("q")); len(fts) >= 2 {
 		likePattern := "%" + fts + "%"
-		query += ` AND i.id IN (
+		whereSQL += ` AND i.id IN (
 			SELECT CAST(entity_id AS INTEGER) FROM search_index
 			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
 			UNION
@@ -579,6 +579,15 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 		)`
 		args = append(args, fts+"*", projectID, likePattern, likePattern, likePattern, likePattern, likePattern)
 	}
+
+	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
+		jsonError(w, "etag computation failed", http.StatusInternalServerError)
+		return
+	} else if handled {
+		return
+	}
+
+	query := issueSelectCore + ` WHERE ` + whereSQL
 
 	// Pagination
 	orderBy := " ORDER BY i.type DESC, i.issue_number ASC"
@@ -637,7 +646,16 @@ func GetIssueTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.DB.Query(issueSelectCore+` WHERE i.project_id=? AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`, projectID)
+	whereSQL := `i.project_id = ? AND ` + liveIssuesWhere
+	args := []any{projectID}
+	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
+		jsonError(w, "etag computation failed", http.StatusInternalServerError)
+		return
+	} else if handled {
+		return
+	}
+
+	rows, err := db.DB.Query(issueSelectCore+` WHERE `+whereSQL+` ORDER BY i.issue_number ASC`, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -1429,19 +1447,19 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	query := issueSelectCore + ` WHERE ` + liveIssuesWhere
+	whereSQL := liveIssuesWhere
 	args := []any{}
 
 	// Scope by per-project access (admins pass through with empty filter).
 	// Orphan issues (NULL project_id — sprints) are cross-project and
 	// remain visible to every authenticated internal user.
 	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
-		query += accessFilter
+		whereSQL += accessFilter
 		args = append(args, accessArgs...)
 	}
 
 	// Apply shared filters (status, priority, type, assignee, cost_unit, release, tags, sprints)
-	query, args = applyIssueFilters(query, args, q)
+	whereSQL, args = applyIssueFilters(whereSQL, args, q)
 
 	// Optional project_ids filter (comma-separated); "none" = project_id IS NULL
 	if pids := q.Get("project_ids"); pids != "" {
@@ -1461,11 +1479,11 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if placeholders != "" && wantNull {
-			query += " AND (i.project_id IN (" + placeholders + ") OR i.project_id IS NULL)"
+			whereSQL += " AND (i.project_id IN (" + placeholders + ") OR i.project_id IS NULL)"
 		} else if placeholders != "" {
-			query += " AND i.project_id IN (" + placeholders + ")"
+			whereSQL += " AND i.project_id IN (" + placeholders + ")"
 		} else if wantNull {
-			query += " AND i.project_id IS NULL"
+			whereSQL += " AND i.project_id IS NULL"
 		}
 	}
 
@@ -1479,9 +1497,18 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 				title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
 			)
 		)`
-		query += ftsClause
+		whereSQL += ftsClause
 		args = append(args, fts+"*", likePattern, likePattern, likePattern, likePattern)
 	}
+
+	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
+		jsonError(w, "etag computation failed", http.StatusInternalServerError)
+		return
+	} else if handled {
+		return
+	}
+
+	query := issueSelectCore + ` WHERE ` + whereSQL
 	query += " ORDER BY i.updated_at DESC, i.id DESC"
 	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 
@@ -1640,12 +1667,19 @@ func splitCSV(s string) []string {
 }
 
 func RecentIssues(w http.ResponseWriter, r *http.Request) {
-	query := issueSelectCore + ` WHERE ` + liveIssuesWhere
+	whereSQL := liveIssuesWhere
 	args := []any{}
 	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
-		query += accessFilter
+		whereSQL += accessFilter
 		args = append(args, accessArgs...)
 	}
+	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
+		jsonError(w, "etag computation failed", http.StatusInternalServerError)
+		return
+	} else if handled {
+		return
+	}
+	query := issueSelectCore + ` WHERE ` + whereSQL
 	query += ` ORDER BY i.updated_at DESC LIMIT 20`
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {

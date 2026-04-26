@@ -8,6 +8,7 @@ import type { MetaOption } from '@/components/MetaSelect.vue'
 import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
+import SettingsAITab from '@/components/settings/SettingsAITab.vue'
 import SettingsCRMTab from '@/components/settings/SettingsCRMTab.vue'
 import { STATUSES } from '@/constants/status'
 
@@ -19,11 +20,12 @@ const router = useRouter()
 if (auth.user && auth.user.role !== 'admin') router.replace('/')
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-type TabId = 'jira' | 'mite' | 'crm'
+type TabId = 'jira' | 'mite' | 'crm' | 'ai'
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'jira',  label: 'Jira',  icon: 'upload' },
   { id: 'mite',  label: 'Mite',  icon: 'clock' },
   { id: 'crm',   label: 'CRM',   icon: 'users' },
+  { id: 'ai',    label: 'AI',    icon: 'sparkles' },
 ]
 
 // Support old tab IDs from bookmarks. `?tab=crm` from the legacy
@@ -33,6 +35,7 @@ function resolveTab(t: string | undefined): TabId {
   if (t === 'jira-import' || t === 'jira') return 'jira'
   if (t === 'mite') return 'mite'
   if (t === 'crm') return 'crm'
+  if (t === 'ai') return 'ai'
   return 'jira'
 }
 
@@ -862,6 +865,10 @@ async function cancelMiteImport() {
   <!-- ── CRM tab (PAI-179: relocated from Settings) ──────────────────────── -->
   <div v-else-if="activeTab === 'crm'" class="tab-panel">
     <SettingsCRMTab />
+  </div>
+
+  <div v-else-if="activeTab === 'ai'" class="tab-panel">
+    <SettingsAITab />
   </div>
 
   <AppFooter />

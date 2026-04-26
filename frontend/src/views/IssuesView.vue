@@ -6,6 +6,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useSearchStore } from '@/stores/search'
 import { provideIssueContext } from '@/composables/useIssueContext'
+import { useFreshness } from '@/composables/useFreshness'
 import type { Issue, Project, Tag, Sprint, User, SavedView } from '@/types'
 
 interface IssueEnvelope {
@@ -37,6 +38,11 @@ const sprints   = ref<Sprint[]>([])
 provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
+const issuesPath = computed(() => {
+  let url = `/issues?fields=list&limit=${PAGE}&offset=0`
+  if (search.query.length >= 2) url += `&q=${encodeURIComponent(search.query)}`
+  return url
+})
 
 // ── Saved view tabs ──────────────────────────────────────────────────────────
 
@@ -91,6 +97,27 @@ const showEmptyFilterBanner = computed(() => {
   return fl === 0 && fc > 0 && hasMore.value
 })
 
+function currentMainScroll(): HTMLElement | null {
+  return document.querySelector('.main-content')
+}
+
+function applyFreshIssues(envelope: IssueEnvelope) {
+  const scroller = currentMainScroll()
+  const top = scroller?.scrollTop ?? 0
+  issues.value = envelope.issues
+  total.value = envelope.total
+  void nextTick(() => {
+    if (scroller) scroller.scrollTop = top
+  })
+}
+
+const freshness = useFreshness<IssueEnvelope>(issuesPath, {
+  apply: applyFreshIssues,
+  count: (payload) => payload.total,
+})
+const freshnessStale = computed(() => freshness.stale.value)
+const freshnessCount = computed(() => freshness.newCount.value)
+
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function fetchMeta() {
@@ -124,6 +151,9 @@ async function fetchIssues(limit: number, replace = false) {
       issues.value = [...issues.value, ...data.issues]
     }
     total.value = data.total
+    if (replace && offset === 0) {
+      await freshness.prime(data)
+    }
   } catch (e: unknown) {
     error.value = errMsg(e, 'Failed to load issues.')
   }
@@ -226,9 +256,12 @@ function onDeleted(id: number) {
       <IssueList
         ref="issueListRef"
         :issues="issues"
+        :refresh-stale="freshnessStale"
+        :refresh-count="freshnessCount"
         @created="onCreated"
         @updated="onUpdated"
         @deleted="onDeleted"
+        @refresh-list="freshness.refresh"
       />
 
       <div v-if="!isSearchMode && showEmptyFilterBanner" class="empty-filter-banner">

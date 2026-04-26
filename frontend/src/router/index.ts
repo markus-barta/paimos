@@ -144,6 +144,9 @@ router.beforeEach(async (to) => {
   if (to.path === "/settings" && to.query.tab === "crm") {
     return { path: "/integrations", query: { tab: "crm" } };
   }
+  if (to.path === "/settings" && to.query.tab === "ai") {
+    return { path: "/integrations", query: { tab: "ai" } };
+  }
   // Admin-only routes
   if (to.meta.adminOnly && auth.user?.role !== "admin") return "/";
   // External users: redirect away from internal routes to portal

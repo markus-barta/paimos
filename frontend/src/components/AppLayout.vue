@@ -239,6 +239,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 0.2s ease;
 }
 .layout.sidebar-collapsed {
   --sidebar-width: 48px;
@@ -258,6 +259,7 @@ onMounted(() => {
   overflow: hidden;
   flex-shrink: 0;
   z-index: 10;
+  transition: width 0.2s ease;
 }
 
 .layout.sidebar-collapsed .sidebar {
@@ -424,12 +426,14 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .main-content {
   padding: 2rem 2.5rem;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -456,6 +460,9 @@ onMounted(() => {
   50%       { background: #e8a317; box-shadow: 0 0 0 5px rgba(192,57,43,0); }
 }
 @media (max-width: 900px) {
+  .main-content {
+    padding: 1.25rem 1rem;
+  }
   .totp-warning { flex-wrap: wrap; gap: .5rem; }
 }
 </style>

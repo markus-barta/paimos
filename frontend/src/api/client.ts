@@ -112,6 +112,13 @@ export interface RequestOptions {
   headers?: Record<string, string>;
 }
 
+export interface ApiMetaResponse<T> {
+  data: T;
+  etag: string | null;
+  lastModified: string | null;
+  status: number;
+}
+
 function extractLikelyJSON(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed === "") return trimmed;
@@ -157,31 +164,33 @@ async function readJSON<T>(res: Response): Promise<T> {
   }
 }
 
-async function request<T>(
+async function fetchResponse(
   method: string,
   path: string,
   body?: unknown,
   opts?: RequestOptions,
-): Promise<T> {
+): Promise<Response> {
   const ctrl = new AbortController();
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  let res: Response;
   try {
     const headers: Record<string, string> = {
       ...(body ? { "Content-Type": "application/json" } : {}),
       ...(opts?.headers ?? {}),
     };
-    res = await fetch(`${BASE}${path}`, {
+    const res = await fetch(`${BASE}${path}`, {
       method,
       headers: withCsrfHeader(method, headers),
       body: body ? JSON.stringify(body) : undefined,
       credentials: "same-origin",
       signal: ctrl.signal,
     });
+    if (res.status === 401) {
+      maybeMarkSessionExpired(path);
+      throw new ApiError(401, "unauthorized");
+    }
+    return res;
   } catch (e) {
-    // Surface the timeout case as a clean ApiError so callers can
-    // render it instead of the raw "AbortError" string.
     if ((e as Error).name === "AbortError") {
       throw new ApiError(0, `request timed out after ${timeoutMs / 1000}s`);
     }
@@ -189,11 +198,15 @@ async function request<T>(
   } finally {
     clearTimeout(timer);
   }
+}
 
-  if (res.status === 401) {
-    maybeMarkSessionExpired(path);
-    throw new ApiError(401, "unauthorized");
-  }
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts?: RequestOptions,
+): Promise<T> {
+  const res = await fetchResponse(method, path, body, opts);
 
   if (res.status === 204) return undefined as T;
 
@@ -204,6 +217,48 @@ async function request<T>(
     throw err;
   }
   return data as T;
+}
+
+async function requestWithMeta<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts?: RequestOptions,
+): Promise<ApiMetaResponse<T>> {
+  const res = await fetchResponse(method, path, body, opts);
+  const etag = res.headers.get("ETag");
+  const lastModified = res.headers.get("Last-Modified");
+
+  if (res.status === 304) {
+    return {
+      data: null as T,
+      etag,
+      lastModified,
+      status: res.status,
+    };
+  }
+
+  if (res.status === 204) {
+    return {
+      data: undefined as T,
+      etag,
+      lastModified,
+      status: res.status,
+    };
+  }
+
+  const data = await readJSON<any>(res);
+  if (!res.ok) {
+    const err = new ApiError(res.status, data.error ?? "request failed");
+    if (data && typeof data === "object") Object.assign(err, data);
+    throw err;
+  }
+  return {
+    data: data as T,
+    etag,
+    lastModified,
+    status: res.status,
+  };
 }
 
 async function upload<T>(
@@ -275,6 +330,8 @@ export function errMsg(e: unknown, fallback = "An error occurred"): string {
 export const api = {
   get: <T>(path: string, opts?: RequestOptions) =>
     request<T>("GET", path, undefined, opts),
+  getWithMeta: <T>(path: string, opts?: RequestOptions) =>
+    requestWithMeta<T>("GET", path, undefined, opts),
   post: <T>(path: string, body: unknown, opts?: RequestOptions) =>
     request<T>("POST", path, body, opts),
   put: <T>(path: string, body: unknown, opts?: RequestOptions) =>

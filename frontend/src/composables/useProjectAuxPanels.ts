@@ -1,10 +1,9 @@
 import { ref } from 'vue'
 
-export type ProjectAuxPanel = 'docs' | 'cooperation' | 'context' | null
+export type ProjectAuxPanel = 'docs' | 'cooperation' | null
 
 export function useProjectAuxPanels() {
   const auxPanel = ref<ProjectAuxPanel>(null)
-  const contextPopulated = ref(false)
   const docCount = ref(0)
   const cooperationPopulated = ref(false)
 
@@ -20,7 +19,6 @@ export function useProjectAuxPanels() {
     auxPanel,
     toggleAux,
     closeAux,
-    contextPopulated,
     docCount,
     cooperationPopulated,
   }

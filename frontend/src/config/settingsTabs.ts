@@ -9,7 +9,6 @@ import SettingsSprintsTab from "@/components/settings/SettingsSprintsTab.vue";
 import SettingsDevelopmentTab from "@/components/settings/SettingsDevelopmentTab.vue";
 import SettingsTrashTab from "@/components/settings/SettingsTrashTab.vue";
 import SettingsPermissionsTab from "@/components/settings/SettingsPermissionsTab.vue";
-import SettingsAITab from "@/components/settings/SettingsAITab.vue";
 import SettingsAIPromptsTab from "@/components/settings/SettingsAIPromptsTab.vue";
 import SettingsSystemTab from "@/components/settings/SettingsSystemTab.vue";
 
@@ -21,7 +20,6 @@ export type SettingsTab =
   | "permissions"
   | "sprints"
   | "views"
-  | "ai"
   | "ai-prompts"
   | "system"
   | "development"
@@ -54,7 +52,6 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
     component: SettingsSprintsTab,
   },
   { id: "views", label: "Views", adminOnly: true, component: SettingsViewsTab },
-  { id: "ai", label: "AI", adminOnly: true, component: SettingsAITab },
   {
     id: "ai-prompts",
     label: "AI prompts",

@@ -37,7 +37,7 @@ describe('useProjectAuxPanels', () => {
 
   it('closes explicitly', () => {
     const aux = useProjectAuxPanels()
-    aux.toggleAux('context')
+    aux.toggleAux('docs')
     aux.closeAux()
     expect(aux.auxPanel.value).toBeNull()
   })

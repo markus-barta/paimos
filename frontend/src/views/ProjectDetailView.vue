@@ -19,6 +19,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useProjectAuxPanels } from '@/composables/useProjectAuxPanels'
+import { useFreshness } from '@/composables/useFreshness'
 import {
   buildProjectUpdatePayload,
   emptyProjectEditForm,
@@ -30,6 +31,7 @@ import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/t
 import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import {
   addProjectTag as addProjectTagRequest,
+  buildProjectIssuesUrl,
   buildProjectCsvExportUrl,
   deleteProjectDetail,
   deleteProjectLogo,
@@ -104,16 +106,18 @@ const {
   auxPanel,
   toggleAux,
   closeAux,
-  contextPopulated,
   docCount,
   cooperationPopulated,
 } = useProjectAuxPanels()
+const contextOpen = ref(false)
+const contextSummary = ref({ repoCount: 0, hasManifest: false, populated: false })
 
 provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sprints })
 
 const loading       = ref(true)
 const issueListRef  = ref<InstanceType<typeof IssueList> | null>(null)
 const exporting     = ref(false)
+const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, search.query))
 
 // ── Admin-default views as tabs ───────────────────────────────────────────────
 
@@ -139,6 +143,18 @@ function onViewApplied(viewId: number) {
 
 async function refreshViews() {
   try { allViews.value = await refreshProjectViews() } catch { /* ignore */ }
+}
+
+const contextStatusLabel = computed(() =>
+  contextSummary.value.populated ? 'Configured' : 'Not set up',
+)
+
+function toggleContextDock() {
+  contextOpen.value = !contextOpen.value
+}
+
+function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
+  contextSummary.value = payload
 }
 
 // Edit project
@@ -438,6 +454,7 @@ async function load() {
   customers.value = data.customers
   // activeTabId is set by IssueList's view-applied emit (MRU-based)
   loading.value   = false
+  await issueFreshness.prime(data.issues)
 }
 
 onMounted(() => {
@@ -454,7 +471,9 @@ watch(() => route.params.id, (newId, oldId) => {
 
 // Re-fetch issues when search query changes (search-as-filter overlay)
 watch(() => search.query, async (q) => {
-  issues.value = await loadProjectIssues(projectId.value, q)
+  const nextIssues = await loadProjectIssues(projectId.value, q)
+  issues.value = nextIssues
+  await issueFreshness.prime(nextIssues)
 })
 
 function onCreated(issue: Issue) {
@@ -493,6 +512,26 @@ const lastChanged = computed(() => {
               : new Date(latest.updated_at).toLocaleDateString()
   return { id: latest.id, key: latest.issue_key, when, title: latest.title }
 })
+
+function currentMainScroll(): HTMLElement | null {
+  return document.querySelector('.main-content')
+}
+
+function applyFreshProjectIssues(nextIssues: Issue[]) {
+  const scroller = currentMainScroll()
+  const top = scroller?.scrollTop ?? 0
+  issues.value = nextIssues
+  void nextTick(() => {
+    if (scroller) scroller.scrollTop = top
+  })
+}
+
+const issueFreshness = useFreshness<Issue[]>(issueListPath, {
+  apply: applyFreshProjectIssues,
+  count: (payload) => payload.length,
+})
+const issueFreshnessStale = computed(() => issueFreshness.stale.value)
+const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
 </script>
 
 <template>
@@ -578,11 +617,14 @@ const lastChanged = computed(() => {
         :project-id="projectId"
         :issues="issues"
         :initial-panel-issue-id="initialPanelIssueId"
+        :refresh-stale="issueFreshnessStale"
+        :refresh-count="issueFreshnessCount"
         @created="onCreated"
         @updated="onUpdated"
         @deleted="onDeleted"
         @view-applied="onViewApplied"
         @views-changed="refreshViews"
+        @refresh-list="issueFreshness.refresh"
       >
         <template #toolbar-extra>
           <button
@@ -609,13 +651,14 @@ const lastChanged = computed(() => {
                panel that used to sit above the tabs. -->
           <button
             type="button"
-            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', { active: auxPanel === 'context' }]"
-            :title="contextPopulated ? 'Project context configured' : 'No repos or manifest yet'"
-            @click="toggleAux('context')"
+            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', 'pd-context-chip', { active: contextOpen }]"
+            :title="contextSummary.populated ? 'Project context configured' : 'No repos or manifest yet'"
+            @click="toggleContextDock"
           >
             <AppIcon name="git-branch" :size="13" />
             <span>Context</span>
-            <span v-if="contextPopulated" class="pd-aux-info" aria-hidden="true">i</span>
+            <span class="pd-context-status">{{ contextStatusLabel }}</span>
+            <span v-if="contextSummary.repoCount" class="pd-aux-count">{{ contextSummary.repoCount }}</span>
           </button>
         </template>
       </IssueList>
@@ -653,21 +696,55 @@ const lastChanged = computed(() => {
         />
       </ProjectAuxPanel>
 
-      <!-- PAI-178: Context aux panel. The ProjectContextSection
-           component already emits a `populated` signal we wire to
-           the toolbar badge below. -->
-      <ProjectAuxPanel
-        :open="auxPanel === 'context'"
-        title="Project Context"
-        :subtitle="contextPopulated ? 'repos + manifest set' : 'not set up'"
-        @close="closeAux"
-      >
-        <ProjectContextSection
-          :project-id="projectId"
-          :can-write="isAdmin && canEditProject"
-          @populated="(v: boolean) => contextPopulated = v"
-        />
-      </ProjectAuxPanel>
+      <section :class="['pd-context-dock', { 'pd-context-dock--open': contextOpen }]">
+        <button
+          type="button"
+          class="pd-context-dock__toggle"
+          :aria-expanded="contextOpen"
+          @click="toggleContextDock"
+        >
+          <div class="pd-context-dock__title">
+            <span class="pd-context-dock__eyebrow">Project setup workspace</span>
+            <strong>Project Context</strong>
+            <span class="pd-context-dock__state">{{ contextStatusLabel }}</span>
+          </div>
+          <div class="pd-context-dock__meta">
+            <span class="pd-context-dock__pill">
+              {{ contextSummary.repoCount }} repo{{ contextSummary.repoCount === 1 ? '' : 's' }}
+            </span>
+            <span class="pd-context-dock__pill">
+              {{ contextSummary.hasManifest ? 'manifest saved' : 'manifest empty' }}
+            </span>
+            <AppIcon :name="contextOpen ? 'chevron-down' : 'chevron-up'" :size="15" />
+          </div>
+        </button>
+
+        <div v-if="contextOpen" class="pd-context-dock__body">
+          <div class="pd-context-overview">
+            <div class="pd-context-overview__card">
+              <span class="pd-context-overview__label">Overview</span>
+              <p>
+                Keep repos and manifest together here. This stays full width,
+                so docs, cooperation, and issue side panels can keep using the right edge.
+              </p>
+            </div>
+            <div class="pd-context-overview__card">
+              <span class="pd-context-overview__label">Current setup</span>
+              <p>
+                {{ contextSummary.repoCount }} linked repo{{ contextSummary.repoCount === 1 ? '' : 's' }}
+                · {{ contextSummary.hasManifest ? 'manifest present' : 'no manifest yet' }}
+              </p>
+            </div>
+          </div>
+          <ProjectContextSection
+            :project-id="projectId"
+            :can-write="isAdmin && canEditProject"
+            :show-header="false"
+            @populated="(v: boolean) => contextSummary.populated = v"
+            @summary="updateContextSummary"
+          />
+        </div>
+      </section>
 
       <!-- Always-mounted, visually-hidden sentinels feed the toolbar
            toggle badges (count + (i)) without forcing the user to open
@@ -690,12 +767,6 @@ const lastChanged = computed(() => {
           :project-id="projectId"
           :can-write="false"
           @populated="(v: boolean) => cooperationPopulated = v"
-        />
-        <ProjectContextSection
-          v-if="auxPanel !== 'context'"
-          :project-id="projectId"
-          :can-write="false"
-          @populated="(v: boolean) => contextPopulated = v"
         />
       </div>
     <!-- Delete confirm modal -->
@@ -1150,6 +1221,116 @@ textarea { resize: vertical; min-height: 80px; }
 .pd-aux-btn.active .pd-aux-info {
   background: var(--bp-blue);
   color: #fff;
+}
+
+.pd-context-chip {
+  gap: 0.45rem;
+}
+
+.pd-context-status {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.pd-context-dock {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.pd-context-dock__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  border: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bp-blue-pale) 42%, white), white);
+  text-align: left;
+}
+
+.pd-context-dock__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+}
+
+.pd-context-dock__eyebrow,
+.pd-context-overview__label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pd-context-dock__state {
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
+  color: var(--bp-blue-dark);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pd-context-dock__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text-muted);
+}
+
+.pd-context-dock__pill {
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pd-context-dock__body {
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.pd-context-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.pd-context-overview__card {
+  padding: 0.95rem 1rem;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.pd-context-overview__card p {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 980px) {
+  .pd-context-dock__toggle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pd-context-overview {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Sentinel components keep reactivity but render no UI. */

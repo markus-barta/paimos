@@ -8,12 +8,16 @@ import { addProjectContextRepo, loadProjectContext, removeProjectContextRepo, sa
 const props = defineProps<{
   projectId: number
   canWrite: boolean
+  showHeader?: boolean
 }>()
 
 // PAI-178: parents mount this component as a sentinel and listen
 // to `populated` to light up a toggle-button badge. True when at
 // least one repo is linked OR the manifest has any non-empty key.
-const emit = defineEmits<{ populated: [v: boolean] }>()
+const emit = defineEmits<{
+  populated: [v: boolean]
+  summary: [payload: { repoCount: number; hasManifest: boolean; populated: boolean }]
+}>()
 
 const repos = ref<ProjectRepo[]>([])
 const manifest = ref<ProjectManifest>({ project_id: 0, data: {} })
@@ -33,6 +37,17 @@ const manifestPretty = computed(() => JSON.stringify(manifest.value.data || {}, 
 // this component) read this to drive the toolbar toggle badge.
 const isPopulated = computed(() => repos.value.length > 0 || hasManifest.value)
 watch(isPopulated, (v) => emit('populated', v), { immediate: true })
+watch(
+  [repos, hasManifest, isPopulated],
+  () => {
+    emit('summary', {
+      repoCount: repos.value.length,
+      hasManifest: hasManifest.value,
+      populated: isPopulated.value,
+    })
+  },
+  { immediate: true },
+)
 
 async function load() {
   loading.value = true
@@ -97,7 +112,7 @@ onMounted(load)
 
 <template>
   <section class="context-section">
-    <div class="context-header">
+    <div v-if="showHeader !== false" class="context-header">
       <div>
         <h2 class="context-title">Project Context</h2>
         <p class="context-desc">Repos and manifest power agent-friendly context, anchors, and retrieval.</p>
