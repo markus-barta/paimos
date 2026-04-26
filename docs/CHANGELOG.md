@@ -94,6 +94,35 @@ against the experimental shape during v1 should re-verify field
 names against `docs/api-minimal.md`; the documented v2 contract is
 the canonical reference going forward.
 
+### Brand — Phase 1 → Phase 2 transition
+
+v2.0.0 also marks the brand's Phase 1 → Phase 2 transition (see
+[`docs/brand/BRAND.md`](brand/BRAND.md#phasing-plan)). The brand
+guide reserved the **Platform reading** of the acronym (the
+"OS" in PAIMOS resolving to *Operating System*) until two of
+four trigger criteria held. This release cleared two:
+
+- **Multi-workflow orchestration** — the `POST /api/ai/action`
+  dispatcher with 11 admin-tunable actions (sub-actions, per-row
+  placement, prompt CRUD, dry-run), composed across three control
+  planes (`paimos` CLI, `paimos-mcp`, REST + in-app surfaces).
+- **Public API for integration** — `/api/openapi.json` (PAI-119),
+  the self-describing `/api/schema` (PAI-87), the v2.0 agent-context
+  layer (`/projects/:id/{repos,manifest,anchors,graph,retrieve}`,
+  `/issues/:id/anchors`), and the `paimos-mcp` MCP facade.
+
+The remaining two trigger criteria — third-party plugin loop and
+marketplace/template store — frame the open Phase 2 roadmap. Brand
+colour and DE wordmark trademark are Phase 2 *deliverables*, not
+Phase 2 *gates*, and stay deferred until they earn their own
+commits. Phase 1 (FOSS) stays active alongside Phase 2; transitions
+in the brand model are additive, never destructive.
+
+Visible signals: `paimos.com` banner now reads `phase 2 - platform · v2.0.0`,
+the homepage rotator cycles through four co-equal readings (FOSS /
+Services / System / Platform), and `about.html` exposes the
+Platform reading and the trigger-criteria reasoning.
+
 ## [1.10.3] — 2026-04-26
 
 ### Changed — Settings → AI prompts edit modal (PAI-183)

@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <code>phase 2 — platform</code> · <code>v2.0.0</code> · <code>AGPL-3.0</code>
+</p>
+
+<p align="center">
   <a href="https://paimos.com">paimos.com</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/AGENT_INTERFACE.md">Agent Guide</a> ·
@@ -27,6 +31,15 @@ teams that treat AI agents as first-class participants alongside humans —
 and for solo developers who want a clean PM tool without enterprise
 bloat. The same app serves both: the side-project board feels as good as
 the team board.
+
+**v2.0 marks the brand's Phase 1 → Phase 2 transition** ([details](docs/brand/BRAND.md#phasing-plan)).
+The Platform reading of the name (the "OS" in PAIMOS earning a literal
+read) was reserved by the brand guide until two of four trigger criteria
+held; v2.0 cleared two — workflow orchestration through the
+`POST /api/ai/action` dispatcher and a public API surface (OpenAPI,
+self-describing schema, the agent-context layer, MCP). Phase 1 (FOSS)
+stays active; the four readings now live side by side on the
+[About page](https://paimos.com/about.html).
 
 Written as a single Go binary that serves the Vue SPA and JSON API on one
 port, backed by SQLite. Docker up, browser open, done.

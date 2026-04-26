@@ -83,11 +83,14 @@ changes.
 
 ### Readings (what actually appears on the website)
 
-PAIMOS ships with **three co-equal readings** in Phase 1. All three
-share the same fixed anchors (`P · P · P` + `AI`) and differ only in
-how the `M · O · S` slots resolve. Each one lands with a different
-audience; none is primary. The homepage animates through all three
-and rests on reading 1 (the default).
+PAIMOS ships with **four co-equal readings** as of Phase 2 (v2.0+).
+All four share the same fixed anchors (`P · P · P` + `AI`) and
+differ only in how the `M · O · S` slots resolve. Each one lands
+with a different audience; none is primary. The homepage rotator
+cycles through them and rests on reading 1 (the FOSS default).
+Readings 1-3 carried over from Phase 1; reading 4 (Platform)
+joined them when v2.0.0 cleared two of the four trigger criteria
+(see *The Platform reading (Phase 2 — earned in v2.0.0)* below).
 
 **1. FOSS reading — *the default; for developers, FOSS users, solo builders*:**
 > **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anagement
@@ -116,28 +119,36 @@ using the word.
 Same name, same mark, same AI-first commitment — three entry narratives.
 The About page shows all three side by side with equal visual weight.
 
-### The reserved Platform reading (Phase 2)
+### The Platform reading (Phase 2 — earned in v2.0.0)
 
-One further reading is deliberately **held back** until platform
-features materialize (plugins, agent orchestration, public API,
-marketplace):
+A fourth reading was deliberately **held back** until platform
+features materialized (plugins, agent orchestration, public API,
+marketplace). With **v2.0.0 (2026-04-26)** two of the four trigger
+criteria below are met, and the Platform reading is now eligible
+for the website. It joins the Phase 1 readings rather than
+replacing them — Phase transitions are additive (see *Phasing Plan*).
 
 **Platform reading — *for teams building on top of PAIMOS*:**
 > **P**rofessional · **P**ersonal · **P**roject / **AI**-**M**anagement
 > / **O**perating **S**ystem
 
 The `Operating System` filling is the strongest claim in the whole
-matrix — it implies platform, extensibility, ecosystem. Don't use it
-until the product earns it. Trigger criteria (at least two must hold):
+matrix — it implies platform, extensibility, ecosystem. The trigger
+criteria (at least two must hold):
 
-- A plugin or extensions system exists and is used by third parties
-- Multiple AI agents / workflows can be orchestrated together
-- A public API enables integration with other tools
-- A marketplace or template store is live
+| # | Criterion | v2.0.0 status |
+|---|---|---|
+| 1 | A plugin or extensions system exists and is used by third parties | ✗ not yet |
+| 2 | Multiple AI agents / workflows can be orchestrated together | ✓ **met** — the `POST /api/ai/action` dispatcher exposes 11 admin-tunable actions (with sub-actions, per-row placement, prompt CRUD, dry-run); the `paimos` CLI, `paimos-mcp`, and the in-app AI assist surfaces compose three control planes around the same registry |
+| 3 | A public API enables integration with other tools | ✓ **met** — `/api/openapi.json`, `/api/schema` (self-describing), the agent-context layer (`/projects/:id/{repos,manifest,anchors,graph,retrieve}` + `/issues/:id/anchors`), `paimos-mcp` for MCP clients |
+| 4 | A marketplace or template store is live | ✗ not yet |
 
-Until then: the Platform reading stays documented internally (here) but
-is **not shown on the website**. The three Phase 1 readings above are
-enough.
+Two-of-four cleared. Criterion #1 (third-party plugin loop) and #4
+(marketplace) remain open and frame the Phase 2 roadmap. The brand
+color introduction and DE wordmark trademark filings (Phase 2
+deliverables in the Phasing Plan below) are likewise deferred —
+they are downstream consequences of being in Phase 2, not gates on
+declaring it.
 
 ---
 
@@ -197,10 +208,16 @@ The mark-alone variant (favicon, app icon, GitHub avatar) keeps all
 three strokes at full opacity — at small sizes, any transparency reads
 as rendering error, not intent.
 
-**Do not introduce a brand color** while Phase 1 is active. If one gets
-added later, it should distinguish clearly from Apache Paimon (which has
-no strong color branding) and from the dominant PM tools: Linear
-(blue/purple), Notion (black/white), Asana (coral), Jira (blue).
+**Do not introduce a brand color yet.** The Phase 1 → Phase 2
+transition is now live (since v2.0.0), but adding a primary brand
+color is a Phase 2 *deliverable*, not a Phase 2 trigger — it
+should land deliberately, with a defensible reason and a
+considered palette, not as a side-effect of declaring Phase 2.
+Stay monochrome until the colour earns its own commit. When
+introduced, it should distinguish clearly from Apache Paimon
+(which has no strong color branding) and from the dominant PM
+tools: Linear (blue/purple), Notion (black/white), Asana
+(coral), Jira (blue).
 
 ### Logo variants
 
@@ -389,10 +406,9 @@ excluded — they just encounter the framing that speaks to them first.
 - Don't invent new slot fillings ad-hoc. The `M · O · S` slot set is
   closed (see table). If a genuinely better filling emerges, update
   this document first, then the website
-- Don't show the **Platform reading** (`Operating System`) on the
-  website until the Phase 2 trigger criteria are met. It's an earned
-  claim, not a marketing upgrade
-- Don't introduce a brand color while Phase 1 is live
+- Don't introduce a brand color yet — Phase 2 is now live but the
+  color is a Phase 2 deliverable, not a Phase 2 trigger; it should
+  land deliberately, not as a side-effect of declaring Phase 2
 - Don't force a "PM 3.0" or "AI-native" marketing frame
 - Don't overload the logo with effects (gradients, glow, 3D). The
   strength is restraint
@@ -445,15 +461,24 @@ opposition proceedings.
 
 ## Phasing Plan
 
-| Phase | Readings shown on website | Claim | Brand color | Trademark |
-|---|---|---|---|---|
-| **1 — FOSS** | FOSS + Services + System (co-equal, homepage cycles) | *Professional and personal AI project management, online and open source.* | monochrome | none |
-| **2 — Platform** | + Platform reading (Operating System earned) | *The OS for how you ship work* (or similar) | 1 primary color | DE word mark, classes 9+42 |
-| **3 — Commercial** | all four readings | (product-specific) | full system | EU Union mark |
+| Phase | Status | Readings shown on website | Claim | Brand color | Trademark |
+|---|---|---|---|---|---|
+| **1 — FOSS** | shipped (since v0.1) | FOSS + Services + System (co-equal, homepage cycles) | *Professional and personal AI project management, online and open source.* | monochrome | none |
+| **2 — Platform** | **live since v2.0.0 (2026-04-26)** | + Platform reading (Operating System earned) | *The OS for how you ship work* (or similar) | monochrome (color introduction deferred — a Phase 2 deliverable, not a Phase 2 trigger) | deferred — DE word mark, classes 9+42, when commercial preparation begins |
+| **3 — Commercial** | not started | all four readings | (product-specific) | full system | EU Union mark |
 
 Every transition is **additive**, not destructive: the logo stays, the
 domain stays, the name stays, existing readings stay. New readings are
 added once they are earned — never at the cost of the previous ones.
+
+The v2.0.0 release earned the Phase 2 declaration via two of four
+trigger criteria (workflow orchestration through the `POST /api/ai/action`
+dispatcher with 11 admin-tunable actions; public API integration via
+`/api/openapi.json`, `/api/schema`, the project-context layer, and
+`paimos-mcp`). The remaining two criteria (third-party plugin loop;
+marketplace / template store) frame the open Phase 2 roadmap. Brand
+color and trademark are Phase 2 *deliverables*, not Phase 2 gates,
+and stay deferred until they're earned in their own right.
 
 ---
 
