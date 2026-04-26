@@ -5,6 +5,19 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-04-26
+
+### Added
+
+- Durable undo and redo foundation with `mutation_log`, conflict resolution, per-issue activity, and admin stack-depth controls.
+- AI UX completion across shared result strips, surface feedback, paper trail views, and durable AI-applied undo.
+- Undo documentation and configuration references, including runtime system settings and retention guidance.
+
+### Changed
+
+- Issue and side-panel AI flows now participate in the durable request-correlated undo path.
+- Recent activity surfaces now unify AI and non-AI issue mutations on top of `mutation_log`.
+
 ## [2.0.4] — 2026-04-26
 
 ### Added — Project context substrate and hybrid retrieval
