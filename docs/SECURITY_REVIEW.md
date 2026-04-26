@@ -229,3 +229,4 @@ The scanners and review checklist are defence in depth, not perfect. When someth
 - **`backend/handlers/security_regression_test.go`** + **`backend/handlers/authz_fuzz_test.go`** + **`backend/handlers/ai_optimize_audit_test.go`** — the regression suites that back the review rules.
 - **PAI-223** — gosec triage follow-on (118 findings → annotate / fix / baseline).
 - **PAI-224** — Go runtime upgrade follow-on (1.25.5 → 1.25.7 to clear the govulncheck stdlib pile).
+- **[`SECURITY_GOVERNANCE.md`](SECURITY_GOVERNANCE.md)** — the operating system for this doc's review cadence; §1 names "gosec re-baseline" as a recurring control once PAI-223 lands.

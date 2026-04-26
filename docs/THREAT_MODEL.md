@@ -295,6 +295,7 @@ These are honest gaps in the regression layer, not unenforced invariants. The co
 - **[`HARDENING.md`](HARDENING.md)** — operator-facing companion to this document. Where this threat model says *what must be true*, the hardening guide says *how to make it true* in a deployment, with explicit verification commands per checklist item.
 - **[`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)** — agreed scanner posture (gitleaks, npm audit, gosec, govulncheck) + the security-sensitive code-review rules per invariant group. The review-rule §4 there mirrors the §4 invariant groups here 1:1.
 - **[`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md)** — production-validation register; the §3 findings table is where this threat model's invariants get tested in earnest, against real workloads.
+- **[`SECURITY_GOVERNANCE.md`](SECURITY_GOVERNANCE.md)** — the operating system for the trust-doc set: recurring controls, metrics, governance loop, unified calendar. Tells you *when* to revisit this doc; this doc tells you *what's in it*.
 - **`backend/handlers/security_regression_test.go`** — the canonical regression suite for the security defects PAI-110-118 fixed; new invariants should add tests here.
 - **`backend/handlers/authz_fuzz_test.go`** — authorization fuzzer (PAI-127); new role × endpoint pairs should land here.
 - **`backend/handlers/ai_optimize_audit_test.go`** — audit-shape regression (PAI-153); the no-bodies invariant lives here.
