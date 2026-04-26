@@ -105,6 +105,8 @@ window for each class. Tune any variable below; defaults are the
 | `PAIMOS_RETENTION_DAYS_ACCESS_AUDIT` | `365` | Project membership-change audit log. |
 | `PAIMOS_RETENTION_DAYS_SESSION_ACTIVITY` | `90` | Per-mutation session activity rows. |
 | `PAIMOS_RETENTION_DAYS_INCIDENT_CLOSED` | `730` | Closed incidents only — open/investigating/resolved are kept until closed. |
+| `PAIMOS_RETENTION_DAYS_AI_CALLS` | `365` | AI paper-trail metadata rows (`ai_calls`). |
+| `PAIMOS_RETENTION_DAYS_MUTATION_LOG` | `90` | Undo / redo activity log rows (`mutation_log`). |
 | `PAIMOS_RETENTION_DAYS_TOTP_PENDING_MIN` | `60` | Pending TOTP tokens; minutes, not days. |
 
 Per-subject GDPR endpoints (admin only):
@@ -112,6 +114,32 @@ Per-subject GDPR endpoints (admin only):
 - `GET  /api/users/{id}/gdpr-export` — JSON dump of every row referencing the user.
 - `POST /api/users/{id}/gdpr-erase`  — replaces PII with placeholders, drops sessions/keys, sets `status='deleted'`.
 - `GET  /api/gdpr/retention`         — current retention policy (introspection).
+
+## Undo (PAI-209)
+
+Undo uses two separate controls:
+
+- `undo_stack_depth` in the database
+  - edited at runtime under `Settings -> Admin -> System`
+  - bounds `1..20`
+  - default `3`
+  - controls how many recent actions remain actively undoable per user
+- `PAIMOS_RETENTION_DAYS_MUTATION_LOG`
+  - env var, default `90`
+  - controls how long `mutation_log` audit rows remain on disk
+
+These are intentionally different knobs:
+
+- stack depth affects the active undo/redo working set
+- retention affects long-lived audit visibility
+
+GDPR erase extends to the undo audit:
+
+- `mutation_log.user_id` is nulled for the erased user
+- `mutation_log.session_id` is cleared
+- known display-name fields inside stored snapshots are scrubbed
+
+See [docs/UNDO_SPEC.md](/Users/markus/Code/paimos/paimos-app/docs/UNDO_SPEC.md) for the conflict-resolution contract and UX flow.
 
 ## AI assist (PAI-146 / PAI-159 → PAI-183)
 
@@ -214,12 +242,41 @@ soft block but get an `X-AI-Over-Cap: true` response header for UI
 warning. Settings → AI surfaces the org-wide totals + per-user
 table.
 
+### Paper trail (`PAI-207` / `PAI-208`)
+
+`ai_calls` (M81) stores one metadata row per AI attempt:
+
+- `request_id`, `user_id`
+- `action_key`, `sub_action`, `surface`
+- optional subject ids (`issue_id`, `project_id`, `customer_id`, `cooperation_id`)
+- provider / model
+- prompt, completion, and total tokens
+- `cost_micro_usd`
+- outcome / error class
+- latency
+
+Endpoints:
+
+- `GET /api/ai/calls` — admin paper trail
+- `GET /api/ai/calls/{id}` — admin single-row detail
+- `GET /api/ai/calls/export.csv` — admin CSV export
+- `GET /api/ai/calls/me` — self-scope activity
+- `GET /api/ai/calls/me/export.csv` — self-scope CSV export
+- `GET /api/issues/{id}/ai-calls` — raw issue-scoped call feed
+- `GET /api/issues/{id}/ai-activity` — issue-sidebar AI activity trail
+
+Retention and GDPR:
+
+- `PAIMOS_RETENTION_DAYS_AI_CALLS` controls pruning, default `365`
+- GDPR erase nulls `user_id` on `ai_calls` rows, preserving operational cost history without retaining identity
+- prompt and response bodies are not stored in `ai_calls`
+
 ### Audit shape
 
 One stdout audit line per call:
 
 ```
-audit: ai_action action=optimize sub_action= user_id=42
+audit: ai_action request_id=018fd... action=optimize sub_action= user_id=42
        field=description issue_id=123
        model="anthropic/claude-sonnet-4.5" outcome=ok
        latency_ms=850 prompt_tokens=100 completion_tokens=50

@@ -26,16 +26,26 @@ import type { CooperationMetadata } from '@/types'
 // cooperation notes get a "preserve named systems and ownership
 // boundaries" reminder. Both via dedicated field IDs in prompt.go.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
-
-const aiOptimize = useAiOptimize()
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 function onSlaDetailsAccept(text: string) {
   if (draft.value) draft.value.sla_details = text
 }
 function onCooperationNotesAccept(text: string) {
   if (draft.value) draft.value.cooperation_notes = text
+}
+
+async function applyCooperationAiResult(info: { action: string; field: string; intent?: string; values?: Record<string, unknown>; body?: any }) {
+  if (!draft.value) return
+  if (info.intent !== 'replace-text') return
+  if (info.action !== 'tone_check') return
+  const nextText = String(info.values?.text ?? info.body?.optimized ?? info.body?.optimized_text ?? '')
+  if (info.field === 'cooperation_sla_details') {
+    draft.value.sla_details = nextText
+    return
+  }
+  if (info.field === 'cooperation_notes') {
+    draft.value.cooperation_notes = nextText
+  }
 }
 
 const props = defineProps<{ projectId: number; canWrite: boolean }>()
@@ -290,6 +300,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
             <div class="coop-field-label-row">
               <label>SLA details <span class="label-hint">— markdown supported</span></label>
               <AiActionMenu surface="customer"
+                host-key="cooperation:sla_details"
                 field="cooperation_sla_details"
                 field-label="SLA details"
                 :issue-id="0"
@@ -298,6 +309,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
               />
             </div>
             <textarea v-model="draft.sla_details" rows="4" placeholder="Detailed SLA terms, escalation path…" />
+            <AiSurfaceFeedback host-key="cooperation:sla_details" :apply="applyCooperationAiResult" />
           </div>
         </div>
       </div>
@@ -306,6 +318,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
         <div class="coop-field-label-row">
           <label>Cooperation notes <span class="label-hint">— markdown supported</span></label>
           <AiActionMenu surface="customer"
+            host-key="cooperation:notes"
             field="cooperation_notes"
             field-label="Cooperation notes"
             :issue-id="0"
@@ -315,9 +328,8 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
         </div>
         <textarea v-model="draft.cooperation_notes" rows="4"
                   placeholder="Data retention, special arrangements, anything else worth knowing." />
+        <AiSurfaceFeedback host-key="cooperation:notes" :apply="applyCooperationAiResult" />
       </div>
-
-      <AiOptimizeBanner />
 
       <p v-if="saveError" class="coop-error">{{ saveError }}</p>
 
@@ -329,20 +341,6 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
       </div>
     </form>
   </section>
-
-  <!-- PAI-146 expansion: AI optimize overlay shared by both
-       cooperation textareas (sla_details + cooperation_notes). -->
-  <AiOptimizeOverlay
-    v-if="aiOptimize.overlay.visible"
-    :original="aiOptimize.overlay.original"
-    :optimized="aiOptimize.overlay.optimized"
-    :field-label="aiOptimize.overlay.fieldLabel"
-    :model-name="aiOptimize.overlay.modelName"
-    :retrying="aiOptimize.overlay.retrying"
-    @accept="aiOptimize.accept()"
-    @reject="aiOptimize.reject()"
-    @retry="aiOptimize.retry()"
-  />
 </template>
 
 <style scoped>

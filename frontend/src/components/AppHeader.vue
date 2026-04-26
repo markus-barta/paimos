@@ -1,77 +1,89 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { useRouter } from 'vue-router'
-import AppIcon from '@/components/AppIcon.vue'
-import SearchPalette from '@/components/SearchPalette.vue'
-import { useSearchStore } from '@/stores/search'
+import { ref, computed } from "vue";
+import { useRoute } from "vue-router";
+import { useRouter } from "vue-router";
+import AppIcon from "@/components/AppIcon.vue";
+import SearchPalette from "@/components/SearchPalette.vue";
+import { useSearchStore } from "@/stores/search";
+import { useUndoStore } from "@/stores/undo";
 
-const route  = useRoute()
-const router = useRouter()
-const search = useSearchStore()
+const route = useRoute();
+const router = useRouter();
+const search = useSearchStore();
+const undo = useUndoStore();
 
-const searchFocused = ref(false)
-const topbarInput   = ref<HTMLInputElement | null>(null)
-const paletteRef    = ref<InstanceType<typeof SearchPalette> | null>(null)
-const paletteVisible = ref(false)
+const searchFocused = ref(false);
+const topbarInput = ref<HTMLInputElement | null>(null);
+const paletteRef = ref<InstanceType<typeof SearchPalette> | null>(null);
+const paletteVisible = ref(false);
 
-const hasQuery = computed(() => search.query.length >= 2)
+const hasQuery = computed(() => search.query.length >= 2);
 
 function onFocus() {
-  searchFocused.value = true
-  if (search.query.trim().length >= 2) paletteVisible.value = true
+  searchFocused.value = true;
+  if (search.query.trim().length >= 2) paletteVisible.value = true;
 }
 function onBlur() {
-  searchFocused.value = false
+  searchFocused.value = false;
   // Delay closing palette so mousedown on palette items fires first
-  setTimeout(() => { paletteVisible.value = false }, 200)
+  setTimeout(() => {
+    paletteVisible.value = false;
+  }, 200);
 }
 
 function onInput() {
-  const q = search.query.trim()
-  search.setQuery(q)
-  paletteVisible.value = q.length >= 2
+  const q = search.query.trim();
+  search.setQuery(q);
+  paletteVisible.value = q.length >= 2;
 }
 
 function onKeydown(e: KeyboardEvent) {
   // Forward arrow keys and enter to palette when visible
-  if (paletteVisible.value && ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
-    paletteRef.value?.handleKeydown(e)
-    return
+  if (
+    paletteVisible.value &&
+    ["ArrowDown", "ArrowUp", "Enter"].includes(e.key)
+  ) {
+    paletteRef.value?.handleKeydown(e);
+    return;
   }
-  if (e.key === 'Escape') {
+  if (e.key === "Escape") {
     if (paletteVisible.value) {
-      paletteVisible.value = false
-      e.preventDefault()
+      paletteVisible.value = false;
+      e.preventDefault();
     } else {
-      topbarInput.value?.blur()
+      topbarInput.value?.blur();
     }
   }
-  if (e.key === 'Enter' && !paletteVisible.value) {
+  if (e.key === "Enter" && !paletteVisible.value) {
     // Navigate to issues page with current search
-    if (route.path !== '/issues' && !route.path.startsWith('/projects/')) {
-      router.push('/issues')
+    if (route.path !== "/issues" && !route.path.startsWith("/projects/")) {
+      router.push("/issues");
     }
   }
 }
 
 function clear() {
-  search.clear()
-  paletteVisible.value = false
-  topbarInput.value?.focus()
+  search.clear();
+  paletteVisible.value = false;
+  topbarInput.value?.focus();
 }
 
 function onPaletteNavigate(path: string) {
-  paletteVisible.value = false
-  router.push(path)
+  paletteVisible.value = false;
+  router.push(path);
 }
 
 function onPaletteClose() {
-  paletteVisible.value = false
+  paletteVisible.value = false;
 }
 
 // Exposed so AppLayout can focus on / shortcut
-defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select() } })
+defineExpose({
+  focus() {
+    topbarInput.value?.focus();
+    topbarInput.value?.select();
+  },
+});
 </script>
 
 <template>
@@ -81,7 +93,12 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
 
     <!-- CENTER: persistent search -->
     <div class="ah-center">
-      <div :class="['ah-search-wrap', { focused: searchFocused, active: hasQuery }]">
+      <div
+        :class="[
+          'ah-search-wrap',
+          { focused: searchFocused, active: hasQuery },
+        ]"
+      >
         <AppIcon name="search" :size="13" class="ah-search-icon" />
         <input
           ref="topbarInput"
@@ -97,6 +114,15 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
           @keydown="onKeydown"
         />
         <button
+          class="ah-search-history"
+          :title="undo.panelOpen ? 'Close recent activity' : 'Recent activity'"
+          @mousedown.prevent="
+            undo.panelOpen ? undo.closePanel() : undo.openPanel()
+          "
+        >
+          <AppIcon name="rewind" :size="12" />
+        </button>
+        <button
           v-if="search.query"
           class="ah-search-clear"
           title="Clear search"
@@ -104,7 +130,12 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
         >
           <AppIcon name="x" :size="12" :stroke-width="2.5" />
         </button>
-        <SearchPalette ref="paletteRef" :visible="paletteVisible" @navigate="onPaletteNavigate" @close="onPaletteClose" />
+        <SearchPalette
+          ref="paletteRef"
+          :visible="paletteVisible"
+          @navigate="onPaletteNavigate"
+          @close="onPaletteClose"
+        />
       </div>
     </div>
 
@@ -130,7 +161,7 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
 .ah-left {
   display: flex;
   align-items: center;
-  gap: .5rem;
+  gap: 0.5rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -146,7 +177,7 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
   display: flex;
   align-items: center;
   width: 280px;
-  transition: width .2s;
+  transition: width 0.2s;
 }
 .ah-search-wrap.focused {
   width: 380px;
@@ -162,7 +193,7 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
 .ah-search-input {
   width: 100%;
   height: 32px;
-  padding: 0 28px 0 30px;
+  padding: 0 56px 0 30px;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--bg);
@@ -170,7 +201,10 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
   font-family: inherit;
   color: var(--text);
   outline: none;
-  transition: border-color .15s, background .15s, box-shadow .15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
   -webkit-appearance: none;
 }
 .ah-search-wrap.active .ah-search-input,
@@ -181,11 +215,13 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
 .ah-search-wrap.focused .ah-search-input {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 15%, transparent);
 }
-.ah-search-input::-webkit-search-cancel-button { display: none; }
+.ah-search-input::-webkit-search-cancel-button {
+  display: none;
+}
 
+.ah-search-history,
 .ah-search-clear {
   position: absolute;
-  right: 8px;
   background: none;
   border: none;
   padding: 2px;
@@ -194,8 +230,17 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
   display: flex;
   align-items: center;
   border-radius: 50%;
-  transition: color .15s, background .15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
+.ah-search-history {
+  right: 28px;
+}
+.ah-search-clear {
+  right: 8px;
+}
+.ah-search-history:hover,
 .ah-search-clear:hover {
   color: var(--text);
   background: var(--bg);
@@ -206,7 +251,7 @@ defineExpose({ focus() { topbarInput.value?.focus(); topbarInput.value?.select()
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: .5rem;
+  gap: 0.5rem;
   min-width: 0;
 }
 </style>

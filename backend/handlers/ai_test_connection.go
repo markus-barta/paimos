@@ -117,10 +117,21 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		userID = user.ID
 	}
+	requestID := newAIRequestID()
+	userIDPtr := &userID
 
 	var req aiTestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		auditTest(userID, "", "test_fail", 0, 0, 0)
+		auditTest(requestID, userID, "", "test_fail", 0, 0, 0)
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "test",
+			Surface:    "settings_test",
+			Provider:   "openrouter",
+			Outcome:    "bad_request",
+			ErrorClass: "json_decode",
+		})
 		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
@@ -153,7 +164,17 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Model == "" || req.APIKey == "" {
-		auditTest(userID, req.Model, "test_fail", 0, 0, 0)
+		auditTest(requestID, userID, req.Model, "test_fail", 0, 0, 0)
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "test",
+			Surface:    "settings_test",
+			Provider:   req.Provider,
+			Model:      req.Model,
+			Outcome:    "unconfigured",
+			ErrorClass: "missing_credentials",
+		})
 		jsonOK(w, aiTestResponse{
 			OK:      false,
 			Message: "No saved API key or model — paste one in the form (or save it first) and retry.",
@@ -163,7 +184,17 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 
 	provider, err := ai.Get(req.Provider)
 	if err != nil {
-		auditTest(userID, req.Model, "test_fail", 0, 0, 0)
+		auditTest(requestID, userID, req.Model, "test_fail", 0, 0, 0)
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "test",
+			Surface:    "settings_test",
+			Provider:   req.Provider,
+			Model:      req.Model,
+			Outcome:    "provider_missing",
+			ErrorClass: "provider_missing",
+		})
 		jsonOK(w, aiTestResponse{
 			OK:      false,
 			Message: "Unknown provider — pick one PAIMOS knows about.",
@@ -184,7 +215,22 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 	latency := time.Since(t0)
 
 	if err != nil {
-		auditTest(userID, req.Model, "test_fail", latency, 0, 0)
+		auditTest(requestID, userID, req.Model, "test_fail", latency, 0, 0)
+		errClass := "upstream"
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			errClass = "timeout"
+		}
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "test",
+			Surface:    "settings_test",
+			Provider:   req.Provider,
+			Model:      req.Model,
+			Outcome:    "fail_upstream",
+			ErrorClass: errClass,
+			LatencyMs:  latency.Milliseconds(),
+		})
 		// Return 200 with a structured failure body — the UI renders
 		// this inline, not as an HTTP error toast. The admin needs
 		// the upstream message to know what to fix (key vs model vs
@@ -237,7 +283,19 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 		msg = "Model returned a FAIL marker — connection works but the model declined the test prompt. Check rate limits or pick another model."
 	}
 
-	auditTest(userID, resp.Model, outcome, latency, resp.PromptTokens, resp.CompletionTokens)
+	auditTest(requestID, userID, resp.Model, outcome, latency, resp.PromptTokens, resp.CompletionTokens)
+	recordAICall(r.Context(), aiCallArgs{
+		RequestID:        requestID,
+		UserID:           userIDPtr,
+		ActionKey:        "test",
+		Surface:          "settings_test",
+		Provider:         req.Provider,
+		Model:            resp.Model,
+		PromptTokens:     resp.PromptTokens,
+		CompletionTokens: resp.CompletionTokens,
+		Outcome:          outcome,
+		LatencyMs:        latency.Milliseconds(),
+	})
 
 	jsonOK(w, aiTestResponse{
 		OK:               ok,
@@ -289,7 +347,7 @@ func isLetter(b byte) bool {
 // connection. Same shape as ai_optimize but a different verb so
 // dashboards can separate user-driven optimize calls from admin
 // smoke tests.
-func auditTest(userID int64, model, outcome string, latency time.Duration, promptTokens, completionTokens int) {
-	log.Printf("audit: ai_test user_id=%d model=%q outcome=%s latency_ms=%d prompt_tokens=%d completion_tokens=%d",
-		userID, model, outcome, latency.Milliseconds(), promptTokens, completionTokens)
+func auditTest(requestID string, userID int64, model, outcome string, latency time.Duration, promptTokens, completionTokens int) {
+	log.Printf("audit: ai_test request_id=%s user_id=%d model=%q outcome=%s latency_ms=%d prompt_tokens=%d completion_tokens=%d",
+		requestID, userID, model, outcome, latency.Milliseconds(), promptTokens, completionTokens)
 }

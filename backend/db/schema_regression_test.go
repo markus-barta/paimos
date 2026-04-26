@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 81
+const latestSchemaVersion = 84
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -72,6 +72,9 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"entity_relations",
 		"entity_embeddings",
 		"ai_prompts",
+		"ai_calls",
+		"mutation_log",
+		"app_settings",
 		"project_members",
 	} {
 		if !tableExists(t, db, table) {
@@ -83,6 +86,12 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "ai_prompts", "placement") {
 		t.Fatal("expected ai_prompts.placement to exist")
+	}
+	if !columnExists(t, db, "mutation_log", "after_state") {
+		t.Fatal("expected mutation_log.after_state to exist")
+	}
+	if !columnExists(t, db, "mutation_log", "redoable") {
+		t.Fatal("expected mutation_log.redoable to exist")
 	}
 	if !columnExists(t, db, "sessions", "csrf_token") {
 		t.Fatal("expected sessions.csrf_token to exist")
@@ -129,6 +138,10 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_entity_relations_project_src",
 		"idx_entity_relations_project_tgt",
 		"idx_ai_prompts_key_enabled",
+		"idx_ai_calls_time",
+		"idx_ai_calls_issue_time",
+		"idx_mutation_log_user_stack",
+		"idx_mutation_log_request",
 		"idx_documents_project",
 		"idx_time_entries_mite_id",
 	} {

@@ -51,6 +51,8 @@ import { api, errMsg, ApiError } from '@/api/client'
 // clicks the AI button so Retry can replay the exact same request
 // without the host page having to remember anything.
 interface OptimizeArgs {
+  hostKey?: string
+  surface?: string
   field: string
   fieldLabel?: string
   text: string
@@ -59,6 +61,7 @@ interface OptimizeArgs {
 }
 
 interface OptimizeResponse {
+  request_id?: string
   optimized: string
   model: string
   prompt_tokens: number
@@ -71,6 +74,7 @@ interface OptimizeResponse {
 // it's `{optimized: string}`. Token counts and model live on the
 // envelope so the diff overlay can render the success banner.
 interface ActionEnvelope {
+  request_id?: string
   action: string
   body: { optimized?: string }
   model: string
@@ -81,29 +85,50 @@ interface ActionEnvelope {
 
 interface AiOverlayState {
   visible: boolean
+  hostKey: string
+  actionKey: string
+  requestId: string
   field: string
   fieldLabel: string
   original: string
   optimized: string
   modelName: string
   retrying: boolean
+  promptTokens: number
+  completionTokens: number
+}
+
+export interface AiOptimizeActivity {
+  hostKey: string
+  actionKey: string
+  field: string
+  fieldLabel: string
+  startedAt: number
+  surface: string
 }
 
 // ── module-singleton state ──────────────────────────────────────────
 const available = ref(false)
 const isOptimizing = ref(false)
 const lastError = ref<string | null>(null)
+const lastErrorHostKey = ref('')
 let statusLoaded = false
 let statusInflight: Promise<void> | null = null
+const activity = ref<AiOptimizeActivity | null>(null)
 
 const overlay = reactive<AiOverlayState>({
   visible: false,
+  hostKey: '',
+  actionKey: '',
+  requestId: '',
   field: '',
   fieldLabel: '',
   original: '',
   optimized: '',
   modelName: '',
   retrying: false,
+  promptTokens: 0,
+  completionTokens: 0,
 })
 
 // Stash for Retry. Cleared on Reject/Accept.
@@ -156,6 +181,7 @@ async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
     { timeoutMs: OPTIMIZE_TIMEOUT_MS },
   )
   return {
+    request_id: env.request_id,
     optimized: env.body?.optimized ?? '',
     model: env.model,
     prompt_tokens: env.prompt_tokens,
@@ -174,6 +200,21 @@ function isCustomerField(field: string): boolean {
       || field === 'cooperation_notes'
 }
 
+function resetOverlayState() {
+  overlay.visible = false
+  overlay.hostKey = ''
+  overlay.actionKey = ''
+  overlay.requestId = ''
+  overlay.field = ''
+  overlay.fieldLabel = ''
+  overlay.original = ''
+  overlay.optimized = ''
+  overlay.modelName = ''
+  overlay.retrying = false
+  overlay.promptTokens = 0
+  overlay.completionTokens = 0
+}
+
 async function run(args: OptimizeArgs): Promise<void> {
   if (isOptimizing.value) return
   // PAI-155: defensive overlay reset. The UI guards (modal backdrop,
@@ -183,23 +224,33 @@ async function run(args: OptimizeArgs): Promise<void> {
   // diff to linger if the new call fails. Clear before issuing the
   // new call so the failure path leaves a clean slate.
   if (overlay.visible) {
-    overlay.visible = false
-    overlay.optimized = ''
-    overlay.original = ''
-    overlay.modelName = ''
-    overlay.retrying = false
+    resetOverlayState()
   }
   isOptimizing.value = true
   lastError.value = null
+  lastErrorHostKey.value = ''
+  activity.value = {
+    hostKey: args.hostKey ?? `${args.field}:${args.issueId ?? 0}`,
+    actionKey: isCustomerField(args.field) ? 'optimize_customer' : 'optimize',
+    field: args.field,
+    fieldLabel: args.fieldLabel ?? args.field,
+    startedAt: Date.now(),
+    surface: args.surface ?? (isCustomerField(args.field) ? 'customer' : 'issue'),
+  }
   pendingArgs = args
   try {
     const r = await callOptimize(args)
+    overlay.hostKey = activity.value?.hostKey ?? ''
+    overlay.actionKey = activity.value?.actionKey ?? 'optimize'
+    overlay.requestId = r.request_id ?? ''
     overlay.field = args.field
     overlay.fieldLabel = args.fieldLabel ?? args.field
     overlay.original = args.text
     overlay.optimized = r.optimized
     overlay.modelName = r.model
     overlay.retrying = false
+    overlay.promptTokens = r.prompt_tokens
+    overlay.completionTokens = r.completion_tokens
     overlay.visible = true
   } catch (e) {
     // 503s coming back from the backend mean either "not configured"
@@ -210,8 +261,10 @@ async function run(args: OptimizeArgs): Promise<void> {
       void refreshStatus()
     }
     lastError.value = errMsg(e, 'Optimization failed')
+    lastErrorHostKey.value = args.hostKey ?? `${args.field}:${args.issueId ?? 0}`
     pendingArgs = null
   } finally {
+    activity.value = null
     isOptimizing.value = false
   }
 }
@@ -228,14 +281,19 @@ interface RewriteActionArgs extends OptimizeArgs {
 async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
   if (isOptimizing.value) return
   if (overlay.visible) {
-    overlay.visible = false
-    overlay.optimized = ''
-    overlay.original = ''
-    overlay.modelName = ''
-    overlay.retrying = false
+    resetOverlayState()
   }
   isOptimizing.value = true
   lastError.value = null
+  lastErrorHostKey.value = ''
+  activity.value = {
+    hostKey: args.hostKey ?? `${args.field}:${args.issueId ?? 0}`,
+    actionKey: args.action,
+    field: args.field,
+    fieldLabel: args.fieldLabel ?? args.field,
+    startedAt: Date.now(),
+    surface: args.surface ?? (isCustomerField(args.field) ? 'customer' : 'issue'),
+  }
   // Stash the args for retry — the regular pendingArgs slot expects
   // an OptimizeArgs shape, so we keep a parallel slot here.
   pendingRewriteArgs = args
@@ -253,12 +311,17 @@ async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
       { timeoutMs: OPTIMIZE_TIMEOUT_MS },
     )
     const optimized = env.body?.optimized ?? ''
+    overlay.hostKey = activity.value?.hostKey ?? ''
+    overlay.actionKey = args.action
+    overlay.requestId = env.request_id ?? ''
     overlay.field = args.field
     overlay.fieldLabel = args.fieldLabel ?? args.field
     overlay.original = args.text
     overlay.optimized = optimized
     overlay.modelName = env.model
     overlay.retrying = false
+    overlay.promptTokens = env.prompt_tokens
+    overlay.completionTokens = env.completion_tokens
     overlay.visible = true
     // The accept callback uses pendingArgs.onAccept; copy across.
     pendingArgs = {
@@ -273,8 +336,10 @@ async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
       void refreshStatus()
     }
     lastError.value = errMsg(e, 'Action failed')
+    lastErrorHostKey.value = args.hostKey ?? `${args.field}:${args.issueId ?? 0}`
     pendingRewriteArgs = null
   } finally {
+    activity.value = null
     isOptimizing.value = false
   }
 }
@@ -301,28 +366,31 @@ function accept(): void {
   const text = overlay.optimized
   // Reset before calling the callback so a callback that triggers
   // a re-render with the new text doesn't see a stale overlay.
-  overlay.visible = false
+  resetOverlayState()
   pendingArgs = null
   cb(text)
 }
 
 function reject(): void {
-  overlay.visible = false
+  resetOverlayState()
   pendingArgs = null
 }
 
 function clearError(): void {
   lastError.value = null
+  lastErrorHostKey.value = ''
 }
 
 export function useAiOptimize() {
   // Lazy first-load. Subsequent callers get the cached value
   // immediately; available will flip when refreshStatus resolves.
-  if (!statusLoaded && !statusInflight) void refreshStatus()
+  if (import.meta.env.MODE !== 'test' && !statusLoaded && !statusInflight) void refreshStatus()
   return {
     available,
     isOptimizing,
     lastError,
+    lastErrorHostKey,
+    activity,
     overlay,
     run,
     runRewriteAction,

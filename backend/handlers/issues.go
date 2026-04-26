@@ -986,7 +986,18 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
-	_, err = db.DB.Exec(`
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	beforeSnap, err := fetchIssueMutationSnapshotTx(tx, id)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	_, err = tx.Exec(`
 		UPDATE issues SET
 			title               = COALESCE(?, title),
 			description         = COALESCE(?, description),
@@ -1031,6 +1042,38 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		body.AssigneeID, body.AssigneeID,
 		now, id)
 	if handleDBError(w, err, "issue") {
+		return
+	}
+	afterSnap, err := fetchIssueMutationSnapshotTx(tx, id)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var userID *int64
+	if user := auth.GetUser(r); user != nil {
+		userID = &user.ID
+	}
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       userID,
+		SessionID:    sessionIDFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.update"),
+		SubjectType:  "issue",
+		SubjectID:    id,
+		InverseOp: InverseOp{
+			Method: http.MethodPut,
+			Path:   fmt.Sprintf("/issues/%d", id),
+			Body:   beforeSnap,
+		},
+		BeforeState: beforeSnap,
+		AfterState:  afterSnap,
+		Undoable:    true,
+	}); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -1885,14 +1928,60 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 	}
 	// For sprint relations, assign rank = max+1 so new items appear at the bottom
 	rank := 0
-	if body.Type == "sprint" {
-		db.DB.QueryRow("SELECT COALESCE(MAX(rank),0)+1 FROM issue_relations WHERE source_id=? AND type='sprint'", dbSource).Scan(&rank)
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
 	}
-	_, err = db.DB.Exec(
+	defer tx.Rollback()
+	beforeSnap, err := fetchRelationMutationSnapshotTx(tx, dbSource, dbTarget, body.Type)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if body.Type == "sprint" {
+		tx.QueryRow("SELECT COALESCE(MAX(rank),0)+1 FROM issue_relations WHERE source_id=? AND type='sprint'", dbSource).Scan(&rank)
+	}
+	_, err = tx.Exec(
 		`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type, rank) VALUES(?,?,?,?)`,
 		dbSource, dbTarget, body.Type, rank,
 	)
 	if handleDBError(w, err, "issue relation") {
+		return
+	}
+	afterSnap, err := fetchRelationMutationSnapshotTx(tx, dbSource, dbTarget, body.Type)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var userID *int64
+	if user := auth.GetUser(r); user != nil {
+		userID = &user.ID
+	}
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       userID,
+		SessionID:    sessionIDFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.relation.create"),
+		SubjectType:  "issue_relation",
+		SubjectID:    sourceID,
+		InverseOp: InverseOp{
+			Method: http.MethodDelete,
+			Path:   fmt.Sprintf("/issues/%d/relations", sourceID),
+			Body: map[string]any{
+				"target_id": body.TargetID,
+				"type":      body.Type,
+			},
+		},
+		BeforeState: beforeSnap,
+		AfterState:  afterSnap,
+		Undoable:    true,
+	}); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	upsertIssueEntityRelation(dbSource, dbTarget, body.Type)
@@ -1921,7 +2010,18 @@ func DeleteIssueRelation(w http.ResponseWriter, r *http.Request) {
 	if body.Type == "sprint" {
 		dbSource, dbTarget = body.TargetID, sourceID
 	}
-	res, err := db.DB.Exec(
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	beforeSnap, err := fetchRelationMutationSnapshotTx(tx, dbSource, dbTarget, body.Type)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	res, err := tx.Exec(
 		`DELETE FROM issue_relations WHERE source_id=? AND target_id=? AND type=?`,
 		dbSource, dbTarget, body.Type,
 	)
@@ -1932,6 +2032,42 @@ func DeleteIssueRelation(w http.ResponseWriter, r *http.Request) {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	afterSnap, err := fetchRelationMutationSnapshotTx(tx, dbSource, dbTarget, body.Type)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var userID *int64
+	if user := auth.GetUser(r); user != nil {
+		userID = &user.ID
+	}
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       userID,
+		SessionID:    sessionIDFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.relation.delete"),
+		SubjectType:  "issue_relation",
+		SubjectID:    sourceID,
+		InverseOp: InverseOp{
+			Method: http.MethodPost,
+			Path:   fmt.Sprintf("/issues/%d/relations", sourceID),
+			Body: map[string]any{
+				"target_id": body.TargetID,
+				"type":      body.Type,
+				"rank":      beforeSnap.Rank,
+			},
+		},
+		BeforeState: beforeSnap,
+		AfterState:  afterSnap,
+		Undoable:    true,
+	}); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	deleteIssueEntityRelation(dbSource, dbTarget, body.Type)

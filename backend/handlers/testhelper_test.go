@@ -110,6 +110,7 @@ func buildRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(handlers.SessionAuditMiddleware) // PAI-97 — off unless PAIMOS_AUDIT_SESSIONS=true
+	r.Use(handlers.RequestIDMiddleware)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +201,15 @@ func buildRouter() http.Handler {
 			r.Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
+			r.Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+			r.Get("/issues/{id}/activity", handlers.ListIssueMutationActivity)
+			r.Get("/undo/activity", handlers.ListMyMutationActivity)
+			r.Post("/undo/{id}", handlers.UndoMutation)
+			r.Post("/undo/{id}/resolve", handlers.ResolveUndoMutation)
+			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
+			r.Post("/redo/{id}", handlers.RedoMutation)
+			r.Post("/redo/{id}/resolve", handlers.ResolveRedoMutation)
+			r.Post("/redo/request/{requestID}", handlers.RedoMutationByRequestID)
 
 			r.Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
@@ -246,6 +256,9 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
 			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
 			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+			r.With(auth.RequireAdmin).Get("/ai/calls", handlers.AIListCalls)
+			r.With(auth.RequireAdmin).Get("/ai/calls/export.csv", handlers.AIExportCallsCSV)
+			r.With(auth.RequireAdmin).Get("/ai/calls/{id}", handlers.AIGetCall)
 			r.With(auth.RequireAdmin).Get("/ai/prompts", handlers.AIListPrompts)
 			r.With(auth.RequireAdmin).Post("/ai/prompts", handlers.AICreatePrompt)
 			r.With(auth.RequireAdmin).Put("/ai/prompts/{id}", handlers.AIUpdatePrompt)
@@ -254,7 +267,10 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
 			r.Get("/ai/actions", handlers.AIListActions)
 			r.Get("/ai/status", handlers.AIStatus)
+			r.Get("/ai/calls/me", handlers.AIListMyCalls)
+			r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
 			r.Post("/ai/action", handlers.AIAction)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
 
 			r.Get("/search", handlers.Search)
 
@@ -312,6 +328,8 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
 			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
 			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+			r.With(auth.RequireAdmin).Get("/system/settings", handlers.GetSystemSettings)
+			r.With(auth.RequireAdmin).Put("/system/settings", handlers.PutSystemSettings)
 
 			// Incident log
 			r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)

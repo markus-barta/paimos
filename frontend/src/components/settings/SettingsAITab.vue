@@ -47,6 +47,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
+import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
 
 interface AISettings {
   enabled: boolean
@@ -833,6 +834,17 @@ function relTime(iso: string): string {
           </table>
           <p v-else class="ai-help">No AI calls today yet.</p>
         </template>
+      </section>
+
+      <section class="ai-card">
+        <header class="ai-card-headrow">
+          <span class="ai-card-headicon"><AppIcon name="scroll-text" :size="15" /></span>
+          <h3 class="ai-card-title">Paper trail</h3>
+        </header>
+        <p class="ai-help">
+          Queryable per-call audit metadata for every AI invocation. Bodies stay out of storage by design.
+        </p>
+        <AiPaperTrailPanel mode="admin" />
       </section>
 
     </template>

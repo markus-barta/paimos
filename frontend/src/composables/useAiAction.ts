@@ -25,7 +25,8 @@
  *       reset()       — clear `result` so the modal stops rendering
  *
  *   - Per-action result shapes:
- *       optimize / translate / tone_check → diff overlay UX (existing)
+ *       optimize / translate              → diff overlay UX (existing)
+ *       tone_check                        → inline strip + replace action
  *       suggest_enhancement / spec_out    → list-of-suggestions modal
  *       find_parent / detect_duplicates   → candidate-cards modal
  *       generate_subtasks                 → checklist-create modal
@@ -41,7 +42,7 @@
  * The pre-existing useAiOptimize composable (PAI-147) keeps working
  * for the optimize-specific diff overlay. AiActionMenu uses
  * useAiOptimize for actions that want the diff UX (optimize,
- * translate, tone_check) and uses this composable's `result` slot
+ * translate) and uses this composable's `result` slot
  * for everything else. That split avoids cramming six unrelated UIs
  * into one giant component while still letting the menu treat all
  * actions uniformly at the dispatch level.
@@ -69,6 +70,7 @@ interface ActionsCatalog {
 }
 
 export interface ActionEnvelope<T = unknown> {
+  request_id?: string
   action: string
   sub_action?: string
   body: T
@@ -79,6 +81,8 @@ export interface ActionEnvelope<T = unknown> {
 }
 
 export interface RunArgs {
+  hostKey?: string
+  surface?: 'issue' | 'customer'
   action: string
   subAction?: string
   field: string
@@ -97,10 +101,26 @@ let actionsInflight: Promise<void> | null = null
 
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
+const lastErrorHostKey = ref('')
+
+export interface AiActionActivity {
+  hostKey: string
+  action: string
+  subAction?: string
+  field: string
+  fieldLabel: string
+  startedAt: number
+  surface: string
+}
+const activity = ref<AiActionActivity | null>(null)
 
 // `result` holds the last action's response. Host pages watch it
 // to render the matching modal. `null` = no modal open.
 interface ActiveResult {
+  requestId?: string
+  hostKey: string
+  promptTokens?: number
+  completionTokens?: number
   action: string
   subAction?: string
   fieldLabel: string
@@ -171,10 +191,10 @@ async function loadActions(): Promise<void> {
 }
 
 // Diff-overlay UX is reused for actions that produce rewritten field
-// text (optimize, translate, tone_check). For these we pipe the call
+// text when we want a full before/after overlay. For these we pipe the call
 // through useAiOptimize so we get the existing accept/reject/retry
 // flow for free.
-const DIFF_OVERLAY_ACTIONS = new Set(['optimize', 'translate', 'tone_check'])
+const DIFF_OVERLAY_ACTIONS = new Set(['optimize', 'translate'])
 
 // ── runner ────────────────────────────────────────────────────────
 async function run(args: RunArgs): Promise<void> {
@@ -182,7 +202,17 @@ async function run(args: RunArgs): Promise<void> {
   if (!actionsLoaded.value) await loadActions()
   isRunning.value = true
   lastError.value = null
+  lastErrorHostKey.value = ''
   result.value = null
+  activity.value = {
+    hostKey: args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`,
+    action: args.action,
+    subAction: args.subAction,
+    field: args.field,
+    fieldLabel: args.fieldLabel ?? args.field,
+    startedAt: Date.now(),
+    surface: args.surface ?? 'issue',
+  }
 
   try {
     if (DIFF_OVERLAY_ACTIONS.has(args.action)) {
@@ -206,6 +236,10 @@ async function run(args: RunArgs): Promise<void> {
     }, { timeoutMs: 90_000 })
 
     result.value = {
+      requestId: env.request_id,
+      hostKey: activity.value?.hostKey ?? (args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`),
+      promptTokens: env.prompt_tokens,
+      completionTokens: env.completion_tokens,
       action: env.action,
       subAction: env.sub_action,
       fieldLabel: args.fieldLabel ?? args.field,
@@ -221,20 +255,23 @@ async function run(args: RunArgs): Promise<void> {
       void optimize.refreshStatus()
     }
     lastError.value = errMsg(e, 'AI action failed')
+    lastErrorHostKey.value = args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`
   } finally {
+    activity.value = null
     isRunning.value = false
   }
 }
 
 async function runViaOptimize(args: RunArgs): Promise<void> {
   // Optimize uses the legacy composable's run() which posts to
-  // /api/ai/action with action="optimize" (PAI-164). Translate and
-  // tone_check both produce rewritten field text that should land
-  // in the same diff overlay, so they share the overlay state via
-  // runRewriteAction(); the composable internally posts to
-  // /api/ai/action with the right action key and unwraps the body.
+  // /api/ai/action with action="optimize" (PAI-164). Translate shares
+  // the same overlay state via runRewriteAction(); tone_check now uses
+  // the strip/detail/apply path instead so users can review the neutralized
+  // rewrite inline without hijacking the diff overlay.
   if (args.action === 'optimize') {
     await optimize.run({
+      hostKey: args.hostKey,
+      surface: args.surface,
       field: args.field,
       fieldLabel: args.fieldLabel,
       text: args.text,
@@ -247,6 +284,8 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
     await optimize.runRewriteAction({
       action: args.action,
       subAction: args.subAction,
+      hostKey: args.hostKey,
+      surface: args.surface,
       field: args.field,
       fieldLabel: args.fieldLabel,
       text: args.text,
@@ -265,10 +304,15 @@ function reset(): void {
 
 function clearError(): void {
   lastError.value = null
+  lastErrorHostKey.value = ''
 }
 
-// First import triggers the catalogue load.
-loadActions()
+// First import triggers the catalogue load in the real app. Tests mount
+// surfaces in isolation and don't run against a live backend, so skip the
+// eager fetch there and let explicit refreshes drive the catalogue instead.
+if (import.meta.env.MODE !== 'test') {
+  loadActions()
+}
 
 export function useAiAction() {
   return {
@@ -278,6 +322,8 @@ export function useAiAction() {
     available,
     isRunning,
     lastError,
+    lastErrorHostKey,
+    activity,
     result,
     run,
     reset,

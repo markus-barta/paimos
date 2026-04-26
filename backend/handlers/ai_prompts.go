@@ -48,6 +48,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/paimos/backend/ai"
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 )
 
@@ -507,6 +508,12 @@ type dryRunContext struct {
 // and POSTs to the configured provider. Strictly preview — no
 // state changes.
 func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
+	requestID := newAIRequestID()
+	user := auth.GetUser(r)
+	var userIDPtr *int64
+	if user != nil {
+		userIDPtr = &user.ID
+	}
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		jsonError(w, "invalid id", http.StatusBadRequest)
@@ -524,6 +531,16 @@ func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
 	}
 	var body dryRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "dry_run",
+			SubAction:  existing.Key,
+			Surface:    "settings_dryrun",
+			Provider:   "",
+			Outcome:    "bad_request",
+			ErrorClass: "json_decode",
+		})
 		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
@@ -531,10 +548,31 @@ func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
 	settings, err := LoadAISettings()
 	if err != nil {
 		log.Printf("ai_prompts: load settings: %v", err)
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "dry_run",
+			SubAction:  existing.Key,
+			Surface:    "settings_dryrun",
+			Provider:   "",
+			Model:      "",
+			Outcome:    "cfg_load_fail",
+			ErrorClass: "settings_load",
+		})
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	if !settings.AvailableForOptimize() {
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "dry_run",
+			SubAction:  existing.Key,
+			Surface:    "settings_dryrun",
+			Provider:   settings.Provider,
+			Model:      settings.Model,
+			Outcome:    "unconfigured",
+		})
 		jsonError(w, "AI is not configured", http.StatusServiceUnavailable)
 		return
 	}
@@ -567,6 +605,17 @@ func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
 
 	rendered, rerr := renderPromptTemplate(template, dctx)
 	if rerr != nil {
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "dry_run",
+			SubAction:  existing.Key,
+			Surface:    "settings_dryrun",
+			Provider:   settings.Provider,
+			Model:      settings.Model,
+			Outcome:    "bad_request",
+			ErrorClass: "template_render",
+		})
 		jsonError(w, "template render failed: "+rerr.Error(), http.StatusBadRequest)
 		return
 	}
@@ -580,6 +629,18 @@ func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
 
 	provider, perr := ai.Get(settings.Provider)
 	if perr != nil {
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "dry_run",
+			SubAction:  existing.Key,
+			Surface:    "settings_dryrun",
+			IssueID:    nullableInt64(body.IssueID),
+			Provider:   settings.Provider,
+			Model:      settings.Model,
+			Outcome:    "provider_missing",
+			ErrorClass: "provider_missing",
+		})
 		jsonError(w, "AI provider unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -594,9 +655,36 @@ func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
 	})
 	latency := time.Since(t0)
 	if err != nil {
+		recordAICall(r.Context(), aiCallArgs{
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "dry_run",
+			SubAction:  existing.Key,
+			Surface:    "settings_dryrun",
+			IssueID:    nullableInt64(body.IssueID),
+			Provider:   settings.Provider,
+			Model:      settings.Model,
+			Outcome:    "fail_upstream",
+			ErrorClass: "upstream",
+			LatencyMs:  latency.Milliseconds(),
+		})
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	recordAICall(r.Context(), aiCallArgs{
+		RequestID:        requestID,
+		UserID:           userIDPtr,
+		ActionKey:        "dry_run",
+		SubAction:        existing.Key,
+		Surface:          "settings_dryrun",
+		IssueID:          nullableInt64(body.IssueID),
+		Provider:         settings.Provider,
+		Model:            resp.Model,
+		PromptTokens:     resp.PromptTokens,
+		CompletionTokens: resp.CompletionTokens,
+		Outcome:          "ok",
+		LatencyMs:        latency.Milliseconds(),
+	})
 	jsonOK(w, dryRunResponse{
 		RenderedSystem:   systemPrompt,
 		RenderedUser:     userPrompt,

@@ -68,6 +68,7 @@ func main() {
 	// PAI-97: session-scoped mutation audit. No-op unless
 	// PAIMOS_AUDIT_SESSIONS=true is set — off by default in v1.
 	r.Use(handlers.SessionAuditMiddleware)
+	r.Use(handlers.RequestIDMiddleware)
 
 	r.Route("/api", func(r chi.Router) {
 		// ── Strictly public endpoints ────────────────────────────────
@@ -256,6 +257,15 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/activity", handlers.ListIssueMutationActivity)
+			r.Get("/undo/activity", handlers.ListMyMutationActivity)
+			r.Post("/undo/{id}", handlers.UndoMutation)
+			r.Post("/undo/{id}/resolve", handlers.ResolveUndoMutation)
+			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
+			r.Post("/redo/{id}", handlers.RedoMutation)
+			r.Post("/redo/{id}/resolve", handlers.ResolveRedoMutation)
+			r.Post("/redo/request/{requestID}", handlers.RedoMutationByRequestID)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)
@@ -294,6 +304,8 @@ func main() {
 			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
 			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
 			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+			r.With(auth.RequireAdmin).Get("/system/settings", handlers.GetSystemSettings)
+			r.With(auth.RequireAdmin).Put("/system/settings", handlers.PutSystemSettings)
 
 			// User project access (admin only). The legacy /users/{id}/projects
 			// endpoints drive the external-portal grants page; the new
@@ -370,6 +382,9 @@ func main() {
 			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
 			// PAI-161: per-user usage summary for the admin dashboard.
 			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+			r.With(auth.RequireAdmin).Get("/ai/calls", handlers.AIListCalls)
+			r.With(auth.RequireAdmin).Get("/ai/calls/export.csv", handlers.AIExportCallsCSV)
+			r.With(auth.RequireAdmin).Get("/ai/calls/{id}", handlers.AIGetCall)
 			// PAI-175 / PAI-176 / PAI-177: prompt CRUD + dry-run.
 			// Admin-only. The list endpoint lazily seeds built-in
 			// rows so a fresh install never sees an empty list.
@@ -381,11 +396,14 @@ func main() {
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
 			r.Get("/ai/actions", handlers.AIListActions)
 			r.Get("/ai/status", handlers.AIStatus)
+			r.Get("/ai/calls/me", handlers.AIListMyCalls)
+			r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
 			// PAI-164: legacy /api/ai/optimize endpoint retired —
 			// the optimize behaviour now lives behind /api/ai/action
 			// with action="optimize". The frontend useAiOptimize
 			// composable was updated to call the dispatcher.
 			r.Post("/ai/action", handlers.AIAction)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
 
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)

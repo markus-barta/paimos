@@ -16,6 +16,8 @@ import { ref, computed, onMounted, reactive, nextTick } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
+import AiActivityStrip from '@/components/ai/AiActivityStrip.vue'
+import AiResultStrip from '@/components/ai/AiResultStrip.vue'
 import IssueSearchInput from '@/components/ai/IssueSearchInput.vue'
 
 interface PromptRow {
@@ -245,10 +247,19 @@ const dryRunIssueId = ref<number | null>(null)
 const dryRunResult = ref<DryRunResponse | null>(null)
 const dryRunRunning = ref(false)
 const dryRunError = ref('')
+const dryRunStartedAt = ref<number | null>(null)
+
+const dryRunSummary = computed(() => {
+  if (!dryRunResult.value) return ''
+  const tokens = (dryRunResult.value.prompt_tokens ?? 0) + (dryRunResult.value.completion_tokens ?? 0)
+  const chars = String(dryRunResult.value.response ?? '').length
+  return `${chars} response chars · ${tokens} tokens`
+})
 
 async function dryRun() {
   if (!edit.row || dryRunRunning.value) return
   dryRunRunning.value = true
+  dryRunStartedAt.value = Date.now()
   dryRunError.value = ''
   dryRunResult.value = null
   try {
@@ -265,6 +276,7 @@ async function dryRun() {
 function clearDryRun() {
   dryRunResult.value = null
   dryRunError.value = ''
+  dryRunStartedAt.value = null
 }
 </script>
 
@@ -531,11 +543,27 @@ function clearDryRun() {
             </button>
           </div>
 
+          <AiActivityStrip
+            v-if="dryRunRunning && dryRunStartedAt"
+            action-key="dry_run"
+            title="Prompt dry-run"
+            :started-at="dryRunStartedAt"
+          />
+
           <p v-if="dryRunError" class="ape-banner ape-banner--error">
             <AppIcon name="alert-triangle" :size="14" /> {{ dryRunError }}
           </p>
 
-          <div v-if="dryRunResult" class="ape-result">
+          <AiResultStrip
+            v-if="dryRunResult"
+            action-key="dry_run"
+            title="Dry-run result"
+            :summary="dryRunSummary"
+            details-label="Details"
+            :dismissable="true"
+            @dismiss="clearDryRun"
+          >
+          <div class="ape-result">
             <div class="ape-result-meta">
               <span v-if="dryRunResult.model" class="ape-result-pill">
                 <AppIcon name="cpu" :size="11" /> {{ dryRunResult.model }}
@@ -570,6 +598,7 @@ function clearDryRun() {
               </div>
             </div>
           </div>
+          </AiResultStrip>
         </section>
 
         <p v-if="saveError" class="ape-banner ape-banner--error ape-banner--save">

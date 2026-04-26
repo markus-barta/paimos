@@ -54,9 +54,7 @@ import ProjectContextSection from '@/components/project/ProjectContextSection.vu
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
-import AiOptimizeOverlay from '@/components/ai/AiOptimizeOverlay.vue'
-import AiOptimizeBanner from '@/components/ai/AiOptimizeBanner.vue'
-import { useAiOptimize } from '@/composables/useAiOptimize'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -152,9 +150,26 @@ const saving    = ref(false)
 // PAI-146 expansion: AI optimize composable + onAccept handler for
 // the project description. The edit modal is admin-gated, so the
 // button only appears for users who already have edit rights here.
-const aiOptimize = useAiOptimize()
 function onProjectDescriptionAccept(text: string) {
   editForm.value.description = text
+}
+async function applyProjectAiResult(info: any) {
+  if (info.action === 'ui_generation') {
+    const spec = String(info.body?.spec_markdown ?? '')
+    editForm.value.description = info.intent === 'replace-description'
+      ? spec
+      : [editForm.value.description, spec].filter(Boolean).join('\n\n')
+    return
+  }
+  if (info.action === 'suggest_enhancement') {
+    const lines = (info.selection ?? []).map((idx: number) => info.body?.suggestions?.[idx]).filter(Boolean).map((it: any) => `- ${it.title}: ${it.body}`)
+    editForm.value.description = [editForm.value.description, lines.join('\n')].filter(Boolean).join('\n\n')
+    return
+  }
+  if (info.action === 'spec_out') {
+    const lines = (info.selection ?? []).map((idx: number) => info.body?.items?.[idx]?.text).filter(Boolean).map((text: string) => `- ${text}`)
+    editForm.value.description = [editForm.value.description, lines.join('\n')].filter(Boolean).join('\n\n')
+  }
 }
 
 // Logo upload
@@ -720,6 +735,7 @@ const lastChanged = computed(() => {
           <div class="field-label-row">
             <label>Description</label>
             <AiActionMenu surface="issue"
+              host-key="project-detail:description"
               field="project_description"
               field-label="Project description"
               :issue-id="0"
@@ -727,8 +743,8 @@ const lastChanged = computed(() => {
               :on-accept="onProjectDescriptionAccept"
             />
           </div>
-          <AiOptimizeBanner />
           <textarea v-model="editForm.description" rows="3"></textarea>
+          <AiSurfaceFeedback host-key="project-detail:description" :apply="applyProjectAiResult" />
         </div>
         <div class="field">
           <label>Status</label>
@@ -888,20 +904,6 @@ const lastChanged = computed(() => {
         <div v-if="purgeError" class="form-error">{{ purgeError }}</div>
       </div>
     </AppModal>
-
-    <!-- PAI-146 expansion: AI optimize overlay for the project
-         description. Single mount per view. -->
-    <AiOptimizeOverlay
-      v-if="aiOptimize.overlay.visible"
-      :original="aiOptimize.overlay.original"
-      :optimized="aiOptimize.overlay.optimized"
-      :field-label="aiOptimize.overlay.fieldLabel"
-      :model-name="aiOptimize.overlay.modelName"
-      :retrying="aiOptimize.overlay.retrying"
-      @accept="aiOptimize.accept()"
-      @reject="aiOptimize.reject()"
-      @retry="aiOptimize.retry()"
-    />
 </template>
 
 <style scoped>
