@@ -48,6 +48,11 @@ continuity plan. It documents how the project responds when the
 maintainer is unreachable, including the AGPL-3.0 fork pathway and
 the operator self-care steps.
 
+For the security architecture model — what the project commits to
+defend against, the trust boundaries, and the named invariants per
+domain (auth / authz / files / audit / export-delete) — see
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+
 ## Supported versions
 
 Only the most recent release is supported with security fixes. PAIMOS

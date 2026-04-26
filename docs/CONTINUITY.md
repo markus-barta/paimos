@@ -332,3 +332,4 @@ The plan held. The recovery contact-driven flow is workable in 6-12 week absence
 - [`2.0_AUDIT.md`](2.0_AUDIT.md) — programme-scope audit + decisions log.
 - [`brand/BRAND.md`](brand/BRAND.md) — name, mark, voice, phasing plan.
 - [`paimos.com/trust.html`](https://paimos.com/trust.html) — public trust posture (mirrors content from this doc + claim-matrix.md + 2.0_AUDIT.md).
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — threat actors, trust boundaries, named security invariants per domain. This continuity plan handles the maintainer being out; the threat model handles the system being under attack.
