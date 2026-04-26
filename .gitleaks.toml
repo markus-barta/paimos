@@ -1,0 +1,35 @@
+# PAIMOS gitleaks configuration
+#
+# Extends the upstream default ruleset and adds a stricter, PAIMOS-specific
+# rule for real `paimos_` API keys (which are 64 hex chars long). Short
+# `paimos_<n-hex>` strings used as documentation examples are allowlisted
+# in markdown files only.
+#
+# CI runs `gitleaks detect --source . --redact` against every push.
+# A leak finding fails CI; this is intentional. PAI-131 § 3.1 (compromised
+# API key tabletop) named this rule set as the targeted defence.
+
+title = "PAIMOS gitleaks config"
+
+[extend]
+useDefault = true
+
+# ── Custom rule: catch real PAIMOS API keys ─────────────────────────────
+# Real PAIMOS API keys are emitted as `paimos_<64-hex>` by the
+# /api/auth/api-keys endpoint. This rule's regex matches anything 32 hex
+# chars or longer, which is well above any plausible doc example.
+[[rules]]
+id          = "paimos-api-key"
+description = "PAIMOS API key (paimos_ + ≥32 hex chars)"
+regex       = '''paimos_[a-fA-F0-9]{32,}'''
+keywords    = ["paimos_"]
+
+# ── Global allowlist: doc-example prefixes ──────────────────────────────
+# `paimos_1a2b3c4` (7 hex chars), `paimos_xxxx` (placeholder), and similar
+# short prefixes are documentation examples. They are bounded to ≤16 hex
+# chars so they cannot collide with real 64-char keys, and only allowed
+# in markdown files (where docs live).
+[allowlist]
+description = "PAIMOS documentation example prefixes in markdown"
+paths       = ['''docs/.*\.md''', '''README\.md''']
+regexes     = ['''paimos_[a-fA-F0-9]{1,16}\b''']

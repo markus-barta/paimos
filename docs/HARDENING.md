@@ -294,4 +294,5 @@ Five mistakes operators consistently make. Each one has bitten at least one depl
 - **[`SECURITY.md`](../SECURITY.md)** — inbound disclosure policy.
 - **[`claim-matrix.md`](claim-matrix.md)** — claim ↔ shipped-evidence registry; the basis for §3.5 / §3.6 verifications.
 - **[`paimos.com/trust.html`](https://paimos.com/trust.html)** — public outward trust posture; §02 / 04 anchor the verifiability claims this guide operationalises.
+- **[`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)** — the build-side companion: which CI scanners run, at what threshold, and the security-sensitive code-review rules. The §3.5 / §3.6 hardening rows here are operator-side; SECURITY_REVIEW.md covers the maintainer-side checks that prevent regressions.
 - **`scripts/check-claims.sh`** — release-time gate that enforces every public claim has shipped evidence.

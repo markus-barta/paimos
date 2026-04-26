@@ -65,6 +65,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PAI-128: full history needed for gitleaks to scan past commits.
+          # Without fetch-depth: 0 the secret-scan only sees the most
+          # recent commit, which defeats the point of secret scanning.
+          fetch-depth: 0
+
+      # PAI-128: secret scanning. BLOCKING. Repo verified clean as of
+      # 2026-04-26 (1 finding was a documentation example matching the
+      # short-prefix pattern in `paimos_<n-hex>`; allowlisted in
+      # .gitleaks.toml because real PAIMOS keys are 64 hex chars).
+      # The custom paimos-api-key rule in .gitleaks.toml is the targeted
+      # defence named in INCIDENT_RESPONSE.md § 3.1 (compromised API key).
+      - name: gitleaks (secret scanning)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-go@v5
         with:
