@@ -20,6 +20,12 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - Saved views now restore flat/tree mode reliably, including older and fallback views that previously lacked an explicit `treeView` value.
 
+## [2.1.6] — 2026-04-26
+
+### Changed
+
+- Project detail now anchors the Docs / Coop / Context rail at the true bottom edge, with a compact brand footer above it so the issue list gets more vertical room.
+
 ## [2.1.3] — 2026-04-26
 
 ### Changed
