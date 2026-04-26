@@ -86,6 +86,13 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 				"line":       42,
 				"label":      "entry point",
 				"confidence": "declared",
+				"symbol": map[string]any{
+					"name":       "RetrieveProjectContext",
+					"kind":       "function",
+					"start_line": 40,
+					"end_line":   60,
+					"language":   "go",
+				},
 			}},
 		},
 	})
@@ -112,6 +119,16 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if len(graph.Edges) < 3 {
 		t.Fatalf("graph edges: got %d want at least 3", len(graph.Edges))
 	}
+	foundSymbolNode := false
+	for _, node := range graph.Nodes {
+		if node["entity_type"] == "symbol" {
+			foundSymbolNode = true
+			break
+		}
+	}
+	if !foundSymbolNode {
+		t.Fatalf("graph missing symbol node: %#v", graph.Nodes)
+	}
 
 	retrieveResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
 		"q": "Anchored",
@@ -119,11 +136,19 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	})
 	assertStatus(t, retrieveResp, http.StatusOK)
 	var retrieve struct {
-		Hits []map[string]any `json:"hits"`
+		Hits     []map[string]any `json:"hits"`
+		Strategy map[string]any   `json:"strategy"`
+		Meta     map[string]any   `json:"meta"`
 	}
 	decode(t, retrieveResp, &retrieve)
 	if len(retrieve.Hits) == 0 {
 		t.Fatalf("retrieve hits empty")
+	}
+	if retrieve.Strategy["fusion"] != "rrf" {
+		t.Fatalf("retrieve strategy missing rrf: %#v", retrieve.Strategy)
+	}
+	if retrieve.Meta["fusion"] != "rrf" {
+		t.Fatalf("retrieve meta missing rrf: %#v", retrieve.Meta)
 	}
 	foundExpanded := false
 	for _, hit := range retrieve.Hits {
@@ -211,6 +236,26 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 		t.Fatalf("retrieve missing vector source on adr hit: %#v", adrSearch.Hits)
 	}
 
+	symbolSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
+		"q": "RetrieveProjectContext function",
+		"k": 10,
+	})
+	assertStatus(t, symbolSearchResp, http.StatusOK)
+	var symbolSearch struct {
+		Hits []map[string]any `json:"hits"`
+	}
+	decode(t, symbolSearchResp, &symbolSearch)
+	foundSymbolHit := false
+	for _, hit := range symbolSearch.Hits {
+		if hit["entity_type"] == "symbol" {
+			foundSymbolHit = true
+			break
+		}
+	}
+	if !foundSymbolHit {
+		t.Fatalf("retrieve missing symbol hit: %#v", symbolSearch.Hits)
+	}
+
 	blastResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/graph/blast-radius?issue="+issue.IssueKey+"&depth=2", ts.adminCookie)
 	assertStatus(t, blastResp, http.StatusOK)
 	var blast struct {
@@ -222,5 +267,8 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	}
 	if len(blast.Reached["anchor"]) == 0 {
 		t.Fatalf("blast radius anchor set empty: %#v", blast.Reached)
+	}
+	if len(blast.Reached["symbol"]) == 0 {
+		t.Fatalf("blast radius symbol set empty: %#v", blast.Reached)
 	}
 }

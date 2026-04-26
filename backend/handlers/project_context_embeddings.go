@@ -145,13 +145,18 @@ func collectProjectRetrievalDocs(projectID int64) ([]retrievalDoc, error) {
 	if err != nil {
 		return nil, err
 	}
+	symbols, err := collectProjectSymbolDocs(projectID)
+	if err != nil {
+		return nil, err
+	}
 	manifestDocs, err := collectProjectManifestDocs(projectID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]retrievalDoc, 0, len(issues)+len(anchors)+len(manifestDocs))
+	out := make([]retrievalDoc, 0, len(issues)+len(anchors)+len(symbols)+len(manifestDocs))
 	out = append(out, issues...)
 	out = append(out, anchors...)
+	out = append(out, symbols...)
 	out = append(out, manifestDocs...)
 	return out, nil
 }
@@ -312,6 +317,59 @@ func collectProjectManifestDocs(projectID int64) ([]retrievalDoc, error) {
 		}
 	}
 	return out, nil
+}
+
+func collectProjectSymbolDocs(projectID int64) ([]retrievalDoc, error) {
+	rows, err := db.DB.Query(`
+		SELECT a.repo_id, a.file_path, a.symbol_json
+		FROM issue_anchors a
+		WHERE a.project_id = ? AND a.symbol_json != ''
+		ORDER BY a.id ASC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []retrievalDoc{}
+	seen := map[int64]bool{}
+	for rows.Next() {
+		var repoID int64
+		var filePath, raw string
+		if err := rows.Scan(&repoID, &filePath, &raw); err != nil {
+			return nil, err
+		}
+		sym, ok := decodeStoredAnchorSymbol(raw)
+		if !ok {
+			continue
+		}
+		symbolID := symbolIDForAnchor(repoID, filePath, *sym)
+		if seen[symbolID] {
+			continue
+		}
+		seen[symbolID] = true
+		title := fmt.Sprintf("%s %s", defaultString(sym.Kind, "symbol"), sym.Name)
+		out = append(out, retrievalDoc{
+			EntityType: "symbol",
+			EntityID:   symbolID,
+			Title:      title,
+			Content:    strings.Join([]string{sym.Name, sym.Kind, sym.Language, filePath}, "\n"),
+			Hit: map[string]any{
+				"entity_type":   "symbol",
+				"entity_id":     symbolID,
+				"title":         title,
+				"snippet":       filePath,
+				"name":          sym.Name,
+				"kind":          sym.Kind,
+				"language":      sym.Language,
+				"file_path":     filePath,
+				"start_line":    sym.StartLine,
+				"end_line":      sym.EndLine,
+				"repo_id":       repoID,
+				"expanded_from": nil,
+			},
+		})
+	}
+	return out, rows.Err()
 }
 
 func embedTextDeterministic(text string) []float32 {

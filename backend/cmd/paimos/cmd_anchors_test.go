@@ -60,3 +60,48 @@ func TestCompareAnchorIndexesToleratesLineDriftButFailsMissingAnchors(t *testing
 		t.Fatalf("errors: got %d want 1", len(report.Errors))
 	}
 }
+
+func TestBuildAnchorIndexExtractsSymbolMetadata(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"backend/handlers/context.go": `package handlers
+
+func RetrieveProjectContext() {
+	// @paimos PAI-80 "retrieve endpoint"
+	println("ok")
+}
+`,
+		"frontend/src/context.ts": `export function buildContext() {
+  // @paimos PAI-78 "symbol extraction"
+  return true
+}
+`,
+	}
+	for rel, body := range files {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index, err := buildAnchorIndex(root, "paimos-app", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotGo, ok := index.Anchors["PAI-80"][0].Symbol.(anchorSymbol)
+	if !ok {
+		t.Fatalf("go symbol missing or wrong type: %#v", index.Anchors["PAI-80"][0].Symbol)
+	}
+	if gotGo.Name != "RetrieveProjectContext" || gotGo.Kind != "function" || gotGo.Language != "go" {
+		t.Fatalf("unexpected go symbol: %#v", gotGo)
+	}
+	gotTS, ok := index.Anchors["PAI-78"][0].Symbol.(anchorSymbol)
+	if !ok {
+		t.Fatalf("ts symbol missing or wrong type: %#v", index.Anchors["PAI-78"][0].Symbol)
+	}
+	if gotTS.Name != "buildContext" || gotTS.Kind != "function" {
+		t.Fatalf("unexpected ts symbol: %#v", gotTS)
+	}
+}

@@ -337,12 +337,19 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 	if body.K <= 0 || body.K > 50 {
 		body.K = 20
 	}
-	hits, err := retrieveProjectContextHits(projectID, q, body.K)
+	hits, meta, err := retrieveProjectContextHits(projectID, q, body.K)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, map[string]any{"hits": hits})
+	jsonOK(w, map[string]any{
+		"hits": hits,
+		"strategy": map[string]any{
+			"query":  q,
+			"fusion": "rrf",
+		},
+		"meta": meta,
+	})
 }
 
 func parseBlastRadiusRequest(r *http.Request) (string, int64, int, error) {
@@ -516,6 +523,8 @@ func resolveEntityNode(typ string, id int64) map[string]any {
 		if err := db.DB.QueryRow(`SELECT name FROM projects WHERE id=?`, id).Scan(&name); err == nil {
 			node["title"] = name
 		}
+	case "symbol":
+		return resolveStoredSymbolNode(id)
 	}
 	return node
 }
@@ -747,6 +756,14 @@ func resolveBlastRadiusNode(typ string, id int64) map[string]any {
 			node["title"] = defaultString(label, deriveRepoLabel(url))
 			node["url"] = url
 		}
+	case "symbol":
+		raw := resolveStoredSymbolNode(id)
+		for k, v := range raw {
+			if k == "entity_type" || k == "entity_id" {
+				continue
+			}
+			node[k] = v
+		}
 	default:
 		raw := resolveEntityNode(typ, id)
 		for k, v := range raw {
@@ -796,6 +813,7 @@ func deleteAnchorEntityRelationsByRepo(repoID int64) {
 			_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE target_type='anchor' AND target_id=?`, anchorID)
 		}
 	}
+	_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE source_type='symbol' AND target_type='repo' AND target_id=?`, repoID)
 }
 
 func deleteAnchorEntityRelationsByIssueIDs(issueIDs []int64) {

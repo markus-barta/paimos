@@ -13,9 +13,10 @@ curl -s -H "Authorization: Bearer $PAIMOS_API_KEY" \
   -d '{"q":"password reset flow","k":10}'
 ```
 
-This currently fuses lexical hits across issue text, anchors, manifest
-content, ADRs, and NFRs, blends in deterministic local vector matches,
-then expands related graph neighbors.
+This currently fuses lexical hits across issue text, anchors, derived
+symbols, manifest content, ADRs, and NFRs, blends in deterministic
+local vector matches via reciprocal-rank fusion, then expands related
+graph neighbors.
 
 ## Traverse the project graph
 

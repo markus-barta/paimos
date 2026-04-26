@@ -82,32 +82,46 @@ func normalizeManifestJSON(data any) ([]byte, error) {
 	return raw, nil
 }
 
-func retrieveProjectContextHits(projectID int64, q string, k int) ([]map[string]any, error) {
+func retrieveProjectContextHits(projectID int64, q string, k int) ([]map[string]any, map[string]any, error) {
 	if err := syncProjectContextSearchIndex(projectID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ftsQuery := buildContextFTSQuery(q)
 	if ftsQuery == "" {
-		return []map[string]any{}, nil
+		return []map[string]any{}, map[string]any{
+			"fusion": "rrf",
+			"stages": map[string]int{},
+		}, nil
 	}
 	issueHits, err := retrieveIssueLexicalHits(projectID, ftsQuery, k)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	contextHits, err := retrieveProjectContextLexicalHits(projectID, ftsQuery, k)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	vectorHits, err := retrieveProjectContextVectorHits(projectID, q, k)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	hits := fuseProjectContextHits(k, issueHits, contextHits, vectorHits)
+	hits := fuseProjectContextRRF(k, issueHits, contextHits, vectorHits)
 	expanded := appendGraphExpandedHits(projectID, hits, k)
 	if len(expanded) > 0 {
-		hits = fuseProjectContextHits(k, hits, expanded)
+		hits = fuseProjectContextRRF(k, hits, expanded)
 	}
-	return hits, nil
+	meta := map[string]any{
+		"fusion": "rrf",
+		"k":      k,
+		"stages": map[string]int{
+			"issue_lexical":   len(issueHits),
+			"context_lexical": len(contextHits),
+			"vector":          len(vectorHits),
+			"graph_expansion": len(expanded),
+			"final":           len(hits),
+		},
+	}
+	return hits, meta, nil
 }
 
 func buildContextFTSQuery(q string) string {
@@ -238,7 +252,7 @@ func contextSearchEntityID(entityType, entityKey string, meta map[string]any) an
 	return entityKey
 }
 
-func fuseProjectContextHits(k int, groups ...[]map[string]any) []map[string]any {
+func fuseProjectContextRRF(k int, groups ...[]map[string]any) []map[string]any {
 	type fused struct {
 		hit   map[string]any
 		score float64
@@ -282,6 +296,7 @@ func fuseProjectContextHits(k int, groups ...[]map[string]any) []map[string]any 
 	list := make([]*fused, 0, len(merged))
 	for _, item := range merged {
 		item.hit["score"] = item.score
+		item.hit["fusion"] = "rrf"
 		list = append(list, item)
 	}
 	sort.SliceStable(list, func(i, j int) bool {
@@ -389,7 +404,7 @@ func syncProjectContextSearchIndex(projectID int64) error {
 
 func insertProjectAnchorSearchDocs(tx *sql.Tx, projectID int64) error {
 	rows, err := tx.Query(`
-		SELECT a.id, a.issue_id, a.file_path, a.line, a.label,
+		SELECT a.id, a.issue_id, a.repo_id, a.file_path, a.line, a.label, a.symbol_json,
 		       COALESCE(pr.label,''), pr.url, COALESCE(p.key,''), i.issue_number
 		FROM issue_anchors a
 		JOIN project_repos pr ON pr.id = a.repo_id
@@ -403,10 +418,10 @@ func insertProjectAnchorSearchDocs(tx *sql.Tx, projectID int64) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var anchorID, issueID int64
-		var filePath, label, repoLabel, repoURL, projectKey string
+		var anchorID, issueID, repoID int64
+		var filePath, label, symbolJSON, repoLabel, repoURL, projectKey string
 		var line, issueNumber int
-		if err := rows.Scan(&anchorID, &issueID, &filePath, &line, &label, &repoLabel, &repoURL, &projectKey, &issueNumber); err != nil {
+		if err := rows.Scan(&anchorID, &issueID, &repoID, &filePath, &line, &label, &symbolJSON, &repoLabel, &repoURL, &projectKey, &issueNumber); err != nil {
 			return err
 		}
 		title := defaultString(strings.TrimSpace(label), filePath)
@@ -418,6 +433,7 @@ func insertProjectAnchorSearchDocs(tx *sql.Tx, projectID int64) error {
 			"line":        line,
 			"repo_label":  defaultString(repoLabel, deriveRepoLabel(repoURL)),
 			"repo_url":    repoURL,
+			"repo_id":     repoID,
 			"section_key": fmt.Sprintf("anchor:%d", anchorID),
 		}
 		content := strings.Join([]string{
@@ -428,6 +444,31 @@ func insertProjectAnchorSearchDocs(tx *sql.Tx, projectID int64) error {
 		}, " ")
 		if err := insertProjectContextDoc(tx, projectID, "anchor", fmt.Sprintf("anchor:%d", anchorID), title, content, meta); err != nil {
 			return err
+		}
+		if sym, ok := decodeStoredAnchorSymbol(symbolJSON); ok {
+			symbolID := symbolIDForAnchor(repoID, filePath, *sym)
+			symbolTitle := fmt.Sprintf("%s %s", defaultString(sym.Kind, "symbol"), sym.Name)
+			symbolContent := strings.Join([]string{
+				sym.Name,
+				sym.Kind,
+				sym.Language,
+				filePath,
+				fmt.Sprintf("%s-%d", projectKey, issueNumber),
+			}, " ")
+			symbolMeta := map[string]any{
+				"project_id":  projectID,
+				"repo_id":     repoID,
+				"file_path":   filePath,
+				"symbol_name": sym.Name,
+				"kind":        sym.Kind,
+				"language":    sym.Language,
+				"start_line":  sym.StartLine,
+				"end_line":    sym.EndLine,
+				"section_key": fmt.Sprintf("symbol:%d", symbolID),
+			}
+			if err := insertProjectContextDoc(tx, projectID, "symbol", fmt.Sprintf("symbol:%d", symbolID), symbolTitle, symbolContent, symbolMeta); err != nil {
+				return err
+			}
 		}
 	}
 	return rows.Err()
@@ -611,6 +652,9 @@ func replaceProjectAnchors(projectID int64, body anchorIngestRequest) (map[strin
 			return nil, &userError{msg: "delete anchor edges failed", status: 500}
 		}
 	}
+	if _, err := tx.Exec(`DELETE FROM entity_relations WHERE source_type='symbol' AND target_type='repo' AND target_id=?`, body.RepoID); err != nil {
+		return nil, &userError{msg: "delete symbol repo edges failed", status: 500}
+	}
 	if _, err := tx.Exec(`DELETE FROM issue_anchors WHERE project_id=? AND repo_id=?`, projectID, body.RepoID); err != nil {
 		return nil, &userError{msg: "delete existing anchors failed", status: 500}
 	}
@@ -635,6 +679,22 @@ func replaceProjectAnchors(projectID int64, body anchorIngestRequest) (map[strin
 			VALUES(?,?,?,?,?,?,?,?,?)
 		`, projectID, "anchor", anchorID, "repo", body.RepoID, "in_repo", it.Confidence, "", now); err != nil {
 			return nil, &userError{msg: "insert anchor repo edge failed", status: 500}
+		}
+		if sym, ok := decodeStoredAnchorSymbol(it.SymbolJSON); ok {
+			symbolID := symbolIDForAnchor(body.RepoID, it.FilePath, *sym)
+			metadata := symbolMetadataJSON(body.RepoID, it.FilePath, *sym)
+			if _, err := tx.Exec(`
+				INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at)
+				VALUES(?,?,?,?,?,?,?,?,?)
+			`, projectID, "anchor", anchorID, "symbol", symbolID, "anchored_inside", "derived", metadata, now); err != nil {
+				return nil, &userError{msg: "insert anchor symbol edge failed", status: 500}
+			}
+			if _, err := tx.Exec(`
+				INSERT OR IGNORE INTO entity_relations(project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at)
+				VALUES(?,?,?,?,?,?,?,?,?)
+			`, projectID, "symbol", symbolID, "repo", body.RepoID, "in_repo", "derived", metadata, now); err != nil {
+				return nil, &userError{msg: "insert symbol repo edge failed", status: 500}
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {

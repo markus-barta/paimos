@@ -245,7 +245,7 @@ func buildAnchorIndex(root, repoOverride, schemaVersion string) (*anchorIndex, e
 				Line:       i + 1,
 				Label:      strings.TrimSpace(match[2]),
 				Confidence: "declared",
-				Symbol:     nil,
+				Symbol:     detectAnchorSymbol(rel, content, i+1),
 			}
 			index.Anchors[issueKey] = append(index.Anchors[issueKey], record)
 		}
