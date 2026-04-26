@@ -13,6 +13,9 @@ curl -s -H "Authorization: Bearer $PAIMOS_API_KEY" \
   -d '{"q":"password reset flow","k":10}'
 ```
 
+This currently fuses lexical hits across issue text, anchors, manifest
+content, ADRs, and NFRs, then expands related graph neighbors.
+
 ## Traverse the project graph
 
 ```bash

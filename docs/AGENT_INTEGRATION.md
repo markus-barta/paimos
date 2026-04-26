@@ -127,6 +127,11 @@ Anchors are uploaded to `/api/projects/:id/anchors` by a repo-side tool
 that maps issue keys to file/line locations. Each anchor carries repo
 revision and schema metadata so deep links and provenance stay explicit.
 
+`/api/projects/:id/retrieve` now fuses project-scoped lexical hits from
+issue text plus a dedicated context index for anchors, manifest content,
+ADR entries, and NFR entries, then appends graph-neighbor expansion. It
+does not perform vector retrieval yet.
+
 Blast-radius queries are available at
 `GET /api/projects/:id/graph/blast-radius?issue=PAI-79&depth=3` for the
 "what else is affected if I change this?" agent flow.

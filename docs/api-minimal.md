@@ -188,7 +188,9 @@ form the project-context layer for agents:
 - `graph` exposes typed entity relations (issues, repos, anchors, project).
 - `graph/blast-radius` answers "what else is affected if this changes?" in a grouped-by-type shape.
 - `retrieve` returns mixed context hits from issue text, anchors, manifest,
-  and graph-neighbor expansion.
+  ADR/NFR manifest sections, and graph-neighbor expansion.
+  It uses project-scoped lexical search plus rank fusion across issue and
+  context documents; vector retrieval remains future work.
 
 Recommended manifest keys in v1: `repos`, `commands`, `stack`, `services`,
 `owners`, `nfrs`, `adrs`.

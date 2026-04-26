@@ -62,6 +62,15 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 		"data": map[string]any{
 			"stack":    map[string]any{"languages": []string{"Go", "TypeScript"}},
 			"commands": map[string]any{"build": "make build", "test": "make test"},
+			"nfrs": []map[string]any{{
+				"title":       "Latency budget",
+				"description": "Interactive paths should stay under 200ms p95.",
+			}},
+			"adrs": []map[string]any{{
+				"title":   "Context indexing",
+				"status":  "accepted",
+				"summary": "Use a dedicated lexical index for anchors and manifest context.",
+			}},
 		},
 	})
 	assertStatus(t, manifestResp, http.StatusOK)
@@ -125,6 +134,66 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	}
 	if !foundExpanded {
 		t.Fatalf("retrieve missing expanded graph hit: %#v", retrieve.Hits)
+	}
+
+	anchorSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
+		"q": "context.go",
+		"k": 10,
+	})
+	assertStatus(t, anchorSearchResp, http.StatusOK)
+	var anchorSearch struct {
+		Hits []map[string]any `json:"hits"`
+	}
+	decode(t, anchorSearchResp, &anchorSearch)
+	foundAnchor := false
+	for _, hit := range anchorSearch.Hits {
+		if hit["entity_type"] == "anchor" {
+			foundAnchor = true
+			break
+		}
+	}
+	if !foundAnchor {
+		t.Fatalf("retrieve missing anchor hit: %#v", anchorSearch.Hits)
+	}
+
+	manifestSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
+		"q": "latency budget",
+		"k": 10,
+	})
+	assertStatus(t, manifestSearchResp, http.StatusOK)
+	var manifestSearch struct {
+		Hits []map[string]any `json:"hits"`
+	}
+	decode(t, manifestSearchResp, &manifestSearch)
+	foundManifestSection := false
+	for _, hit := range manifestSearch.Hits {
+		if hit["entity_type"] == "nfr" {
+			foundManifestSection = true
+			break
+		}
+	}
+	if !foundManifestSection {
+		t.Fatalf("retrieve missing nfr hit: %#v", manifestSearch.Hits)
+	}
+
+	adrSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
+		"q": "accepted lexical index",
+		"k": 10,
+	})
+	assertStatus(t, adrSearchResp, http.StatusOK)
+	var adrSearch struct {
+		Hits []map[string]any `json:"hits"`
+	}
+	decode(t, adrSearchResp, &adrSearch)
+	foundADR := false
+	for _, hit := range adrSearch.Hits {
+		if hit["entity_type"] == "adr" {
+			foundADR = true
+			break
+		}
+	}
+	if !foundADR {
+		t.Fatalf("retrieve missing adr hit: %#v", adrSearch.Hits)
 	}
 
 	blastResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/graph/blast-radius?issue="+issue.IssueKey+"&depth=2", ts.adminCookie)
