@@ -1,11 +1,20 @@
 FROM golang:1.25-alpine AS go-build
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /paimos .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+  -trimpath \
+  -buildvcs=false \
+  -ldflags="-s -w -buildid=" \
+  -o /paimos . \
+  && touch -d "@${SOURCE_DATE_EPOCH}" /paimos
 
 FROM node:22-alpine AS spa-build
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -14,7 +23,8 @@ COPY frontend/ ./
 # AppChangelogModal.vue imports @docs/CHANGELOG.md?raw (alias -> ../docs/).
 COPY VERSION /VERSION
 COPY docs/ /docs/
-RUN npm run build
+RUN npm run build \
+  && find /src/dist -exec touch -d "@${SOURCE_DATE_EPOCH}" {} +
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates

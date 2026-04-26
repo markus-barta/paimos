@@ -79,9 +79,9 @@ func main() {
 		//   (c) agent-discovery endpoints the CLI / MCP fetch before
 		//       any API key is issued (e.g. /api/schema).
 		// Audited 2026-04-21.
-		r.Get("/health", healthHandler)                // (a) Docker + CI
-		r.Get("/branding", handlers.GetBranding)       // (b) login page logo + colors
-		r.Get("/schema", handlers.GetAPISchema)        // (c) CLI / MCP discovery (PAI-87)
+		r.Get("/health", healthHandler)          // (a) Docker + CI
+		r.Get("/branding", handlers.GetBranding) // (b) login page logo + colors
+		r.Get("/schema", handlers.GetAPISchema)  // (c) CLI / MCP discovery (PAI-87)
 		// PAI-119: published OpenAPI 3.1 contract. Public so external
 		// clients can discover the API without an account.
 		r.Get("/openapi.json", handlers.GetOpenAPI)
@@ -120,8 +120,8 @@ func main() {
 
 			// TOTP 2FA (authenticated)
 			r.Get("/auth/totp/status", auth.TOTPStatus)
-			r.Get("/auth/totp/setup",  auth.TOTPSetup)
-			r.Post("/auth/totp/enable",  auth.TOTPEnable)
+			r.Get("/auth/totp/setup", auth.TOTPSetup)
+			r.Post("/auth/totp/enable", auth.TOTPEnable)
 			r.Post("/auth/totp/disable", auth.TOTPDisable)
 
 			// API keys
@@ -378,6 +378,7 @@ func main() {
 			r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
+			r.Get("/ai/actions", handlers.AIListActions)
 			r.Get("/ai/status", handlers.AIStatus)
 			// PAI-164: legacy /api/ai/optimize endpoint retired —
 			// the optimize behaviour now lives behind /api/ai/action
@@ -456,6 +457,7 @@ func main() {
 			r.Get("/search", handlers.Search)
 
 			// Dev panel (admin only)
+			r.With(auth.RequireAdmin).Post("/dev/test-reports", handlers.UploadTestReport)
 			r.With(auth.RequireAdmin).Get("/dev/test-reports", handlers.ListTestReports)
 			r.With(auth.RequireAdmin).Get("/dev/test-reports/summary", handlers.GetTestReportSummary)
 			r.With(auth.RequireAdmin).Get("/dev/test-reports/{filename}", handlers.GetTestReport)

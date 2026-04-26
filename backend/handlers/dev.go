@@ -20,9 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -37,6 +35,17 @@ type TestReportMeta struct {
 	Total       *int   `json:"total,omitempty"`
 }
 
+type TestReportSummary struct {
+	Version     string `json:"version"`
+	Failures    int    `json:"failures"`
+	Passed      int    `json:"passed"`
+	Total       int    `json:"total"`
+	GeneratedAt string `json:"generated_at,omitempty"`
+	Available   bool   `json:"available"`
+	Status      string `json:"status,omitempty"`
+	ReportCount int    `json:"report_count,omitempty"`
+}
+
 func testReportsDir() string {
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
@@ -45,65 +54,84 @@ func testReportsDir() string {
 	return filepath.Join(dataDir, "test-reports")
 }
 
+func defaultTestReportSummary(status string, reportCount int) TestReportSummary {
+	return TestReportSummary{
+		Version:     "",
+		Failures:    0,
+		Passed:      0,
+		Total:       0,
+		GeneratedAt: "",
+		Available:   false,
+		Status:      status,
+		ReportCount: reportCount,
+	}
+}
+
+func listStoredTestReports() ([]TestReportMeta, error) {
+	return listStoredTestReportsFromDir(testReportsDir())
+}
+
+func readTestReportSummary() TestReportSummary {
+	return readTestReportSummaryFromDir(testReportsDir())
+}
+
+func isValidTestReportFilename(name string) bool {
+	return strings.HasPrefix(name, "test-results-") && strings.HasSuffix(name, ".html") && !strings.Contains(name, "/") && !strings.Contains(name, "..")
+}
+
+func isValidSummaryFilename(name string) bool {
+	return strings.HasPrefix(name, "test-results-") && strings.HasSuffix(name, "-summary.json") && !strings.Contains(name, "/") && !strings.Contains(name, "..")
+}
+
+type testReportCounts struct {
+	Version     string `json:"version"`
+	Failures    int    `json:"failures"`
+	Passed      int    `json:"passed"`
+	Total       int    `json:"total"`
+	GeneratedAt string `json:"generated_at"`
+}
+
+func parseTestReportCounts(data []byte) (testReportCounts, error) {
+	var out testReportCounts
+	if err := json.Unmarshal(data, &out); err != nil {
+		return testReportCounts{}, err
+	}
+	return out, nil
+}
+
 // GET /api/dev/test-reports — list all report files, newest first (admin only).
 func ListTestReports(w http.ResponseWriter, r *http.Request) {
-	dir := testReportsDir()
-	entries, err := os.ReadDir(dir)
+	reports, err := listStoredTestReports()
 	if err != nil {
-		// Directory doesn't exist yet — return empty list, not an error.
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("[]"))
+		jsonError(w, "list failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(reports)
+}
+
+// POST /api/dev/test-reports — upload an HTML report bundle (admin only).
+// multipart/form-data:
+//   - report: required test-results-<version>.html
+//   - summary: optional test-results-<version>-summary.json
+//   - latest_summary: optional latest-summary.json
+func UploadTestReport(w http.ResponseWriter, r *http.Request) {
+	bundle, err := parseUploadedTestReportBundle(r)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	latestSummary, err := storeUploadedTestReportBundle(testReportsDir(), bundle)
+	if err != nil {
+		jsonError(w, "failed to store report bundle", http.StatusInternalServerError)
 		return
 	}
 
-	var reports []TestReportMeta
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		// Extract version from filename: test-results-{version}.html
-		version := strings.TrimPrefix(e.Name(), "test-results-")
-		version  = strings.TrimSuffix(version, ".html")
-		meta := TestReportMeta{
-			Filename:    e.Name(),
-			Version:     version,
-			GeneratedAt: info.ModTime().UTC().Format(time.RFC3339),
-			SizeBytes:   info.Size(),
-		}
-		// Try to read per-version summary sidecar for pass/fail counts.
-		sidecarPath := filepath.Join(dir, "test-results-"+version+"-summary.json")
-		if sidecarData, err := os.ReadFile(sidecarPath); err == nil {
-			var s struct {
-				Passed   int `json:"passed"`
-				Failures int `json:"failures"`
-				Total    int `json:"total"`
-			}
-			if json.Unmarshal(sidecarData, &s) == nil {
-				failed := s.Failures
-				meta.Passed = &s.Passed
-				meta.Failed = &failed
-				meta.Total  = &s.Total
-			}
-		}
-		reports = append(reports, meta)
-	}
-
-	// Newest first by modification time (filename order is version-sorted,
-	// but sort by mod time to be safe).
-	sort.Slice(reports, func(i, j int) bool {
-		return reports[i].GeneratedAt > reports[j].GeneratedAt
+	jsonOK(w, map[string]any{
+		"filename": bundle.reportFilename,
+		"version":  latestSummary.Version,
+		"status":   latestSummary.Status,
 	})
-
-	if reports == nil {
-		reports = []TestReportMeta{}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(reports)
 }
 
 // GET /api/dev/test-reports/{filename} — serve raw HTML report (admin only).
@@ -135,17 +163,6 @@ func GetTestReport(w http.ResponseWriter, r *http.Request) {
 // Returns {complete_failures: N} from the most recent report filename.
 // Since we can't parse HTML server-side cheaply, we store a JSON sidecar.
 func GetTestReportSummary(w http.ResponseWriter, r *http.Request) {
-	dir := testReportsDir()
-	summaryPath := filepath.Join(dir, "latest-summary.json")
-
-	data, err := os.ReadFile(summaryPath)
-	if err != nil {
-		// No summary yet.
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"failures":0,"passed":0,"total":0,"version":""}`))
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	json.NewEncoder(w).Encode(readTestReportSummary())
 }

@@ -14,6 +14,7 @@ import { api, errMsg } from '@/api/client'
 import { attachmentsEnabled } from '@/api/instance'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { provideIssueContext } from '@/composables/useIssueContext'
+import { emptyIssueDetailForm, issueToDetailForm } from '@/config/issueDetailForm'
 import type { Issue, Tag, Project, Sprint, User, Attachment } from '@/types'
 import {
   useIssueDisplay,
@@ -66,28 +67,7 @@ const saveError      = ref('')
 
 const issueTagIds = computed(() => issue.value?.tags?.map(t => t.id) ?? [])
 
-const form = ref({
-  title: '', description: '', acceptance_criteria: '', notes: '',
-  type: '', status: '', priority: '', cost_unit: '', release: '',
-  parent_id: null as number | null, assignee_id: null as number | null,
-  billing_type:  null as string | null,
-  total_budget:  null as number | null,
-  rate_hourly:   null as number | null,
-  rate_lp:  null as number | null,
-  estimate_hours: null as number | null,
-  estimate_lp:    null as number | null,
-  ar_hours:       null as number | null,
-  ar_lp:          null as number | null,
-  time_override:  null as number | null,
-  start_date:    null as string | null,
-  end_date:      null as string | null,
-  group_state:   null as string | null,
-  sprint_state:  null as string | null,
-  jira_id:       null as string | null,
-  jira_version:  null as string | null,
-  jira_text:     null as string | null,
-  color:         null as string | null,
-})
+const form = ref(emptyIssueDetailForm())
 
 // Sub-component refs
 const timeEntriesRef   = ref<InstanceType<typeof IssueTimeEntries> | null>(null)
@@ -155,36 +135,7 @@ onMounted(async () => {
 
 function resetForm() {
   if (!issue.value) return
-  form.value = {
-    title:               issue.value.title,
-    description:         issue.value.description,
-    acceptance_criteria: issue.value.acceptance_criteria,
-    notes:               issue.value.notes,
-    type:                issue.value.type,
-    status:              issue.value.status,
-    priority:            issue.value.priority,
-    cost_unit:           issue.value.cost_unit,
-    release:             issue.value.release,
-    parent_id:           issue.value.parent_id,
-    assignee_id:         issue.value.assignee_id,
-    billing_type:  issue.value.billing_type  ?? null,
-    total_budget:  issue.value.total_budget  ?? null,
-    rate_hourly:   issue.value.rate_hourly   ?? null,
-    rate_lp:        issue.value.rate_lp        ?? null,
-    estimate_hours: issue.value.estimate_hours ?? null,
-    estimate_lp:    issue.value.estimate_lp    ?? null,
-    ar_hours:       issue.value.ar_hours       ?? null,
-    ar_lp:          issue.value.ar_lp          ?? null,
-    time_override:  issue.value.time_override  ?? null,
-    start_date:    issue.value.start_date    ?? null,
-    end_date:      issue.value.end_date      ?? null,
-    group_state:   issue.value.group_state   ?? null,
-    sprint_state:  issue.value.sprint_state  ?? null,
-    jira_id:       issue.value.jira_id       ?? null,
-    jira_version:  issue.value.jira_version  ?? null,
-    jira_text:     issue.value.jira_text     ?? null,
-    color:         issue.value.color         ?? null,
-  }
+  form.value = issueToDetailForm(issue.value)
 }
 
 // Dirty guard for unsaved changes

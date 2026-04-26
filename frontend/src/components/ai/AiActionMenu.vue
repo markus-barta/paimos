@@ -105,6 +105,15 @@ const defaultAction = computed(() => visibleActions.value.find(a => a.key === 'o
 
 const disabled = computed(() =>
   !aiAction.available.value || aiAction.isRunning.value)
+const emptyStateMessage = computed(() => {
+  if (aiAction.actionsStatus.value === 'loading') {
+    return 'Loading AI actions…'
+  }
+  if (aiAction.actionsStatus.value === 'error') {
+    return aiAction.actionsLoadError.value ?? 'AI action catalog unavailable right now.'
+  }
+  return 'No AI actions are assigned to this location yet.'
+})
 const tooltip = computed(() => {
   if (!aiAction.available.value) {
     return props.disabledTooltip
@@ -304,7 +313,7 @@ function actionTooltip(a: { key: string; implemented: boolean }): string {
             </div>
           </template>
           <div v-if="!visibleActions.length" class="ai-menu-empty">
-            No AI actions are configured for this surface yet.
+            {{ emptyStateMessage }}
           </div>
         </div>
       </div>
