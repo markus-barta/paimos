@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] — 2026-04-26
+
+### Changed
+
+- Hardened test reporting so deployments now expose honest missing, partial, and ready states and support admin-side report bundle ingestion.
+- Added security regression coverage, authorization fuzz checks, and stronger CI scanning for backend invariants and release trust surfaces.
+- Mounted and validated the AI action catalog flow so empty menu states now reflect real assignment state instead of missing API wiring.
+- Extracted backend service seams for project context, AI action catalog, and development reporting to reduce handler coupling without changing behavior.
+- Refactored frontend settings, project detail, and issue detail orchestration into typed registries and helper modules for clearer state ownership.
+- Added schema regression coverage and deterministic release plumbing to improve upgrade safety and release provenance.
+
 ## [2.0.0] — 2026-04-26
 
 The Project Context layer for code-aware agents — built up incrementally
