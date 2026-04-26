@@ -15,13 +15,16 @@
  * License along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ref } from 'vue'
+import { ref } from "vue";
 
-const BASE = '/api'
+const BASE = "/api";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message)
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
   }
 }
 
@@ -30,7 +33,7 @@ export class ApiError extends Error {
 // banner watches it and prompts the user to sign in again. A module-level
 // `ref` avoids a circular dep between this file and `stores/auth.ts`: the
 // store imports client, never the other way around.
-export const sessionExpired = ref(false)
+export const sessionExpired = ref(false);
 
 // Paths where a 401 is EXPECTED (wrong password, bad reset token, first
 // page load before any session exists) and MUST NOT flip the session-
@@ -42,20 +45,20 @@ export const sessionExpired = ref(false)
 // died". App.vue does explicit transition detection in its
 // visibilitychange heartbeat to catch real session deaths via /auth/me.
 const AUTH_ENDPOINT_PREFIXES = [
-  '/auth/login',
-  '/auth/me',
-  '/auth/totp/verify',
-  '/auth/forgot',
-  '/auth/reset',          // covers /auth/reset and /auth/reset/validate
-]
+  "/auth/login",
+  "/auth/me",
+  "/auth/totp/verify",
+  "/auth/forgot",
+  "/auth/reset", // covers /auth/reset and /auth/reset/validate
+];
 
 function isAuthEndpoint(path: string): boolean {
-  return AUTH_ENDPOINT_PREFIXES.some(p => path.startsWith(p))
+  return AUTH_ENDPOINT_PREFIXES.some((p) => path.startsWith(p));
 }
 
 function maybeMarkSessionExpired(path: string) {
   if (!isAuthEndpoint(path)) {
-    sessionExpired.value = true
+    sessionExpired.value = true;
   }
 }
 
@@ -64,32 +67,37 @@ function maybeMarkSessionExpired(path: string) {
 // route/Tailscale issue), not a slow query. Without this, components
 // with `loading.value` flags get stuck on "Loading…" indefinitely while
 // the browser keeps the underlying fetch open in the background.
-const REQUEST_TIMEOUT_MS = 30_000
+const REQUEST_TIMEOUT_MS = 30_000;
 
 // PAI-113: read the per-session CSRF token from the non-HttpOnly cookie
 // the backend sets at login, so we can echo it back on every mutating
 // request. Empty string when not yet authenticated — the backend does
 // not enforce CSRF on the public auth endpoints.
 export function readCsrfToken(): string {
-  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
-  return m ? decodeURIComponent(m[1]) : ''
+  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
 }
 
 // csrfHeaders returns a headers object pre-populated with the CSRF header
 // when a token is available. Use from any code that hits the backend
 // directly with fetch() instead of the `api` wrapper.
-export function csrfHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const tok = readCsrfToken()
-  return tok ? { ...extra, 'X-CSRF-Token': tok } : { ...extra }
+export function csrfHeaders(
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  const tok = readCsrfToken();
+  return tok ? { ...extra, "X-CSRF-Token": tok } : { ...extra };
 }
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-function withCsrfHeader(method: string, headers: Record<string, string>): Record<string, string> {
-  if (SAFE_METHODS.has(method)) return headers
-  const tok = readCsrfToken()
-  if (tok) headers['X-CSRF-Token'] = tok
-  return headers
+function withCsrfHeader(
+  method: string,
+  headers: Record<string, string>,
+): Record<string, string> {
+  if (SAFE_METHODS.has(method)) return headers;
+  const tok = readCsrfToken();
+  if (tok) headers["X-CSRF-Token"] = tok;
+  return headers;
 }
 
 /**
@@ -100,122 +108,144 @@ function withCsrfHeader(method: string, headers: Record<string, string>): Record
  * cancellation still works the same way as the default path.
  */
 export interface RequestOptions {
-  timeoutMs?: number
-  headers?: Record<string, string>
+  timeoutMs?: number;
+  headers?: Record<string, string>;
 }
 
 function extractLikelyJSON(raw: string): string {
-  const trimmed = raw.trim()
-  if (trimmed === '') return trimmed
-  const firstObject = trimmed.indexOf('{')
-  const lastObject = trimmed.lastIndexOf('}')
+  const trimmed = raw.trim();
+  if (trimmed === "") return trimmed;
+  const firstObject = trimmed.indexOf("{");
+  const lastObject = trimmed.lastIndexOf("}");
   if (firstObject >= 0 && lastObject > firstObject) {
-    return trimmed.slice(firstObject, lastObject + 1)
+    return trimmed.slice(firstObject, lastObject + 1);
   }
-  const firstArray = trimmed.indexOf('[')
-  const lastArray = trimmed.lastIndexOf(']')
+  const firstArray = trimmed.indexOf("[");
+  const lastArray = trimmed.lastIndexOf("]");
   if (firstArray >= 0 && lastArray > firstArray) {
-    return trimmed.slice(firstArray, lastArray + 1)
+    return trimmed.slice(firstArray, lastArray + 1);
   }
-  return trimmed
+  return trimmed;
 }
 
 function responseSnippet(raw: string): string {
-  const singleLine = raw.replace(/\s+/g, ' ').trim()
-  if (singleLine === '') return 'empty response body'
-  return singleLine.length > 180 ? `${singleLine.slice(0, 177)}...` : singleLine
+  const singleLine = raw.replace(/\s+/g, " ").trim();
+  if (singleLine === "") return "empty response body";
+  return singleLine.length > 180
+    ? `${singleLine.slice(0, 177)}...`
+    : singleLine;
 }
 
 async function readJSON<T>(res: Response): Promise<T> {
-  const raw = await res.text()
-  if (raw.trim() === '') return undefined as T
+  const raw = await res.text();
+  if (raw.trim() === "") return undefined as T;
   try {
-    return JSON.parse(raw) as T
+    return JSON.parse(raw) as T;
   } catch {
-    const extracted = extractLikelyJSON(raw)
+    const extracted = extractLikelyJSON(raw);
     if (extracted !== raw.trim()) {
       try {
-        return JSON.parse(extracted) as T
+        return JSON.parse(extracted) as T;
       } catch {
         // Fall through to the user-facing ApiError below.
       }
     }
-    throw new ApiError(res.status, `invalid JSON response: ${responseSnippet(raw)}`)
+    throw new ApiError(
+      res.status,
+      `invalid JSON response: ${responseSnippet(raw)}`,
+    );
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
-  const ctrl = new AbortController()
-  const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  let res: Response
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts?: RequestOptions,
+): Promise<T> {
+  const ctrl = new AbortController();
+  const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res: Response;
   try {
     const headers: Record<string, string> = {
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(body ? { "Content-Type": "application/json" } : {}),
       ...(opts?.headers ?? {}),
-    }
+    };
     res = await fetch(`${BASE}${path}`, {
       method,
       headers: withCsrfHeader(method, headers),
       body: body ? JSON.stringify(body) : undefined,
-      credentials: 'same-origin',
+      credentials: "same-origin",
       signal: ctrl.signal,
-    })
+    });
   } catch (e) {
     // Surface the timeout case as a clean ApiError so callers can
     // render it instead of the raw "AbortError" string.
-    if ((e as Error).name === 'AbortError') {
-      throw new ApiError(0, `request timed out after ${timeoutMs / 1000}s`)
+    if ((e as Error).name === "AbortError") {
+      throw new ApiError(0, `request timed out after ${timeoutMs / 1000}s`);
     }
-    throw e
+    throw e;
   } finally {
-    clearTimeout(timer)
+    clearTimeout(timer);
   }
 
   if (res.status === 401) {
-    maybeMarkSessionExpired(path)
-    throw new ApiError(401, 'unauthorized')
+    maybeMarkSessionExpired(path);
+    throw new ApiError(401, "unauthorized");
   }
 
-  if (res.status === 204) return undefined as T
+  if (res.status === 204) return undefined as T;
 
-  const data = await readJSON<any>(res)
-  if (!res.ok) throw new ApiError(res.status, data.error ?? 'request failed')
-  return data as T
+  const data = await readJSON<any>(res);
+  if (!res.ok) {
+    const err = new ApiError(res.status, data.error ?? "request failed");
+    if (data && typeof data === "object") Object.assign(err, data);
+    throw err;
+  }
+  return data as T;
 }
 
-async function upload<T>(path: string, formData: FormData, onProgress?: (pct: number) => void): Promise<T> {
+async function upload<T>(
+  path: string,
+  formData: FormData,
+  onProgress?: (pct: number) => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${BASE}${path}`)
-    xhr.withCredentials = true
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}${path}`);
+    xhr.withCredentials = true;
     // PAI-113: echo CSRF token on multipart uploads too. Cookie path
     // doesn't trip Origin/Referer issues because the SPA is same-origin.
-    const csrf = readCsrfToken()
-    if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
+    const csrf = readCsrfToken();
+    if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
     if (onProgress) {
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
-      })
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable)
+          onProgress(Math.round((e.loaded / e.total) * 100));
+      });
     }
     xhr.onload = () => {
       if (xhr.status === 401) {
-        maybeMarkSessionExpired(path)
-        reject(new ApiError(401, 'unauthorized'))
-        return
+        maybeMarkSessionExpired(path);
+        reject(new ApiError(401, "unauthorized"));
+        return;
       }
       try {
-        const data = JSON.parse(xhr.responseText)
-        if (xhr.status >= 400) { reject(new ApiError(xhr.status, data.error ?? 'upload failed')); return }
-        resolve(data as T)
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 400) {
+          reject(new ApiError(xhr.status, data.error ?? "upload failed"));
+          return;
+        }
+        resolve(data as T);
       } catch {
         // Non-JSON response (e.g. nginx 413 HTML page) — surface the HTTP status
-        reject(new ApiError(xhr.status, `upload failed (HTTP ${xhr.status})`))
+        reject(new ApiError(xhr.status, `upload failed (HTTP ${xhr.status})`));
       }
-    }
-    xhr.onerror = () => reject(new ApiError(0, 'network error'))
-    xhr.send(formData)
-  })
+    };
+    xhr.onerror = () => reject(new ApiError(0, "network error"));
+    xhr.send(formData);
+  });
 }
 
 /** Extract message from an unknown catch value.
@@ -227,26 +257,35 @@ async function upload<T>(path: string, formData: FormData, onProgress?: (pct: nu
  * message is empty so an admin scanning logs has something to grep
  * for ("request failed (HTTP 502)").
  */
-export function errMsg(e: unknown, fallback = 'An error occurred'): string {
-  let raw = ''
+export function errMsg(e: unknown, fallback = "An error occurred"): string {
+  let raw = "";
   if (e instanceof ApiError) {
-    raw = e.message
-    if (raw.trim() === '') {
-      raw = `request failed (HTTP ${e.status || 'network'})`
+    raw = e.message;
+    if (raw.trim() === "") {
+      raw = `request failed (HTTP ${e.status || "network"})`;
     }
   } else if (e instanceof Error) {
-    raw = e.message
-  } else if (typeof e === 'string') {
-    raw = e
+    raw = e.message;
+  } else if (typeof e === "string") {
+    raw = e;
   }
-  return raw.trim() !== '' ? raw : fallback
+  return raw.trim() !== "" ? raw : fallback;
 }
 
 export const api = {
-  get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
-  post: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('POST', path, body, opts),
-  put: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('PUT', path, body, opts),
-  patch: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('PATCH', path, body, opts),
-  delete: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>('DELETE', path, body, opts),
-  upload: <T>(path: string, formData: FormData, onProgress?: (pct: number) => void) => upload<T>(path, formData, onProgress),
-}
+  get: <T>(path: string, opts?: RequestOptions) =>
+    request<T>("GET", path, undefined, opts),
+  post: <T>(path: string, body: unknown, opts?: RequestOptions) =>
+    request<T>("POST", path, body, opts),
+  put: <T>(path: string, body: unknown, opts?: RequestOptions) =>
+    request<T>("PUT", path, body, opts),
+  patch: <T>(path: string, body: unknown, opts?: RequestOptions) =>
+    request<T>("PATCH", path, body, opts),
+  delete: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>("DELETE", path, body, opts),
+  upload: <T>(
+    path: string,
+    formData: FormData,
+    onProgress?: (pct: number) => void,
+  ) => upload<T>(path, formData, onProgress),
+};

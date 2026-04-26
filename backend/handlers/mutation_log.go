@@ -13,18 +13,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-chi/chi/v5"
-
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
 )
 
 const (
-	RequestIDHeader      = "X-PAIMOS-Request-Id"
-	AIRequestIDHeader    = "X-PAIMOS-AI-Request-Id"
-	AIActionHeader       = "X-PAIMOS-AI-Action"
-	AISubActionHeader    = "X-PAIMOS-AI-Sub-Action"
+	RequestIDHeader       = "X-PAIMOS-Request-Id"
+	AIRequestIDHeader     = "X-PAIMOS-AI-Request-Id"
+	AIActionHeader        = "X-PAIMOS-AI-Action"
+	AISubActionHeader     = "X-PAIMOS-AI-Sub-Action"
 	defaultUndoStackDepth = 3
 	snapshotStringCap     = 32 * 1024
 )
@@ -44,6 +39,8 @@ type mutationRecordArgs struct {
 	MutationType string
 	SubjectType  string
 	SubjectID    int64
+	BatchID      string
+	ParentLogID  *int64
 	InverseOp    InverseOp
 	BeforeState  any
 	AfterState   any
@@ -51,19 +48,24 @@ type mutationRecordArgs struct {
 }
 
 type mutationLogRow struct {
-	ID           int64
-	RequestID    string
-	UserID       *int64
-	MutationType string
-	SubjectType  string
-	SubjectID    int64
-	InverseOp    string
-	BeforeState  string
-	BeforeHash   string
-	AfterHash    string
-	Undoable     bool
-	OnUserStack  bool
-	UndoneAt     sql.NullString
+	ID               int64
+	RequestID        string
+	UserID           *int64
+	MutationType     string
+	SubjectType      string
+	SubjectID        int64
+	BatchID          sql.NullString
+	ParentLogID      sql.NullInt64
+	InverseOp        string
+	BeforeState      string
+	AfterState       string
+	BeforeHash       string
+	AfterHash        string
+	Undoable         bool
+	OnUserStack      bool
+	Redoable         bool
+	UndoneAt         sql.NullString
+	ResolutionChoice sql.NullString
 }
 
 type issueMutationSnapshot struct {
@@ -165,7 +167,7 @@ func recordMutation(ctx context.Context, tx *sql.Tx, args mutationRecordArgs) (i
 	if err != nil {
 		return 0, err
 	}
-	_, afterHash, err := canonicalState(args.AfterState)
+	afterJSON, afterHash, err := canonicalState(args.AfterState)
 	if err != nil {
 		return 0, err
 	}
@@ -184,16 +186,23 @@ func recordMutation(ctx context.Context, tx *sql.Tx, args mutationRecordArgs) (i
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO mutation_log(
 			request_id, user_id, session_id, mutation_type, subject_type, subject_id,
-			inverse_op, before_state, before_hash, after_hash, undoable, on_user_stack
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+			batch_id, parent_log_id,
+			inverse_op, before_state, after_state, before_hash, after_hash, undoable, on_user_stack
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`,
 		args.RequestID, args.UserID, nullableString(args.SessionID), args.MutationType, args.SubjectType, args.SubjectID,
-		string(inverseJSON), string(beforeJSON), beforeHash, afterHash, undoable, onUserStack,
+		nullableString(args.BatchID), args.ParentLogID,
+		string(inverseJSON), string(beforeJSON), string(afterJSON), beforeHash, afterHash, undoable, onUserStack,
 	)
 	if err != nil {
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
+	if args.UserID != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE mutation_log SET redoable = 0 WHERE user_id = ? AND redoable = 1`, *args.UserID); err != nil {
+			return 0, err
+		}
+	}
 	if onUserStack == 1 && args.UserID != nil {
 		if err := enforceUndoStackDepth(ctx, tx, *args.UserID); err != nil {
 			return 0, err
@@ -275,7 +284,7 @@ func enforceUndoStackDepth(ctx context.Context, tx *sql.Tx, userID int64) error 
 		depth = defaultUndoStackDepth
 	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id
+		SELECT id, COALESCE(batch_id, '')
 		FROM mutation_log
 		WHERE user_id = ? AND on_user_stack = 1 AND undone_at IS NULL
 		ORDER BY created_at DESC, id DESC
@@ -285,28 +294,44 @@ func enforceUndoStackDepth(ctx context.Context, tx *sql.Tx, userID int64) error 
 	}
 	defer rows.Close()
 	var ids []int64
+	seenBatch := map[string]struct{}{}
+	slots := 0
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var batchID string
+		if err := rows.Scan(&id, &batchID); err != nil {
 			return err
 		}
-		ids = append(ids, id)
+		if batchID != "" {
+			if _, ok := seenBatch[batchID]; ok {
+				ids = append(ids, id)
+				continue
+			}
+			seenBatch[batchID] = struct{}{}
+		}
+		slots++
+		if slots > depth {
+			ids = append(ids, id)
+		}
 	}
-	if len(ids) <= depth {
+	if len(ids) == 0 {
 		return nil
 	}
-	overflow := ids[depth:]
-	ph := makePlaceholders(len(overflow))
-	args := make([]any, len(overflow))
-	for i, id := range overflow {
+	ph := makePlaceholders(len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
 		args[i] = id
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE mutation_log SET on_user_stack = 0 WHERE id IN (`+ph+`)`, args...)
 	return err
 }
 
-func loadUndoStackDepth(tx *sql.Tx) (int, error) {
-	row := tx.QueryRow(`SELECT value FROM app_settings WHERE key='undo_stack_depth'`)
+type appSettingReader interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func loadUndoStackDepth(q appSettingReader) (int, error) {
+	row := q.QueryRow(`SELECT value FROM app_settings WHERE key='undo_stack_depth'`)
 	var raw string
 	if err := row.Scan(&raw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -428,15 +453,15 @@ func loadUndoableMutation(tx *sql.Tx, logID int64, userID int64) (mutationLogRow
 	var row mutationLogRow
 	var uid sql.NullInt64
 	var undoneBy sql.NullInt64
-	var undoable, onUserStack int
+	var undoable, onUserStack, redoable int
 	err := tx.QueryRow(`
-		SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, inverse_op,
-		       before_state, before_hash, after_hash, undoable, on_user_stack, undone_at, undone_by
+		SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
+		       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
 		FROM mutation_log
 		WHERE id = ? AND user_id = ?
 	`, logID, userID).Scan(
-		&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.InverseOp,
-		&row.BeforeState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &row.UndoneAt, &undoneBy,
+		&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.BatchID, &row.ParentLogID, &row.InverseOp,
+		&row.BeforeState, &row.AfterState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &redoable, &row.UndoneAt, &undoneBy, &row.ResolutionChoice,
 	)
 	if err != nil {
 		return row, err
@@ -444,6 +469,7 @@ func loadUndoableMutation(tx *sql.Tx, logID int64, userID int64) (mutationLogRow
 	row.UserID = nullInt64Ptr(uid)
 	row.Undoable = undoable == 1
 	row.OnUserStack = onUserStack == 1
+	row.Redoable = redoable == 1
 	return row, nil
 }
 
@@ -451,17 +477,17 @@ func loadUndoableMutationByRequestID(tx *sql.Tx, requestID string, userID int64)
 	var row mutationLogRow
 	var uid sql.NullInt64
 	var undoneBy sql.NullInt64
-	var undoable, onUserStack int
+	var undoable, onUserStack, redoable int
 	err := tx.QueryRow(`
-		SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, inverse_op,
-		       before_state, before_hash, after_hash, undoable, on_user_stack, undone_at, undone_by
+		SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
+		       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
 		FROM mutation_log
 		WHERE request_id = ? AND user_id = ? AND undoable = 1 AND on_user_stack = 1 AND undone_at IS NULL
 		ORDER BY created_at DESC, id DESC
 		LIMIT 1
 	`, strings.TrimSpace(requestID), userID).Scan(
-		&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.InverseOp,
-		&row.BeforeState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &row.UndoneAt, &undoneBy,
+		&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.BatchID, &row.ParentLogID, &row.InverseOp,
+		&row.BeforeState, &row.AfterState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &redoable, &row.UndoneAt, &undoneBy, &row.ResolutionChoice,
 	)
 	if err != nil {
 		return row, err
@@ -469,6 +495,7 @@ func loadUndoableMutationByRequestID(tx *sql.Tx, requestID string, userID int64)
 	row.UserID = nullInt64Ptr(uid)
 	row.Undoable = undoable == 1
 	row.OnUserStack = onUserStack == 1
+	row.Redoable = redoable == 1
 	return row, nil
 }
 
@@ -600,137 +627,9 @@ func parseIssueIDFromPath(path string) (int64, error) {
 }
 
 func UndoMutation(w http.ResponseWriter, r *http.Request) {
-	user := auth.GetUser(r)
-	if user == nil {
-		jsonError(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	logID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
-		return
-	}
-	tx, err := db.DB.BeginTx(r.Context(), nil)
-	if err != nil {
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback()
-
-	row, err := loadUndoableMutation(tx, logID, user.ID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			jsonError(w, "not found", http.StatusNotFound)
-			return
-		}
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if !row.Undoable || !row.OnUserStack || row.UndoneAt.Valid {
-		jsonError(w, "mutation is not undoable", http.StatusConflict)
-		return
-	}
-	currentHash, err := currentMutationHashTx(tx, row)
-	if err != nil {
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if currentHash != row.AfterHash {
-		jsonError(w, "state changed since this mutation; undo requires manual resolution", http.StatusConflict)
-		return
-	}
-	var inv InverseOp
-	if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if err := executeInverseOpTx(r.Context(), tx, inv); err != nil {
-		var conflict *undoConflictError
-		if errors.As(err, &conflict) {
-			jsonError(w, conflict.Message, http.StatusConflict)
-			return
-		}
-		jsonError(w, "undo failed", http.StatusInternalServerError)
-		return
-	}
-	_, err = tx.ExecContext(r.Context(), `
-		UPDATE mutation_log
-		SET undone_at = ?, undone_by = ?, on_user_stack = 0
-		WHERE id = ?
-	`, time.Now().UTC().Format("2006-01-02 15:04:05.000"), user.ID, row.ID)
-	if err != nil {
-		jsonError(w, "undo failed", http.StatusInternalServerError)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		jsonError(w, "undo failed", http.StatusInternalServerError)
-		return
-	}
-	jsonOK(w, map[string]any{"undone": true, "log_id": row.ID})
+	runUndoMode(w, r, undoModeUndo, false, false)
 }
 
 func UndoMutationByRequestID(w http.ResponseWriter, r *http.Request) {
-	user := auth.GetUser(r)
-	if user == nil {
-		jsonError(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	requestID := strings.TrimSpace(chi.URLParam(r, "requestID"))
-	if requestID == "" {
-		jsonError(w, "invalid request id", http.StatusBadRequest)
-		return
-	}
-	tx, err := db.DB.BeginTx(r.Context(), nil)
-	if err != nil {
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback()
-
-	row, err := loadUndoableMutationByRequestID(tx, requestID, user.ID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			jsonError(w, "not found", http.StatusNotFound)
-			return
-		}
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	currentHash, err := currentMutationHashTx(tx, row)
-	if err != nil {
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if currentHash != row.AfterHash {
-		jsonError(w, "state changed since this mutation; undo requires manual resolution", http.StatusConflict)
-		return
-	}
-	var inv InverseOp
-	if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if err := executeInverseOpTx(r.Context(), tx, inv); err != nil {
-		var conflict *undoConflictError
-		if errors.As(err, &conflict) {
-			jsonError(w, conflict.Message, http.StatusConflict)
-			return
-		}
-		jsonError(w, "undo failed", http.StatusInternalServerError)
-		return
-	}
-	_, err = tx.ExecContext(r.Context(), `
-		UPDATE mutation_log
-		SET undone_at = ?, undone_by = ?, on_user_stack = 0
-		WHERE id = ?
-	`, time.Now().UTC().Format("2006-01-02 15:04:05.000"), user.ID, row.ID)
-	if err != nil {
-		jsonError(w, "undo failed", http.StatusInternalServerError)
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		jsonError(w, "undo failed", http.StatusInternalServerError)
-		return
-	}
-	jsonOK(w, map[string]any{"undone": true, "log_id": row.ID, "request_id": row.RequestID})
+	runUndoMode(w, r, undoModeUndo, true, false)
 }

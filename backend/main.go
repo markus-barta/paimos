@@ -258,8 +258,14 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/activity", handlers.ListIssueMutationActivity)
+			r.Get("/undo/activity", handlers.ListMyMutationActivity)
 			r.Post("/undo/{id}", handlers.UndoMutation)
+			r.Post("/undo/{id}/resolve", handlers.ResolveUndoMutation)
 			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
+			r.Post("/redo/{id}", handlers.RedoMutation)
+			r.Post("/redo/{id}/resolve", handlers.ResolveRedoMutation)
+			r.Post("/redo/request/{requestID}", handlers.RedoMutationByRequestID)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)
@@ -298,6 +304,8 @@ func main() {
 			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
 			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
 			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+			r.With(auth.RequireAdmin).Get("/system/settings", handlers.GetSystemSettings)
+			r.With(auth.RequireAdmin).Put("/system/settings", handlers.PutSystemSettings)
 
 			// User project access (admin only). The legacy /users/{id}/projects
 			// endpoints drive the external-portal grants page; the new

@@ -132,4 +132,21 @@ export default {
     undoReady: 'You can undo this AI-applied change for a short time.',
     undo: 'Undo',
   },
+  undo: {
+    conflict: {
+      fallbackTitle: 'Resolve undo conflict',
+      titleUndo: 'Undo needs your input',
+      titleRedo: 'Redo needs your input',
+      heroUndo: 'Some fields changed since the original mutation.',
+      heroRedo: 'The world changed since that undo.',
+      heroBody: 'Nothing will be overwritten silently. Conservative options are pre-selected.',
+      fieldHeader: 'Field conflicts',
+      cascadeHeader: 'Cascade blockers',
+      current: 'Current',
+      target: 'Target',
+      cancel: 'Cancel',
+      applying: 'Applying…',
+      applyWithSelections: 'Apply with selections',
+    },
+  },
 }

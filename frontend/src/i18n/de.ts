@@ -132,4 +132,21 @@ export default {
     undoReady: 'Diese AI-Änderung kann kurz rückgängig gemacht werden.',
     undo: 'Rückgängig',
   },
+  undo: {
+    conflict: {
+      fallbackTitle: 'Undo-Konflikt lösen',
+      titleUndo: 'Undo braucht deine Auswahl',
+      titleRedo: 'Redo braucht deine Auswahl',
+      heroUndo: 'Seit der ursprünglichen Änderung wurden Felder erneut verändert.',
+      heroRedo: 'Seit diesem Undo hat sich der Zustand erneut verändert.',
+      heroBody: 'Nichts wird still überschrieben. Die konservativen Optionen sind vorausgewählt.',
+      fieldHeader: 'Feldkonflikte',
+      cascadeHeader: 'Kaskaden-Blocker',
+      current: 'Aktuell',
+      target: 'Ziel',
+      cancel: 'Abbrechen',
+      applying: 'Wird angewendet…',
+      applyWithSelections: 'Mit Auswahl anwenden',
+    },
+  },
 }

@@ -106,6 +106,7 @@ window for each class. Tune any variable below; defaults are the
 | `PAIMOS_RETENTION_DAYS_SESSION_ACTIVITY` | `90` | Per-mutation session activity rows. |
 | `PAIMOS_RETENTION_DAYS_INCIDENT_CLOSED` | `730` | Closed incidents only — open/investigating/resolved are kept until closed. |
 | `PAIMOS_RETENTION_DAYS_AI_CALLS` | `365` | AI paper-trail metadata rows (`ai_calls`). |
+| `PAIMOS_RETENTION_DAYS_MUTATION_LOG` | `90` | Undo / redo activity log rows (`mutation_log`). |
 | `PAIMOS_RETENTION_DAYS_TOTP_PENDING_MIN` | `60` | Pending TOTP tokens; minutes, not days. |
 
 Per-subject GDPR endpoints (admin only):
@@ -113,6 +114,32 @@ Per-subject GDPR endpoints (admin only):
 - `GET  /api/users/{id}/gdpr-export` — JSON dump of every row referencing the user.
 - `POST /api/users/{id}/gdpr-erase`  — replaces PII with placeholders, drops sessions/keys, sets `status='deleted'`.
 - `GET  /api/gdpr/retention`         — current retention policy (introspection).
+
+## Undo (PAI-209)
+
+Undo uses two separate controls:
+
+- `undo_stack_depth` in the database
+  - edited at runtime under `Settings -> Admin -> System`
+  - bounds `1..20`
+  - default `3`
+  - controls how many recent actions remain actively undoable per user
+- `PAIMOS_RETENTION_DAYS_MUTATION_LOG`
+  - env var, default `90`
+  - controls how long `mutation_log` audit rows remain on disk
+
+These are intentionally different knobs:
+
+- stack depth affects the active undo/redo working set
+- retention affects long-lived audit visibility
+
+GDPR erase extends to the undo audit:
+
+- `mutation_log.user_id` is nulled for the erased user
+- `mutation_log.session_id` is cleared
+- known display-name fields inside stored snapshots are scrubbed
+
+See [docs/UNDO_SPEC.md](/Users/markus/Code/paimos/paimos-app/docs/UNDO_SPEC.md) for the conflict-resolution contract and UX flow.
 
 ## AI assist (PAI-146 / PAI-159 → PAI-183)
 

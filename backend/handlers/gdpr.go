@@ -30,6 +30,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -66,13 +67,14 @@ func retentionDays(name string, def int) int {
 // will do — emitted by GET /api/gdpr/retention so the operator can sanity
 // check their config without grepping logs.
 type retentionPolicy struct {
-	Sessions          int `json:"sessions_days"`
-	ResetTokens       int `json:"reset_tokens_days"`
-	AccessAudit       int `json:"access_audit_days"`
-	SessionActivity   int `json:"session_activity_days"`
-	IncidentClosed    int `json:"incident_closed_days"`
-	AICalls           int `json:"ai_calls_days"`
-	TOTPPending       int `json:"totp_pending_minutes"`
+	Sessions        int `json:"sessions_days"`
+	ResetTokens     int `json:"reset_tokens_days"`
+	AccessAudit     int `json:"access_audit_days"`
+	SessionActivity int `json:"session_activity_days"`
+	IncidentClosed  int `json:"incident_closed_days"`
+	AICalls         int `json:"ai_calls_days"`
+	MutationLog     int `json:"mutation_log_days"`
+	TOTPPending     int `json:"totp_pending_minutes"`
 }
 
 func currentPolicy() retentionPolicy {
@@ -83,6 +85,7 @@ func currentPolicy() retentionPolicy {
 		SessionActivity: retentionDays("SESSION_ACTIVITY", 90),
 		IncidentClosed:  retentionDays("INCIDENT_CLOSED", 730),
 		AICalls:         retentionDays("AI_CALLS", 365),
+		MutationLog:     retentionDays("MUTATION_LOG", 90),
 		TOTPPending:     retentionDays("TOTP_PENDING_MIN", 60), // minutes, not days
 	}
 }
@@ -129,6 +132,9 @@ func runRetentionSweep() {
 	sweepOlderThan("ai_calls",
 		"DELETE FROM ai_calls WHERE created_at < datetime('now', ?)",
 		p.AICalls)
+	sweepOlderThan("mutation_log",
+		"DELETE FROM mutation_log WHERE created_at < datetime('now', ?)",
+		p.MutationLog)
 	// TOTP pending is measured in minutes — already gated by expires_at;
 	// this just trims rows that the verify path never got around to.
 	if _, err := db.DB.Exec(
@@ -186,10 +192,10 @@ func ExportSubject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := map[string]any{
-		"export_format":   "paimos-gdpr-v1",
-		"exported_at":     time.Now().UTC().Format(time.RFC3339),
-		"subject_user_id": id,
-		"user":            user,
+		"export_format":    "paimos-gdpr-v1",
+		"exported_at":      time.Now().UTC().Format(time.RFC3339),
+		"subject_user_id":  id,
+		"user":             user,
 		"sessions":         gdprRows(`SELECT id, expires_at FROM sessions WHERE user_id=?`, id),
 		"api_keys":         gdprRows(`SELECT id, name, key_prefix, created_at, last_used_at FROM api_keys WHERE user_id=?`, id),
 		"comments":         gdprRows(`SELECT id, issue_id, body, created_at FROM comments WHERE author_id=?`, id),
@@ -273,6 +279,12 @@ func EraseSubject(w http.ResponseWriter, r *http.Request) {
 	if _, err := tx.Exec(`UPDATE ai_calls SET user_id=NULL WHERE user_id=?`, id); err != nil {
 		log.Printf("EraseSubject: null ai_calls: %v", err)
 	}
+	if _, err := tx.Exec(`UPDATE mutation_log SET user_id=NULL, session_id=NULL WHERE user_id=?`, id); err != nil {
+		log.Printf("EraseSubject: scrub mutation_log identities: %v", err)
+	}
+	if err := scrubMutationSnapshotsForErasedUser(tx, id); err != nil {
+		log.Printf("EraseSubject: scrub mutation_log snapshots: %v", err)
+	}
 	if err := tx.Commit(); err != nil {
 		jsonError(w, "commit failed", http.StatusInternalServerError)
 		return
@@ -351,4 +363,70 @@ func callerID(u *models.User) int64 {
 		return 0
 	}
 	return u.ID
+}
+
+func scrubMutationSnapshotsForErasedUser(tx *sql.Tx, userID int64) error {
+	rows, err := tx.Query(`SELECT id, before_state, after_state FROM mutation_log`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var beforeState, afterState string
+		if err := rows.Scan(&id, &beforeState, &afterState); err != nil {
+			return err
+		}
+		nextBefore := scrubSnapshotPII(beforeState, userID)
+		nextAfter := scrubSnapshotPII(afterState, userID)
+		if nextBefore == beforeState && nextAfter == afterState {
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE mutation_log SET before_state=?, after_state=? WHERE id=?`, nextBefore, nextAfter, id); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+func scrubSnapshotPII(raw string, userID int64) string {
+	if strings.TrimSpace(raw) == "" {
+		return raw
+	}
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return raw
+	}
+	scrubSnapshotValue(&value, userID)
+	blob, err := json.Marshal(value)
+	if err != nil {
+		return raw
+	}
+	return string(blob)
+}
+
+func scrubSnapshotValue(v *any, userID int64) {
+	switch x := (*v).(type) {
+	case map[string]any:
+		for key, item := range x {
+			switch key {
+			case "created_by_name", "last_changed_by_name", "assignee_name":
+				x[key] = ""
+				continue
+			case "assignee_id", "created_by", "last_changed_by":
+				if n, ok := int64FromAny(item); ok && n == userID {
+					x[key] = nil
+				}
+			}
+			next := item
+			scrubSnapshotValue(&next, userID)
+			x[key] = next
+		}
+	case []any:
+		for i := range x {
+			next := x[i]
+			scrubSnapshotValue(&next, userID)
+			x[i] = next
+		}
+	}
 }

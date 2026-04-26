@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 83
+const latestSchemaVersion = 84
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -86,6 +86,12 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "ai_prompts", "placement") {
 		t.Fatal("expected ai_prompts.placement to exist")
+	}
+	if !columnExists(t, db, "mutation_log", "after_state") {
+		t.Fatal("expected mutation_log.after_state to exist")
+	}
+	if !columnExists(t, db, "mutation_log", "redoable") {
+		t.Fatal("expected mutation_log.redoable to exist")
 	}
 	if !columnExists(t, db, "sessions", "csrf_token") {
 		t.Fatal("expected sessions.csrf_token to exist")

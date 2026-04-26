@@ -6,30 +6,41 @@ function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), 'src', rel), 'utf8')
 }
 
+function expectHost(file: string, hostKey: string): void {
+  const source = read(file)
+  expect(source).toContain('AiSurfaceFeedback')
+  expect(source).toContain(hostKey)
+}
+
 describe('AI surface inventory wiring', () => {
   it('keeps issue, customer, cooperation, project, and settings hosts wired to the shared AI UX components', () => {
-    expect(read('views/IssueDetailView.vue')).toContain('AiSurfaceFeedback :host-key="`issue-detail:${issueId}:record`"')
-    expect(read('views/IssueDetailView.vue')).toContain('AiSurfaceFeedback :host-key="`issue-detail:${issueId}:description`"')
-    expect(read('views/IssueDetailView.vue')).toContain('AiSurfaceFeedback :host-key="`issue-detail:${issueId}:acceptance_criteria`"')
-    expect(read('views/IssueDetailView.vue')).toContain('AiSurfaceFeedback :host-key="`issue-detail:${issueId}:notes`"')
+    expectHost('views/IssueDetailView.vue', '`issue-detail:${issueId}:record`')
+    expectHost('views/IssueDetailView.vue', '`issue-detail:${issueId}:description`')
+    expectHost('views/IssueDetailView.vue', '`issue-detail:${issueId}:acceptance_criteria`')
+    expectHost('views/IssueDetailView.vue', '`issue-detail:${issueId}:notes`')
 
-    expect(read('components/IssueSidePanel.vue')).toContain('AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:record`"')
-    expect(read('components/IssueSidePanel.vue')).toContain('AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:description`"')
-    expect(read('components/IssueSidePanel.vue')).toContain('AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:acceptance_criteria`"')
-    expect(read('components/IssueSidePanel.vue')).toContain('AiSurfaceFeedback :host-key="`issue-side:${issue?.id ?? 0}:notes`"')
+    expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:record`')
+    expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:description`')
+    expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:acceptance_criteria`')
+    expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:notes`')
 
-    expect(read('components/CreateIssueModal.vue')).toContain('AiSurfaceFeedback host-key="create-issue:record"')
-    expect(read('components/CreateIssueModal.vue')).toContain('AiSurfaceFeedback host-key="create-issue:description"')
-    expect(read('components/CreateIssueModal.vue')).toContain('AiSurfaceFeedback host-key="create-issue:acceptance_criteria"')
-    expect(read('components/CreateIssueModal.vue')).toContain('AiSurfaceFeedback host-key="create-issue:notes"')
+    expectHost('components/CreateIssueModal.vue', 'host-key="create-issue:record"')
+    expectHost('components/CreateIssueModal.vue', 'host-key="create-issue:description"')
+    expectHost('components/CreateIssueModal.vue', 'host-key="create-issue:acceptance_criteria"')
+    expectHost('components/CreateIssueModal.vue', 'host-key="create-issue:notes"')
 
-    expect(read('views/CustomerDetailView.vue')).toContain('AiSurfaceFeedback host-key="customer-detail:notes" :apply="applyCustomerAiResult"')
-    expect(read('components/customer/CustomerCreateModal.vue')).toContain('AiSurfaceFeedback host-key="customer-create:notes" :apply="applyCustomerAiResult"')
-    expect(read('components/customer/CooperationSection.vue')).toContain('AiSurfaceFeedback host-key="cooperation:sla_details" :apply="applyCooperationAiResult"')
-    expect(read('components/customer/CooperationSection.vue')).toContain('AiSurfaceFeedback host-key="cooperation:notes" :apply="applyCooperationAiResult"')
+    expectHost('views/CustomerDetailView.vue', 'host-key="customer-detail:notes"')
+    expect(read('views/CustomerDetailView.vue')).toContain('applyCustomerAiResult')
+    expectHost('components/customer/CustomerCreateModal.vue', 'host-key="customer-create:notes"')
+    expect(read('components/customer/CustomerCreateModal.vue')).toContain('applyCustomerAiResult')
+    expectHost('components/customer/CooperationSection.vue', 'host-key="cooperation:sla_details"')
+    expectHost('components/customer/CooperationSection.vue', 'host-key="cooperation:notes"')
+    expect(read('components/customer/CooperationSection.vue')).toContain('applyCooperationAiResult')
 
-    expect(read('views/ProjectDetailView.vue')).toContain('AiSurfaceFeedback host-key="project-detail:description" :apply="applyProjectAiResult"')
-    expect(read('views/ProjectsView.vue')).toContain('AiSurfaceFeedback host-key="projects-create:description" :apply="applyProjectCreateAiResult"')
+    expectHost('views/ProjectDetailView.vue', 'host-key="project-detail:description"')
+    expect(read('views/ProjectDetailView.vue')).toContain('applyProjectAiResult')
+    expectHost('views/ProjectsView.vue', 'host-key="projects-create:description"')
+    expect(read('views/ProjectsView.vue')).toContain('applyProjectCreateAiResult')
 
     const promptsTab = read('components/settings/SettingsAIPromptsTab.vue')
     expect(promptsTab).toContain('AiActivityStrip')

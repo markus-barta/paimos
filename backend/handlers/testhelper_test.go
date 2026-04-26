@@ -202,8 +202,14 @@ func buildRouter() http.Handler {
 			r.Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 			r.Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+			r.Get("/issues/{id}/activity", handlers.ListIssueMutationActivity)
+			r.Get("/undo/activity", handlers.ListMyMutationActivity)
 			r.Post("/undo/{id}", handlers.UndoMutation)
+			r.Post("/undo/{id}/resolve", handlers.ResolveUndoMutation)
 			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
+			r.Post("/redo/{id}", handlers.RedoMutation)
+			r.Post("/redo/{id}/resolve", handlers.ResolveRedoMutation)
+			r.Post("/redo/request/{requestID}", handlers.RedoMutationByRequestID)
 
 			r.Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
@@ -322,6 +328,8 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
 			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
 			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+			r.With(auth.RequireAdmin).Get("/system/settings", handlers.GetSystemSettings)
+			r.With(auth.RequireAdmin).Put("/system/settings", handlers.PutSystemSettings)
 
 			// Incident log
 			r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)
