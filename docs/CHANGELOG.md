@@ -7,19 +7,43 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [2.0.3] — 2026-04-26
 
-### Added — TODO fill in before committing
+### Fixed
 
-- fix(ai): mount action dispatcher route
+- **AI action dispatcher route was not mounted after the catalog
+  refactor in v2.0.2.** The action menu loaded but `POST
+  /api/ai/action` returned 404, breaking every AI surface end-to-
+  end. Re-mounted the route on the chi router; verified against
+  the catalog flow + catalog test (PAI-189).
 
 ## [2.0.2] — 2026-04-26
 
-### Added — TODO fill in before committing
+### Changed — Wave 2/3/4 service-extraction refactor (PAI-189)
 
-- Harden AI response parsing and extract issue services
-- Extract remaining issue detail sidecar services
-- Extract project context and issue services
-- Extract remaining detail view mutations
-- Refactor detail views and harden schema audit
+The 2.0 architectural consolidation continued through three more
+merge waves on top of v2.0.1, all behavior-preserving. No REST
+contract changes.
+
+- **Backend** — issue-detail sidecar concerns (anchors, attachments,
+  comments, history, relations, time entries, group members, epic
+  completion) lifted from the issue handler into per-domain seams,
+  reducing the issue-handler's coupling to a single responsibility
+  per call site.
+- **Project context + AI catalog seams** — `project_context_service.go`
+  and `ai_action_catalog_service.go` extracted; handlers delegate
+  rather than orchestrate.
+- **Detail-view mutations** — view-level mutation orchestration
+  moved out of the chunky `IssueDetailView` Vue file into typed
+  service modules under `frontend/src/services/issue*.ts`, each
+  with its own Vitest suite.
+- **AI response parsing** — hardened against malformed provider
+  responses; the parser now refuses unknown shapes loudly rather
+  than silently degrading.
+- **Schema audit utility** — `backend/db/schema_audit.go` ships
+  small introspection helpers used by the new schema regression
+  tests; catches accidental schema drift between development and
+  production migrations.
+
+Audit & decision record: see [`docs/2.0_AUDIT.md`](2.0_AUDIT.md).
 
 ## [2.0.1] — 2026-04-26
 
