@@ -40,9 +40,9 @@ import (
 
 // testServer holds a running httptest.Server and convenience helpers.
 type testServer struct {
-	srv          *httptest.Server
-	adminCookie  string
-	memberCookie string
+	srv            *httptest.Server
+	adminCookie    string
+	memberCookie   string
 	externalCookie string
 }
 
@@ -99,8 +99,8 @@ func newTestServer(t *testing.T) *testServer {
 	t.Cleanup(srv.Close)
 
 	ts := &testServer{srv: srv}
-	ts.adminCookie   = ts.login(t, "admin",    "adminpass")
-	ts.memberCookie  = ts.login(t, "member",   "memberpass")
+	ts.adminCookie = ts.login(t, "admin", "adminpass")
+	ts.memberCookie = ts.login(t, "member", "memberpass")
 	ts.externalCookie = ts.login(t, "external", "externalpass")
 	return ts
 }
@@ -289,6 +289,12 @@ func buildRouter() http.Handler {
 
 			// Sprint listing
 			r.Get("/sprints", handlers.ListSprints)
+
+			// Dev test reports
+			r.With(auth.RequireAdmin).Post("/dev/test-reports", handlers.UploadTestReport)
+			r.With(auth.RequireAdmin).Get("/dev/test-reports", handlers.ListTestReports)
+			r.With(auth.RequireAdmin).Get("/dev/test-reports/summary", handlers.GetTestReportSummary)
+			r.With(auth.RequireAdmin).Get("/dev/test-reports/{filename}", handlers.GetTestReport)
 		})
 	})
 

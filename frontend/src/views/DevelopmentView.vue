@@ -28,6 +28,9 @@ interface ReportSummary {
   quick_failures?:   number
   complete_failures?: number
   generated_at:      string
+  available?:        boolean
+  status?:           string
+  report_count?:     number
 }
 
 const reports     = ref<ReportMeta[]>([])
@@ -84,6 +87,9 @@ function totalFailures(s: ReportSummary): number {
 const hasFailures = computed(() =>
   summary.value != null && totalFailures(summary.value) > 0
 )
+const missingReports = computed(() =>
+  !loading.value && reports.value.length === 0 && (summary.value?.status === 'missing_reports' || !summary.value?.available)
+)
 </script>
 
 <template>
@@ -94,7 +100,7 @@ const hasFailures = computed(() =>
     </Teleport>
 
     <!-- Summary banner -->
-    <div v-if="summary && !loading" :class="['summary-banner', hasFailures ? 'banner-warn' : 'banner-ok']">
+    <div v-if="summary?.available && !loading" :class="['summary-banner', hasFailures ? 'banner-warn' : 'banner-ok']">
       <AppIcon :name="hasFailures ? 'triangle-alert' : 'circle-check'" :size="15" />
       <template v-if="hasFailures">
         Last run v{{ summary.version }}:
@@ -111,8 +117,11 @@ const hasFailures = computed(() =>
       <h2 class="section-title">Test Reports</h2>
 
       <div v-if="loading" class="empty">Loading…</div>
+      <div v-else-if="missingReports" class="empty">
+        This deployment has no ingested test reports yet. GitHub CI may still be green, but this screen only shows reports uploaded into the running instance. Use Settings → Development to upload a report bundle for this environment.
+      </div>
       <div v-else-if="reports.length === 0" class="empty">
-        No reports yet. Reports are generated automatically on every push to <code>main</code>.
+        No reports are currently available.
       </div>
 
       <div v-else class="reports-list">
