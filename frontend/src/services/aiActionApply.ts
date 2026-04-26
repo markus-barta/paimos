@@ -1,4 +1,5 @@
 export interface AiApplyInfo {
+  requestId?: string
   action: string
   subAction?: string
   field: string
@@ -8,6 +9,14 @@ export interface AiApplyInfo {
   intent?: string
   selection?: number[]
   values?: Record<string, unknown>
+}
+
+export function aiMutationHeaders(info: AiApplyInfo): Record<string, string> {
+  const headers: Record<string, string> = {}
+  if (info.requestId) headers['X-PAIMOS-AI-Request-Id'] = info.requestId
+  if (info.action) headers['X-PAIMOS-AI-Action'] = info.action
+  if (info.subAction) headers['X-PAIMOS-AI-Sub-Action'] = info.subAction
+  return headers
 }
 
 function appendBlock(base: string, addition: string): string {

@@ -110,6 +110,7 @@ func buildRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(handlers.SessionAuditMiddleware) // PAI-97 — off unless PAIMOS_AUDIT_SESSIONS=true
+	r.Use(handlers.RequestIDMiddleware)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +202,8 @@ func buildRouter() http.Handler {
 			r.Get("/issues/{id}/children", handlers.GetIssueChildren)
 			r.Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 			r.Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+			r.Post("/undo/{id}", handlers.UndoMutation)
+			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
 
 			r.Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)

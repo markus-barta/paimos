@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 81
+const latestSchemaVersion = 83
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -73,6 +73,8 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"entity_embeddings",
 		"ai_prompts",
 		"ai_calls",
+		"mutation_log",
+		"app_settings",
 		"project_members",
 	} {
 		if !tableExists(t, db, table) {
@@ -132,6 +134,8 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_ai_prompts_key_enabled",
 		"idx_ai_calls_time",
 		"idx_ai_calls_issue_time",
+		"idx_mutation_log_user_stack",
+		"idx_mutation_log_request",
 		"idx_documents_project",
 		"idx_time_entries_mite_id",
 	} {

@@ -10,6 +10,7 @@ import { useAiOptimize } from '@/composables/useAiOptimize'
 import { summarizeAiResult } from '@/composables/useAiResultSummary'
 
 interface ActionApplyArgs {
+  requestId?: string
   action: string
   subAction?: string
   field: string
@@ -24,6 +25,7 @@ interface ActionApplyArgs {
 interface ActionApplyResult {
   undoLabel?: string
   undo?: () => void | Promise<void>
+  undoAutoDismissMs?: number
 }
 
 const props = defineProps<{
@@ -37,6 +39,7 @@ const aiOptimize = useAiOptimize()
 const undoState = ref<ActionApplyResult | null>(null)
 let undoTimer: number | null = null
 const modalOpen = ref(false)
+const undoDismissMs = ref(5000)
 
 const actionActivity = computed(() => aiAction.activity.value?.hostKey === props.hostKey ? aiAction.activity.value : null)
 const optimizeActivity = computed(() => aiOptimize.activity.value?.hostKey === props.hostKey ? aiOptimize.activity.value : null)
@@ -72,6 +75,7 @@ const actionDecision = computed(() => {
       primary: {
         label: t('ai.apply'),
         action: () => runApply({
+          requestId: r.requestId,
           action: r.action,
           subAction: r.subAction,
           field: r.field,
@@ -85,6 +89,7 @@ const actionDecision = computed(() => {
       secondary: ((r.body as any)?.candidates ?? []).slice(1, 3).map((candidate: any) => ({
         label: candidate.issue_key,
         action: () => runApply({
+          requestId: r.requestId,
           action: r.action,
           subAction: r.subAction,
           field: r.field,
@@ -107,6 +112,7 @@ const actionDecision = computed(() => {
       primary: {
         label: t('ai.apply'),
         action: () => runApply({
+          requestId: r.requestId,
           action: r.action,
           subAction: r.subAction,
           field: r.field,
@@ -154,6 +160,7 @@ const actionDecision = computed(() => {
   if (r.action === 'detect_duplicates' && Array.isArray((r.body as any)?.matches) && (r.body as any).matches.length > 0) {
     const top = (r.body as any).matches[0]
     const relationAction = (type: string, issueKey: string) => runApply({
+      requestId: r.requestId,
       action: r.action,
       subAction: r.subAction,
       field: r.field,
@@ -193,16 +200,19 @@ async function runApply(args: ActionApplyArgs) {
     const res = await props.apply(args)
     aiAction.clearError()
     modalOpen.value = false
-  if (undoTimer) {
-    window.clearTimeout(undoTimer)
-    undoTimer = null
-  }
+    if (undoTimer) {
+      window.clearTimeout(undoTimer)
+      undoTimer = null
+    }
     if (res?.undo) {
       undoState.value = res
-      undoTimer = window.setTimeout(() => {
-        undoState.value = null
-        undoTimer = null
-      }, 5000)
+      undoDismissMs.value = res.undoAutoDismissMs ?? 5000
+      if (undoDismissMs.value > 0) {
+        undoTimer = window.setTimeout(() => {
+          undoState.value = null
+          undoTimer = null
+        }, undoDismissMs.value)
+      }
     } else {
       undoState.value = null
     }
@@ -316,7 +326,7 @@ async function undoLastApply() {
       :summary="undoState.undoLabel || t('ai.undoReady')"
       :primary="{ label: t('ai.undo'), action: undoLastApply }"
       :dismissable="true"
-      :auto-dismiss-ms="5000"
+      :auto-dismiss-ms="undoDismissMs"
       @dismiss="undoState = null"
     />
 

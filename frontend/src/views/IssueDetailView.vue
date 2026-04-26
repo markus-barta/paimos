@@ -40,7 +40,8 @@ import {
 import { vAutoGrow } from '@/directives/autoGrow'
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
-import { applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
+import { aiMutationHeaders, applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
+import { undoMutationByRequestId } from '@/services/aiPaperTrail'
 
 // Sub-components
 import IssueTimeEntries from '@/components/issue/IssueTimeEntries.vue'
@@ -522,12 +523,18 @@ async function applyAiResult(info: AiApplyInfo) {
     }
     const prevHours = issue.value?.estimate_hours ?? null
     const prevLp = issue.value?.estimate_lp ?? null
-    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { estimate_hours: hours, estimate_lp: lp })
+    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { estimate_hours: hours, estimate_lp: lp }, { headers: aiMutationHeaders(info) })
     return {
       undoLabel: `Estimate ${hours}h / ${lp} LP applied`,
       undo: async () => {
+        if (info.requestId) {
+          await undoMutationByRequestId(info.requestId)
+          await load()
+          return
+        }
         issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { estimate_hours: prevHours, estimate_lp: prevLp })
       },
+      undoAutoDismissMs: 15000,
     }
   }
   if (info.action === 'find_parent') {
@@ -546,24 +553,38 @@ async function applyAiResult(info: AiApplyInfo) {
     }
     const prevParent = issue.value?.parent_id ?? null
     const prevParentIssue = parentIssue.value
-    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { parent_id: parent.id })
+    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { parent_id: parent.id }, { headers: aiMutationHeaders(info) })
     parentIssue.value = parent
     return {
       undoLabel: `Parent set to ${parent.issue_key}`,
       undo: async () => {
+        if (info.requestId) {
+          await undoMutationByRequestId(info.requestId)
+          await load()
+          return
+        }
         issue.value = await api.put<Issue>(`/issues/${issueId.value}`, { parent_id: prevParent })
         parentIssue.value = prevParentIssue
       },
+      undoAutoDismissMs: 15000,
     }
   }
   if (info.action === 'detect_duplicates') {
     const issueKey = String(info.values?.issue_key ?? '')
     const relationType = String(info.values?.relation_type ?? 'related') as 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'
+    const requestId = info.requestId
     const target = projectIssues.value.find(i => i.issue_key === issueKey)
     if (!target) return
-    await addIssueRelation(issueId.value, target.id, relationType)
+    await addIssueRelation(issueId.value, target.id, relationType, { headers: aiMutationHeaders(info) })
     relationsRef.value?.load()
-    return
+    return requestId ? {
+      undoLabel: `${relationType.replace(/_/g, ' ')} link to ${target.issue_key} added`,
+      undo: async () => {
+        await undoMutationByRequestId(requestId)
+        relationsRef.value?.load()
+      },
+      undoAutoDismissMs: 15000,
+    } : undefined
   }
   if (info.action === 'generate_subtasks') {
     const suggestions = (info.body as any)?.suggestions ?? []

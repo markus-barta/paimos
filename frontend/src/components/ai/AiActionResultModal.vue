@@ -41,6 +41,7 @@ const aiAction = useAiAction()
 // Hosts that don't supply a callback get a no-op — useful for the
 // drop-in case where actions are mostly diff-overlay-driven.
 interface ActionApplyArgs {
+  requestId?: string
   action: string
   subAction?: string
   field: string
@@ -135,6 +136,7 @@ function emitApply(intent: string, values?: Record<string, unknown>) {
   if (!r) return
   const sel = Array.from(selected.value).sort((a, b) => a - b)
   props.apply?.({
+    requestId: r.requestId,
     action: r.action,
     subAction: r.subAction,
     field: r.field,

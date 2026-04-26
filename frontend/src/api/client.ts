@@ -101,6 +101,7 @@ function withCsrfHeader(method: string, headers: Record<string, string>): Record
  */
 export interface RequestOptions {
   timeoutMs?: number
+  headers?: Record<string, string>
 }
 
 function extractLikelyJSON(raw: string): string {
@@ -149,7 +150,10 @@ async function request<T>(method: string, path: string, body?: unknown, opts?: R
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   let res: Response
   try {
-    const headers: Record<string, string> = body ? { 'Content-Type': 'application/json' } : {}
+    const headers: Record<string, string> = {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(opts?.headers ?? {}),
+    }
     res = await fetch(`${BASE}${path}`, {
       method,
       headers: withCsrfHeader(method, headers),

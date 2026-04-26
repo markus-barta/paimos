@@ -73,6 +73,7 @@ type aiCallListResponse struct {
 }
 
 type issueAIActivityRow struct {
+	LogID            int64  `json:"log_id"`
 	RequestID        string `json:"request_id"`
 	ActionKey        string `json:"action_key"`
 	SubAction        string `json:"sub_action"`
@@ -628,14 +629,31 @@ func AIListIssueActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := db.DB.Query(`
 		SELECT
-			c.request_id, c.action_key, c.sub_action, c.surface,
-			c.user_id, COALESCE(u.username, 'deleted user'),
-			c.outcome, c.latency_ms, c.model, c.prompt_tokens,
-			c.completion_tokens, c.cost_micro_usd, c.created_at
-		FROM ai_calls c
-		LEFT JOIN users u ON u.id = c.user_id
-		WHERE c.issue_id = ?
-		ORDER BY c.created_at DESC, c.id DESC
+			m.id,
+			m.request_id,
+			COALESCE(c.action_key, m.mutation_type),
+			COALESCE(c.sub_action, ''),
+			COALESCE(c.surface, ''),
+			m.user_id,
+			COALESCE(u.username, 'deleted user'),
+			CASE
+				WHEN m.undone_at IS NOT NULL THEN 'undone'
+				ELSE COALESCE(c.outcome, 'ok')
+			END,
+			COALESCE(c.latency_ms, 0),
+			COALESCE(c.model, ''),
+			COALESCE(c.prompt_tokens, 0),
+			COALESCE(c.completion_tokens, 0),
+			COALESCE(c.cost_micro_usd, 0),
+			m.on_user_stack,
+			m.created_at
+		FROM mutation_log m
+		LEFT JOIN ai_calls c ON c.request_id = m.request_id
+		LEFT JOIN users u ON u.id = m.user_id
+		WHERE m.subject_type IN ('issue', 'issue_relation')
+		  AND m.subject_id = ?
+		  AND m.mutation_type LIKE 'ai.%'
+		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT 50
 	`, id)
 	if err != nil {
@@ -648,24 +666,27 @@ func AIListIssueActivity(w http.ResponseWriter, r *http.Request) {
 	resp := issueAIActivityResponse{Rows: []issueAIActivityRow{}}
 	for rows.Next() {
 		var row issueAIActivityRow
+		var onUserStack int
 		if err := rows.Scan(
-			&row.RequestID, &row.ActionKey, &row.SubAction, &row.Surface,
+			&row.LogID, &row.RequestID, &row.ActionKey, &row.SubAction, &row.Surface,
 			&row.UserID, &row.UserName,
 			&row.Outcome, &row.LatencyMs, &row.Model, &row.PromptTokens,
-			&row.CompletionTokens, &row.CostMicroUSD, &row.CreatedAt,
+			&row.CompletionTokens, &row.CostMicroUSD, &onUserStack, &row.CreatedAt,
 		); err != nil {
 			log.Printf("ai_activity: scan issue: %v", err)
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		row.OnUserStack = false
+		row.OnUserStack = onUserStack == 1
 		resp.Rows = append(resp.Rows, row)
 	}
 	resp.Count = len(resp.Rows)
 	if err := db.DB.QueryRow(`
 		SELECT COUNT(*)
-		FROM ai_calls
-		WHERE issue_id = ?
+		FROM mutation_log
+		WHERE subject_type IN ('issue', 'issue_relation')
+		  AND subject_id = ?
+		  AND mutation_type LIKE 'ai.%'
 		  AND created_at >= datetime('now', '-7 days')
 	`, id).Scan(&resp.LastWeekCount); err != nil {
 		log.Printf("ai_activity: count issue: %v", err)

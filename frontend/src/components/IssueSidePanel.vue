@@ -40,7 +40,8 @@ import {
 // panel surfaces the AI action for description / acceptance / notes.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
-import { applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
+import { aiMutationHeaders, applyIssueTextMutations, type AiApplyInfo } from '@/services/aiActionApply'
+import { undoMutationByRequestId } from '@/services/aiPaperTrail'
 import { addIssueRelation } from '@/services/issueRelations'
 
 const ctx = useIssueContext(true)
@@ -232,11 +233,19 @@ async function applyAiPanelResult(info: AiApplyInfo) {
   if (info.action === 'detect_duplicates') {
     const issueKey = String(info.values?.issue_key ?? '')
     const relationType = String(info.values?.relation_type ?? 'related') as 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'
+    const requestId = info.requestId
     await loadRelationCandidates()
     const target = relationCandidates.value.find(i => i.issue_key === issueKey)
     if (!target) return
-    await addIssueRelation(issue.value.id, target.id, relationType)
-    return
+    await addIssueRelation(issue.value.id, target.id, relationType, { headers: aiMutationHeaders(info) })
+    return requestId ? {
+      undoLabel: `${relationType.replace(/_/g, ' ')} link to ${target.issue_key} added`,
+      undo: async () => {
+        await undoMutationByRequestId(requestId)
+        await loadRelationCandidates()
+      },
+      undoAutoDismissMs: 15000,
+    } : undefined
   }
   const next = applyIssueTextMutations(info, {
     description: form.value.description,

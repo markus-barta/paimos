@@ -2,7 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { fmtShortDateTime } from '@/utils/formatTime'
-import { loadIssueAIActivity, type IssueAIActivityResponse } from '@/services/aiPaperTrail'
+import { loadIssueAIActivity, type IssueAIActivityResponse, undoMutation } from '@/services/aiPaperTrail'
 
 const props = defineProps<{
   issueId: number
@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const loading = ref(false)
 const error = ref('')
+const undoingLogId = ref<number | null>(null)
 const payload = ref<IssueAIActivityResponse | null>(null)
 async function load() {
   loading.value = true
@@ -20,6 +21,19 @@ async function load() {
     error.value = e?.message ?? 'Failed to load AI activity.'
   } finally {
     loading.value = false
+  }
+}
+
+async function undoRow(logId: number) {
+  undoingLogId.value = logId
+  error.value = ''
+  try {
+    await undoMutation(logId)
+    await load()
+  } catch (e: any) {
+    error.value = e?.message ?? 'Undo failed.'
+  } finally {
+    undoingLogId.value = null
   }
 }
 
@@ -47,9 +61,18 @@ onMounted(() => { if (!payload.value) void load() })
       <div v-else class="issue-ai__list">
         <div v-for="row in payload?.rows" :key="`${row.request_id}-${row.created_at}`" class="issue-ai__item">
           <div class="issue-ai__head">
-            <strong>{{ row.action_key }}</strong>
-            <span v-if="row.sub_action" class="issue-ai__mono">{{ row.sub_action }}</span>
-            <span class="issue-ai__outcome">{{ row.outcome }}</span>
+            <div class="issue-ai__head-main">
+              <strong>{{ row.action_key }}</strong>
+              <span v-if="row.sub_action" class="issue-ai__mono">{{ row.sub_action }}</span>
+              <span class="issue-ai__outcome">{{ row.outcome }}</span>
+            </div>
+            <button
+              v-if="row.on_user_stack"
+              type="button"
+              class="issue-ai__undo"
+              :disabled="undoingLogId === row.log_id"
+              @click="undoRow(row.log_id)"
+            >{{ undoingLogId === row.log_id ? 'Undoing…' : 'Undo' }}</button>
           </div>
           <div class="issue-ai__meta">
             <span>{{ row.user_name }}</span>
@@ -89,11 +112,15 @@ onMounted(() => { if (!payload.value) void load() })
 .issue-ai__title,
 .issue-ai__badges,
 .issue-ai__meta,
-.issue-ai__head {
+.issue-ai__head,
+.issue-ai__head-main {
   display: flex;
   align-items: center;
   gap: .45rem;
   flex-wrap: wrap;
+}
+.issue-ai__head {
+  justify-content: space-between;
 }
 .issue-ai__title {
   font-weight: 600;
@@ -129,6 +156,19 @@ onMounted(() => { if (!payload.value) void load() })
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg);
+}
+.issue-ai__undo {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: 999px;
+  padding: .2rem .55rem;
+  font-size: 11px;
+  font-family: "DM Mono", "JetBrains Mono", monospace;
+  cursor: pointer;
+}
+.issue-ai__undo:disabled {
+  opacity: .65;
+  cursor: wait;
 }
 .issue-ai__empty {
   font-size: 13px;

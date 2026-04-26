@@ -33,6 +33,7 @@ export interface AICallListResponse {
 }
 
 export interface IssueAIActivityRow {
+  log_id: number
   request_id: string
   action_key: string
   sub_action: string
@@ -98,6 +99,14 @@ export function loadIssueAICalls(issueId: number, query: AICallQuery = {}): Prom
 
 export function loadIssueAIActivity(issueId: number): Promise<IssueAIActivityResponse> {
   return api.get<IssueAIActivityResponse>(`/issues/${issueId}/ai-activity`)
+}
+
+export function undoMutation(logId: number): Promise<{ undone: boolean, log_id: number }> {
+  return api.post(`/undo/${logId}`, {})
+}
+
+export function undoMutationByRequestId(requestId: string): Promise<{ undone: boolean, log_id: number, request_id: string }> {
+  return api.post(`/undo/request/${encodeURIComponent(requestId)}`, {})
 }
 
 export function buildAICallsExportUrl(mode: 'admin' | 'self', query: AICallQuery = {}): string {

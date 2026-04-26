@@ -68,6 +68,7 @@ func main() {
 	// PAI-97: session-scoped mutation audit. No-op unless
 	// PAIMOS_AUDIT_SESSIONS=true is set — off by default in v1.
 	r.Use(handlers.SessionAuditMiddleware)
+	r.Use(handlers.RequestIDMiddleware)
 
 	r.Route("/api", func(r chi.Router) {
 		// ── Strictly public endpoints ────────────────────────────────
@@ -257,6 +258,8 @@ func main() {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+			r.Post("/undo/{id}", handlers.UndoMutation)
+			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
 
 			// Issue relations (v2)

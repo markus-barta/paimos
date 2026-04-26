@@ -3643,10 +3643,10 @@ func migrate(db *sql.DB) error {
 			tokenize='porter ascii'
 		)`,
 	}},
-	// PAI-208: per-call AI paper trail. Metadata only — never prompt or
+	// M82 / PAI-208: per-call AI paper trail. Metadata only — never prompt or
 	// response bodies. Historical cost is captured at record-time in
 	// micro-USD to avoid floating-point drift.
-	{81, []string{
+	{82, []string{
 		`CREATE TABLE IF NOT EXISTS ai_calls (
 			id                INTEGER PRIMARY KEY AUTOINCREMENT,
 			request_id        TEXT NOT NULL,
@@ -3681,6 +3681,48 @@ func migrate(db *sql.DB) error {
 		 ON ai_calls(request_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_calls_issue_time
 		 ON ai_calls(issue_id, created_at DESC)`,
+	}},
+	// M83 / PAI-211 foundation: generic mutation log plus a tiny app_settings
+	// key/value store so undo stack depth can be tuned without a redeploy.
+	{83, []string{
+		`CREATE TABLE IF NOT EXISTS app_settings (
+			key        TEXT PRIMARY KEY,
+			value      TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
+		)`,
+		`INSERT OR IGNORE INTO app_settings(key, value) VALUES('undo_stack_depth', '3')`,
+		`CREATE TABLE IF NOT EXISTS mutation_log (
+			id                INTEGER PRIMARY KEY AUTOINCREMENT,
+			request_id        TEXT NOT NULL,
+			user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			session_id        TEXT,
+			mutation_type     TEXT NOT NULL,
+			subject_type      TEXT NOT NULL,
+			subject_id        INTEGER NOT NULL,
+			batch_id          TEXT,
+			parent_log_id     INTEGER REFERENCES mutation_log(id) ON DELETE SET NULL,
+			inverse_op        TEXT NOT NULL,
+			before_state      TEXT NOT NULL,
+			before_hash       TEXT NOT NULL,
+			after_hash        TEXT NOT NULL,
+			undoable          INTEGER NOT NULL DEFAULT 1,
+			on_user_stack     INTEGER NOT NULL DEFAULT 1,
+			undone_at         TEXT,
+			undone_by         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			resolution_choice TEXT,
+			created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_mutation_log_user_stack
+			ON mutation_log(user_id, created_at DESC)
+			WHERE on_user_stack = 1 AND undone_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_mutation_log_subject
+			ON mutation_log(subject_type, subject_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_mutation_log_request
+			ON mutation_log(request_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_mutation_log_batch
+			ON mutation_log(batch_id) WHERE batch_id IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_mutation_log_time
+			ON mutation_log(created_at DESC)`,
 	}},
 	}
 
