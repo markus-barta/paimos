@@ -18,7 +18,6 @@ import { useSearchStore } from '@/stores/search'
 import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
-import { useProjectAuxPanels } from '@/composables/useProjectAuxPanels'
 import { useFreshness } from '@/composables/useFreshness'
 import {
   buildProjectUpdatePayload,
@@ -50,7 +49,6 @@ import {
 } from '@/services/projectDetail'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
-import ProjectAuxPanel from '@/components/customer/ProjectAuxPanel.vue'
 import ProjectContextSection from '@/components/project/ProjectContextSection.vue'
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
@@ -102,14 +100,10 @@ const customers = ref<Customer[]>([])
 // above the issue tabs which crowded the page even on projects
 // that don't use anchors. Now it's behind a toggle that lives in
 // the same toolbar cluster as Docs / Coop.
-const {
-  auxPanel,
-  toggleAux,
-  closeAux,
-  docCount,
-  cooperationPopulated,
-} = useProjectAuxPanels()
-const contextOpen = ref(false)
+type ProjectWorkspace = 'docs' | 'cooperation' | 'context' | null
+const workspacePanel = ref<ProjectWorkspace>(null)
+const docCount = ref(0)
+const cooperationPopulated = ref(false)
 const contextSummary = ref({ repoCount: 0, hasManifest: false, populated: false })
 
 provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sprints })
@@ -149,13 +143,21 @@ const contextStatusLabel = computed(() =>
   contextSummary.value.populated ? 'Configured' : 'Not set up',
 )
 
-function toggleContextDock() {
-  contextOpen.value = !contextOpen.value
+function toggleWorkspace(panel: Exclude<ProjectWorkspace, null>) {
+  workspacePanel.value = workspacePanel.value === panel ? null : panel
 }
 
 function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
   contextSummary.value = payload
 }
+
+const workspaceSummary = computed(() => ({
+  docs: docCount.value > 0 ? `${docCount.value} repo file${docCount.value === 1 ? '' : 's'}` : 'No docs yet',
+  cooperation: cooperationPopulated.value ? 'Profile configured' : 'Not set up',
+  context: contextSummary.value.populated
+    ? `${contextSummary.value.repoCount} repo${contextSummary.value.repoCount === 1 ? '' : 's'} · ${contextSummary.value.hasManifest ? 'manifest set' : 'manifest empty'}`
+    : 'Not set up',
+}))
 
 // Edit project
 const showEdit  = ref(false)
@@ -609,9 +611,8 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
         </button>
       </nav>
 
-      <!-- Single IssueList for all tabs. The `toolbar-extra` slot drops
-           the Documents / Cooperation aux-panel toggles in next to the
-           Tree/Flat button so the whole toggle cluster lives together. -->
+      <!-- Single IssueList for all tabs. Project-level workspaces now live
+           in the footer rail instead of competing with issue-list controls. -->
       <IssueList
         ref="issueListRef"
         :project-id="projectId"
@@ -625,148 +626,150 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
         @view-applied="onViewApplied"
         @views-changed="refreshViews"
         @refresh-list="issueFreshness.refresh"
-      >
-        <template #toolbar-extra>
+      />
+
+      <section class="pd-workspaces">
+        <Transition name="pd-workspace-dock">
+          <div v-if="workspacePanel" class="pd-workspace-dock">
+            <div class="pd-workspace-dock__head">
+              <div class="pd-workspace-dock__title">
+                <span class="pd-workspace-dock__eyebrow">Project workspace</span>
+                <strong>
+                  {{
+                    workspacePanel === 'context'
+                      ? 'Project Context'
+                      : workspacePanel === 'docs'
+                        ? 'Documents'
+                        : 'Cooperation'
+                  }}
+                </strong>
+                <span class="pd-workspace-dock__state">
+                  {{
+                    workspacePanel === 'context'
+                      ? contextStatusLabel
+                      : workspacePanel === 'docs'
+                        ? (docCount > 0 ? 'Available' : 'Empty')
+                        : (cooperationPopulated ? 'Configured' : 'Not set up')
+                  }}
+                </span>
+              </div>
+              <div class="pd-workspace-dock__meta">
+                <span class="pd-workspace-dock__pill">
+                  {{
+                    workspacePanel === 'context'
+                      ? `${contextSummary.repoCount} repo${contextSummary.repoCount === 1 ? '' : 's'}`
+                      : workspaceSummary[workspacePanel]
+                  }}
+                </span>
+                <button class="btn btn-ghost btn-sm" @click="workspacePanel = null">
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div class="pd-workspace-dock__body">
+              <template v-if="workspacePanel === 'context'">
+                <div class="pd-context-overview">
+                  <div class="pd-context-overview__card">
+                    <span class="pd-context-overview__label">Overview</span>
+                    <p>
+                      Keep repos and manifest together here. This stays full width,
+                      so issue work can remain central while setup lives in one predictable place.
+                    </p>
+                  </div>
+                  <div class="pd-context-overview__card">
+                    <span class="pd-context-overview__label">Current setup</span>
+                    <p>
+                      {{ contextSummary.repoCount }} linked repo{{ contextSummary.repoCount === 1 ? '' : 's' }}
+                      · {{ contextSummary.hasManifest ? 'manifest present' : 'no manifest yet' }}
+                    </p>
+                  </div>
+                </div>
+                <ProjectContextSection
+                  :project-id="projectId"
+                  :can-write="isAdmin && canEditProject"
+                  :show-header="false"
+                  @populated="(v: boolean) => contextSummary.populated = v"
+                  @summary="updateContextSummary"
+                />
+              </template>
+
+              <DocumentsSection
+                v-else-if="workspacePanel === 'docs'"
+                scope="project"
+                :scope-id="projectId"
+                :can-write="isAdmin && canEditProject"
+                @count="(n: number) => docCount = n"
+              />
+
+              <CooperationSection
+                v-else
+                :project-id="projectId"
+                :can-write="isAdmin && canEditProject"
+                @populated="(v: boolean) => cooperationPopulated = v"
+              />
+            </div>
+          </div>
+        </Transition>
+
+        <div class="pd-workspace-rail">
           <button
             type="button"
-            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', { active: auxPanel === 'docs' }]"
-            :title="docCount > 0 ? `${docCount} document${docCount === 1 ? '' : 's'}` : 'No documents yet'"
-            @click="toggleAux('docs')"
+            :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'docs' }]"
+            :title="workspaceSummary.docs"
+            @click="toggleWorkspace('docs')"
           >
             <AppIcon name="file-stack" :size="13" />
             <span>Docs</span>
-            <span v-if="docCount > 0" class="pd-aux-count">{{ docCount }}</span>
+            <span class="pd-workspace-rail__meta">{{ docCount }} file{{ docCount === 1 ? '' : 's' }}</span>
           </button>
           <button
             type="button"
-            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', { active: auxPanel === 'cooperation' }]"
-            :title="cooperationPopulated ? 'Cooperation profile filled in' : 'No cooperation profile yet'"
-            @click="toggleAux('cooperation')"
+            :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'cooperation' }]"
+            :title="workspaceSummary.cooperation"
+            @click="toggleWorkspace('cooperation')"
           >
             <AppIcon name="handshake" :size="13" />
             <span>Coop</span>
-            <span v-if="cooperationPopulated" class="pd-aux-info" aria-hidden="true">i</span>
+            <span class="pd-workspace-rail__meta">{{ cooperationPopulated ? 'configured' : 'empty' }}</span>
           </button>
-          <!-- PAI-178: Context toggle — opens the repos + manifest
-               panel that used to sit above the tabs. -->
           <button
             type="button"
-            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', 'pd-context-chip', { active: contextOpen }]"
-            :title="contextSummary.populated ? 'Project context configured' : 'No repos or manifest yet'"
-            @click="toggleContextDock"
+            :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'context' }]"
+            :title="workspaceSummary.context"
+            @click="toggleWorkspace('context')"
           >
             <AppIcon name="git-branch" :size="13" />
             <span>Context</span>
-            <span class="pd-context-status">{{ contextStatusLabel }}</span>
-            <span v-if="contextSummary.repoCount" class="pd-aux-count">{{ contextSummary.repoCount }}</span>
+            <span class="pd-workspace-rail__meta">{{ contextStatusLabel }}</span>
           </button>
-        </template>
-      </IssueList>
-
-      <!-- ── Aux side panels (PAI-145) ───────────────────────────
-           Slide in from the right; share width with IssueSidePanel
-           via useSidePanelWidth so they line up. The DocumentsSection
-           and CooperationSection live inside the panel slot so the
-           empty-states still read well — just no longer screaming for
-           attention from the page body. -->
-      <ProjectAuxPanel
-        :open="auxPanel === 'docs'"
-        title="Documents"
-        :subtitle="docCount > 0 ? `${docCount} file${docCount === 1 ? '' : 's'}` : ''"
-        @close="closeAux"
-      >
-        <DocumentsSection
-          scope="project"
-          :scope-id="projectId"
-          :can-write="isAdmin && canEditProject"
-          @count="(n: number) => docCount = n"
-        />
-      </ProjectAuxPanel>
-
-      <ProjectAuxPanel
-        :open="auxPanel === 'cooperation'"
-        title="Cooperation"
-        :subtitle="cooperationPopulated ? 'profile set' : 'not set up'"
-        @close="closeAux"
-      >
-        <CooperationSection
-          :project-id="projectId"
-          :can-write="isAdmin && canEditProject"
-          @populated="(v: boolean) => cooperationPopulated = v"
-        />
-      </ProjectAuxPanel>
-
-      <section :class="['pd-context-dock', { 'pd-context-dock--open': contextOpen }]">
-        <button
-          type="button"
-          class="pd-context-dock__toggle"
-          :aria-expanded="contextOpen"
-          @click="toggleContextDock"
-        >
-          <div class="pd-context-dock__title">
-            <span class="pd-context-dock__eyebrow">Project setup workspace</span>
-            <strong>Project Context</strong>
-            <span class="pd-context-dock__state">{{ contextStatusLabel }}</span>
-          </div>
-          <div class="pd-context-dock__meta">
-            <span class="pd-context-dock__pill">
-              {{ contextSummary.repoCount }} repo{{ contextSummary.repoCount === 1 ? '' : 's' }}
-            </span>
-            <span class="pd-context-dock__pill">
-              {{ contextSummary.hasManifest ? 'manifest saved' : 'manifest empty' }}
-            </span>
-            <AppIcon :name="contextOpen ? 'chevron-down' : 'chevron-up'" :size="15" />
-          </div>
-        </button>
-
-        <div v-if="contextOpen" class="pd-context-dock__body">
-          <div class="pd-context-overview">
-            <div class="pd-context-overview__card">
-              <span class="pd-context-overview__label">Overview</span>
-              <p>
-                Keep repos and manifest together here. This stays full width,
-                so docs, cooperation, and issue side panels can keep using the right edge.
-              </p>
-            </div>
-            <div class="pd-context-overview__card">
-              <span class="pd-context-overview__label">Current setup</span>
-              <p>
-                {{ contextSummary.repoCount }} linked repo{{ contextSummary.repoCount === 1 ? '' : 's' }}
-                · {{ contextSummary.hasManifest ? 'manifest present' : 'no manifest yet' }}
-              </p>
-            </div>
-          </div>
-          <ProjectContextSection
-            :project-id="projectId"
-            :can-write="isAdmin && canEditProject"
-            :show-header="false"
-            @populated="(v: boolean) => contextSummary.populated = v"
-            @summary="updateContextSummary"
-          />
         </div>
       </section>
 
       <!-- Always-mounted, visually-hidden sentinels feed the toolbar
-           toggle badges (count + (i)) without forcing the user to open
-           the panels first. `display: none` on .pd-sentinels keeps Vue
-           reactivity alive while taking no visual space.
-
-           When a panel opens, the sentinel for that scope unmounts and
-           the real component mounts inside the panel — one wasted
-           fetch per toggle, acceptable for v1. -->
+           workspace rail summary without forcing the user to open the
+           workspaces first. -->
       <div class="pd-sentinels" aria-hidden="true">
         <DocumentsSection
-          v-if="auxPanel !== 'docs'"
+          v-if="workspacePanel !== 'docs'"
           scope="project"
           :scope-id="projectId"
           :can-write="false"
           @count="(n: number) => docCount = n"
         />
         <CooperationSection
-          v-if="auxPanel !== 'cooperation'"
+          v-if="workspacePanel !== 'cooperation'"
           :project-id="projectId"
           :can-write="false"
           @populated="(v: boolean) => cooperationPopulated = v"
+        />
+        <ProjectContextSection
+          v-if="workspacePanel !== 'context'"
+          :project-id="projectId"
+          :can-write="false"
+          :show-header="false"
+          @populated="(v: boolean) => contextSummary.populated = v"
+          @summary="updateContextSummary"
         />
       </div>
     <!-- Delete confirm modal -->
@@ -1180,61 +1183,12 @@ textarea { resize: vertical; min-height: 80px; }
   margin-top: .15rem;
 }
 
-/* Aux-panel toggles in the IssueList toolbar. Sit next to Tree/Flat;
-   inherit .btn / .btn-ghost / .btn-sm sizing, so they line up with
-   their neighbours without bespoke metrics. */
-.pd-aux-btn {
-  display: inline-flex; align-items: center; gap: .35rem;
-}
-.pd-aux-btn.active {
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
-  border-color: var(--bp-blue-light);
-}
-
-/* Circled count when there's at least one document. */
-.pd-aux-count {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 16px; height: 16px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--bp-blue);
-  color: #fff;
-  font-size: 10px; font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-.pd-aux-btn.active .pd-aux-count { background: var(--bp-blue-dark); }
-
-/* Italic 'i' marker when the cooperation profile has any data. */
-.pd-aux-info {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
-  font-family: 'Source Serif Pro', 'Charter', Georgia, serif;
-  font-style: italic;
-  font-size: 12px; font-weight: 700;
-  line-height: 1;
-}
-.pd-aux-btn.active .pd-aux-info {
-  background: var(--bp-blue);
-  color: #fff;
-}
-
-.pd-context-chip {
-  gap: 0.45rem;
-}
-
-.pd-context-status {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-.pd-context-dock {
+.pd-workspaces {
   margin-top: 1rem;
+}
+
+.pd-workspace-dock {
+  margin-bottom: 0.85rem;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--bg-card);
@@ -1242,26 +1196,24 @@ textarea { resize: vertical; min-height: 80px; }
   overflow: hidden;
 }
 
-.pd-context-dock__toggle {
-  width: 100%;
+.pd-workspace-dock__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.2rem;
-  border: none;
   background: linear-gradient(180deg, color-mix(in srgb, var(--bp-blue-pale) 42%, white), white);
-  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--bp-blue-pale) 60%, var(--border));
 }
 
-.pd-context-dock__title {
+.pd-workspace-dock__title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.45rem 0.65rem;
 }
 
-.pd-context-dock__eyebrow,
+.pd-workspace-dock__eyebrow,
 .pd-context-overview__label {
   display: inline-flex;
   align-items: center;
@@ -1272,7 +1224,7 @@ textarea { resize: vertical; min-height: 80px; }
   color: var(--text-muted);
 }
 
-.pd-context-dock__state {
+.pd-workspace-dock__state {
   padding: 0.16rem 0.55rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
@@ -1281,14 +1233,15 @@ textarea { resize: vertical; min-height: 80px; }
   font-weight: 700;
 }
 
-.pd-context-dock__meta {
+.pd-workspace-dock__meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.55rem;
   color: var(--text-muted);
 }
 
-.pd-context-dock__pill {
+.pd-workspace-dock__pill {
   padding: 0.18rem 0.55rem;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -1297,8 +1250,9 @@ textarea { resize: vertical; min-height: 80px; }
   white-space: nowrap;
 }
 
-.pd-context-dock__body {
+.pd-workspace-dock__body {
   padding: 1rem 1.1rem 1.2rem;
+  background: var(--bg-card);
 }
 
 .pd-context-overview {
@@ -1322,14 +1276,68 @@ textarea { resize: vertical; min-height: 80px; }
   line-height: 1.5;
 }
 
-@media (max-width: 980px) {
-  .pd-context-dock__toggle {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+.pd-workspace-rail {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.2rem 0;
+  border-top: 1px solid var(--border);
+}
 
+.pd-workspace-rail__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: color .15s, background .15s, border-color .15s;
+}
+
+.pd-workspace-rail__btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bp-blue-pale) 34%, white);
+}
+
+.pd-workspace-rail__btn--active {
+  color: var(--bp-blue-dark);
+  background: color-mix(in srgb, var(--bp-blue-pale) 72%, white);
+  border-color: color-mix(in srgb, var(--bp-blue) 18%, var(--border));
+}
+
+.pd-workspace-rail__meta {
+  color: inherit;
+  opacity: .82;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pd-workspace-dock-enter-active,
+.pd-workspace-dock-leave-active {
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.pd-workspace-dock-enter-from,
+.pd-workspace-dock-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (max-width: 980px) {
+  .pd-workspace-dock__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
   .pd-context-overview {
     grid-template-columns: 1fr;
+  }
+
+  .pd-workspace-rail {
+    flex-wrap: wrap;
   }
 }
 
