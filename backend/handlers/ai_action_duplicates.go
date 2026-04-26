@@ -8,15 +8,16 @@
 // PAI-171. Detect duplicates / similar issues.
 //
 // v1 uses LLM-based ranking over titles + 200-char description
-// summaries — no embeddings store yet. Trade-offs:
+// summaries — it still does not use the project-context embedding
+// store yet. Trade-offs:
 //   + zero new infrastructure, ships next to the other actions.
 //   - cost scales linearly with project size; ~200 issues per
 //     project is the practical limit before token budgets pinch.
 //   - quality is decent for moderate semantic match, less precise
 //     than a real embedding cosine.
 //
-// We can revisit with embeddings (PAI-30 entity_embeddings table is
-// already there) once the action's actually used in anger.
+// We can revisit with retrieval-backed embeddings once the action's
+// actually used in anger.
 
 package handlers
 

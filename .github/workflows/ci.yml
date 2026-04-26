@@ -50,6 +50,10 @@ jobs:
         working-directory: backend
         run: go test -count=1 -run '^TestRegression_|^TestAuthzFuzz_' ./handlers/...
 
+      - name: Anchor index — verify dogfood anchors
+        working-directory: backend
+        run: go run ./cmd/paimos anchors verify --repo-root .. --index ../.pmo/anchors.json
+
       - name: Frontend — typecheck + test
         working-directory: frontend
         run: |

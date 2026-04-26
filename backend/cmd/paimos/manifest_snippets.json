@@ -1,0 +1,14 @@
+[
+  {
+    "title": "Retrieve mixed project context",
+    "command": "curl -s -H \"Authorization: Bearer $PAIMOS_API_KEY\" -H \"Content-Type: application/json\" \"$PAIMOS_URL/api/projects/$PROJECT_ID/retrieve\" -d '{\"q\":\"password reset flow\",\"k\":10}'"
+  },
+  {
+    "title": "Inspect the project graph",
+    "command": "curl -s -H \"Authorization: Bearer $PAIMOS_API_KEY\" \"$PAIMOS_URL/api/projects/$PROJECT_ID/graph?root=project:$PROJECT_ID&depth=2\""
+  },
+  {
+    "title": "Check issue anchors",
+    "command": "curl -s -H \"Authorization: Bearer $PAIMOS_API_KEY\" \"$PAIMOS_URL/api/issues/PAI-29/anchors\""
+  }
+]

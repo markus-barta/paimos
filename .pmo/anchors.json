@@ -1,0 +1,60 @@
+{
+  "repo": "paimos",
+  "schema_version": "1",
+  "repo_revision": "23f91785aab94ee9887e758685066e59ef9cb7af",
+  "generated_at": "2026-04-26T16:22:24Z",
+  "anchors": {
+    "PAI-65": [
+      {
+        "file": "backend/cmd/paimos/cmd_anchors.go",
+        "line": 52,
+        "label": "anchor scanner command",
+        "confidence": "declared",
+        "symbol": null
+      }
+    ],
+    "PAI-66": [
+      {
+        "file": "backend/cmd/paimos/cmd_anchors.go",
+        "line": 94,
+        "label": "anchor staleness verifier",
+        "confidence": "declared",
+        "symbol": null
+      }
+    ],
+    "PAI-68": [
+      {
+        "file": "backend/cmd/paimos/cmd_anchors.go",
+        "line": 140,
+        "label": "anchor upload command",
+        "confidence": "declared",
+        "symbol": null
+      },
+      {
+        "file": "backend/handlers/project_context.go",
+        "line": 154,
+        "label": "anchor ingest endpoint",
+        "confidence": "declared",
+        "symbol": null
+      }
+    ],
+    "PAI-72": [
+      {
+        "file": "backend/cmd/paimos/cmd_manifest.go",
+        "line": 39,
+        "label": "manifest mirror command",
+        "confidence": "declared",
+        "symbol": null
+      }
+    ],
+    "PAI-79": [
+      {
+        "file": "backend/handlers/project_context.go",
+        "line": 298,
+        "label": "blast radius endpoint",
+        "confidence": "declared",
+        "symbol": null
+      }
+    ]
+  }
+}

@@ -32,6 +32,7 @@ GET    /projects/:id/manifest
 PUT    /projects/:id/manifest       {data}
 POST   /projects/:id/anchors        {repo_id, schema_version, repo_revision, generated_at, anchors}
 GET    /projects/:id/graph          ?root=issue:42&depth=2
+GET    /projects/:id/graph/blast-radius ?issue=PAI-79&depth=3
 POST   /projects/:id/retrieve       {q, k}
 ```
 
@@ -184,9 +185,15 @@ form the project-context layer for agents:
 - `manifest` stores structured truth such as stack, commands, services,
   owners, NFRs, and ADR references.
 - `anchors` ingests machine-generated issue-to-file locations per repo.
+- anchors may include derived `symbol` metadata for the nearest enclosing
+  function / method / class / type when the repo-side scanner can parse it.
 - `graph` exposes typed entity relations (issues, repos, anchors, project).
+- `graph/blast-radius` answers "what else is affected if this changes?" in a grouped-by-type shape.
 - `retrieve` returns mixed context hits from issue text, anchors, manifest,
-  and graph-neighbor expansion.
+  ADR/NFR manifest sections, derived symbols, and graph-neighbor expansion.
+  It uses project-scoped lexical search plus deterministic local vector
+  scoring and reciprocal-rank fusion across issue and context documents.
+  Response shape includes `hits`, `strategy`, and `meta`.
 
 Recommended manifest keys in v1: `repos`, `commands`, `stack`, `services`,
 `owners`, `nfrs`, `adrs`.

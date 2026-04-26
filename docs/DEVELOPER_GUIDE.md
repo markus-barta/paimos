@@ -9,6 +9,17 @@ For contribution mechanics (DCO, PR flow, review criteria), see
 `paimos` CLI setup, schema discovery, bulk ops, MCP wiring, and
 failure-mode guarantees.
 
+**Project-context tooling**:
+- [`ANCHORS.md`](ANCHORS.md) defines `@paimos` / `@pmo` source anchors.
+- `go run ./backend/cmd/paimos anchors scan --repo-root . --output .pmo/anchors.json`
+  generates the deterministic anchor index.
+- `go run ./backend/cmd/paimos anchors verify --repo-root . --index .pmo/anchors.json`
+  is the local/CI stale-anchor guard.
+- `scripts/upload-anchors.sh <project-key-or-id> <repo-id>` is the
+  default CI-ready upload wrapper for the committed index.
+- `go run ./backend/cmd/paimos manifest pull --project PAI --repo-root .`
+  mirrors PMO manifest context into `.pmo/` and `AGENTS.md`.
+
 **Adding a CRM sync provider** (HubSpot, Pipedrive, Salesforce, …):
 see [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
 plugin interface and a worked example.

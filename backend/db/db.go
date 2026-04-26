@@ -3501,8 +3501,10 @@ func migrate(db *sql.DB) error {
 	}},
 
 	// M76: PAI-30 foundations — generic entity relations and embeddings.
-	// issue_relations remains in place for backward compatibility; the
-	// handlers layer can dual-write or bridge incrementally.
+	// Confidence tiers follow the declared / derived / suggested pattern
+	// popularized by code-review-graph. issue_relations remains in place
+	// for backward compatibility; the handlers layer can dual-write or
+	// bridge incrementally.
 	{76, []string{
 		`CREATE TABLE IF NOT EXISTS entity_relations (
 			id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3619,11 +3621,27 @@ func migrate(db *sql.DB) error {
 	// prompt resolution is by key + enabled.
 	{80, []string{
 		`CREATE INDEX IF NOT EXISTS idx_entity_relations_project_src
-		 ON entity_relations(project_id, source_type, source_id, edge_type)`,
+			ON entity_relations(project_id, source_type, source_id, edge_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_entity_relations_project_tgt
-		 ON entity_relations(project_id, target_type, target_id, edge_type)`,
+			ON entity_relations(project_id, target_type, target_id, edge_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_prompts_key_enabled
-		 ON ai_prompts(key, enabled)`,
+			ON ai_prompts(key, enabled)`,
+	}},
+
+	// M81: project-context lexical retrieval substrate. This extends
+	// retrieval beyond raw issues into anchors and manifest-derived
+	// context documents (including ADR and NFR entries) without
+	// changing the existing global search index.
+	{81, []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS project_context_index USING fts5(
+			project_id UNINDEXED,
+			entity_type,
+			entity_key UNINDEXED,
+			title,
+			content,
+			metadata_json UNINDEXED,
+			tokenize='porter ascii'
+		)`,
 	}},
 	}
 

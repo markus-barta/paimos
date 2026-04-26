@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 80
+const latestSchemaVersion = 81
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -68,6 +68,7 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"project_repos",
 		"issue_anchors",
 		"project_manifests",
+		"project_context_index",
 		"entity_relations",
 		"entity_embeddings",
 		"ai_prompts",

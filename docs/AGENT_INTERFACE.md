@@ -285,11 +285,15 @@ Add `paimos-mcp` to your MCP servers config:
 }
 ```
 
-Tools available in the v1 allowlist:
+Tools available in the current allowlist:
 
 | Tool                  | Notes |
 |----------------------|-------|
 | `paimos_schema`       | Call before choosing enum values |
+| `paimos_retrieve`     | mixed project-context retrieval with fusion metadata |
+| `paimos_graph`        | typed entity-graph traversal |
+| `paimos_blast_radius` | grouped impact traversal for one issue |
+| `paimos_search`       | global PAIMOS search endpoint |
 | `paimos_issue_get`    | by key or id |
 | `paimos_issue_list`   | `project_key`, `status`, etc. |
 | `paimos_issue_create` | title + project_key required |
