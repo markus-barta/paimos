@@ -314,3 +314,4 @@ The review should be readable cold by future-maintainer six months on. Don't wri
   - Solo-maintainer continuity (bus-factor planning): [`CONTINUITY.md`](CONTINUITY.md)
   - Threat model + security invariants (the model an incident threatens): [`THREAT_MODEL.md`](THREAT_MODEL.md)
   - Operator hardening guide (the deployment-side hardening checklist): [`HARDENING.md`](HARDENING.md)
+  - Backup, restore, and DR proof pack: [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) — referenced extensively from §3.3 (data corruption runbook)

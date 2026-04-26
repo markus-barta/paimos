@@ -288,6 +288,7 @@ Five mistakes operators consistently make. Each one has bitten at least one depl
 - **[`THREAT_MODEL.md`](THREAT_MODEL.md)** — the model this guide hardens against. §4 invariants are the source of truth; the §3 checklist items here are the operator-side checks for those invariants.
 - **[`CONFIGURATION.md`](CONFIGURATION.md)** — every env var, every operator knob.
 - **[`DEPLOY.md`](DEPLOY.md)** — release + deploy + rollback runbook.
+- **[`BACKUP_RESTORE.md`](BACKUP_RESTORE.md)** — backup scope, restore runbooks (full / forensic), captured drill, RPO/RTO targets; the §3.7 checklist row above is operationalised there.
 - **[`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md)** — when something gets through the hardening; runbooks per incident class.
 - **[`CONTINUITY.md`](CONTINUITY.md)** — bus-factor planning if the maintainer is out.
 - **[`SECURITY.md`](../SECURITY.md)** — inbound disclosure policy.

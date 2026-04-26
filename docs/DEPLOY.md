@@ -118,6 +118,10 @@ If you spin up a third instance, copy one of these and change the values.
 Each successful deploy prints the rollback one-liner as the last step. It
 restores the tarball and repins compose to the previous image. Paraphrased:
 
+> For full restore scenarios beyond a recent-deploy rollback (forensic /
+> partial restore, captured drill timing, RPO/RTO targets, common
+> failure modes), see [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md).
+
 ```bash
 # on the host
 cd $COMPOSE_DIR
