@@ -5,6 +5,95 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] — 2026-04-26
+
+The Project Context layer for code-aware agents — built up incrementally
+across the v1 series under PAI-29 (context-in) and PAI-30 (context-out)
+— promotes from internal/experimental to a v1-stable agent contract.
+The schema (`project_repos`, `project_manifests`, `issue_anchors`,
+`entity_relations`) has been live for a while; this release finalizes
+the handlers, completes the typed entity-graph traversal, and publicly
+documents the surface in `AGENT_INTEGRATION.md` and `api-minimal.md`.
+That public agent contract is what the major bump marks.
+
+### Added — Project Context for code-aware agents (PAI-29 / PAI-30)
+
+Coding agents (Claude Code, custom build/triage bots, anything that
+operates on the repo as well as the issue tracker) now have a
+first-class read-and-write surface for **structured project facts**
+that go beyond markdown. The intent: an agent shouldn't have to grep
+six issues to figure out which repo to clone, which command to run,
+or where in the source tree the issue it's working on actually lives.
+
+**Six new endpoints**, all per-project / per-issue with the usual
+view-or-edit gating:
+
+- `GET /api/projects/{id}/repos` · `POST` · `PUT /{repoId}` · `DELETE`
+  — declare the linked repositories (URL, default branch, label,
+  sort order). The list is what `paimos-mcp` and ad-hoc agent skills
+  look at to decide where to clone.
+- `GET /api/projects/{id}/manifest` · `PUT` — structured project
+  truth: stack, commands, services, owners, NFRs, ADR refs.
+  Recommended v1 keys: `repos`, `commands`, `stack`, `services`,
+  `owners`, `nfrs`, `adrs`. Free-form JSON beyond that — admins can
+  shape it for their own agents without a schema migration.
+- `POST /api/projects/{id}/anchors` — bulk-ingest issue→file/line
+  locations from a repo-side scanner. Each anchor carries
+  `schema_version`, `repo_revision`, and `generated_at` so a deep
+  link in a ticket can be trusted to either resolve at the recorded
+  revision or fail loudly.
+- `GET /api/issues/{id}/anchors` — read-side: every recorded
+  file/line for one issue, across every linked repo, with the
+  per-anchor revision/schema metadata.
+- `GET /api/projects/{id}/graph?root=issue:42&depth=2` — typed
+  entity-graph traversal. Returns the relations rooted at the given
+  node (issue, repo, anchor, project) up to `depth` hops. Backed by
+  `entity_relations` rows that are populated incrementally as
+  issues, anchors, and repos move through the system.
+- `POST /api/projects/{id}/retrieve` `{q, k}` — mixed-context
+  retrieval. Combines issue full-text hits, manifest matches,
+  anchor matches, and one hop of graph-neighbor expansion into a
+  single ranked result list. Designed to be the one call an agent
+  makes when it needs context for a question.
+
+This release adds the typed graph traversal (`fetchEntityGraph`,
+`expandContextNeighbors`) and the relation-maintenance helpers
+(`upsertIssueEntityRelation`, `deleteAnchorEntityRelationsByRepo`,
+etc.) that keep the `entity_relations` table consistent as anchors
+and repos churn.
+
+No schema migration in this release — `project_repos`,
+`project_manifests`, `issue_anchors`, and `entity_relations` were
+added in earlier v1 milestones; v2.0.0 is the contract-promotion
+release for the surface that sits on top of them.
+
+### Added — `just doc-sync` (release follow-up workflow)
+
+A new `scripts/release-doc-sync.sh` files a single PAIMOS ticket per
+release with a four-surface checklist — README, `docs/`, the
+`../paimos-site` repo, brand/screenshots — plus a diff summary since
+the previous tag and a snapshot of `paimos-site`'s git state. Run as
+`just doc-sync` after `just release`; the release script now prints
+the reminder as part of its closing "Next:" output so the step is
+hard to miss. `docs/DEPLOY.md` is updated to "the four commands"
+with the standard **release → deploy → doc-sync** sequence
+documented.
+
+The intent is to close the long-running drift gap between code and
+user-facing surfaces: ship the code, deploy it, and within the same
+session decide (and record on a ticket) which of README / internal
+docs / public site / screenshots actually need a refresh.
+
+### Compatibility
+
+No breaking REST changes. Every v1.x endpoint continues to work
+unchanged. The major bump marks the **public agent contract** for
+the project-context surface — PAIMOS commits to keeping these
+endpoint shapes stable for the v2 series. Agents that integrated
+against the experimental shape during v1 should re-verify field
+names against `docs/api-minimal.md`; the documented v2 contract is
+the canonical reference going forward.
+
 ## [1.10.3] — 2026-04-26
 
 ### Changed — Settings → AI prompts edit modal (PAI-183)
