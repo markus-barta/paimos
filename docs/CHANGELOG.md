@@ -5,6 +5,15 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.4] — 2026-04-26
+
+### Fixed
+
+- Issue-list freshness banners now sit with proper top spacing instead of crowding the toolbar cluster.
+- AI result details now render in a wide, readable modal layout instead of collapsing into a narrow strip.
+- Header/title geometry now preserves left-side project context cleanly beside the pinned sidebar.
+- Footer project workspace status now resets and rehydrates correctly when switching between projects.
+
 ## [2.1.3] — 2026-04-26
 
 ### Changed
