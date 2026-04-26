@@ -169,22 +169,22 @@ func buildRouter() http.Handler {
 
 			r.Get("/projects", handlers.ListProjects)
 			r.With(auth.RequireAdmin).Post("/projects", handlers.CreateProject)
-			r.Get("/projects/{id}", handlers.GetProject)
+			r.With(auth.RequireProjectView).Get("/projects/{id}", handlers.GetProject)
 			r.With(auth.RequireAdmin).Put("/projects/{id}", handlers.UpdateProject)
 			r.With(auth.RequireAdmin).Delete("/projects/{id}", handlers.DeleteProject)
-			r.Get("/projects/{id}/repos", handlers.ListProjectRepos)
-			r.Post("/projects/{id}/repos", handlers.CreateProjectRepo)
-			r.Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
-			r.Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
-			r.Get("/projects/{id}/manifest", handlers.GetProjectManifest)
-			r.Put("/projects/{id}/manifest", handlers.PutProjectManifest)
-			r.Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
-			r.Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
-			r.Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/repos", handlers.ListProjectRepos)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/repos", handlers.CreateProjectRepo)
+			r.With(auth.RequireProjectEdit).Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
+			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
+			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
+			r.With(auth.RequireProjectView).Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
 
-			r.Get("/projects/{id}/issues", handlers.ListIssues)
-			r.Post("/projects/{id}/issues", handlers.CreateIssue)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
+			r.With(auth.RequireProjectEdit).Post("/projects/{id}/issues", handlers.CreateIssue)
 
 			r.Get("/issues/recent", handlers.RecentIssues)
 			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
@@ -250,7 +250,7 @@ func buildRouter() http.Handler {
 			r.Post("/views/{id}/pin", handlers.PinView)
 			r.Delete("/views/{id}/pin", handlers.UnpinView)
 
-			r.Get("/projects/{id}/export/csv", handlers.ExportCSV)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/export/csv", handlers.ExportCSV)
 
 			// Issue relations (sprint assignment, groups, etc.)
 			r.Get("/issues/{id}/relations", handlers.ListIssueRelations)
@@ -260,14 +260,15 @@ func buildRouter() http.Handler {
 			r.Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
 
 			// Reports
-			r.Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
-			r.Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
 
 			// Attachments
 			r.Get("/issues/{id}/attachments", handlers.ListAttachments)
 			r.Post("/issues/{id}/attachments", handlers.UploadAttachment)
 			r.Get("/attachments/{id}", handlers.GetAttachmentFile)
 			r.Delete("/attachments/{id}", handlers.DeleteAttachment)
+			r.Patch("/attachments/link", handlers.LinkAttachments)
 
 			// Time entries
 			r.Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
@@ -289,6 +290,22 @@ func buildRouter() http.Handler {
 
 			// Sprint listing
 			r.Get("/sprints", handlers.ListSprints)
+
+			// GDPR + retention
+			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
+			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
+			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+
+			// Incident log
+			r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)
+			r.With(auth.RequireAdmin).Get("/incidents", handlers.ListIncidents)
+			r.With(auth.RequireAdmin).Post("/incidents", handlers.CreateIncident)
+			r.With(auth.RequireAdmin).Get("/incidents/{id}", handlers.GetIncident)
+			r.With(auth.RequireAdmin).Patch("/incidents/{id}", handlers.UpdateIncident)
+			r.With(auth.RequireAdmin).Delete("/incidents/{id}", handlers.DeleteIncident)
+
+			// OpenAPI
+			r.Get("/openapi.json", handlers.GetOpenAPI)
 
 			// Dev test reports
 			r.With(auth.RequireAdmin).Post("/dev/test-reports", handlers.UploadTestReport)

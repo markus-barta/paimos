@@ -44,6 +44,10 @@ jobs:
           go vet ./...
           go test -count=1 ./...
 
+      - name: Backend — security invariants
+        working-directory: backend
+        run: go test -count=1 -run '^TestRegression_|^TestAuthzFuzz_' ./handlers/...
+
       - name: Frontend — typecheck + test
         working-directory: frontend
         run: |
@@ -51,9 +55,48 @@ jobs:
           npm run typecheck
           npm test
 
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: govulncheck (Go vulnerability scan)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: gosec (Go SAST)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt=text -severity=medium -confidence=medium \
+            -exclude=G104 \
+            -exclude-dir=cmd/genreport \
+            ./...
+
+      - name: npm audit (frontend production deps)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+
   docker:
     if: github.event_name == 'push'
-    needs: [test]
+    needs: [test, security-scan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
