@@ -831,6 +831,12 @@ async function deleteTimeEntry(entry: TimeEntry) {
           </button>
         </div>
 
+        <AiSurfaceFeedback
+          v-if="issue"
+          :host-key="`issue-side:${issue.id}:record`"
+          :apply="applyAiPanelResult"
+        />
+
         <div v-if="loading" class="sp-loading">Loading…</div>
 
         <!-- View mode -->
@@ -1265,10 +1271,6 @@ async function deleteTimeEntry(entry: TimeEntry) {
               </div>
             </div>
 
-            <AiSurfaceFeedback
-              :host-key="`issue-side:${issue?.id ?? 0}:record`"
-              :apply="applyAiPanelResult"
-            />
             <div class="field">
               <div class="field-label-row">
                 <label>Description</label>

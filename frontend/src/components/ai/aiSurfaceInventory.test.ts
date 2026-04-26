@@ -19,7 +19,7 @@ describe('AI surface inventory wiring', () => {
     expectHost('views/IssueDetailView.vue', '`issue-detail:${issueId}:acceptance_criteria`')
     expectHost('views/IssueDetailView.vue', '`issue-detail:${issueId}:notes`')
 
-    expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:record`')
+    expectHost('components/IssueSidePanel.vue', '`issue-side:${issue.id}:record`')
     expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:description`')
     expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:acceptance_criteria`')
     expectHost('components/IssueSidePanel.vue', '`issue-side:${issue?.id ?? 0}:notes`')
