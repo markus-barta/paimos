@@ -22,12 +22,12 @@ defineEmits<{
 <style scoped>
 .refresh-banner {
   position: sticky;
-  top: 0.75rem;
+  top: 0.5rem;
   z-index: 5;
   display: inline-flex;
   align-items: center;
   gap: 0.65rem;
-  margin: 0 0 0.85rem;
+  margin: 0.45rem 0 0.95rem;
   padding: 0.45rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--bp-blue) 18%, var(--border));
   border-radius: 999px;
@@ -35,6 +35,8 @@ defineEmits<{
   color: var(--bp-blue-dark);
   font-size: 12px;
   box-shadow: var(--shadow);
+  width: fit-content;
+  max-width: 100%;
 }
 
 .refresh-banner__button {

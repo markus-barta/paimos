@@ -172,6 +172,7 @@ watch(
     v-if="open"
     :open="open"
     :title="headerTitle"
+    max-width="980px"
     @close="close"
   >
     <!-- ── suggest_enhancement ─────────────────────────────────── -->
@@ -375,11 +376,11 @@ export { catLabel, globalIndex }
 </script>
 
 <style scoped>
-.ar { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.ar { display: flex; flex-direction: column; gap: 1rem; min-width: 0; width: 100%; }
 .ar-hint { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
 .ar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
-.ar-item { padding: .5rem .65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
-.ar-row { display: flex; align-items: flex-start; gap: .65rem; cursor: pointer; }
+.ar-item { width: 100%; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+.ar-row { display: flex; align-items: flex-start; gap: .75rem; cursor: pointer; width: 100%; }
 .ar-row > input[type="checkbox"] { margin-top: .3rem; }
 .ar-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
 .ar-row-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
@@ -404,7 +405,7 @@ export { catLabel, globalIndex }
 .ar-card-title { font-size: 13px; color: var(--text); }
 .ar-card-text { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
 .ar-card-actions { display: flex; justify-content: flex-end; gap: .35rem; }
-.ar-actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .25rem; }
+.ar-actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .25rem; flex-wrap: wrap; }
 .ar-estimate { display: flex; flex-direction: column; gap: .65rem; padding: .85rem 1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; }
 .ar-estimate-row { display: flex; gap: 1.5rem; }
 .ar-estimate-num { font-family: 'DM Mono', monospace; font-size: 22px; color: var(--bp-blue-dark); }
@@ -429,5 +430,29 @@ export { catLabel, globalIndex }
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
+}
+
+@media (max-width: 720px) {
+  .ar-item {
+    padding: 0.55rem 0.65rem;
+  }
+
+  .ar-row {
+    gap: 0.55rem;
+  }
+
+  .ar-actions {
+    justify-content: stretch;
+  }
+
+  .ar-actions > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ar-estimate-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
 }
 </style>

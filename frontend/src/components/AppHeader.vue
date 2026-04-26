@@ -168,10 +168,10 @@ defineExpose({
 <style scoped>
 .app-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, 32vw) minmax(0, 1fr);
   align-items: center;
   gap: 1rem;
-  padding: 0 2.5rem;
+  padding: 0 2rem 0 2.35rem;
   min-height: 52px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-card);
@@ -188,6 +188,7 @@ defineExpose({
   gap: 0.5rem;
   min-width: 0;
   overflow: hidden;
+  padding-left: 0.15rem;
 }
 
 /* CENTER */
@@ -203,6 +204,7 @@ defineExpose({
   justify-content: center;
   gap: 0.6rem;
   min-width: 0;
+  width: 100%;
 }
 
 .ah-search-wrap {
@@ -338,7 +340,7 @@ defineExpose({
       "left right"
       "center center";
     gap: 0.75rem 1rem;
-    padding: 0.75rem 1.25rem;
+    padding: 0.75rem 1.1rem 0.75rem 1.25rem;
   }
 
   .ah-left {

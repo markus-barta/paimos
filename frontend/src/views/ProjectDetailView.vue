@@ -143,6 +143,13 @@ const contextStatusLabel = computed(() =>
   contextSummary.value.populated ? 'Configured' : 'Not set up',
 )
 
+function resetWorkspaceState() {
+  workspacePanel.value = null
+  docCount.value = 0
+  cooperationPopulated.value = false
+  contextSummary.value = { repoCount: 0, hasManifest: false, populated: false }
+}
+
 function toggleWorkspace(panel: Exclude<ProjectWorkspace, null>) {
   workspacePanel.value = workspacePanel.value === panel ? null : panel
 }
@@ -445,6 +452,7 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
 
 async function load() {
   loading.value = true
+  resetWorkspaceState()
   const data = await loadProjectDetailData(projectId.value, search.query)
   project.value = data.project
   issues.value = data.issues
@@ -466,6 +474,7 @@ onMounted(() => {
 // Re-fetch when navigating project→project (Vue Router reuses the component)
 watch(() => route.params.id, (newId, oldId) => {
   if (newId && newId !== oldId) {
+    resetWorkspaceState()
     activeTabId.value = null
     load()
   }
