@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -44,5 +45,26 @@ func TestAIActionCatalogIsMounted(t *testing.T) {
 	}
 	if !foundOptimize {
 		t.Fatal("expected optimize action in catalog")
+	}
+}
+
+func TestAIActionDispatcherIsMounted(t *testing.T) {
+	ts := newTestServer(t)
+
+	req, err := http.NewRequest(http.MethodPost, ts.srv.URL+"/api/ai/action", bytes.NewBufferString(`{"action":"optimize","field":"description","text":"hello"}`))
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", ts.memberCookie)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post dispatcher: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		t.Fatal("expected /api/ai/action to be mounted, got 404")
 	}
 }

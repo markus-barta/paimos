@@ -384,6 +384,7 @@ func main() {
 			// the optimize behaviour now lives behind /api/ai/action
 			// with action="optimize". The frontend useAiOptimize
 			// composable was updated to call the dispatcher.
+			r.Post("/ai/action", handlers.AIAction)
 
 			// Integrations (admin only for write)
 			r.Get("/integrations/jira", handlers.GetJiraIntegration)
