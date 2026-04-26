@@ -1,9 +1,5 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- PAIMOS — AGPL-3.0-or-later. See LICENSE in the PAIMOS repo. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 55 60" fill="currentColor">
-  <title>PAIMOS</title>
-  <rect x="0" y="0" width="8" height="60"/>
-  <rect x="16" y="0" width="8" height="60"/>
-  <rect x="32" y="0" width="8" height="60"/>
-  <path d="M40 0 A15 15 0 0 1 40 30 L40 22 A7 7 0 0 0 40 8 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 170 120" fill="currentColor" role="img" aria-label="paimos mark" preserveAspectRatio="xMinYMid meet">
+  <rect x="0" y="2" width="17" height="118" opacity="0.4"/>
+  <rect x="34" y="2" width="17" height="118" opacity="0.7"/>
+  <text x="54" y="120" font-family="Geist, 'Geist Variable', Söhne, 'Neue Haas Grotesk', Inter, -apple-system, system-ui, sans-serif" font-weight="500" font-size="166" dominant-baseline="alphabetic" letter-spacing="-5">P</text>
 </svg>
