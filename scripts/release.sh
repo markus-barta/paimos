@@ -136,6 +136,7 @@ for i in $(seq 1 60); do
     echo "Next:"
     echo "  just deploy-ppm $NEW_TAG"
     echo "  just deploy-pmo $NEW_TAG"
+    echo "  just doc-sync       # file the README / docs / paimos-site sync ticket"
     exit 0
   fi
   sleep 10

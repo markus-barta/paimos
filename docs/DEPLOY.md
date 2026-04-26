@@ -17,12 +17,13 @@ CI source of truth: `.github/workflows/ci.yml`.
 
 ---
 
-## The three commands
+## The four commands
 
 ```
 just release [patch|minor|major|x.y.z]   # cut a release (VERSION + CHANGELOG + tag + push)
 just deploy-ppm [tag]                    # deploy a tag to ppm (default: latest)
 just deploy-pmo [tag]                    # deploy a tag to pmo (default: latest)
+just doc-sync [tag]                      # file a "doc/site sync follow-up" ticket in PAIMOS
 ```
 
 Plus a read-only status helper:
@@ -30,6 +31,14 @@ Plus a read-only status helper:
 ```
 just status                              # last 5 tags + commits since last tag
 ```
+
+The standard sequence after a feature lands on `main` is **release → deploy
+→ doc-sync**. The first two cut and roll out the new build; `doc-sync`
+files a single PAIMOS ticket with a four-item checklist (README, `docs/`,
+the `../paimos-site` repo, brand/screenshots) so the user-facing surfaces
+don't drift out of sync with the code. `release.sh` prints the
+`just doc-sync` reminder as part of its "Next:" output to make the step
+hard to miss.
 
 ## `just release`
 

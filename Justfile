@@ -32,3 +32,9 @@ deploy-ppm tag="":
 # Deploy a tag to pmo (pm.bytepoets.com). Default tag = latest on origin.
 deploy-pmo tag="":
     @./scripts/deploy.sh pmo {{tag}}
+
+# File a "doc/site sync follow-up" ticket in PAIMOS for a tag (default
+# = latest). Run after `just release` so README, docs/, paimos-site,
+# and screenshots don't drift out of sync with the new code.
+doc-sync tag="":
+    @./scripts/release-doc-sync.sh {{tag}}
