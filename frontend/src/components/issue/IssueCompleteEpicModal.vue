@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppModal from '@/components/AppModal.vue'
-import { api, ApiError, errMsg } from '@/api/client'
+import { ApiError, errMsg } from '@/api/client'
+import { completeEpic, loadIssueChildren } from '@/services/issueEpicCompletion'
 import type { Issue } from '@/types'
 
 const props = defineProps<{
@@ -31,12 +32,8 @@ async function markDone() {
   error.value  = ''
   saving.value = true
   try {
-    const url = `/issues/${props.issueId}/complete-epic`
-    const updated = await api.post<Issue>(
-      force.value ? `${url}?force=true` : url,
-      {}
-    )
-    const ch = await api.get<Issue[]>(`/issues/${props.issueId}/children`).catch(() => [])
+    const updated = await completeEpic(props.issueId, force.value)
+    const ch = await loadIssueChildren(props.issueId).catch(() => [])
     open.value = false
     emit('completed', updated, ch)
   } catch (e: unknown) {

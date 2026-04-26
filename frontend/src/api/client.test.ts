@@ -99,4 +99,25 @@ describe('api client 401 interceptor', () => {
     await expect(api.get('/projects')).rejects.toThrow()
     expect(sessionExpired.value).toBe(false)
   })
+
+  it('salvages JSON objects with stray bytes before the payload', async () => {
+    stubFetch(async () => new Response('null{"action":"optimize","body":{"optimized":"Better text"}}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    const payload = await api.get<{ action: string; body: { optimized: string } }>('/ai/action-preview')
+
+    expect(payload.action).toBe('optimize')
+    expect(payload.body.optimized).toBe('Better text')
+  })
+
+  it('surfaces a clean ApiError when the server returns invalid JSON', async () => {
+    stubFetch(async () => new Response('nullboom', {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    await expect(api.get('/ai/action')).rejects.toThrow('invalid JSON response: nullboom')
+  })
 })

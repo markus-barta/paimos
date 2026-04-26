@@ -10,7 +10,7 @@ import { useDirtyGuard } from '@/composables/useDirtyGuard'
 import { useConfirm } from '@/composables/useConfirm'
 import { useMarkdown } from '@/composables/useMarkdown'
 import { useTimeUnit } from '@/composables/useTimeUnit'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import { attachmentsEnabled } from '@/api/instance'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { provideIssueContext } from '@/composables/useIssueContext'
@@ -29,6 +29,7 @@ import {
   saveIssueDetail,
   type IssueAggregation as Aggregation,
 } from '@/services/issueDetail'
+import { uploadInlineIssueAttachment } from '@/services/issueInlineAttachments'
 import {
   useIssueDisplay,
   TYPE_SVGS,
@@ -273,15 +274,7 @@ function startUpload(job: UploadJob) {
   job.status = 'pending'
   job.progress = 0
   job.error = undefined
-
-  const fd = new FormData()
-  fd.append('file', job.file)
-
-  const endpoint = issue.value?.id
-    ? `/issues/${issueId.value}/attachments`
-    : '/attachments'
-
-  api.upload<Attachment>(endpoint, fd, (pct) => { job.progress = pct })
+  uploadInlineIssueAttachment(issue.value?.id ?? 0, job.file, (pct) => { job.progress = pct })
     .then((a) => {
       const url = `/api/attachments/${a.id}`
       const safeName = escapeLinkText(a.filename)

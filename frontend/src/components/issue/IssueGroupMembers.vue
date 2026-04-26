@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api } from '@/api/client'
 import StatusDot from '@/components/StatusDot.vue'
 import { STATUS_LABEL } from '@/composables/useIssueDisplay'
+import { loadIssueGroupMembers } from '@/services/issueGroupMembers'
 import type { Issue } from '@/types'
 
 const props = defineProps<{
@@ -25,7 +25,7 @@ async function load() {
   groupMemLoading.value = true
   const relType = isSprint.value ? 'sprint' : 'groups'
   try {
-    groupMembers.value = await api.get<Issue[]>(`/issues/${props.issueId}/members?type=${relType}`)
+    groupMembers.value = await loadIssueGroupMembers(props.issueId, relType)
   } catch { groupMembers.value = [] }
   finally { groupMemLoading.value = false }
 }

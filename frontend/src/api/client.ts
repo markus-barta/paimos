@@ -103,6 +103,46 @@ export interface RequestOptions {
   timeoutMs?: number
 }
 
+function extractLikelyJSON(raw: string): string {
+  const trimmed = raw.trim()
+  if (trimmed === '') return trimmed
+  const firstObject = trimmed.indexOf('{')
+  const lastObject = trimmed.lastIndexOf('}')
+  if (firstObject >= 0 && lastObject > firstObject) {
+    return trimmed.slice(firstObject, lastObject + 1)
+  }
+  const firstArray = trimmed.indexOf('[')
+  const lastArray = trimmed.lastIndexOf(']')
+  if (firstArray >= 0 && lastArray > firstArray) {
+    return trimmed.slice(firstArray, lastArray + 1)
+  }
+  return trimmed
+}
+
+function responseSnippet(raw: string): string {
+  const singleLine = raw.replace(/\s+/g, ' ').trim()
+  if (singleLine === '') return 'empty response body'
+  return singleLine.length > 180 ? `${singleLine.slice(0, 177)}...` : singleLine
+}
+
+async function readJSON<T>(res: Response): Promise<T> {
+  const raw = await res.text()
+  if (raw.trim() === '') return undefined as T
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    const extracted = extractLikelyJSON(raw)
+    if (extracted !== raw.trim()) {
+      try {
+        return JSON.parse(extracted) as T
+      } catch {
+        // Fall through to the user-facing ApiError below.
+      }
+    }
+    throw new ApiError(res.status, `invalid JSON response: ${responseSnippet(raw)}`)
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
   const ctrl = new AbortController()
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS
@@ -135,7 +175,7 @@ async function request<T>(method: string, path: string, body?: unknown, opts?: R
 
   if (res.status === 204) return undefined as T
 
-  const data = await res.json()
+  const data = await readJSON<any>(res)
   if (!res.ok) throw new ApiError(res.status, data.error ?? 'request failed')
   return data as T
 }
