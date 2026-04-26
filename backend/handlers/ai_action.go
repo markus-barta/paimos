@@ -375,49 +375,5 @@ type aiActionListItem struct {
 }
 
 func AIListActions(w http.ResponseWriter, r *http.Request) {
-	// Pull all admin-edited placements in one shot (cheap; ai_prompts
-	// has at most ~20 rows). Map by key for quick lookup.
-	placements := loadPromptPlacements()
-	out := make([]aiActionListItem, 0, len(actionRegistry))
-	for _, d := range actionRegistry {
-		placement := d.Placement
-		if placement == "" {
-			// Defensive: an action registered before PAI-179 (or with
-			// a registry-side typo) defaults to "text" so the row
-			// surfaces somewhere instead of vanishing entirely.
-			placement = "text"
-		}
-		if override, ok := placements[d.Key]; ok && override != "" {
-			placement = override
-		}
-		out = append(out, aiActionListItem{
-			Key:         d.Key,
-			Label:       d.Label,
-			Surface:     d.Surface,
-			Placement:   placement,
-			SubKeys:     d.SubKeys,
-			Implemented: d.Implemented,
-		})
-	}
-	jsonOK(w, map[string]any{"actions": out})
-}
-
-// loadPromptPlacements pulls every (key, placement) pair from the
-// ai_prompts table. Errors are swallowed and treated as "no
-// override" so the catalogue endpoint stays available even if the
-// table doesn't exist yet (fresh install before M79 ran).
-func loadPromptPlacements() map[string]string {
-	out := map[string]string{}
-	rows, err := db.DB.Query(`SELECT key, COALESCE(placement, '') FROM ai_prompts`)
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var k, p string
-		if err := rows.Scan(&k, &p); err == nil {
-			out[k] = p
-		}
-	}
-	return out
+	jsonOK(w, map[string]any{"actions": listAIActionCatalog(db.DB)})
 }

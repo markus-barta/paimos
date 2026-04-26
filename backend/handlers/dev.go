@@ -17,14 +17,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -72,87 +68,11 @@ func defaultTestReportSummary(status string, reportCount int) TestReportSummary 
 }
 
 func listStoredTestReports() ([]TestReportMeta, error) {
-	dir := testReportsDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []TestReportMeta{}, nil
-		}
-		return nil, err
-	}
-
-	reports := make([]TestReportMeta, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		version := strings.TrimPrefix(e.Name(), "test-results-")
-		version = strings.TrimSuffix(version, ".html")
-		meta := TestReportMeta{
-			Filename:    e.Name(),
-			Version:     version,
-			GeneratedAt: info.ModTime().UTC().Format(time.RFC3339),
-			SizeBytes:   info.Size(),
-		}
-		sidecarPath := filepath.Join(dir, "test-results-"+version+"-summary.json")
-		if sidecarData, err := os.ReadFile(sidecarPath); err == nil {
-			var s struct {
-				Passed   int `json:"passed"`
-				Failures int `json:"failures"`
-				Total    int `json:"total"`
-			}
-			if json.Unmarshal(sidecarData, &s) == nil {
-				failed := s.Failures
-				meta.Passed = &s.Passed
-				meta.Failed = &failed
-				meta.Total = &s.Total
-			}
-		}
-		reports = append(reports, meta)
-	}
-
-	sort.Slice(reports, func(i, j int) bool {
-		return reports[i].GeneratedAt > reports[j].GeneratedAt
-	})
-
-	return reports, nil
+	return listStoredTestReportsFromDir(testReportsDir())
 }
 
 func readTestReportSummary() TestReportSummary {
-	reports, err := listStoredTestReports()
-	if err != nil {
-		return defaultTestReportSummary("error", 0)
-	}
-
-	data, err := os.ReadFile(filepath.Join(testReportsDir(), "latest-summary.json"))
-	if err != nil {
-		if len(reports) == 0 {
-			return defaultTestReportSummary("missing_reports", 0)
-		}
-		return defaultTestReportSummary("partial", len(reports))
-	}
-
-	var out TestReportSummary
-	if err := json.Unmarshal(data, &out); err != nil {
-		if len(reports) == 0 {
-			return defaultTestReportSummary("missing_reports", 0)
-		}
-		return defaultTestReportSummary("partial", len(reports))
-	}
-	out.Available = len(reports) > 0
-	if out.Status == "" {
-		if out.Available {
-			out.Status = "ready"
-		} else {
-			out.Status = "missing_reports"
-		}
-	}
-	out.ReportCount = len(reports)
-	return out
+	return readTestReportSummaryFromDir(testReportsDir())
 }
 
 func isValidTestReportFilename(name string) bool {
@@ -196,126 +116,19 @@ func ListTestReports(w http.ResponseWriter, r *http.Request) {
 //   - summary: optional test-results-<version>-summary.json
 //   - latest_summary: optional latest-summary.json
 func UploadTestReport(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(16 << 20); err != nil {
-		jsonError(w, "invalid multipart form", http.StatusBadRequest)
-		return
-	}
-
-	report, reportHeader, err := r.FormFile("report")
+	bundle, err := parseUploadedTestReportBundle(r)
 	if err != nil {
-		jsonError(w, "report file required", http.StatusBadRequest)
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defer report.Close()
-
-	if !isValidTestReportFilename(reportHeader.Filename) {
-		jsonError(w, "invalid report filename", http.StatusBadRequest)
-		return
-	}
-
-	reportData, err := io.ReadAll(report)
-	if err != nil || len(reportData) == 0 {
-		jsonError(w, "invalid report file", http.StatusBadRequest)
-		return
-	}
-
-	dir := testReportsDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		jsonError(w, "failed to prepare report directory", http.StatusInternalServerError)
-		return
-	}
-
-	version := strings.TrimSuffix(strings.TrimPrefix(reportHeader.Filename, "test-results-"), ".html")
-
-	var latestSummary TestReportSummary
-	latestSummary.Version = version
-	latestSummary.Available = true
-	latestSummary.Status = "ready"
-
-	var summaryFilename string
-	var summaryData []byte
-
-	summaryFile, summaryHeader, err := r.FormFile("summary")
-	if err == nil {
-		defer summaryFile.Close()
-		if !isValidSummaryFilename(summaryHeader.Filename) {
-			jsonError(w, "invalid summary filename", http.StatusBadRequest)
-			return
-		}
-		readSummaryData, readErr := io.ReadAll(summaryFile)
-		if readErr != nil {
-			jsonError(w, "invalid summary file", http.StatusBadRequest)
-			return
-		}
-		parsed, parseErr := parseTestReportCounts(readSummaryData)
-		if parseErr != nil {
-			jsonError(w, "summary must be valid json", http.StatusBadRequest)
-			return
-		}
-		if parsed.Version != "" && parsed.Version != version {
-			jsonError(w, "summary version does not match report filename", http.StatusBadRequest)
-			return
-		}
-		summaryFilename = summaryHeader.Filename
-		summaryData = readSummaryData
-		if parsed.Version != "" {
-			latestSummary.Version = parsed.Version
-		}
-		latestSummary.Failures = parsed.Failures
-		latestSummary.Passed = parsed.Passed
-		latestSummary.Total = parsed.Total
-		latestSummary.GeneratedAt = parsed.GeneratedAt
-	} else if !errors.Is(err, http.ErrMissingFile) {
-		jsonError(w, "invalid summary file", http.StatusBadRequest)
-		return
-	}
-
-	latestFile, _, err := r.FormFile("latest_summary")
-	if err == nil {
-		defer latestFile.Close()
-		data, readErr := io.ReadAll(latestFile)
-		if readErr != nil {
-			jsonError(w, "invalid latest summary file", http.StatusBadRequest)
-			return
-		}
-		if json.Unmarshal(data, &latestSummary) != nil {
-			jsonError(w, "latest summary must be valid json", http.StatusBadRequest)
-			return
-		}
-		if latestSummary.Version != "" && latestSummary.Version != version {
-			jsonError(w, "latest summary version does not match report filename", http.StatusBadRequest)
-			return
-		}
-		latestSummary.Available = true
-		if latestSummary.Status == "" {
-			latestSummary.Status = "ready"
-		}
-	} else if !errors.Is(err, http.ErrMissingFile) {
-		jsonError(w, "invalid latest summary file", http.StatusBadRequest)
-		return
-	}
-
-	reportPath := filepath.Join(dir, reportHeader.Filename)
-	if err := os.WriteFile(reportPath, reportData, 0o644); err != nil {
-		jsonError(w, "failed to store report", http.StatusInternalServerError)
-		return
-	}
-	if summaryFilename != "" {
-		if err := os.WriteFile(filepath.Join(dir, summaryFilename), summaryData, 0o644); err != nil {
-			jsonError(w, "failed to store summary", http.StatusInternalServerError)
-			return
-		}
-	}
-	reports, _ := listStoredTestReports()
-	latestSummary.ReportCount = len(reports)
-	latestSummaryJSON, _ := json.Marshal(latestSummary)
-	if err := os.WriteFile(filepath.Join(dir, "latest-summary.json"), latestSummaryJSON, 0o644); err != nil {
-		jsonError(w, "failed to store latest summary", http.StatusInternalServerError)
+	latestSummary, err := storeUploadedTestReportBundle(testReportsDir(), bundle)
+	if err != nil {
+		jsonError(w, "failed to store report bundle", http.StatusInternalServerError)
 		return
 	}
 
 	jsonOK(w, map[string]any{
-		"filename": reportHeader.Filename,
+		"filename": bundle.reportFilename,
 		"version":  latestSummary.Version,
 		"status":   latestSummary.Status,
 	})
