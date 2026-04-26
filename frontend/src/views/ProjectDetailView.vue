@@ -29,7 +29,9 @@ import { buildProjectPurgePayload, emptyProjectPurgeForm } from '@/config/projec
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
 import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import {
+  addProjectTag as addProjectTagRequest,
   buildProjectCsvExportUrl,
+  deleteProjectDetail,
   deleteProjectLogo,
   executeProjectTimeEntryPurge,
   loadProjectDetailData,
@@ -37,7 +39,11 @@ import {
   loadProjectPurgeUsers,
   preflightProjectCsvImport,
   previewProjectTimeEntryPurge,
+  refreshProjectViews,
+  removeProjectTag as removeProjectTagRequest,
   runProjectCsvImport,
+  saveProjectDetail,
+  setProjectStatus,
   uploadProjectLogo,
 } from '@/services/projectDetail'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
@@ -134,7 +140,7 @@ function onViewApplied(viewId: number) {
 }
 
 async function refreshViews() {
-  try { allViews.value = await api.get<SavedView[]>('/views') } catch { /* ignore */ }
+  try { allViews.value = await refreshProjectViews() } catch { /* ignore */ }
 }
 
 // Edit project
@@ -196,7 +202,7 @@ async function saveProject() {
   saving.value = true
   try {
     const payload = buildProjectUpdatePayload(editForm.value, project.value?.customer_id ?? null)
-    project.value = await api.put<Project>(`/projects/${projectId.value}`, payload)
+    project.value = await saveProjectDetail(projectId.value, payload)
     showEdit.value = false
   } catch (e: unknown) {
     editError.value = errMsg(e)
@@ -222,7 +228,7 @@ async function toggleArchive() {
   archiving.value = true
   try {
     const newStatus = project.value.status === 'active' ? 'archived' : 'active'
-    project.value = await api.put<Project>(`/projects/${projectId.value}`, { status: newStatus })
+    project.value = await setProjectStatus(projectId.value, newStatus)
     editForm.value.status = project.value.status
   } finally {
     archiving.value = false
@@ -232,7 +238,7 @@ async function toggleArchive() {
 async function deleteProject() {
   deletingProject.value = true
   try {
-    await api.delete(`/projects/${projectId.value}`)
+    await deleteProjectDetail(projectId.value)
     showEdit.value = false
     showDeleteConfirm.value = false
     router.push('/projects')
@@ -302,14 +308,14 @@ async function executePurge() {
 }
 
 async function addProjectTag(tagId: number) {
-  await api.post(`/projects/${projectId.value}/tags`, { tag_id: tagId })
+  await addProjectTagRequest(projectId.value, tagId)
   const tag = allTags.value.find(t => t.id === tagId)
   if (tag && project.value) project.value.tags = [...project.value.tags, tag]
 }
 
 async function removeProjectTag(tagId: number) {
   if (!await confirm({ message: 'Remove this tag from the project?', confirmLabel: 'Remove' })) return
-  await api.delete(`/projects/${projectId.value}/tags/${tagId}`)
+  await removeProjectTagRequest(projectId.value, tagId)
   if (project.value) project.value.tags = project.value.tags.filter(t => t.id !== tagId)
 }
 

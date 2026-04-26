@@ -10,7 +10,18 @@ vi.mock('@/api/client', () => ({
 }))
 
 import { api } from '@/api/client'
-import { cloneIssueDetail, deleteIssueDetail, loadIssueAggregation, loadIssueDetailData, saveIssueDetail } from './issueDetail'
+import {
+  addIssueTag,
+  assignIssueSprint,
+  cloneIssueDetail,
+  deleteIssueDetail,
+  loadIssueAggregation,
+  loadIssueDetailData,
+  loadIssueParent,
+  removeIssueSprint,
+  removeIssueTag,
+  saveIssueDetail,
+} from './issueDetail'
 
 describe('issueDetail service', () => {
   beforeEach(() => {
@@ -57,7 +68,7 @@ describe('issueDetail service', () => {
     expect(vi.mocked(api.get).mock.calls.some(([url]) => url === '/issues/null')).toBe(false)
   })
 
-  it('delegates save/delete/clone/aggregation to the API layer', async () => {
+  it('delegates save/delete/clone/aggregation and mutations to the API layer', async () => {
     vi.mocked(api.put).mockResolvedValue({ id: 9 } as never)
     vi.mocked(api.delete).mockResolvedValue(undefined as never)
     vi.mocked(api.post).mockResolvedValue({ id: 10 } as never)
@@ -67,10 +78,20 @@ describe('issueDetail service', () => {
     await deleteIssueDetail(9)
     await cloneIssueDetail(9)
     await loadIssueAggregation(9)
+    await loadIssueParent(4)
+    await addIssueTag(9, 2)
+    await removeIssueTag(9, 2)
+    await assignIssueSprint(9, 3)
+    await removeIssueSprint(9, 3)
 
     expect(api.put).toHaveBeenCalledWith('/issues/9', { title: 'x' })
     expect(api.delete).toHaveBeenCalledWith('/issues/9')
+    expect(api.delete).toHaveBeenCalledWith('/issues/9/tags/2')
+    expect(api.delete).toHaveBeenCalledWith('/issues/9/relations', { target_id: 3, type: 'sprint' })
     expect(api.post).toHaveBeenCalledWith('/issues/9/clone', {})
+    expect(api.post).toHaveBeenCalledWith('/issues/9/tags', { tag_id: 2 })
+    expect(api.post).toHaveBeenCalledWith('/issues/9/relations', { target_id: 3, type: 'sprint' })
     expect(api.get).toHaveBeenCalledWith('/issues/9/aggregation')
+    expect(api.get).toHaveBeenCalledWith('/issues/4')
   })
 })

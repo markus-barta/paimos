@@ -16,7 +16,19 @@ import { useNewIssueStore } from '@/stores/newIssue'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { emptyIssueDetailForm, issueToDetailForm } from '@/config/issueDetailForm'
 import type { Issue, Tag, Project, Sprint, User, Attachment } from '@/types'
-import { cloneIssueDetail, deleteIssueDetail, loadIssueAggregation, loadIssueDetailData, saveIssueDetail, type IssueAggregation as Aggregation } from '@/services/issueDetail'
+import {
+  addIssueTag,
+  assignIssueSprint,
+  cloneIssueDetail,
+  deleteIssueDetail,
+  loadIssueAggregation,
+  loadIssueDetailData,
+  loadIssueParent,
+  removeIssueSprint,
+  removeIssueTag,
+  saveIssueDetail,
+  type IssueAggregation as Aggregation,
+} from '@/services/issueDetail'
 import {
   useIssueDisplay,
   TYPE_SVGS,
@@ -159,9 +171,7 @@ async function save() {
   saving.value = true
   try {
     issue.value = await saveIssueDetail(issueId.value, form.value)
-    parentIssue.value = issue.value.parent_id
-      ? await api.get<Issue>(`/issues/${issue.value.parent_id}`).catch(() => null)
-      : null
+    parentIssue.value = issue.value.parent_id ? await loadIssueParent(issue.value.parent_id) : null
     editing.value = false
     resetDetailDirty()
     const cu = issue.value.cost_unit?.trim()
@@ -352,14 +362,14 @@ function onTextareaDrop(e: DragEvent, textareaRef: HTMLTextAreaElement, modelFie
 }
 
 async function addTag(tagId: number) {
-  await api.post(`/issues/${issueId.value}/tags`, { tag_id: tagId })
+  await addIssueTag(issueId.value, tagId)
   const tag = allTags.value.find(t => t.id === tagId)
   if (tag && issue.value) issue.value = { ...issue.value, tags: [...(issue.value.tags ?? []), tag] }
 }
 
 async function removeTag(tagId: number) {
   if (!await confirm({ message: 'Remove this tag?', confirmLabel: 'Remove' })) return
-  await api.delete(`/issues/${issueId.value}/tags/${tagId}`)
+  await removeIssueTag(issueId.value, tagId)
   if (issue.value) issue.value = { ...issue.value, tags: (issue.value.tags ?? []).filter(t => t.id !== tagId) }
 }
 
@@ -411,7 +421,7 @@ function toggleSprintDropdown() {
 
 async function assignSprint(sprint: Sprint) {
   if (!issue.value) return
-  await api.post(`/issues/${issueId.value}/relations`, { target_id: sprint.id, type: 'sprint' })
+  await assignIssueSprint(issueId.value, sprint.id)
   issue.value = { ...issue.value, sprint_ids: [...(issue.value.sprint_ids ?? []), sprint.id] }
   sprintDropdownOpen.value = false
   sprintSearchQuery.value  = ''
@@ -420,7 +430,7 @@ async function assignSprint(sprint: Sprint) {
 async function removeSprint(sprintId: number) {
   if (!issue.value) return
   if (!await confirm({ message: 'Remove sprint assignment?', confirmLabel: 'Remove' })) return
-  await api.delete(`/issues/${issueId.value}/relations`, { target_id: sprintId, type: 'sprint' })
+  await removeIssueSprint(issueId.value, sprintId)
   issue.value = { ...issue.value, sprint_ids: (issue.value.sprint_ids ?? []).filter(id => id !== sprintId) }
 }
 

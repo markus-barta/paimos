@@ -138,3 +138,27 @@ export async function runProjectCsvImport(
   }
   return data as ProjectImportResult
 }
+
+export function refreshProjectViews(): Promise<SavedView[]> {
+  return api.get<SavedView[]>('/views')
+}
+
+export function saveProjectDetail(projectId: number, payload: Record<string, unknown>): Promise<Project> {
+  return api.put<Project>(`/projects/${projectId}`, payload)
+}
+
+export function setProjectStatus(projectId: number, status: 'active' | 'archived'): Promise<Project> {
+  return api.put<Project>(`/projects/${projectId}`, { status })
+}
+
+export function deleteProjectDetail(projectId: number): Promise<void> {
+  return api.delete(`/projects/${projectId}`)
+}
+
+export function addProjectTag(projectId: number, tagId: number): Promise<void> {
+  return api.post(`/projects/${projectId}/tags`, { tag_id: tagId })
+}
+
+export function removeProjectTag(projectId: number, tagId: number): Promise<void> {
+  return api.delete(`/projects/${projectId}/tags/${tagId}`)
+}

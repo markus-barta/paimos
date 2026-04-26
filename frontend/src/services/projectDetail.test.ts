@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/api/client', () => ({
   api: {
     get: vi.fn(),
+    put: vi.fn(),
     delete: vi.fn(),
     post: vi.fn(),
   },
@@ -11,8 +12,10 @@ vi.mock('@/api/client', () => ({
 
 import { api } from '@/api/client'
 import {
+  addProjectTag,
   buildProjectCsvExportUrl,
   buildProjectIssuesUrl,
+  deleteProjectDetail,
   deleteProjectLogo,
   executeProjectTimeEntryPurge,
   loadProjectDetailData,
@@ -20,7 +23,11 @@ import {
   loadProjectPurgeUsers,
   preflightProjectCsvImport,
   previewProjectTimeEntryPurge,
+  refreshProjectViews,
+  removeProjectTag,
   runProjectCsvImport,
+  saveProjectDetail,
+  setProjectStatus,
   uploadProjectLogo,
 } from './projectDetail'
 
@@ -60,22 +67,35 @@ describe('projectDetail service', () => {
     expect(api.get).toHaveBeenCalledWith('/projects/7/issues?fields=list&q=ab')
   })
 
-  it('delegates issue and purge loads to the API layer', async () => {
+  it('delegates issue, lifecycle, and purge loads to the API layer', async () => {
     vi.mocked(api.get).mockResolvedValue([] as never)
     vi.mocked(api.post).mockResolvedValue({ count: 2, total_hours: 3 } as never)
     vi.mocked(api.delete).mockResolvedValue({ id: 7 } as never)
+    vi.mocked(api.put).mockResolvedValue({ id: 7, status: 'archived' } as never)
 
     await loadProjectIssues(7, '')
     await loadProjectPurgeUsers(7)
     await previewProjectTimeEntryPurge(7, { from: '2026-01-01' })
     await executeProjectTimeEntryPurge(7, { confirmation_key: 'confirm' })
     await deleteProjectLogo(7)
+    await refreshProjectViews()
+    await saveProjectDetail(7, { name: 'Refined' })
+    await setProjectStatus(7, 'archived')
+    await deleteProjectDetail(7)
+    await addProjectTag(7, 4)
+    await removeProjectTag(7, 4)
 
     expect(api.get).toHaveBeenCalledWith('/projects/7/issues?fields=list')
     expect(api.get).toHaveBeenCalledWith('/projects/7/time-entries/users')
+    expect(api.get).toHaveBeenCalledWith('/views')
     expect(api.post).toHaveBeenCalledWith('/projects/7/time-entries/purge-preview', { from: '2026-01-01' })
     expect(api.post).toHaveBeenCalledWith('/projects/7/time-entries/purge', { confirmation_key: 'confirm' })
+    expect(api.post).toHaveBeenCalledWith('/projects/7/tags', { tag_id: 4 })
     expect(api.delete).toHaveBeenCalledWith('/projects/7/logo')
+    expect(api.delete).toHaveBeenCalledWith('/projects/7')
+    expect(api.delete).toHaveBeenCalledWith('/projects/7/tags/4')
+    expect(api.put).toHaveBeenCalledWith('/projects/7', { name: 'Refined' })
+    expect(api.put).toHaveBeenCalledWith('/projects/7', { status: 'archived' })
   })
 
   it('uploads and imports through fetch-backed endpoints', async () => {

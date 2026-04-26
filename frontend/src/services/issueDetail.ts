@@ -74,3 +74,23 @@ export function cloneIssueDetail(issueId: number): Promise<Issue> {
 export function loadIssueAggregation(issueId: number): Promise<IssueAggregation> {
   return api.get<IssueAggregation>(`/issues/${issueId}/aggregation`)
 }
+
+export function loadIssueParent(issueId: number): Promise<Issue | null> {
+  return api.get<Issue>(`/issues/${issueId}`).catch(() => null)
+}
+
+export function addIssueTag(issueId: number, tagId: number): Promise<void> {
+  return api.post(`/issues/${issueId}/tags`, { tag_id: tagId })
+}
+
+export function removeIssueTag(issueId: number, tagId: number): Promise<void> {
+  return api.delete(`/issues/${issueId}/tags/${tagId}`)
+}
+
+export function assignIssueSprint(issueId: number, sprintId: number): Promise<void> {
+  return api.post(`/issues/${issueId}/relations`, { target_id: sprintId, type: 'sprint' })
+}
+
+export function removeIssueSprint(issueId: number, sprintId: number): Promise<void> {
+  return api.delete(`/issues/${issueId}/relations`, { target_id: sprintId, type: 'sprint' })
+}
