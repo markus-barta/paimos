@@ -5,6 +5,13 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] — 2026-04-26
+
+### Fixed
+
+- Issue side-panel AI result and decision UI now appears directly under the header action cluster instead of lower in the form area.
+- AI surface inventory regression test updated to the corrected side-panel host mount.
+
 ## [2.1.0] — 2026-04-26
 
 ### Added
