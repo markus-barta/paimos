@@ -486,6 +486,19 @@ async function deleteTimeEntry(entry: TimeEntry) {
             {{ issue.issue_key }}
           </span>
           <span class="sp-spacer" />
+          <!-- PAI-179: issue-level AI menu (find parent, generate
+               sub-tasks, estimate, detect duplicates). Only mounts
+               when an issue is loaded. -->
+          <AiActionMenu
+            v-if="issue && !readonly"
+            surface="issue"
+            placement="issue"
+            field=""
+            field-label="Issue"
+            :issue-id="issue.id"
+            :text="() => issue?.title ?? ''"
+            :on-accept="() => { /* issue actions don't rewrite text */ }"
+          />
           <button v-if="issueIds && issueIds.length > 1" class="sp-action-btn" :disabled="!canPrev" @click="goPrev" title="Previous issue">
             <AppIcon name="chevron-up" :size="15" />
           </button>

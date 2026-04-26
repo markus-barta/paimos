@@ -672,6 +672,21 @@ async function cancelEdit() {
 
           <div class="issue-header-actions">
             <template v-if="!editing">
+              <!-- PAI-179: issue-level AI menu — surfaces actions
+                   that operate on the whole record (find parent,
+                   generate sub-tasks, estimate effort, detect
+                   duplicates). Sits next to the other header
+                   buttons so admins discover it where they expect
+                   issue-scoped controls. -->
+              <AiActionMenu
+                surface="issue"
+                placement="issue"
+                field=""
+                field-label="Issue"
+                :issue-id="issueId"
+                :text="() => issue?.title ?? ''"
+                :on-accept="() => { /* issue actions don't rewrite a single text field */ }"
+              />
               <button v-if="authStore.user?.role === 'admin'" class="btn btn-danger" @click="deleteIssue">Delete</button>
               <button
                 v-if="issue.type === 'epic' && issue.status !== 'done' && issue.status !== 'cancelled'"
@@ -687,6 +702,16 @@ async function cancelEdit() {
               </button>
             </template>
             <template v-else>
+              <!-- PAI-179: same issue-level menu in edit mode. -->
+              <AiActionMenu
+                surface="issue"
+                placement="issue"
+                field=""
+                field-label="Issue"
+                :issue-id="issueId"
+                :text="() => issue?.title ?? ''"
+                :on-accept="() => { /* issue actions don't rewrite a single text field */ }"
+              />
               <button v-if="authStore.user?.role === 'admin'" class="btn btn-danger" @click="deleteIssue">Delete</button>
               <button class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
                 <AppIcon name="copy" :size="13" /> Clone

@@ -55,6 +55,11 @@ export interface AiActionDescriptor {
   key: string
   label: string
   surface: 'issue' | 'customer'
+  /** PAI-179: placement ∈ {text, issue, both}. `text` actions
+   *  belong inline next to text fields (rewrite a paragraph);
+   *  `issue` actions belong in issue-level menus (operate on the
+   *  whole record). `both` shows the action everywhere. */
+  placement: 'text' | 'issue' | 'both'
   sub_keys?: string[]
   implemented: boolean
 }
@@ -118,18 +123,39 @@ const optimize = useAiOptimize()
 const available = computed(() => optimize.available.value)
 
 // ── catalogue loader ──────────────────────────────────────────────
+//
+// PAI-179: previously, a single failed load (typically the 401 on
+// the very first import-time call when the user wasn't logged in
+// yet) left actionsLoaded=true forever, and every menu after login
+// rendered "No AI actions are configured for this surface yet"
+// despite the backend being fine. The fix:
+//   - failures don't flip actionsLoaded → next caller retries
+//   - successes mark loaded; next caller short-circuits
+//   - the menu component nudges this to refresh when it mounts
+//     and the catalogue is empty (cheap; one round-trip)
 async function loadActions(): Promise<void> {
   if (actionsInflight) return actionsInflight
   actionsInflight = (async () => {
+    let succeeded = false
     try {
       const r = await api.get<ActionsCatalog>('/ai/actions')
-      actions.value = r.actions ?? []
+      actions.value = (r.actions ?? []).map(a => ({
+        ...a,
+        // Backend versions before PAI-179 don't return `placement`.
+        // Default to 'text' so legacy deployments still surface
+        // their actions next to text fields.
+        placement: a.placement ?? 'text',
+      }))
+      succeeded = true
     } catch {
-      // 401 or network — leave the list empty so the menu renders
-      // an honest "not available" state without crashing.
-      actions.value = []
+      // 401 or network — keep the previous list (which may be empty
+      // on first load). On a 401-then-login flow, the menu's mount
+      // hook re-tries this so the catalogue ends up populated.
     } finally {
-      actionsLoaded.value = true
+      // Only mark "loaded" on success. Failures stay in retry-state
+      // so the next attempt actually fires instead of being short-
+      // circuited by a stale `actionsLoaded=true`.
+      if (succeeded) actionsLoaded.value = true
       actionsInflight = null
     }
   })()

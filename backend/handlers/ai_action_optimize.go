@@ -32,6 +32,7 @@ func init() {
 		Key:         "optimize",
 		Label:       "Optimize wording",
 		Surface:     "issue",
+		Placement:   "text",
 		Handler:     optimizeActionHandler,
 		Implemented: true,
 	})
@@ -45,6 +46,7 @@ func init() {
 		Key:         "optimize_customer",
 		Label:       "Optimize wording",
 		Surface:     "customer",
+		Placement:   "text",
 		Handler:     optimizeActionHandler,
 		Implemented: true,
 	})

@@ -31,6 +31,7 @@ func init() {
 		Key:         "translate",
 		Label:       "Translate",
 		Surface:     "issue",
+		Placement:   "text",
 		Handler:     translateHandler,
 		SubKeys:     []string{"de_en", "en_de"},
 		Implemented: true,

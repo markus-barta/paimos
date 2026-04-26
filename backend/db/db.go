@@ -3598,6 +3598,22 @@ func migrate(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_prompts_surface ON ai_prompts(surface)`,
 	}},
+
+	// PAI-179: AI action placement.
+	//
+	// Adds a `placement` column to ai_prompts so each action can be
+	// pinned to text-field menus, issue-level menus, or both. The
+	// column is admin-overridable through Settings → AI prompts;
+	// the registry default applies when the column is empty (which
+	// is exactly what we set on backfill so existing rows pick up
+	// the defaults the next time the catalogue endpoint runs).
+	{79, []string{
+		`ALTER TABLE ai_prompts ADD COLUMN placement TEXT NOT NULL DEFAULT ''`,
+		// Empty means "use the registry default" — the catalogue
+		// endpoint resolves that lazily, so no per-key seed migration
+		// is needed. Admins who edit a placement override the default;
+		// admins who reset clear back to ''.
+	}},
 	}
 
 	for _, m := range migrations {

@@ -33,6 +33,7 @@ func init() {
 		Key:         "find_parent",
 		Label:       "Find parent / sibling",
 		Surface:     "issue",
+		Placement:   "issue", // moves the whole issue under a new parent
 		Handler:     findParentHandler,
 		Implemented: true,
 	})

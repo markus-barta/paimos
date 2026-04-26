@@ -103,10 +103,19 @@ type actionHandler func(ax *aiActionContext) (body any, model string, promptToke
 // actionDescriptor is what registerAction() puts into the registry.
 // `Surface` is informational — the dispatcher doesn't switch on it,
 // but the prompt-CRUD admin UI (PAI-176) reads it to group actions.
+//
+// PAI-179: `Placement` distinguishes text-level actions ("rewrite
+// this paragraph") from issue-level actions ("operate on the whole
+// record"). The default placement for each built-in action is set
+// in ai_action_a_registry.go and overridable per-row by admins via
+// the prompt-CRUD UI. The frontend AiActionMenu filters on this so
+// text fields don't surface "Generate sub-tasks" and the issue
+// header doesn't surface "Translate this textarea".
 type actionDescriptor struct {
 	Key         string
 	Label       string
 	Surface     string // "issue" | "customer"
+	Placement   string // "text" | "issue" | "both" — PAI-179
 	Handler     actionHandler
 	SubKeys     []string // sub-action whitelist; empty means none required
 	Implemented bool     // false → stub registered for menu shell only
@@ -350,29 +359,65 @@ func stubHandler(ax *aiActionContext) (any, string, int, int, string, error) {
 // catalog so the frontend menu can render itself without a giant
 // hard-coded list. Includes per-action availability flags so the
 // menu can render unimplemented items disabled / "Coming soon".
+//
+// PAI-179: placement is read from ai_prompts (admin-overridable)
+// per row, falling back to the registry default. We do this in
+// one query rather than N+1 lookups because the catalogue is
+// fetched on every page that mounts an AI menu — keeping it
+// server-side cheap matters.
 type aiActionListItem struct {
-	Key             string   `json:"key"`
-	Label           string   `json:"label"`
-	Surface         string   `json:"surface"`
-	SubKeys         []string `json:"sub_keys,omitempty"`
-	Implemented     bool     `json:"implemented"`
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Surface     string   `json:"surface"`
+	Placement   string   `json:"placement"`
+	SubKeys     []string `json:"sub_keys,omitempty"`
+	Implemented bool     `json:"implemented"`
 }
 
 func AIListActions(w http.ResponseWriter, r *http.Request) {
+	// Pull all admin-edited placements in one shot (cheap; ai_prompts
+	// has at most ~20 rows). Map by key for quick lookup.
+	placements := loadPromptPlacements()
 	out := make([]aiActionListItem, 0, len(actionRegistry))
 	for _, d := range actionRegistry {
-		// "Implemented" = handler is not the stub. We compare via
-		// reflect-free pointer equality on the function value would
-		// be brittle; instead, the action declares itself by
-		// registering a non-stub handler. We approximate via a
-		// sentinel field on the descriptor.
+		placement := d.Placement
+		if placement == "" {
+			// Defensive: an action registered before PAI-179 (or with
+			// a registry-side typo) defaults to "text" so the row
+			// surfaces somewhere instead of vanishing entirely.
+			placement = "text"
+		}
+		if override, ok := placements[d.Key]; ok && override != "" {
+			placement = override
+		}
 		out = append(out, aiActionListItem{
 			Key:         d.Key,
 			Label:       d.Label,
 			Surface:     d.Surface,
+			Placement:   placement,
 			SubKeys:     d.SubKeys,
 			Implemented: d.Implemented,
 		})
 	}
 	jsonOK(w, map[string]any{"actions": out})
+}
+
+// loadPromptPlacements pulls every (key, placement) pair from the
+// ai_prompts table. Errors are swallowed and treated as "no
+// override" so the catalogue endpoint stays available even if the
+// table doesn't exist yet (fresh install before M79 ran).
+func loadPromptPlacements() map[string]string {
+	out := map[string]string{}
+	rows, err := db.DB.Query(`SELECT key, COALESCE(placement, '') FROM ai_prompts`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, p string
+		if err := rows.Scan(&k, &p); err == nil {
+			out[k] = p
+		}
+	}
+	return out
 }

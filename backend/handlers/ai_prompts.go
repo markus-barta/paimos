@@ -57,6 +57,11 @@ type promptRow struct {
 	Key                 string `json:"key"`
 	Label               string `json:"label"`
 	Surface             string `json:"surface"`
+	// PAI-179: Placement is the admin-edited override; an empty
+	// string means "use the registry default" and the catalogue
+	// endpoint resolves that lazily. The Settings UI surfaces
+	// "(default)" when this is empty so admins can tell.
+	Placement           string `json:"placement"`
 	ParentAction        string `json:"parent_action,omitempty"`
 	SubAction           string `json:"sub_action,omitempty"`
 	PromptTemplate      string `json:"prompt_template"`
@@ -64,6 +69,11 @@ type promptRow struct {
 	IsBuiltin           bool   `json:"is_builtin"`
 	DefaultTemplateHash string `json:"default_template_hash,omitempty"`
 	UpdatedAt           string `json:"updated_at"`
+	// DefaultPlacement carries the registry's compiled-in default so
+	// the Settings UI can show admins both the override and the
+	// fall-through value at a glance. Computed at response time;
+	// not persisted.
+	DefaultPlacement string `json:"default_placement,omitempty"`
 }
 
 // validCustomKey matches stable, grep-friendly action keys. Refusing
@@ -141,7 +151,8 @@ func seedBuiltinPrompts() error {
 
 func readAllPromptRows() ([]promptRow, error) {
 	const q = `
-SELECT id, key, label, surface, COALESCE(parent_action,''), COALESCE(sub_action,''),
+SELECT id, key, label, surface, COALESCE(placement,''),
+       COALESCE(parent_action,''), COALESCE(sub_action,''),
        prompt_template, enabled, is_builtin, default_template_hash, updated_at
 FROM ai_prompts
 ORDER BY surface ASC, label ASC, key ASC
@@ -156,13 +167,19 @@ ORDER BY surface ASC, label ASC, key ASC
 		var r promptRow
 		var enabled, builtin int
 		if err := rows.Scan(
-			&r.ID, &r.Key, &r.Label, &r.Surface, &r.ParentAction, &r.SubAction,
+			&r.ID, &r.Key, &r.Label, &r.Surface, &r.Placement,
+			&r.ParentAction, &r.SubAction,
 			&r.PromptTemplate, &enabled, &builtin, &r.DefaultTemplateHash, &r.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
 		r.Enabled = enabled == 1
 		r.IsBuiltin = builtin == 1
+		// PAI-179: surface the registry default so admins can see
+		// what they'd fall back to when the override is empty.
+		if d, ok := actionRegistry[r.Key]; ok {
+			r.DefaultPlacement = d.Placement
+		}
 		out = append(out, r)
 	}
 	return out, nil
@@ -171,6 +188,10 @@ ORDER BY surface ASC, label ASC, key ASC
 type promptUpdatePayload struct {
 	Label          *string `json:"label,omitempty"`
 	Surface        *string `json:"surface,omitempty"`
+	// PAI-179: built-in rows allow placement to be edited too —
+	// it's a per-instance UX choice, not a structural property.
+	// Empty string explicitly means "use the registry default".
+	Placement      *string `json:"placement,omitempty"`
 	ParentAction   *string `json:"parent_action,omitempty"`
 	SubAction      *string `json:"sub_action,omitempty"`
 	PromptTemplate *string `json:"prompt_template,omitempty"`
@@ -204,16 +225,24 @@ func AIUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if existing.IsBuiltin {
-		// Built-in: lock most fields. Returning a clear 400 beats
-		// silently dropping the field on the floor — admins should
-		// know they need a custom row to change label/surface.
+		// Built-in: lock structural fields (label, surface,
+		// parent/sub action). prompt_template, enabled, AND
+		// placement (PAI-179) are user-tunable — placement is a
+		// per-instance UX choice, not a structural property.
 		if p.Label != nil || p.Surface != nil || p.ParentAction != nil || p.SubAction != nil {
-			jsonError(w, "built-in rows: only prompt_template and enabled are mutable", http.StatusBadRequest)
+			jsonError(w, "built-in rows: only prompt_template, placement, and enabled are mutable", http.StatusBadRequest)
 			return
 		}
 	} else {
 		if p.Surface != nil && *p.Surface != "issue" && *p.Surface != "customer" {
 			jsonError(w, "surface must be \"issue\" or \"customer\"", http.StatusBadRequest)
+			return
+		}
+	}
+	if p.Placement != nil {
+		v := *p.Placement
+		if v != "" && v != "text" && v != "issue" && v != "both" {
+			jsonError(w, "placement must be \"\", \"text\", \"issue\", or \"both\"", http.StatusBadRequest)
 			return
 		}
 	}
@@ -264,6 +293,13 @@ func buildUpdate(existing promptRow, p promptUpdatePayload) (sets []string, args
 		}
 		sets = append(sets, "enabled = ?")
 		args = append(args, v)
+	}
+	// PAI-179: placement applies to BOTH built-in and custom rows.
+	// Empty-string is a valid value meaning "fall back to the
+	// registry default", so we don't filter it out here.
+	if p.Placement != nil {
+		sets = append(sets, "placement = ?")
+		args = append(args, *p.Placement)
 	}
 	return sets, args
 }
@@ -396,13 +432,15 @@ func AIResetPrompt(w http.ResponseWriter, r *http.Request) {
 
 func readPromptRowByID(id int64, into *promptRow) error {
 	const q = `
-SELECT id, key, label, surface, COALESCE(parent_action,''), COALESCE(sub_action,''),
+SELECT id, key, label, surface, COALESCE(placement,''),
+       COALESCE(parent_action,''), COALESCE(sub_action,''),
        prompt_template, enabled, is_builtin, default_template_hash, updated_at
 FROM ai_prompts WHERE id = ?
 `
 	var enabled, builtin int
 	err := db.DB.QueryRow(q, id).Scan(
-		&into.ID, &into.Key, &into.Label, &into.Surface, &into.ParentAction, &into.SubAction,
+		&into.ID, &into.Key, &into.Label, &into.Surface, &into.Placement,
+		&into.ParentAction, &into.SubAction,
 		&into.PromptTemplate, &enabled, &builtin, &into.DefaultTemplateHash, &into.UpdatedAt,
 	)
 	if err != nil {
@@ -410,6 +448,9 @@ FROM ai_prompts WHERE id = ?
 	}
 	into.Enabled = enabled == 1
 	into.IsBuiltin = builtin == 1
+	if d, ok := actionRegistry[into.Key]; ok {
+		into.DefaultPlacement = d.Placement
+	}
 	return nil
 }
 

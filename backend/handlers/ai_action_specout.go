@@ -35,6 +35,7 @@ func init() {
 		Key:         "spec_out",
 		Label:       "Spec-out (description → AC checklist)",
 		Surface:     "issue",
+		Placement:   "text",
 		Handler:     specOutHandler,
 		Implemented: true,
 	})

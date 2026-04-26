@@ -47,6 +47,12 @@ const props = defineProps<{
   issueId?: number
   /** Surface ("issue" | "customer"). Filters the menu. */
   surface?: 'issue' | 'customer'
+  /** PAI-179: placement ("text" | "issue"). Defaults to "text" so
+   *  text-field hosts (textareas) get text-level actions only.
+   *  Issue-level menu hosts (sidebar header, ellipsis, edit-mode
+   *  toolbar) pass placement="issue" to surface the actions that
+   *  operate on the whole record. */
+  placement?: 'text' | 'issue'
   /** Current field content. Read at click time, not at mount time. */
   text: () => string
   /** Called with optimized text when the user clicks Accept. Used by
@@ -70,12 +76,29 @@ const menuRoot = ref<HTMLElement | null>(null)
 const submenuKey = ref<string | null>(null)
 
 const surface = computed(() => props.surface ?? 'issue')
+const placement = computed(() => props.placement ?? 'text')
 
-// Filtered list for this surface, with implemented actions first so
-// the most useful items are highest in the keyboard-tab order.
+// PAI-179: filter by surface AND placement. An action with
+// placement="both" shows up in both text fields and issue-level
+// menus; "text"/"issue" pin it to one or the other.
 const visibleActions = computed(() => {
   const all = aiAction.actions.value
-  return all.filter(a => a.surface === surface.value)
+  return all.filter(a => {
+    if (a.surface !== surface.value) return false
+    if (placement.value === 'text' && a.placement === 'issue') return false
+    if (placement.value === 'issue' && a.placement === 'text') return false
+    return true
+  })
+})
+
+// PAI-179: if the catalogue came up empty (typical when the very
+// first /api/ai/actions call landed before login), nudge a retry
+// when the menu mounts. Cheap — at most one round-trip per mount
+// when the catalog is genuinely empty.
+onMounted(() => {
+  if (aiAction.actions.value.length === 0) {
+    void aiAction.refreshActions()
+  }
 })
 
 const defaultAction = computed(() => visibleActions.value.find(a => a.key === 'optimize'))
@@ -95,9 +118,16 @@ const tooltip = computed(() => {
 
 function runDefault() {
   if (disabled.value) return
+  // PAI-179: in issue-placement mode, no single "default" action
+  // makes sense (find_parent and generate_subtasks aren't a sane
+  // one-click affordance). Open the menu instead — the chip body
+  // and the chevron behave identically.
+  if (placement.value === 'issue' || !defaultAction.value) {
+    openMenu()
+    return
+  }
   const text = props.text()
-  if (!text.trim() && defaultAction.value?.key === 'optimize') return
-  if (!defaultAction.value) return
+  if (!text.trim() && defaultAction.value.key === 'optimize') return
   void invoke(defaultAction.value.key, undefined)
 }
 

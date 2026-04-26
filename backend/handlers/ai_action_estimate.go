@@ -28,6 +28,7 @@ func init() {
 		Key:         "estimate_effort",
 		Label:       "Estimate effort (h + LP)",
 		Surface:     "issue",
+		Placement:   "issue", // operates on the whole issue (sets fields)
 		Handler:     estimateEffortHandler,
 		Implemented: true,
 	})

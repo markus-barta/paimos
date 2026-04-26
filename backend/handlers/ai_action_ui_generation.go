@@ -29,6 +29,7 @@ func init() {
 		Key:         "ui_generation",
 		Label:       "UI generation (textual spec)",
 		Surface:     "issue",
+		Placement:   "text", // generates spec text from description
 		Handler:     uiGenerationHandler,
 		Implemented: true,
 	})

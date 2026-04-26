@@ -26,6 +26,7 @@ func init() {
 		Key:         "generate_subtasks",
 		Label:       "Generate sub-tasks",
 		Surface:     "issue",
+		Placement:   "issue", // creates child issues — record-level
 		Handler:     subtasksHandler,
 		Implemented: true,
 	})

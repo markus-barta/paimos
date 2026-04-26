@@ -5,6 +5,67 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] — 2026-04-26
+
+### Fixed
+- **AI menu was empty on every text field after login.** The action
+  catalogue is loaded once at module import; the very first call
+  fired before login and 401'd, leaving the cache permanently empty
+  and every menu showing "No AI actions are configured for this
+  surface yet." Two changes: failed loads no longer flip
+  `actionsLoaded` (the next caller retries), and the AiActionMenu
+  component nudges a refresh on mount when the catalogue is empty.
+
+### Added — Action placement (PAI-179)
+
+Each AI action now has a `placement` field — `text`, `issue`, or
+`both` — that controls where it appears in the UI:
+
+- **Text** actions sit inline next to text fields (textareas).
+  Examples: Optimize wording, Translate, Tone check, Suggest
+  enhancement, Spec-out, UI generation.
+- **Issue** actions sit in issue-level menus only — the issue
+  header (full view) and the side-panel header. Examples: Find
+  parent / sibling, Generate sub-tasks, Estimate effort, Detect
+  duplicates.
+- **Both** shows everywhere (no built-in defaults to this; reserved
+  for custom actions admins want surfaced broadly).
+
+Defaults are set on each action and are admin-overridable per row
+in **Settings → AI prompts → Edit**. The list view shows the
+effective placement as a pill next to the surface pill.
+
+#### Schema
+
+- Migration **M79** adds `ai_prompts.placement` (TEXT, default
+  empty). Empty means "use the registry default" — admins editing
+  to "" via the Settings UI get the registry default back.
+
+#### Endpoints
+
+- `GET /api/ai/actions` now includes `placement` per item, with
+  admin overrides folded in server-side.
+- `GET /api/ai/prompts` exposes both the admin override
+  (`placement`) and the registry default (`default_placement`) so
+  the editor can surface "(default: text)" next to the radio.
+- `PUT /api/ai/prompts/{id}` accepts a new `placement` field —
+  validates against `"" | "text" | "issue" | "both"`. Built-in
+  rows now allow placement edits (it's a UX choice, not structural).
+
+#### Frontend
+
+- `<AiActionMenu>` accepts a new `placement` prop (`"text"` | `"issue"`).
+  The filter combines surface + placement so text-field hosts only
+  see text actions and issue-level hosts only see issue actions.
+- `IssueDetailView` mounts an issue-level AI menu in the header
+  (both view-mode and edit-mode toolbars).
+- `IssueSidePanel` mounts an issue-level AI menu next to the
+  pin / next / prev / clone buttons.
+- Settings → AI prompts edit modal grows a placement radio cluster
+  with `Default / Text / Issue / Both`. List rows show a placement
+  pill so admins see which actions land where without opening the
+  modal.
+
 ## [1.10.1] — 2026-04-26
 
 ### Changed — AI polish round

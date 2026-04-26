@@ -28,6 +28,7 @@ func init() {
 		Key:         "suggest_enhancement",
 		Label:       "Suggest enhancement",
 		Surface:     "issue",
+		Placement:   "text",
 		Handler:     suggestEnhancementHandler,
 		SubKeys:     []string{"security", "performance", "ux", "dx", "flow", "risks"},
 		Implemented: true,

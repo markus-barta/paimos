@@ -34,6 +34,7 @@ func init() {
 		Key:         "detect_duplicates",
 		Label:       "Detect duplicates",
 		Surface:     "issue",
+		Placement:   "issue", // operates on the whole issue's identity
 		Handler:     detectDuplicatesHandler,
 		Implemented: true,
 	})

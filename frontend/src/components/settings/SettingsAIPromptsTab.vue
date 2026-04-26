@@ -27,6 +27,11 @@ interface PromptRow {
   key: string
   label: string
   surface: 'issue' | 'customer'
+  // PAI-179: '' means "use the registry default" (default_placement
+  // tells you what that default is). 'text' / 'issue' / 'both'
+  // override it.
+  placement: '' | 'text' | 'issue' | 'both'
+  default_placement?: string
   parent_action?: string
   sub_action?: string
   prompt_template: string
@@ -67,6 +72,7 @@ interface EditState {
   draftSurface: 'issue' | 'customer'
   draftKey: string
   draftEnabled: boolean
+  draftPlacement: '' | 'text' | 'issue' | 'both'
   isCreate: boolean
 }
 const edit = reactive<EditState>({
@@ -77,6 +83,7 @@ const edit = reactive<EditState>({
   draftSurface: 'issue',
   draftKey: '',
   draftEnabled: true,
+  draftPlacement: '',
   isCreate: false,
 })
 const saving = ref(false)
@@ -88,6 +95,7 @@ function openEdit(row: PromptRow) {
   edit.draftSurface = row.surface
   edit.draftKey = row.key
   edit.draftEnabled = row.enabled
+  edit.draftPlacement = row.placement ?? ''
   edit.isCreate = false
   edit.open = true
 }
@@ -98,6 +106,7 @@ function openCreate() {
   edit.draftSurface = 'issue'
   edit.draftKey = ''
   edit.draftEnabled = true
+  edit.draftPlacement = 'text'
   edit.isCreate = true
   edit.open = true
 }
@@ -115,6 +124,7 @@ async function save() {
         key: edit.draftKey.trim(),
         label: edit.draftLabel.trim(),
         surface: edit.draftSurface,
+        placement: edit.draftPlacement,
         prompt_template: edit.draftTemplate,
         enabled: edit.draftEnabled,
       })
@@ -122,6 +132,8 @@ async function save() {
       const body: Record<string, unknown> = {
         prompt_template: edit.draftTemplate,
         enabled: edit.draftEnabled,
+        // PAI-179: placement is mutable on built-in rows too.
+        placement: edit.draftPlacement,
       }
       if (!edit.row.is_builtin) {
         body.label = edit.draftLabel.trim()
@@ -177,6 +189,21 @@ function varDisplay(varName: string): string {
   return '{{.' + varName + '}}'
 }
 const titleVarExample = '{{.Title}}'
+
+// PAI-179: resolve the effective placement for a row — admin
+// override if set, otherwise the registry default. Surfaces in
+// the list-row pill so admins see at a glance where the action
+// will appear.
+function effectivePlacement(p: PromptRow): string {
+  if (p.placement) return p.placement
+  if (p.default_placement) return p.default_placement
+  return 'text'
+}
+function placementTitle(p: PromptRow): string {
+  const eff = effectivePlacement(p)
+  if (p.placement) return `Admin override: ${eff}`
+  return `Default: ${eff}`
+}
 
 // ── Dry-run (PAI-177 stub) ───────────────────────────────────────
 const dryRunIssueId = ref<number | null>(null)
@@ -234,6 +261,9 @@ async function dryRun() {
             <strong class="ap-row-label">{{ p.label }}</strong>
             <code class="ap-row-key">{{ p.key }}</code>
             <span :class="['ap-row-surface', `ap-row-surface--${p.surface}`]">{{ p.surface }}</span>
+            <span :class="['ap-row-place', `ap-row-place--${effectivePlacement(p)}`]" :title="placementTitle(p)">
+              {{ effectivePlacement(p) }}
+            </span>
             <span v-if="p.prompt_template" class="ap-row-tag" title="Admin override is set; click reset to revert.">overridden</span>
           </div>
           <div class="ap-row-actions">
@@ -258,6 +288,9 @@ async function dryRun() {
             <strong class="ap-row-label">{{ p.label }}</strong>
             <code class="ap-row-key">{{ p.key }}</code>
             <span :class="['ap-row-surface', `ap-row-surface--${p.surface}`]">{{ p.surface }}</span>
+            <span :class="['ap-row-place', `ap-row-place--${effectivePlacement(p)}`]" :title="placementTitle(p)">
+              {{ effectivePlacement(p) }}
+            </span>
           </div>
           <div class="ap-row-actions">
             <button class="btn btn-ghost btn-sm" @click="openEdit(p)">Edit</button>
@@ -303,6 +336,39 @@ async function dryRun() {
             </select>
           </label>
         </template>
+        <!-- PAI-179: placement editor — built-in and custom rows.
+             Empty string = "use the registry default", which is
+             surfaced beside the radio so admins know what the
+             fall-through is. Three concrete values: text (textarea
+             menu), issue (record-level menu), both (everywhere). -->
+        <fieldset class="ap-field ap-placement">
+          <legend class="ap-field-label">Placement</legend>
+          <span class="ap-field-hint">
+            Where this action appears in the UI.
+            <strong>Text</strong> = inline next to text fields (textareas).
+            <strong>Issue</strong> = in the issue header / sidebar / ellipsis.
+            <strong>Both</strong> = everywhere.
+          </span>
+          <div class="ap-placement-row">
+            <label class="ap-placement-opt" :class="{ 'ap-placement-opt--active': edit.draftPlacement === '' }">
+              <input type="radio" v-model="edit.draftPlacement" value="" />
+              <span>Default<span v-if="edit.row?.default_placement" class="ap-placement-default">({{ edit.row.default_placement }})</span></span>
+            </label>
+            <label class="ap-placement-opt" :class="{ 'ap-placement-opt--active': edit.draftPlacement === 'text' }">
+              <input type="radio" v-model="edit.draftPlacement" value="text" />
+              <span>Text fields</span>
+            </label>
+            <label class="ap-placement-opt" :class="{ 'ap-placement-opt--active': edit.draftPlacement === 'issue' }">
+              <input type="radio" v-model="edit.draftPlacement" value="issue" />
+              <span>Issue menu</span>
+            </label>
+            <label class="ap-placement-opt" :class="{ 'ap-placement-opt--active': edit.draftPlacement === 'both' }">
+              <input type="radio" v-model="edit.draftPlacement" value="both" />
+              <span>Both</span>
+            </label>
+          </div>
+        </fieldset>
+
         <label class="ap-field ap-toggle">
           <input v-model="edit.draftEnabled" type="checkbox" />
           <span>Enabled (the action appears in the dropdown menu)</span>
@@ -414,6 +480,48 @@ async function dryRun() {
 .ap-row-surface { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 999px; }
 .ap-row-surface--issue    { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
 .ap-row-surface--customer { background: #ede9fe; color: #5b21b6; }
+/* PAI-179: placement pill — at-a-glance "where does this action
+   appear in the UI". Same shape as the surface pill, distinct
+   palette so the eye can separate the two dimensions. */
+.ap-row-place {
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: .12rem .45rem; border-radius: 999px;
+  font-family: 'DM Sans', sans-serif;
+}
+.ap-row-place--text  { background: #d1fae5; color: #065f46; }
+.ap-row-place--issue { background: #fef3c7; color: #92400e; }
+.ap-row-place--both  { background: #fce7f3; color: #9d174d; }
+/* Placement editor — radio cluster inside the modal. */
+.ap-placement { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .35rem; }
+.ap-placement-row {
+  display: flex; gap: .35rem; flex-wrap: wrap;
+  margin-top: .15rem;
+}
+.ap-placement-opt {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .35rem .65rem;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px; color: var(--text);
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.ap-placement-opt:hover { border-color: var(--bp-blue-light); }
+.ap-placement-opt > input[type="radio"] { accent-color: var(--bp-blue); margin: 0; }
+.ap-placement-opt--active {
+  border-color: var(--bp-blue);
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+  font-weight: 600;
+}
+.ap-placement-default {
+  margin-left: .25rem;
+  font-family: 'DM Mono', monospace;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
 .ap-row-tag {
   font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
   padding: .12rem .45rem; border-radius: 999px;

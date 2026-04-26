@@ -29,6 +29,7 @@ func init() {
 		Key:         "tone_check",
 		Label:       "Tone check (de-sales)",
 		Surface:     "customer",
+		Placement:   "text",
 		Handler:     toneCheckHandler,
 		Implemented: true,
 	})

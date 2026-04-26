@@ -35,23 +35,31 @@ import "log"
 // file's init() should call replaceAction() — added below).
 func init() {
 	stubs := []actionDescriptor{
-		// Issue editor surface
-		{Key: "optimize", Label: "Optimize wording", Surface: "issue", Handler: stubHandler},
-		{Key: "suggest_enhancement", Label: "Suggest enhancement", Surface: "issue",
+		// Issue editor surface — text vs issue placement (PAI-179):
+		//   text  = "operates on a paragraph the user is editing"
+		//          (rewrite, translate, suggest improvements). Lives
+		//          inline next to text fields.
+		//   issue = "operates on the whole record" (move it under a
+		//          different parent, generate child issues, set
+		//          fields, find duplicates). Lives in the issue
+		//          header / ellipsis / edit-mode toolbar.
+		{Key: "optimize", Label: "Optimize wording", Surface: "issue", Placement: "text", Handler: stubHandler},
+		{Key: "suggest_enhancement", Label: "Suggest enhancement", Surface: "issue", Placement: "text",
 			Handler: stubHandler,
 			SubKeys: []string{"security", "performance", "ux", "dx", "flow", "risks"}},
-		{Key: "spec_out", Label: "Spec-out (description → AC)", Surface: "issue", Handler: stubHandler},
-		{Key: "find_parent", Label: "Find parent / sibling", Surface: "issue", Handler: stubHandler},
-		{Key: "translate", Label: "Translate", Surface: "issue",
+		{Key: "spec_out", Label: "Spec-out (description → AC)", Surface: "issue", Placement: "text", Handler: stubHandler},
+		{Key: "find_parent", Label: "Find parent / sibling", Surface: "issue", Placement: "issue", Handler: stubHandler},
+		{Key: "translate", Label: "Translate", Surface: "issue", Placement: "text",
 			Handler: stubHandler,
 			SubKeys: []string{"de_en", "en_de"}},
-		{Key: "generate_subtasks", Label: "Generate sub-tasks", Surface: "issue", Handler: stubHandler},
-		{Key: "estimate_effort", Label: "Estimate effort", Surface: "issue", Handler: stubHandler},
-		{Key: "detect_duplicates", Label: "Detect duplicates", Surface: "issue", Handler: stubHandler},
-		{Key: "ui_generation", Label: "UI generation", Surface: "issue", Handler: stubHandler},
+		{Key: "generate_subtasks", Label: "Generate sub-tasks", Surface: "issue", Placement: "issue", Handler: stubHandler},
+		{Key: "estimate_effort", Label: "Estimate effort", Surface: "issue", Placement: "issue", Handler: stubHandler},
+		{Key: "detect_duplicates", Label: "Detect duplicates", Surface: "issue", Placement: "issue", Handler: stubHandler},
+		{Key: "ui_generation", Label: "UI generation", Surface: "issue", Placement: "text", Handler: stubHandler},
 
-		// Customer surface (PAI-173)
-		{Key: "tone_check", Label: "Tone check", Surface: "customer", Handler: stubHandler},
+		// Customer surface (PAI-173) — text-level rewrites of the
+		// field the menu is attached to.
+		{Key: "tone_check", Label: "Tone check", Surface: "customer", Placement: "text", Handler: stubHandler},
 	}
 	for _, d := range stubs {
 		registerAction(d)
