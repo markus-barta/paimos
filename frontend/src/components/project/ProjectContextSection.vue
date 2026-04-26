@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import type { ProjectManifest, ProjectRepo } from '@/types'
@@ -8,6 +8,11 @@ const props = defineProps<{
   projectId: number
   canWrite: boolean
 }>()
+
+// PAI-178: parents mount this component as a sentinel and listen
+// to `populated` to light up a toggle-button badge. True when at
+// least one repo is linked OR the manifest has any non-empty key.
+const emit = defineEmits<{ populated: [v: boolean] }>()
 
 const repos = ref<ProjectRepo[]>([])
 const manifest = ref<ProjectManifest>({ project_id: 0, data: {} })
@@ -21,6 +26,12 @@ const addingRepo = ref(false)
 
 const hasManifest = computed(() => Object.keys(manifest.value.data || {}).length > 0)
 const manifestPretty = computed(() => JSON.stringify(manifest.value.data || {}, null, 2))
+
+// PAI-178: re-emit `populated` whenever repos or the manifest
+// change. Sentinel parents (ProjectDetailView's hidden mount of
+// this component) read this to drive the toolbar toggle badge.
+const isPopulated = computed(() => repos.value.length > 0 || hasManifest.value)
+watch(isPopulated, (v) => emit('populated', v), { immediate: true })
 
 async function load() {
   loading.value = true

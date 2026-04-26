@@ -70,11 +70,21 @@ const customers = ref<Customer[]>([])
 // (next to Tree/Flat). Independent toggles, not tabs — but at most one
 // aux panel is shown at a time because they share the right-edge slot
 // with IssueSidePanel.
-type AuxPanel = 'docs' | 'cooperation' | null
+// PAI-178: 'context' joins docs/cooperation as a third aux panel.
+// Project context (repos + manifest) used to render full-width
+// above the issue tabs which crowded the page even on projects
+// that don't use anchors. Now it's behind a toggle that lives in
+// the same toolbar cluster as Docs / Coop.
+type AuxPanel = 'docs' | 'cooperation' | 'context' | null
 const auxPanel = ref<AuxPanel>(null)
-function toggleAux(p: 'docs' | 'cooperation') {
+function toggleAux(p: 'docs' | 'cooperation' | 'context') {
   auxPanel.value = auxPanel.value === p ? null : p
 }
+// PAI-178: per-project signal for the Context toggle badge
+// ("populated" lights up when at least one repo is linked OR the
+// manifest contains anything other than `{}`). Live count comes
+// from the always-mounted sentinel below.
+const contextPopulated = ref(false)
 
 // Live indicators on the toggle buttons — the always-mounted hidden
 // sentinels below feed these so the user sees signal without having to
@@ -628,10 +638,10 @@ const lastChanged = computed(() => {
       </div>
       <div v-if="importError" class="import-error">{{ importError }} <button class="import-dismiss" @click="importError=''"><AppIcon name="x" :size="14" /></button></div>
 
-      <ProjectContextSection
-        :project-id="projectId"
-        :can-write="isAdmin && canEditProject"
-      />
+      <!-- PAI-178: ProjectContextSection moved into the aux panel
+           cluster below. It used to render full-width here which
+           wasted space on projects that don't use anchors yet.
+           The Context toggle in the IssueList toolbar opens it. -->
 
       <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
       <nav class="tab-nav">
@@ -683,6 +693,18 @@ const lastChanged = computed(() => {
             <span>Coop</span>
             <span v-if="cooperationPopulated" class="pd-aux-info" aria-hidden="true">i</span>
           </button>
+          <!-- PAI-178: Context toggle — opens the repos + manifest
+               panel that used to sit above the tabs. -->
+          <button
+            type="button"
+            :class="['btn', 'btn-ghost', 'btn-sm', 'pd-aux-btn', { active: auxPanel === 'context' }]"
+            :title="contextPopulated ? 'Project context configured' : 'No repos or manifest yet'"
+            @click="toggleAux('context')"
+          >
+            <AppIcon name="git-branch" :size="13" />
+            <span>Context</span>
+            <span v-if="contextPopulated" class="pd-aux-info" aria-hidden="true">i</span>
+          </button>
         </template>
       </IssueList>
 
@@ -719,6 +741,22 @@ const lastChanged = computed(() => {
         />
       </ProjectAuxPanel>
 
+      <!-- PAI-178: Context aux panel. The ProjectContextSection
+           component already emits a `populated` signal we wire to
+           the toolbar badge below. -->
+      <ProjectAuxPanel
+        :open="auxPanel === 'context'"
+        title="Project Context"
+        :subtitle="contextPopulated ? 'repos + manifest set' : 'not set up'"
+        @close="auxPanel = null"
+      >
+        <ProjectContextSection
+          :project-id="projectId"
+          :can-write="isAdmin && canEditProject"
+          @populated="(v: boolean) => contextPopulated = v"
+        />
+      </ProjectAuxPanel>
+
       <!-- Always-mounted, visually-hidden sentinels feed the toolbar
            toggle badges (count + (i)) without forcing the user to open
            the panels first. `display: none` on .pd-sentinels keeps Vue
@@ -740,6 +778,12 @@ const lastChanged = computed(() => {
           :project-id="projectId"
           :can-write="false"
           @populated="(v: boolean) => cooperationPopulated = v"
+        />
+        <ProjectContextSection
+          v-if="auxPanel !== 'context'"
+          :project-id="projectId"
+          :can-write="false"
+          @populated="(v: boolean) => contextPopulated = v"
         />
       </div>
     <!-- Delete confirm modal -->

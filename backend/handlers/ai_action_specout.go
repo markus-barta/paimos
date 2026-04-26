@@ -54,22 +54,9 @@ func specOutHandler(ax *aiActionContext) (any, string, int, int, string, error) 
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "spec_out requires a non-empty description"}
 	}
 
-	systemPrompt := `You are a senior software engineer working inside PAIMOS, a project-management tool. Your job is to turn an issue description into a structured acceptance-criteria checklist.
-
-For the description below, generate 4-12 acceptance-criteria items grouped under FOUR categories:
-
-  1. "outcome"     — what the user / customer can do after this ships that they couldn't before. Outcome statements, not implementation steps.
-  2. "behavior"    — behavioural guarantees: invariants, transitions, idempotence, what holds under concurrency.
-  3. "edge"        — concrete failure / boundary scenarios with the expected handling.
-  4. "regression"  — what existing flows MUST keep working unchanged.
-
-Style rules:
-  - Each item must be a SINGLE testable condition (a tester or a CI check should be able to verify it).
-  - Phrase items as direct statements, not questions ("X stays Y" not "Does X stay Y?").
-  - Reference concrete entities from the description verbatim — table names, endpoints, error codes — instead of paraphrasing them.
-  - 60-180 chars per item.
-
-Schema: {"items":[{"category":"outcome|behavior|edge|regression","text":"..."}]}`
+	// PAI-178: resolved system prompt; admin-editable in
+	// Settings → AI prompts. Default lives in ai_action_prompts.go.
+	systemPrompt := resolveActionPrompt("spec_out")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

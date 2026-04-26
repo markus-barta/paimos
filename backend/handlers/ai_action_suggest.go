@@ -63,21 +63,13 @@ func suggestEnhancementHandler(ax *aiActionContext) (any, string, int, int, stri
 		return nil, "", 0, 0, "", fmt.Errorf("unknown sub_action %q", ax.SubAction)
 	}
 
-	// Build a plain-text snapshot of the issue. Field-by-field so
-	// the model can refer to e.g. "the AC says X" naturally.
-	var b strings.Builder
-	b.WriteString("You are reviewing one issue inside PAIMOS, a project-management tool used by software engineers.\n")
-	b.WriteString("Goal: suggest 3-5 concrete enhancements in the sub-category named below. Each suggestion must be SPECIFIC to this issue, not a generic checklist item — write like a senior engineer who has read the issue.\n\n")
-	b.WriteString("Sub-category lens: ")
-	b.WriteString(guidance)
-	b.WriteString("\n\nFor each suggestion, return:\n")
-	b.WriteString("  - title: short, imperative verb-led headline (≤80 chars)\n")
-	b.WriteString("  - body: 1-3 sentences of rationale + concrete next step (≤500 chars, plain markdown ok)\n")
-	b.WriteString("  - impact: \"low\" | \"med\" | \"high\" — how much risk/value this addresses for THIS issue\n")
-	b.WriteString("  - target_field: \"ac\" if it should appear as a checklist item; \"notes\" if it's a guideline/observation\n\n")
-	b.WriteString("Schema: {\"suggestions\":[{\"title\":\"...\",\"body\":\"...\",\"impact\":\"low|med|high\",\"target_field\":\"ac|notes\"}]}")
-
-	systemPrompt := b.String()
+	// PAI-178: resolved prompt from ai_prompts (admin-editable)
+	// + a per-call sub-category lens line. Splitting like this
+	// keeps the editable surface manageable — admins tune ONE
+	// prompt that covers all 6 sub-categories, and the lens is
+	// substituted at call time.
+	base := resolveActionPrompt("suggest_enhancement")
+	systemPrompt := base + "\n\nSub-category lens for this call: " + guidance
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

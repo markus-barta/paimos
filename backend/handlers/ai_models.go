@@ -73,10 +73,11 @@ const (
 	// headroom for growth.
 	modelsMaxBodyBytes = 4 << 20
 
-	// modelsPerCategory caps each category card grid to "top 3".
-	// Setting this here (not at the UI) keeps the wire payload tight
-	// and the API contract explicit.
-	modelsPerCategory = 3
+	// modelsPerCategory caps each category card grid. Setting this
+	// here (not at the UI) keeps the wire payload tight and the API
+	// contract explicit. PAI-178 raised it from 3 → 4 so the picker
+	// shows a clean 4-per-row grid at typical tab widths.
+	modelsPerCategory = 4
 
 	// frontierPriceFloor is the per-token price (USD) used to keep
 	// "Frontier" from filling with whatever happens to be trending.
@@ -258,13 +259,15 @@ func buildModelsPayload(parent context.Context) (*modelsResponse, error) {
 	pl.Categories.Value = pickValue(canonical)
 	pl.Categories.Cheapest = pickCheapest(canonical)
 
-	// Frontier: top-weekly trending (unofficial), fall back to
-	// the most-recently-created models with prompt > floor.
+	// Frontier: explicitly diversify across the four major frontier
+	// vendors (Anthropic, OpenAI, xAI, Google) so admins always see
+	// the top model from each — top-weekly alone tends to cluster on
+	// whichever vendor happened to ship most recently. PAI-178.
 	if frontier, err := fetchFrontendFind(ctx, "top-weekly"); err == nil && len(frontier) > 0 {
-		filtered := filterFrontier(joinByID(frontier, canonical))
-		pl.Categories.Frontier = trim(filtered, modelsPerCategory)
+		joined := joinByID(frontier, canonical)
+		pl.Categories.Frontier = pickFrontierByVendor(joined, canonical)
 	} else {
-		pl.Categories.Frontier = pickFrontierFallback(canonical)
+		pl.Categories.Frontier = pickFrontierByVendor(nil, canonical)
 	}
 
 	// Fastest: throughput ranking is unofficial. Mark accordingly.
@@ -431,32 +434,148 @@ func pickCheapest(all []orModel) []pickedModel {
 	return trim(toPicked(hits, "cheap"), modelsPerCategory)
 }
 
-// pickFrontierFallback runs when the unofficial top-weekly call
-// fails. We pick the priciest models that pass the floor — frontier
-// models are by definition near the top of the price band.
-func pickFrontierFallback(all []orModel) []pickedModel {
-	var hits []orModel
-	for _, m := range all {
-		if m.Pricing.promptUSD() >= frontierPriceFloor {
-			hits = append(hits, m)
+// PAI-178: vendor-diverse Frontier picker. We always want admins to
+// see the top frontier-tier model from each of the four major
+// vendors — Anthropic, OpenAI, xAI, Google — rather than four
+// Anthropic models because Claude was trending that week.
+//
+// Strategy:
+//   1. Build a per-vendor candidate list from the canonical
+//      /v1/models pull (filter by frontier price floor).
+//   2. If we have trending data, RANK each vendor's list using the
+//      trending order; otherwise sort by created desc (newest first).
+//   3. Take the top 1 per vendor in a fixed order: Anthropic → OpenAI
+//      → xAI → Google. The fixed order matches industry mindshare
+//      and gives admins a consistent visual scan.
+//   4. If a vendor has no qualifying model, the slot is filled by
+//      the next-best frontier model from any vendor (so the row
+//      always renders 4 cards on a busy day).
+func pickFrontierByVendor(trending, canonical []orModel) []pickedModel {
+	// Bucket canonical models by vendor; only frontier-priced are
+	// eligible.
+	buckets := map[string][]orModel{
+		"anthropic": nil,
+		"openai":    nil,
+		"xai":       nil,
+		"google":    nil,
+	}
+	rest := []orModel{}
+	for _, m := range canonical {
+		if m.Pricing.promptUSD() < frontierPriceFloor {
+			continue
+		}
+		v := vendorOf(m.ID)
+		if _, ok := buckets[v]; ok {
+			buckets[v] = append(buckets[v], m)
+		} else {
+			rest = append(rest, m)
 		}
 	}
-	sort.SliceStable(hits, func(i, j int) bool {
-		return hits[i].Pricing.promptUSD() > hits[j].Pricing.promptUSD()
-	})
-	return trim(toPicked(hits, "frontier"), modelsPerCategory)
+
+	// Within each bucket, rank by trending order if available,
+	// otherwise newest-first.
+	rank := buildTrendingRank(trending)
+	sortByRank := func(in []orModel) {
+		sort.SliceStable(in, func(i, j int) bool {
+			ri, rj := rank[in[i].ID], rank[in[j].ID]
+			if ri == 0 && rj == 0 {
+				return in[i].Created > in[j].Created
+			}
+			if ri == 0 {
+				return false
+			}
+			if rj == 0 {
+				return true
+			}
+			return ri < rj
+		})
+	}
+	for k := range buckets {
+		sortByRank(buckets[k])
+	}
+	sortByRank(rest)
+
+	// Pick one from each vendor in the fixed display order.
+	out := []pickedModel{}
+	displayOrder := []string{"anthropic", "openai", "xai", "google"}
+	used := map[string]bool{}
+	for _, v := range displayOrder {
+		if len(buckets[v]) == 0 {
+			continue
+		}
+		pick := buckets[v][0]
+		used[pick.ID] = true
+		p := toPicked([]orModel{pick}, "frontier")[0]
+		// Tag with vendor so the UI can render a vendor pill if
+		// it wants to — keeps the picker informative without a
+		// second API call.
+		p.Tags = append(p.Tags, "vendor:"+v)
+		out = append(out, p)
+	}
+
+	// Backfill from rest (non-major vendors or unmatched) until we
+	// reach modelsPerCategory.
+	for _, m := range rest {
+		if len(out) >= modelsPerCategory {
+			break
+		}
+		if used[m.ID] {
+			continue
+		}
+		p := toPicked([]orModel{m}, "frontier")[0]
+		out = append(out, p)
+	}
+
+	// If we still don't have enough, take leftovers from the major
+	// buckets (a vendor's #2 model if another vendor was missing).
+	if len(out) < modelsPerCategory {
+		for _, v := range displayOrder {
+			for i := 1; i < len(buckets[v]) && len(out) < modelsPerCategory; i++ {
+				m := buckets[v][i]
+				if used[m.ID] {
+					continue
+				}
+				used[m.ID] = true
+				p := toPicked([]orModel{m}, "frontier")[0]
+				p.Tags = append(p.Tags, "vendor:"+v)
+				out = append(out, p)
+			}
+		}
+	}
+	return out
 }
 
-// filterFrontier drops models below the price floor. Used when we DO
-// have trending data, since "trending" can include free models.
-func filterFrontier(all []orModel) []pickedModel {
-	var hits []orModel
-	for _, m := range all {
-		if m.Pricing.promptUSD() >= frontierPriceFloor {
-			hits = append(hits, m)
+// vendorOf maps a slash-prefixed OpenRouter id ("anthropic/claude-…",
+// "openai/gpt-…", "x-ai/grok-…", "google/gemini-…") to a
+// short vendor key. Anything we don't recognise falls into "other"
+// so the bucket logic stays simple.
+func vendorOf(id string) string {
+	if i := strings.IndexByte(id, '/'); i >= 0 {
+		prefix := strings.ToLower(id[:i])
+		switch prefix {
+		case "anthropic":
+			return "anthropic"
+		case "openai":
+			return "openai"
+		case "x-ai", "xai":
+			return "xai"
+		case "google", "google-vertex":
+			return "google"
 		}
+		return prefix
 	}
-	return toPicked(hits, "frontier")
+	return "other"
+}
+
+// buildTrendingRank turns a trending list into an "ID → 1-based
+// rank" map. Models not in the trending list get rank 0, which the
+// sort treats as "later than any ranked model".
+func buildTrendingRank(trending []orModel) map[string]int {
+	r := make(map[string]int, len(trending))
+	for i, m := range trending {
+		r[m.ID] = i + 1
+	}
+	return r
 }
 
 // pickFastestFallback proxies "fastest" by largest context window,
