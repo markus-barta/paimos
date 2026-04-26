@@ -19,6 +19,13 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useProjectAuxPanels } from '@/composables/useProjectAuxPanels'
+import {
+  buildProjectUpdatePayload,
+  emptyProjectEditForm,
+  inheritedProjectRateHint,
+  projectToEditForm,
+} from '@/config/projectDetailEdit'
+import { buildProjectPurgePayload, emptyProjectPurgeForm } from '@/config/projectPurge'
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
 import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
@@ -121,14 +128,7 @@ async function refreshViews() {
 
 // Edit project
 const showEdit  = ref(false)
-const editForm  = ref({
-  name: '', key: '', description: '', status: 'active',
-  product_owner: null as number | null,
-  customer_label: '',
-  customer_id: null as number | null,
-  rate_hourly: null as number | null,
-  rate_lp: null as number | null,
-})
+const editForm  = ref(emptyProjectEditForm())
 const editError = ref('')
 const saving    = ref(false)
 
@@ -178,17 +178,7 @@ const projectTagIds = computed(() => project.value?.tags.map(t => t.id) ?? [])
 
 function openEdit() {
   if (!project.value) return
-  editForm.value = {
-    name:          project.value.name,
-    key:           project.value.key,
-    description:   project.value.description,
-    status:        project.value.status,
-    product_owner: project.value.product_owner ?? null,
-    customer_label: project.value.customer_label ?? '',
-    customer_id:    project.value.customer_id ?? null,
-    rate_hourly:    project.value.rate_hourly ?? null,
-    rate_lp:        project.value.rate_lp ?? null,
-  }
+  editForm.value = projectToEditForm(project.value)
   editError.value = ''
   showEdit.value = true
 }
@@ -198,13 +188,7 @@ async function saveProject() {
   if (!editForm.value.name.trim()) { editError.value = 'Name required.'; return }
   saving.value = true
   try {
-    // Build payload — `customer_id: null` plus `clear_customer: true`
-    // is the way the backend distinguishes "detach" from "leave alone"
-    // (handlers/projects.go UpdateProject; PAI-54).
-    const original = project.value?.customer_id ?? null
-    const next = editForm.value.customer_id ?? null
-    const detaching = original !== null && next === null
-    const payload = { ...editForm.value, clear_customer: detaching }
+    const payload = buildProjectUpdatePayload(editForm.value, project.value?.customer_id ?? null)
     project.value = await api.put<Project>(`/projects/${projectId.value}`, payload)
     showEdit.value = false
   } catch (e: unknown) {
@@ -217,20 +201,8 @@ async function saveProject() {
 // PAI-59. Effective rate display in the edit modal: when the project
 // rate is null and a customer is selected with a rate, show the
 // inherited value as a hint under the input.
-const linkedCustomer = computed<Customer | null>(() => {
-  const id = editForm.value.customer_id
-  if (!id) return null
-  return customers.value.find((c) => c.id === id) ?? null
-})
-function inheritedRateHint(kind: 'hourly' | 'lp'): string {
-  const cust = linkedCustomer.value
-  if (!cust) return ''
-  const value = kind === 'hourly' ? cust.rate_hourly : cust.rate_lp
-  if (value == null) return ''
-  // Only show the hint when the project rate is empty (i.e. would inherit).
-  const projRate = kind === 'hourly' ? editForm.value.rate_hourly : editForm.value.rate_lp
-  if (projRate != null) return ''
-  return `Inherits €${value.toFixed(2)} from ${cust.name}`
+function inheritedRateLabel(kind: 'hourly' | 'lp'): string {
+  return inheritedProjectRateHint(editForm.value, customers.value, kind)
 }
 
 // ── Archive / Delete ──────────────────────────────────────────────────────────
@@ -270,14 +242,14 @@ const purgeLoading   = ref(false)
 const purgeBusy      = ref(false)
 const purgeConfirmKey = ref('')
 const purgeError     = ref('')
-const purgeForm      = ref({ source: 'all' as string, from_date: '', to_date: '', user_id: null as number | null })
+const purgeForm      = ref(emptyProjectPurgeForm())
 const purgePreview   = ref<{ count: number; total_hours: number } | null>(null)
 const purgeSuccess   = ref<{ count: number; total_hours: number } | null>(null)
 const purgeUsers     = ref<{ id: number; username: string }[]>([])
 
 async function openPurge() {
   showEdit.value = false
-  purgeForm.value = { source: 'all', from_date: '', to_date: '', user_id: null }
+  purgeForm.value = emptyProjectPurgeForm()
   purgePreview.value = null
   purgeSuccess.value = null
   purgeConfirmKey.value = ''
@@ -292,14 +264,6 @@ function closePurge() {
   showPurge.value = false
 }
 
-function buildPurgePayload() {
-  const p: Record<string, unknown> = { source: purgeForm.value.source }
-  if (purgeForm.value.from_date) p.from_date = purgeForm.value.from_date
-  if (purgeForm.value.to_date) p.to_date = purgeForm.value.to_date
-  if (purgeForm.value.user_id != null) p.user_id = purgeForm.value.user_id
-  return p
-}
-
 async function previewPurge() {
   purgeLoading.value = true
   purgePreview.value = null
@@ -308,7 +272,7 @@ async function previewPurge() {
   purgeConfirmKey.value = ''
   try {
     purgePreview.value = await api.post<{ count: number; total_hours: number }>(
-      `/projects/${projectId.value}/time-entries/purge-preview`, buildPurgePayload()
+      `/projects/${projectId.value}/time-entries/purge-preview`, buildProjectPurgePayload(purgeForm.value)
     )
   } catch (e: unknown) {
     purgeError.value = errMsg(e, 'Preview failed')
@@ -321,7 +285,7 @@ async function executePurge() {
   purgeBusy.value = true
   purgeError.value = ''
   try {
-    const payload = { ...buildPurgePayload(), confirmation_key: purgeConfirmKey.value }
+    const payload = { ...buildProjectPurgePayload(purgeForm.value), confirmation_key: purgeConfirmKey.value }
     purgeSuccess.value = await api.post<{ count: number; total_hours: number }>(
       `/projects/${projectId.value}/time-entries/purge`, payload
     )
@@ -822,15 +786,15 @@ const lastChanged = computed(() => {
           <div class="field" style="flex:1">
             <label>Rate (€/h)</label>
             <input v-model.number="editForm.rate_hourly" type="number" step="0.01" placeholder="e.g. 120" />
-            <span v-if="inheritedRateHint('hourly')" class="pd-inherit-hint">
-              <AppIcon name="link" :size="11" /> {{ inheritedRateHint('hourly') }}
+            <span v-if="inheritedRateLabel('hourly')" class="pd-inherit-hint">
+              <AppIcon name="link" :size="11" /> {{ inheritedRateLabel('hourly') }}
             </span>
           </div>
           <div class="field" style="flex:1">
             <label>Rate (€/LP)</label>
             <input v-model.number="editForm.rate_lp" type="number" step="0.01" placeholder="e.g. 1200" />
-            <span v-if="inheritedRateHint('lp')" class="pd-inherit-hint">
-              <AppIcon name="link" :size="11" /> {{ inheritedRateHint('lp') }}
+            <span v-if="inheritedRateLabel('lp')" class="pd-inherit-hint">
+              <AppIcon name="link" :size="11" /> {{ inheritedRateLabel('lp') }}
             </span>
           </div>
         </div>
