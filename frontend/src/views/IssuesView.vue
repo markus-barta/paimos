@@ -51,14 +51,14 @@ const FALLBACK_VIEWS: SavedView[] = [
     id: -200, user_id: 0, owner_username: 'system', title: 'All Issues',
     description: 'All issues across projects.',
     columns_json: '["billing_type","total_budget","rate_hourly","rate_lp","group_state","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["ticket","task"]}',
+    filters_json: '{"type":["ticket","task"],"treeView":false}',
     is_shared: true, is_admin_default: true, sort_order: 0, hidden: false, pinned: null, created_at: '', updated_at: '',
   },
   {
     id: -201, user_id: 0, owner_username: 'system', title: 'Epics',
     description: 'Epic planning view.',
     columns_json: '["cost_unit","release","sprint","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["epic"]}',
+    filters_json: '{"type":["epic"],"treeView":false}',
     is_shared: true, is_admin_default: true, sort_order: 1, hidden: false, pinned: null, created_at: '', updated_at: '',
   },
 ]

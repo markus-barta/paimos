@@ -23,6 +23,7 @@ import { useIssueContext } from '@/composables/useIssueContext'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
+import { normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
 import { useSprintNav } from '@/composables/useSprintNav'
 import { useTreeView } from '@/composables/useTreeView'
 import { useSelection } from '@/composables/useSelection'
@@ -343,7 +344,7 @@ function applyView(v: SavedView, closePanel = true) {
   applyingView = true
   setColsFromJSON(v.columns_json)
   try {
-    localStorage.setItem(lsFiltersKey(props.projectId), v.filters_json)
+    localStorage.setItem(lsFiltersKey(props.projectId), normalizeSavedFiltersJSON(v.filters_json))
     loadFilters()
   } catch { /* ignore */ }
   if (v.id >= 0) {

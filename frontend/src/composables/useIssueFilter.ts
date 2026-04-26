@@ -66,6 +66,22 @@ export interface FilterChip { label: string; group: string; value: string; negat
 export interface ChipGroup   { group: string; chips: FilterChip[] }
 
 export interface SavedFilters {
+  status:   string[]
+  priority: string[]
+  type:     string[]
+  costUnit: string[]
+  release:  string[]
+  assignee: string[]
+  tags:     string[]
+  projects: string[]
+  sprints:  string[]
+  epic:     string[]
+  treeView: boolean
+  sortKey?: string
+  sortDir?: string
+}
+
+export interface RawSavedFilters {
   status:   string | string[]
   priority: string | string[]
   type:     string | string[]
@@ -79,6 +95,47 @@ export interface SavedFilters {
   treeView: boolean
   sortKey?: string
   sortDir?: string
+}
+
+const EMPTY_FILTERS: SavedFilters = {
+  status: [],
+  priority: [],
+  type: [],
+  costUnit: [],
+  release: [],
+  assignee: [],
+  tags: [],
+  projects: [],
+  sprints: [],
+  epic: [],
+  treeView: false,
+}
+
+export function normalizeSavedFilters(input: Partial<RawSavedFilters> | null | undefined): SavedFilters {
+  return {
+    status: toArr(input?.status),
+    priority: toArr(input?.priority),
+    type: toArr(input?.type),
+    costUnit: toArr(input?.costUnit),
+    release: toArr(input?.release),
+    assignee: toArr(input?.assignee),
+    tags: toArr(input?.tags),
+    projects: toArr(input?.projects),
+    sprints: toArr(input?.sprints),
+    epic: toArr(input?.epic),
+    treeView: input?.treeView === true,
+    sortKey: input?.sortKey || undefined,
+    sortDir: input?.sortKey ? (input?.sortDir === 'desc' ? 'desc' : 'asc') : undefined,
+  }
+}
+
+export function normalizeSavedFiltersJSON(raw: string | null | undefined): string {
+  try {
+    const parsed = raw ? JSON.parse(raw) : {}
+    return JSON.stringify(normalizeSavedFilters(parsed))
+  } catch {
+    return JSON.stringify(EMPTY_FILTERS)
+  }
 }
 
 export const TYPE_OPTIONS: MetaOption[] = [
@@ -329,21 +386,21 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
     try {
       const raw = localStorage.getItem(storageKey.value)
       if (!raw) return
-      const f: SavedFilters = JSON.parse(raw)
-      filterStatus.value   = toArr(f.status)
-      filterPriority.value = toArr(f.priority)
-      filterType.value     = toArr(f.type)
-      filterCostUnit.value = toArr(f.costUnit)
-      filterRelease.value  = toArr(f.release)
-      filterAssignee.value = toArr(f.assignee)
-      filterTags.value     = toArr(f.tags)
-      filterProjects.value = toArr(f.projects)
-      filterSprints.value  = toArr(f.sprints)
-      filterEpic.value     = toArr(f.epic)
-      treeView.value       = f.treeView ?? false
+      const f = normalizeSavedFilters(JSON.parse(raw))
+      filterStatus.value   = f.status
+      filterPriority.value = f.priority
+      filterType.value     = f.type
+      filterCostUnit.value = f.costUnit
+      filterRelease.value  = f.release
+      filterAssignee.value = f.assignee
+      filterTags.value     = f.tags
+      filterProjects.value = f.projects
+      filterSprints.value  = f.sprints
+      filterEpic.value     = f.epic
+      treeView.value       = f.treeView
       if (f.sortKey) {
         opts.sortKey.value = f.sortKey
-        opts.sortDir.value = (f.sortDir === 'desc' ? 'desc' : 'asc')
+        opts.sortDir.value = f.sortDir === 'desc' ? 'desc' : 'asc'
       } else {
         opts.sortKey.value = ''
         opts.sortDir.value = 'asc'
@@ -352,7 +409,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   }
 
   function saveFilters() {
-    const f: SavedFilters = {
+    const f = normalizeSavedFilters({
       status:   filterStatus.value,
       priority: filterPriority.value,
       type:     filterType.value,
@@ -366,13 +423,13 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       treeView: treeView.value,
       sortKey:  opts.sortKey.value || undefined,
       sortDir:  opts.sortKey.value ? opts.sortDir.value : undefined,
-    }
+    })
     localStorage.setItem(storageKey.value, JSON.stringify(f))
   }
 
   function currentFiltersJSON(): string {
     try {
-      const f: SavedFilters = {
+      const f = normalizeSavedFilters({
         status:   filterStatus.value,
         priority: filterPriority.value,
         type:     filterType.value,
@@ -386,7 +443,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
         treeView: treeView.value,
         sortKey:  opts.sortKey.value || undefined,
         sortDir:  opts.sortKey.value ? opts.sortDir.value : undefined,
-      }
+      })
       return JSON.stringify(f)
     } catch { return '{}' }
   }
