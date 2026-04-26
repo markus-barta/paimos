@@ -36,6 +36,12 @@ PAIMOS follows a coordinated-disclosure model:
 
 If I can't meet these timelines I'll tell you why and we'll adjust.
 
+The internal handling that follows from a confirmed report (severity
+ladder, runbooks per incident class, post-incident review template) is
+documented in [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md).
+It's there for transparency and for future maintainers; reporters
+shouldn't need to read it.
+
 ## Supported versions
 
 Only the most recent release is supported with security fixes. PAIMOS
