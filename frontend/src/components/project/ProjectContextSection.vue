@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import type { ProjectManifest, ProjectRepo } from '@/types'
+import { addProjectContextRepo, loadProjectContext, removeProjectContextRepo, saveProjectContextManifest } from '@/services/projectContext'
 
 const props = defineProps<{
   projectId: number
@@ -37,13 +38,10 @@ async function load() {
   loading.value = true
   saveError.value = ''
   try {
-    const [repoData, manifestData] = await Promise.all([
-      api.get<ProjectRepo[]>(`/projects/${props.projectId}/repos`),
-      api.get<ProjectManifest>(`/projects/${props.projectId}/manifest`),
-    ])
-    repos.value = repoData
-    manifest.value = manifestData
-    manifestDraft.value = JSON.stringify(manifestData.data || {}, null, 2)
+    const data = await loadProjectContext(props.projectId)
+    repos.value = data.repos
+    manifest.value = data.manifest
+    manifestDraft.value = JSON.stringify(data.manifest.data || {}, null, 2)
   } catch (e) {
     saveError.value = errMsg(e, 'Failed to load project context.')
   } finally {
@@ -56,7 +54,7 @@ async function addRepo() {
   addingRepo.value = true
   saveError.value = ''
   try {
-    await api.post(`/projects/${props.projectId}/repos`, repoForm.value)
+    await addProjectContextRepo(props.projectId, repoForm.value)
     repoForm.value = { url: '', default_branch: 'main', label: '' }
     await load()
   } catch (e) {
@@ -70,7 +68,7 @@ async function removeRepo(repo: ProjectRepo) {
   if (!confirm(`Remove repo "${repo.label || repo.url}"?`)) return
   saveError.value = ''
   try {
-    await api.delete(`/projects/${props.projectId}/repos/${repo.id}`)
+    await removeProjectContextRepo(props.projectId, repo.id)
     await load()
   } catch (e) {
     saveError.value = errMsg(e, 'Failed to remove repo.')
@@ -83,7 +81,7 @@ async function saveManifest() {
   saveOk.value = ''
   try {
     const parsed = JSON.parse(manifestDraft.value || '{}')
-    manifest.value = await api.put<ProjectManifest>(`/projects/${props.projectId}/manifest`, { data: parsed })
+    manifest.value = await saveProjectContextManifest(props.projectId, parsed)
     manifestDraft.value = JSON.stringify(manifest.value.data || {}, null, 2)
     saveOk.value = 'Manifest saved.'
     setTimeout(() => { saveOk.value = '' }, 2500)
