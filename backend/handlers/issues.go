@@ -781,6 +781,7 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		); err != nil {
 			log.Printf("CreateIssue: sprint relation insert failed (sprint=%d, issue=%d): %v", sid, id, err)
 		}
+		upsertIssueEntityRelation(sid, id, "sprint")
 	}
 
 	issue := getIssueByID(id)
@@ -865,6 +866,7 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 		newID, sourceID, "related"); err != nil {
 		log.Printf("CloneIssue: insert relation clone=%d source=%d: %v", newID, sourceID, err)
 	}
+	upsertIssueEntityRelation(newID, sourceID, "related")
 
 	clone := getIssueByID(newID)
 	if clone == nil {
@@ -1283,6 +1285,44 @@ func PurgeIssue(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	rows, err := db.DB.Query(`
+		WITH RECURSIVE descendants(id) AS (
+			SELECT id FROM issues WHERE id = ? AND deleted_at IS NOT NULL
+			UNION ALL
+			SELECT i.id FROM issues i
+			JOIN descendants d ON i.parent_id = d.id
+		)
+		SELECT id FROM descendants
+	`, id)
+	if err != nil {
+		jsonError(w, "purge failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	descendantIDs := make([]int64, 0, 8)
+	for rows.Next() {
+		var issueID int64
+		if rows.Scan(&issueID) == nil {
+			descendantIDs = append(descendantIDs, issueID)
+		}
+	}
+	if len(descendantIDs) == 0 {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	deleteAnchorEntityRelationsByIssueIDs(descendantIDs)
+	ph := makePlaceholders(len(descendantIDs))
+	args := make([]any, 0, len(descendantIDs)*2)
+	for _, issueID := range descendantIDs {
+		args = append(args, issueID)
+	}
+	for _, issueID := range descendantIDs {
+		args = append(args, issueID)
+	}
+	if _, err := db.DB.Exec(`DELETE FROM entity_relations WHERE (source_type='issue' AND source_id IN (`+ph+`)) OR (target_type='issue' AND target_id IN (`+ph+`))`, args...); err != nil {
+		jsonError(w, "purge failed", http.StatusInternalServerError)
 		return
 	}
 	res, err := db.DB.Exec(
@@ -1855,6 +1895,7 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 	if handleDBError(w, err, "issue relation") {
 		return
 	}
+	upsertIssueEntityRelation(dbSource, dbTarget, body.Type)
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, models.IssueRelation{SourceID: dbSource, TargetID: dbTarget, Type: body.Type})
 }
@@ -1893,6 +1934,7 @@ func DeleteIssueRelation(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	deleteIssueEntityRelation(dbSource, dbTarget, body.Type)
 	w.WriteHeader(http.StatusNoContent)
 }
 

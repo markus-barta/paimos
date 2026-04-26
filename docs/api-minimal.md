@@ -24,6 +24,15 @@ POST   /projects                    {name, key, description}
 GET    /projects/:id
 PUT    /projects/:id                partial update
 DELETE /projects/:id                admin only
+GET    /projects/:id/repos
+POST   /projects/:id/repos          {url, default_branch, label, sort_order}
+PUT    /projects/:id/repos/:repoId  partial update
+DELETE /projects/:id/repos/:repoId
+GET    /projects/:id/manifest
+PUT    /projects/:id/manifest       {data}
+POST   /projects/:id/anchors        {repo_id, schema_version, repo_revision, generated_at, anchors}
+GET    /projects/:id/graph          ?root=issue:42&depth=2
+POST   /projects/:id/retrieve       {q, k}
 ```
 
 ## Issues
@@ -53,6 +62,7 @@ GET    /issues/:id/history          audit trail (who/when/diff)
 GET    /issues/:id/comments
 POST   /issues/:id/comments         {body}
 DELETE /comments/:id
+GET    /issues/:id/anchors
 ```
 
 ## Issue relations
@@ -163,6 +173,23 @@ DELETE /views/:id/pin
 ```
 GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix)
 ```
+
+## Agent Context
+
+`/projects/:id/repos`, `/projects/:id/manifest`, `/projects/:id/anchors`,
+`/projects/:id/graph`, `/projects/:id/retrieve`, and `/issues/:id/anchors`
+form the project-context layer for agents:
+
+- `repos` declares the mirrored/source repositories a project uses.
+- `manifest` stores structured truth such as stack, commands, services,
+  owners, NFRs, and ADR references.
+- `anchors` ingests machine-generated issue-to-file locations per repo.
+- `graph` exposes typed entity relations (issues, repos, anchors, project).
+- `retrieve` returns mixed context hits from issue text, anchors, manifest,
+  and graph-neighbor expansion.
+
+Recommended manifest keys in v1: `repos`, `commands`, `stack`, `services`,
+`owners`, `nfrs`, `adrs`.
 
 ## Schema (self-describing discovery)
 

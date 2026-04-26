@@ -241,12 +241,14 @@ func MoveIncompleteToNextSprint(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		deleteIssueEntityRelation(sprintID, m.ID, "sprint")
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?,?,?)`, nextSprintID, m.ID, "sprint"); err != nil {
 			log.Printf("MoveIncomplete: insert relation sprint=%d issue=%d: %v", nextSprintID, m.ID, err)
 			tx.Rollback()
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		upsertIssueEntityRelation(nextSprintID, m.ID, "sprint")
 	}
 	if err := tx.Commit(); err != nil {
 		log.Printf("MoveIncomplete: commit tx sprint=%d: %v", sprintID, err)
