@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { api } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import { fmtShortDateTime } from '@/utils/formatTime'
+import { loadIssueHistory, type IssueHistoryEntry as HistoryEntry } from '@/services/issueHistory'
 
 const props = defineProps<{
   issueId: number
@@ -13,15 +13,6 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-interface HistoryEntry {
-  id: number
-  issue_id: number
-  changed_by: number | null
-  changed_by_name: string
-  snapshot: Record<string, any>
-  changed_at: string
-}
-
 const historyLoading = ref(false)
 const historyEntries = ref<HistoryEntry[]>([])
 const historyIndex   = ref(0)
@@ -29,7 +20,7 @@ const historyIndex   = ref(0)
 async function load() {
   historyLoading.value = true
   try {
-    historyEntries.value = await api.get<HistoryEntry[]>(`/issues/${props.issueId}/history`)
+    historyEntries.value = await loadIssueHistory(props.issueId)
     historyIndex.value = Math.max(0, historyEntries.value.length - 1)
   } finally {
     historyLoading.value = false

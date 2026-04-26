@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import { escapeHtml } from '@/utils/html'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
@@ -11,6 +11,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { vAutoGrow } from '@/directives/autoGrow'
+import { createIssueComment, deleteIssueComment, loadIssueComments, type IssueComment as Comment } from '@/services/issueComments'
 
 const props = defineProps<{
   issueId: number
@@ -21,23 +22,13 @@ const props = defineProps<{
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
 
-interface Comment {
-  id: number
-  issue_id: number
-  author_id: number | null
-  author: string | null
-  avatar_path: string | null
-  body: string
-  created_at: string
-}
-
 const comments      = ref<Comment[]>([])
 const commentBody   = ref('')
 const commentSaving = ref(false)
 const commentError  = ref('')
 
 async function load() {
-  try { comments.value = await api.get<Comment[]>(`/issues/${props.issueId}/comments`) } catch {}
+  try { comments.value = await loadIssueComments(props.issueId) } catch {}
 }
 
 defineExpose({ load })
@@ -58,7 +49,7 @@ async function submitComment() {
   if (!commentBody.value.trim()) return
   commentSaving.value = true
   try {
-    const c = await api.post<Comment>(`/issues/${props.issueId}/comments`, { body: commentBody.value.trim() })
+    const c = await createIssueComment(props.issueId, commentBody.value.trim())
     comments.value.push(c)
     commentBody.value = ''
   } catch (e: unknown) { commentError.value = errMsg(e, 'Failed to post comment.') }
@@ -71,7 +62,7 @@ async function deleteComment(comment: Comment) {
     ? `You are deleting ${comment.author ?? 'another user'}'s comment. This cannot be undone.`
     : 'Delete this comment? This cannot be undone.'
   if (!await confirm({ message: msg, confirmLabel: 'Delete', danger: true })) return
-  await api.delete(`/comments/${comment.id}`)
+  await deleteIssueComment(comment.id)
   comments.value = comments.value.filter(c => c.id !== comment.id)
 }
 </script>
