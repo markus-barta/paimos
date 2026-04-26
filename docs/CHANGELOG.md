@@ -14,6 +14,12 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Header/title geometry now preserves left-side project context cleanly beside the pinned sidebar.
 - Footer project workspace status now resets and rehydrates correctly when switching between projects.
 
+## [2.1.5] — 2026-04-26
+
+### Fixed
+
+- Saved views now restore flat/tree mode reliably, including older and fallback views that previously lacked an explicit `treeView` value.
+
 ## [2.1.3] — 2026-04-26
 
 ### Changed
