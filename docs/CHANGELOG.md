@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] — 2026-04-26
+
+### Added
+
+- Project Detail now exposes Project Context as a bottom-docked workbench with a compact toolbar status chip instead of a floating right-side panel.
+- Issue and global issue lists now support opt-in freshness banners backed by weak ETags and conditional polling.
+- A reusable locale-aware number-formatting helper now drives the AI usage panel and other follow-on surfaces.
+
+### Changed
+
+- The global undo affordance is now visible in the app header instead of being hidden inside the search input.
+- The AI provider configuration surface moved from `Settings -> AI` to `Integrations -> AI`, while `AI prompts` stays in Settings.
+- The app header and shell now wrap more gracefully on narrow widths and align correctly against the pinned sidebar.
+
 ## [2.1.1] — 2026-04-26
 
 ### Fixed
