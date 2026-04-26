@@ -295,4 +295,5 @@ Five mistakes operators consistently make. Each one has bitten at least one depl
 - **[`claim-matrix.md`](claim-matrix.md)** — claim ↔ shipped-evidence registry; the basis for §3.5 / §3.6 verifications.
 - **[`paimos.com/trust.html`](https://paimos.com/trust.html)** — public outward trust posture; §02 / 04 anchor the verifiability claims this guide operationalises.
 - **[`SECURITY_REVIEW.md`](SECURITY_REVIEW.md)** — the build-side companion: which CI scanners run, at what threshold, and the security-sensitive code-review rules. The §3.5 / §3.6 hardening rows here are operator-side; SECURITY_REVIEW.md covers the maintainer-side checks that prevent regressions.
+- **[`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md)** — the production-validation register. The hardening checklist items in this guide map to validated-or-not state in the §4 matrix there; the F-08 finding (off-host backup destination) is the operator-responsibility row from §3.7 here, observed in production.
 - **`scripts/check-claims.sh`** — release-time gate that enforces every public claim has shipped evidence.
