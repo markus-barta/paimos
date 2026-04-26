@@ -311,3 +311,4 @@ The review should be readable cold by future-maintainer six months on. Don't wri
   - Audit + retention controls: [`CONFIGURATION.md` § Audit & retention](CONFIGURATION.md#audit--retention-pai-116--pai-117)
   - Programme close-out audit: [`2.0_AUDIT.md`](2.0_AUDIT.md) §5 (Release process)
   - Trust evidence matrix: [`claim-matrix.md`](claim-matrix.md)
+  - Solo-maintainer continuity (bus-factor planning): [`CONTINUITY.md`](CONTINUITY.md)
