@@ -43,7 +43,7 @@ Each row is a thing the project commits to do on a cadence. The owner column nam
 | **Reference-deployment register update** — append new findings; status of each reference deployment validated | every 6 months + per finding | maintainer + (per deployment) operator | [`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md) §3 |
 | **Brand framework review** — phase posture, claim matrix, public copy alignment | annually + per phase transition | maintainer | [`docs/brand/BRAND.md`](brand/BRAND.md) phasing plan |
 | **Trademark check** — TMview / DPMA / EUIPO search for PAIMOS or near-names | every 6 months | maintainer | [`docs/brand/BRAND.md`](brand/BRAND.md) §Re-run trademark checks |
-| **External technical review** — when funded; tracked but not committed-to today | not yet committed | future | [`PAI-139`](https://github.com/markus-barta/paimos/issues/139) |
+| **External technical review** — framework documented; engagement awaits the right trigger (sponsor, Phase 3, scale, regulator) | not yet committed; framework documented | maintainer (engagement) + reviewer (delivery) | [`EXTERNAL_REVIEW.md`](EXTERNAL_REVIEW.md) |
 
 The pattern: **most controls are 6-monthly**, a few are release-triggered (claim matrix, doc-sync), and a couple are quarterly (provider credential rotation per deployment). Annual cadence is reserved for things where 6 months is overkill (trademark, brand framework as a whole). External review is honestly named as "not yet committed" — see [`PAI-139`](https://github.com/markus-barta/paimos/issues/139).
 
@@ -244,6 +244,7 @@ These gaps are tracked, not silent. Each has a ticket; each is named in either �
 - **[`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md)** — when something gets through (5 runbooks + tabletop).
 - **[`CONTINUITY.md`](CONTINUITY.md)** — when the maintainer is out (6 scenarios + tabletop).
 - **[`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md)** — what we've learned running it (12 findings).
+- **[`EXTERNAL_REVIEW.md`](EXTERNAL_REVIEW.md)** — framework for engaging external technical review when feasible. The §1 "external technical review" recurring control above lives there in detail.
 - **[`SECURITY.md`](../SECURITY.md)** — inbound disclosure policy.
 - **[`2.0_AUDIT.md`](2.0_AUDIT.md)** — programme-scope decisions log.
 - **[`claim-matrix.md`](claim-matrix.md)** — claim ↔ shipped-evidence registry.
