@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 79
+const latestSchemaVersion = 80
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -35,37 +35,26 @@ func openTestDB(t *testing.T) *sql.DB {
 
 func tableExists(t *testing.T, db *sql.DB, name string) bool {
 	t.Helper()
-	var found string
-	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&found)
-	return err == nil && found == name
+	found, err := SchemaHasTable(db, name)
+	if err != nil {
+		t.Fatalf("schema_has_table %s: %v", name, err)
+	}
+	return found
 }
 
 func columnExists(t *testing.T, db *sql.DB, table, column string) bool {
 	t.Helper()
-	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	found, err := SchemaHasColumn(db, table, column)
 	if err != nil {
-		t.Fatalf("table_info %s: %v", table, err)
+		t.Fatalf("schema_has_column %s.%s: %v", table, column, err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt any
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			t.Fatalf("scan table_info %s: %v", table, err)
-		}
-		if name == column {
-			return true
-		}
-	}
-	return false
+	return found
 }
 
 func TestSchemaMigrationsReachLatestVersion(t *testing.T) {
 	db := openTestDB(t)
-	var maxVersion int
-	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_versions`).Scan(&maxVersion); err != nil {
+	maxVersion, err := CurrentSchemaVersion(db)
+	if err != nil {
 		t.Fatalf("max schema version: %v", err)
 	}
 	if maxVersion != latestSchemaVersion {
@@ -107,5 +96,47 @@ func TestSchemaCreatesDatabaseFileInConfiguredDataDir(t *testing.T) {
 	dbPath := filepath.Join(os.Getenv("DATA_DIR"), "paimos.db")
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("expected sqlite file at %s: %v", dbPath, err)
+	}
+}
+
+func TestSchemaEnablesForeignKeysAndPassesIntegrityCheck(t *testing.T) {
+	db := openTestDB(t)
+	enabled, err := ForeignKeysEnabled(db)
+	if err != nil {
+		t.Fatalf("foreign_keys: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected PRAGMA foreign_keys=ON")
+	}
+	ok, err := IntegrityCheckOK(db)
+	if err != nil {
+		t.Fatalf("integrity_check: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected integrity_check=ok")
+	}
+}
+
+func TestSchemaContainsCriticalIndexes(t *testing.T) {
+	db := openTestDB(t)
+	for _, index := range []string{
+		"idx_issues_number",
+		"idx_issues_deleted_at",
+		"idx_project_members_project",
+		"idx_project_repos_project",
+		"idx_issue_anchors_issue",
+		"idx_entity_relations_project_src",
+		"idx_entity_relations_project_tgt",
+		"idx_ai_prompts_key_enabled",
+		"idx_documents_project",
+		"idx_time_entries_mite_id",
+	} {
+		found, err := SchemaHasIndex(db, index)
+		if err != nil {
+			t.Fatalf("schema_has_index %s: %v", index, err)
+		}
+		if !found {
+			t.Fatalf("expected index %s to exist", index)
+		}
 	}
 }
