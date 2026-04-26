@@ -92,6 +92,7 @@ export interface RunArgs {
 // ── module-singleton state ────────────────────────────────────────
 const actions = ref<AiActionDescriptor[]>([])
 const actionsLoaded = ref(false)
+const actionsLoadError = ref<string | null>(null)
 let actionsInflight: Promise<void> | null = null
 
 const isRunning = ref(false)
@@ -121,6 +122,11 @@ const optimize = useAiOptimize()
 // `available` mirrors the optimize composable's flag. The two endpoints
 // share the same ai_settings row so a single status feed serves both.
 const available = computed(() => optimize.available.value)
+const actionsStatus = computed<'loading' | 'ready' | 'error'>(() => {
+  if (actionsInflight) return 'loading'
+  if (actionsLoadError.value) return 'error'
+  return actionsLoaded.value ? 'ready' : 'loading'
+})
 
 // ── catalogue loader ──────────────────────────────────────────────
 //
@@ -146,11 +152,13 @@ async function loadActions(): Promise<void> {
         // their actions next to text fields.
         placement: a.placement ?? 'text',
       }))
+      actionsLoadError.value = null
       succeeded = true
-    } catch {
+    } catch (e) {
       // 401 or network — keep the previous list (which may be empty
       // on first load). On a 401-then-login flow, the menu's mount
       // hook re-tries this so the catalogue ends up populated.
+      actionsLoadError.value = errMsg(e, 'AI action catalog unavailable')
     } finally {
       // Only mark "loaded" on success. Failures stay in retry-state
       // so the next attempt actually fires instead of being short-
@@ -265,6 +273,8 @@ loadActions()
 export function useAiAction() {
   return {
     actions,
+    actionsStatus,
+    actionsLoadError,
     available,
     isRunning,
     lastError,

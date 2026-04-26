@@ -378,6 +378,7 @@ func main() {
 			r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
+			r.Get("/ai/actions", handlers.AIListActions)
 			r.Get("/ai/status", handlers.AIStatus)
 			// PAI-164: legacy /api/ai/optimize endpoint retired —
 			// the optimize behaviour now lives behind /api/ai/action

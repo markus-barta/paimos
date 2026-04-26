@@ -239,6 +239,22 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/branding/logo", handlers.UploadBrandingLogo)
 			r.With(auth.RequireAdmin).Post("/branding/favicon", handlers.UploadBrandingFavicon)
 
+			// AI
+			r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
+			r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
+			r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
+			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
+			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+			r.With(auth.RequireAdmin).Get("/ai/prompts", handlers.AIListPrompts)
+			r.With(auth.RequireAdmin).Post("/ai/prompts", handlers.AICreatePrompt)
+			r.With(auth.RequireAdmin).Put("/ai/prompts/{id}", handlers.AIUpdatePrompt)
+			r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
+			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
+			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
+			r.Get("/ai/actions", handlers.AIListActions)
+			r.Get("/ai/status", handlers.AIStatus)
+			r.Post("/ai/action", handlers.AIAction)
+
 			r.Get("/search", handlers.Search)
 
 			// Views

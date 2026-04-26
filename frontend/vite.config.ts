@@ -49,5 +49,17 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('/vue/') || id.includes('/pinia/') || id.includes('/vue-router/') || id.includes('/vue-i18n/')) {
+            return 'vue-core'
+          }
+          if (id.includes('/lucide-vue-next/')) return 'icons'
+          if (id.includes('/marked/') || id.includes('/dompurify/')) return 'content-rendering'
+        },
+      },
+    },
   },
 })
