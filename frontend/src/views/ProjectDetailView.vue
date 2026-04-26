@@ -18,7 +18,9 @@ import { useSearchStore } from '@/stores/search'
 import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
+import { useProjectAuxPanels } from '@/composables/useProjectAuxPanels'
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
+import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectAuxPanel from '@/components/customer/ProjectAuxPanel.vue'
@@ -75,22 +77,14 @@ const customers = ref<Customer[]>([])
 // above the issue tabs which crowded the page even on projects
 // that don't use anchors. Now it's behind a toggle that lives in
 // the same toolbar cluster as Docs / Coop.
-type AuxPanel = 'docs' | 'cooperation' | 'context' | null
-const auxPanel = ref<AuxPanel>(null)
-function toggleAux(p: 'docs' | 'cooperation' | 'context') {
-  auxPanel.value = auxPanel.value === p ? null : p
-}
-// PAI-178: per-project signal for the Context toggle badge
-// ("populated" lights up when at least one repo is linked OR the
-// manifest contains anything other than `{}`). Live count comes
-// from the always-mounted sentinel below.
-const contextPopulated = ref(false)
-
-// Live indicators on the toggle buttons — the always-mounted hidden
-// sentinels below feed these so the user sees signal without having to
-// open each panel first.
-const docCount = ref(0)
-const cooperationPopulated = ref(false)
+const {
+  auxPanel,
+  toggleAux,
+  closeAux,
+  contextPopulated,
+  docCount,
+  cooperationPopulated,
+} = useProjectAuxPanels()
 
 provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sprints })
 
@@ -102,51 +96,11 @@ const exporting     = ref(false)
 
 // Synthetic fallback views used when no admin-default views exist in the DB.
 // Negative IDs ensure they never collide with real DB rows.
-const FALLBACK_VIEWS: SavedView[] = [
-  {
-    id: -100, user_id: 0, owner_username: 'system', title: 'Issues',
-    description: 'Tickets and tasks.',
-    columns_json: '["billing_type","total_budget","rate_hourly","rate_lp","estimate_hours","estimate_lp","ar_hours","ar_lp","group_state","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["ticket","task"]}',
-    is_shared: true, is_admin_default: true, sort_order: 0, hidden: false, pinned: null, created_at: '', updated_at: '',
-  },
-  {
-    id: -101, user_id: 0, owner_username: 'system', title: 'Epics',
-    description: 'Epic planning view.',
-    columns_json: '["cost_unit","release","sprint","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["epic"]}',
-    is_shared: true, is_admin_default: true, sort_order: 1, hidden: false, pinned: null, created_at: '', updated_at: '',
-  },
-  {
-    id: -102, user_id: 0, owner_username: 'system', title: 'Cost Units',
-    description: 'Cost unit overview.',
-    columns_json: '["epic","sprint","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["cost_unit"]}',
-    is_shared: true, is_admin_default: true, sort_order: 2, hidden: false, pinned: null, created_at: '', updated_at: '',
-  },
-  {
-    id: -103, user_id: 0, owner_username: 'system', title: 'Releases',
-    description: 'Release planning.',
-    columns_json: '["billing_type","total_budget","rate_hourly","rate_lp","estimate_hours","estimate_lp","ar_hours","ar_lp","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["release"]}',
-    is_shared: true, is_admin_default: true, sort_order: 3, hidden: false, pinned: null, created_at: '', updated_at: '',
-  },
-]
-
 const allViews    = ref<SavedView[]>([])
 const activeTabId = ref<number | null>(null)
 
 // Tabs: admin-default (not hidden, or user-pinned) + pinned personal views
-const displayTabs = computed(() => {
-  const defaults = allViews.value
-    .filter(v => v.is_admin_default && (!v.hidden || v.pinned === true) && v.pinned !== false)
-    .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title))
-  const pinnedPersonal = allViews.value
-    .filter(v => !v.is_admin_default && v.pinned === true)
-    .sort((a, b) => a.title.localeCompare(b.title))
-  const tabs = [...defaults, ...pinnedPersonal]
-  return tabs.length ? tabs : FALLBACK_VIEWS
-})
+const displayTabs = computed(() => buildProjectDisplayTabs(allViews.value))
 
 async function selectTab(view: SavedView) {
   const isReclick = activeTabId.value === view.id
@@ -718,7 +672,7 @@ const lastChanged = computed(() => {
         :open="auxPanel === 'docs'"
         title="Documents"
         :subtitle="docCount > 0 ? `${docCount} file${docCount === 1 ? '' : 's'}` : ''"
-        @close="auxPanel = null"
+        @close="closeAux"
       >
         <DocumentsSection
           scope="project"
@@ -732,7 +686,7 @@ const lastChanged = computed(() => {
         :open="auxPanel === 'cooperation'"
         title="Cooperation"
         :subtitle="cooperationPopulated ? 'profile set' : 'not set up'"
-        @close="auxPanel = null"
+        @close="closeAux"
       >
         <CooperationSection
           :project-id="projectId"
@@ -748,7 +702,7 @@ const lastChanged = computed(() => {
         :open="auxPanel === 'context'"
         title="Project Context"
         :subtitle="contextPopulated ? 'repos + manifest set' : 'not set up'"
-        @close="auxPanel = null"
+        @close="closeAux"
       >
         <ProjectContextSection
           :project-id="projectId"
