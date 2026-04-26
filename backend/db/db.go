@@ -3614,6 +3614,17 @@ func migrate(db *sql.DB) error {
 		// is needed. Admins who edit a placement override the default;
 		// admins who reset clear back to ''.
 	}},
+	// PAI-189 / PAI-192: align indexes with real query paths. entity_relations
+	// is typically filtered by project + endpoint entity, and ai_prompts
+	// prompt resolution is by key + enabled.
+	{80, []string{
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_project_src
+		 ON entity_relations(project_id, source_type, source_id, edge_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_entity_relations_project_tgt
+		 ON entity_relations(project_id, target_type, target_id, edge_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_prompts_key_enabled
+		 ON ai_prompts(key, enabled)`,
+	}},
 	}
 
 	for _, m := range migrations {

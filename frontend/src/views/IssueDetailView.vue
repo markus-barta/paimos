@@ -16,6 +16,7 @@ import { useNewIssueStore } from '@/stores/newIssue'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { emptyIssueDetailForm, issueToDetailForm } from '@/config/issueDetailForm'
 import type { Issue, Tag, Project, Sprint, User, Attachment } from '@/types'
+import { cloneIssueDetail, deleteIssueDetail, loadIssueAggregation, loadIssueDetailData, saveIssueDetail, type IssueAggregation as Aggregation } from '@/services/issueDetail'
 import {
   useIssueDisplay,
   TYPE_SVGS,
@@ -88,29 +89,17 @@ async function load() {
   loading.value = true
   editing.value = false
   saveError.value = ''
-  const [i, u, cu, rel, ch, tags, projIssues, proj, sprints] = await Promise.all([
-    api.get<Issue>(`/issues/${issueId.value}`),
-    api.get<User[]>('/users'),
-    api.get<string[]>(`/projects/${projectId.value}/cost-units`).catch(() => []),
-    api.get<string[]>(`/projects/${projectId.value}/releases`).catch(() => []),
-    api.get<Issue[]>(`/issues/${issueId.value}/children`).catch(() => []),
-    api.get<Tag[]>('/tags'),
-    api.get<Issue[]>(`/projects/${projectId.value}/issues?fields=list`).catch(() => []),
-    api.get<Project>(`/projects/${projectId.value}`).catch(() => null),
-    api.get<Sprint[]>('/sprints').catch(() => []),
-  ])
-  issue.value         = i
-  project.value       = proj
-  users.value         = u
-  costUnits.value     = cu
-  releases.value      = rel
-  children.value      = ch
-  allTags.value       = tags
-  allSprints.value    = sprints
-  projectIssues.value = projIssues
-  parentIssue.value = i.parent_id
-    ? await api.get<Issue>(`/issues/${i.parent_id}`).catch(() => null)
-    : null
+  const data = await loadIssueDetailData(issueId.value, projectId.value)
+  issue.value = data.issue
+  project.value = data.project
+  parentIssue.value = data.parentIssue
+  children.value = data.children
+  projectIssues.value = data.projectIssues
+  users.value = data.users
+  allTags.value = data.allTags
+  allSprints.value = data.allSprints
+  costUnits.value = data.costUnits
+  releases.value = data.releases
   resetForm()
   loading.value = false
   // Sub-components load their own data
@@ -169,7 +158,7 @@ async function save() {
   saveError.value = ''
   saving.value = true
   try {
-    issue.value = await api.put<Issue>(`/issues/${issueId.value}`, form.value)
+    issue.value = await saveIssueDetail(issueId.value, form.value)
     parentIssue.value = issue.value.parent_id
       ? await api.get<Issue>(`/issues/${issue.value.parent_id}`).catch(() => null)
       : null
@@ -193,7 +182,7 @@ async function deleteIssue() {
   if (!await confirm({ message: `Delete ${issue.value?.issue_key} "${issue.value?.title}"?`, confirmLabel: 'Delete', danger: true })) return
   saving.value = true
   try {
-    await api.delete(`/issues/${issueId.value}`)
+    await deleteIssueDetail(issueId.value)
     router.push(`/projects/${projectId.value}`)
   } finally {
     saving.value = false
@@ -206,7 +195,7 @@ async function cloneIssue() {
   if (cloning.value) return
   cloning.value = true
   try {
-    const clone = await api.post<Issue>(`/issues/${issueId.value}/clone`, {})
+    const clone = await cloneIssueDetail(issueId.value)
     router.push(`/projects/${projectId.value}/issues/${clone.id}?edit=1`)
   } catch (e: unknown) {
     alert(errMsg(e, 'Clone failed.'))
@@ -530,12 +519,6 @@ function fmtDateTime(s: string): string {
 }
 
 // ── Aggregation (cost_unit / epic) ──────────────────────────────────────────
-interface Aggregation {
-  member_count: number
-  estimate_hours: number | null; estimate_lp: number | null; estimate_eur: number | null
-  ar_hours: number | null; ar_lp: number | null; ar_eur: number | null
-  actual_hours: number | null; actual_internal_cost: number | null; margin_eur: number | null
-}
 const aggregation = ref<Aggregation | null>(null)
 const aggLoading  = ref(false)
 const isCostUnitOrEpic = computed(() => issue.value?.type === 'cost_unit' || issue.value?.type === 'epic')
@@ -543,7 +526,7 @@ const isCostUnitOrEpic = computed(() => issue.value?.type === 'cost_unit' || iss
 async function loadAggregation() {
   if (!issueId.value || !isCostUnitOrEpic.value) return
   aggLoading.value = true
-  try { aggregation.value = await api.get<Aggregation>(`/issues/${issueId.value}/aggregation`) }
+  try { aggregation.value = await loadIssueAggregation(issueId.value) }
   catch { aggregation.value = null }
   finally { aggLoading.value = false }
 }

@@ -11,7 +11,7 @@ import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
 import ImportCollisionModal from '@/components/ImportCollisionModal.vue'
 import type { PreflightResult, CollisionStrategy } from '@/components/ImportCollisionModal.vue'
-import { api, csrfHeaders, errMsg } from '@/api/client'
+import { api, errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useSearchStore } from '@/stores/search'
@@ -28,6 +28,18 @@ import {
 import { buildProjectPurgePayload, emptyProjectPurgeForm } from '@/config/projectPurge'
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
 import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
+import {
+  buildProjectCsvExportUrl,
+  deleteProjectLogo,
+  executeProjectTimeEntryPurge,
+  loadProjectDetailData,
+  loadProjectIssues,
+  loadProjectPurgeUsers,
+  preflightProjectCsvImport,
+  previewProjectTimeEntryPurge,
+  runProjectCsvImport,
+  uploadProjectLogo,
+} from '@/services/projectDetail'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectAuxPanel from '@/components/customer/ProjectAuxPanel.vue'
@@ -113,8 +125,7 @@ async function selectTab(view: SavedView) {
   const isReclick = activeTabId.value === view.id
   activeTabId.value = view.id
   // Re-fetch issues on tab switch or re-click
-  const url = `/projects/${projectId.value}/issues?fields=list${search.query.length >= 2 ? '&q=' + encodeURIComponent(search.query) : ''}`
-  issues.value = await api.get<Issue[]>(url)
+  issues.value = await loadProjectIssues(projectId.value, search.query)
   nextTick(() => issueListRef.value?.applyView(view))
 }
 
@@ -151,12 +162,8 @@ async function uploadLogo(e: Event) {
   if (file.size > MAX_IMAGE_SIZE) { logoError.value = 'Image must be smaller than 3 MB.'; return }
   logoError.value = ''
   logoUploading.value = true
-  const fd = new FormData()
-  fd.append('logo', file)
   try {
-    const updated = await fetch(`/api/projects/${projectId.value}/logo`, { method: 'POST', body: fd, credentials: 'same-origin', headers: csrfHeaders() })
-    if (!updated.ok) { const d = await updated.json(); throw new Error(d.error ?? 'Upload failed.') }
-    project.value = await updated.json()
+    project.value = await uploadProjectLogo(projectId.value, file)
   } catch (ex: unknown) {
     logoError.value = errMsg(ex, 'Upload failed.')
   } finally {
@@ -168,7 +175,7 @@ async function uploadLogo(e: Event) {
 async function deleteLogo() {
   logoError.value = ''
   try {
-    project.value = await api.delete<Project>(`/projects/${projectId.value}/logo`)
+    project.value = await deleteProjectLogo(projectId.value)
   } catch (ex: unknown) {
     logoError.value = errMsg(ex, 'Failed to remove logo.')
   }
@@ -256,7 +263,7 @@ async function openPurge() {
   purgeError.value = ''
   showPurge.value = true
   try {
-    purgeUsers.value = await api.get<{ id: number; username: string }[]>(`/projects/${projectId.value}/time-entries/users`)
+    purgeUsers.value = await loadProjectPurgeUsers(projectId.value)
   } catch { /* ignore */ }
 }
 
@@ -271,9 +278,7 @@ async function previewPurge() {
   purgeError.value = ''
   purgeConfirmKey.value = ''
   try {
-    purgePreview.value = await api.post<{ count: number; total_hours: number }>(
-      `/projects/${projectId.value}/time-entries/purge-preview`, buildProjectPurgePayload(purgeForm.value)
-    )
+    purgePreview.value = await previewProjectTimeEntryPurge(projectId.value, buildProjectPurgePayload(purgeForm.value))
   } catch (e: unknown) {
     purgeError.value = errMsg(e, 'Preview failed')
   } finally {
@@ -286,9 +291,7 @@ async function executePurge() {
   purgeError.value = ''
   try {
     const payload = { ...buildProjectPurgePayload(purgeForm.value), confirmation_key: purgeConfirmKey.value }
-    purgeSuccess.value = await api.post<{ count: number; total_hours: number }>(
-      `/projects/${projectId.value}/time-entries/purge`, payload
-    )
+    purgeSuccess.value = await executeProjectTimeEntryPurge(projectId.value, payload)
     purgePreview.value = null
     purgeConfirmKey.value = ''
   } catch (e: unknown) {
@@ -318,11 +321,9 @@ async function exportCSV() {
   exporting.value = true
   exportError.value = ''
   try {
-    let url = `/api/projects/${projectId.value}/export/csv`
     const il = issueListRef.value
-    if (il?.selectionMode && il.selectedIds.size > 0) {
-      url += `?ids=${[...il.selectedIds].join(',')}`
-    }
+    const selectedIds = il?.selectionMode && il.selectedIds.size > 0 ? [...il.selectedIds] : []
+    const url = buildProjectCsvExportUrl(projectId.value, selectedIds)
     const resp = await fetch(url, { credentials: 'include' })
     if (resp.status === 401) { exportError.value = 'Session expired — please reload and log in again.'; return }
     if (!resp.ok) { exportError.value = `Export failed (${resp.status}).`; return }
@@ -369,16 +370,9 @@ async function onImportFile(e: Event) {
   importError.value = ''
   importResult.value = null
   try {
-    const fd = new FormData()
-    fd.append('file', file)
-    const resp = await fetch(`/api/projects/${projectId.value}/import/csv/preflight`, {
-      method: 'POST', credentials: 'include', headers: csrfHeaders(), body: fd,
-    })
-    const data = await resp.json()
-    if (!resp.ok) { importError.value = data.error ?? 'Preflight failed.'; return }
-    importPreflight.value = data
+    importPreflight.value = await preflightProjectCsvImport(projectId.value, file)
     // If no collisions, import directly without showing modal
-    if (data.collision_count === 0) {
+    if (importPreflight.value.collision_count === 0) {
       await doImport('insert', '')
     } else {
       showImportModal.value = true
@@ -400,15 +394,7 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
   if (!pendingImportFile.value) return
   importing.value = true
   try {
-    const fd = new FormData()
-    fd.append('file', pendingImportFile.value)
-    fd.append('strategy', strategy)
-    const resp = await fetch(`/api/projects/${projectId.value}/import/csv`, {
-      method: 'POST', credentials: 'include', headers: csrfHeaders(), body: fd,
-    })
-    const data = await resp.json()
-    if (!resp.ok) { importError.value = data.error ?? 'Import failed.'; return }
-    importResult.value = data
+    importResult.value = await runProjectCsvImport(projectId.value, pendingImportFile.value, strategy)
     await load()
   } catch (ex: unknown) {
     importError.value = errMsg(ex, 'Import failed.')
@@ -420,27 +406,15 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
 
 async function load() {
   loading.value = true
-  const [p, iss, u, cu, rel, tags, views, custs] = await Promise.all([
-    api.get<Project>(`/projects/${projectId.value}`),
-    api.get<Issue[]>(`/projects/${projectId.value}/issues?fields=list${search.query.length >= 2 ? '&q=' + encodeURIComponent(search.query) : ''}`),
-    api.get<User[]>('/users'),
-    api.get<string[]>(`/projects/${projectId.value}/cost-units`).catch(() => []),
-    api.get<string[]>(`/projects/${projectId.value}/releases`).catch(() => []),
-    api.get<Tag[]>('/tags'),
-    api.get<SavedView[]>('/views').catch(() => []),
-    // PAI-58/59. Customer list powers the assignment dropdown in the
-    // edit modal and the inherited-rate hints. Best-effort — non-admins
-    // 403 here and that's fine.
-    api.get<Customer[]>('/customers').catch(() => [] as Customer[]),
-  ])
-  project.value   = p
-  issues.value    = iss
-  users.value     = u
-  costUnits.value = cu
-  releases.value  = rel
-  allTags.value   = tags
-  allViews.value = views as SavedView[]
-  customers.value = custs
+  const data = await loadProjectDetailData(projectId.value, search.query)
+  project.value = data.project
+  issues.value = data.issues
+  users.value = data.users
+  costUnits.value = data.costUnits
+  releases.value = data.releases
+  allTags.value = data.allTags
+  allViews.value = data.allViews
+  customers.value = data.customers
   // activeTabId is set by IssueList's view-applied emit (MRU-based)
   loading.value   = false
 }
@@ -459,8 +433,7 @@ watch(() => route.params.id, (newId, oldId) => {
 
 // Re-fetch issues when search query changes (search-as-filter overlay)
 watch(() => search.query, async (q) => {
-  const url = `/projects/${projectId.value}/issues?fields=list${q.length >= 2 ? '&q=' + encodeURIComponent(q) : ''}`
-  issues.value = await api.get<Issue[]>(url)
+  issues.value = await loadProjectIssues(projectId.value, q)
 })
 
 function onCreated(issue: Issue) {
