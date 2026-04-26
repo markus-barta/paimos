@@ -5,6 +5,22 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] — 2026-04-26
+
+### Added — Project context substrate and hybrid retrieval
+
+- Merge branch 'feat/pai-29-pai-30-substrate'
+- docs(security): operator hardening guide + reference architecture (PAI-133)
+- Complete hybrid retrieval and symbol graph flow
+- docs(security): threat model + named security invariants per domain (PAI-125)
+- Add deterministic embedding retrieval substrate
+- Add lexical project-context retrieval index
+- Build project-context tooling substrate
+- docs(security): solo-maintainer continuity plan + tabletop (PAI-144)
+- docs(security): incident response runbook + tabletop exercise (PAI-131)
+- fix(settings): move CRM tab from Settings to Integrations (PAI-179)
+- docs(2.0): audit + decision report and planning-hierarchy review (PAI-189 close-out)
+
 ## [2.0.3] — 2026-04-26
 
 ### Fixed
