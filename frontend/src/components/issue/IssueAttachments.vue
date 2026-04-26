@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import { attachmentsEnabled } from '@/api/instance'
 import { MAX_ATTACHMENT_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
@@ -8,6 +8,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useAttachmentLightbox } from '@/composables/useAttachmentLightbox'
 import AppIcon from '@/components/AppIcon.vue'
 import type { Attachment } from '@/types'
+import { deleteIssueAttachment, loadIssueAttachments, uploadIssueAttachment } from '@/services/issueAttachments'
 
 const props = defineProps<{
   issueId: number
@@ -24,7 +25,7 @@ const dragOver       = ref(false)
 
 async function load() {
   attachLoading.value = true
-  attachments.value = await api.get<Attachment[]>(`/issues/${props.issueId}/attachments`).catch(() => [])
+  attachments.value = await loadIssueAttachments(props.issueId).catch(() => [])
   attachLoading.value = false
 }
 
@@ -64,15 +65,9 @@ async function uploadFiles(files: FileList | File[]) {
       attachError.value = 'Maximum 20 attachments per issue'
       break
     }
-    const fd = new FormData()
-    fd.append('file', file)
     uploadProgress.value = 0
     try {
-      const a = await api.upload<Attachment>(
-        `/issues/${props.issueId}/attachments`,
-        fd,
-        (pct) => { uploadProgress.value = pct }
-      )
+      const a = await uploadIssueAttachment(props.issueId, file, (pct) => { uploadProgress.value = pct })
       attachments.value = [...attachments.value, a]
     } catch (e: unknown) {
       attachError.value = errMsg(e, 'Upload failed')
@@ -97,7 +92,7 @@ function onDrop(e: DragEvent) {
 async function deleteAttachment(a: Attachment) {
   if (!await confirm({ message: `Delete "${a.filename}"?`, confirmLabel: 'Delete', danger: true })) return
   try {
-    await api.delete(`/attachments/${a.id}`)
+    await deleteIssueAttachment(a.id)
     attachments.value = attachments.value.filter(x => x.id !== a.id)
   } catch (e: unknown) {
     attachError.value = errMsg(e, 'Delete failed')

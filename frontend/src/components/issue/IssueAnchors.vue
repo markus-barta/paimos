@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import type { IssueAnchor } from '@/types'
+import { loadIssueAnchors } from '@/services/issueAnchors'
 
 const props = defineProps<{
   issueId: number
@@ -28,7 +29,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    anchors.value = await api.get<IssueAnchor[]>(`/issues/${props.issueId}/anchors`)
+    anchors.value = await loadIssueAnchors(props.issueId)
   } catch (e) {
     error.value = errMsg(e, 'Failed to load anchors.')
   } finally {

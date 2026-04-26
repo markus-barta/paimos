@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useTimerStore } from '@/stores/timer'
 import { useConfirm } from '@/composables/useConfirm'
@@ -9,6 +9,7 @@ import { fmtShortDateTime } from '@/utils/formatTime'
 import AppIcon from '@/components/AppIcon.vue'
 import type { TimeEntry } from '@/types'
 import { LS_TIME_ENTRIES_EXPANDED } from '@/constants/storage'
+import { createIssueTimeEntry, deleteTimeEntryById, loadIssueTimeEntries, updateTimeEntry, type CreateTimeEntryPayload } from '@/services/issueTimeEntries'
 
 const props = defineProps<{
   issueId: number
@@ -51,7 +52,7 @@ async function load() {
   if (!props.issueId) return
   teLoading.value = true
   try {
-    timeEntries.value = await api.get<TimeEntry[]>(`/issues/${props.issueId}/time-entries`)
+    timeEntries.value = await loadIssueTimeEntries(props.issueId)
   } catch { timeEntries.value = [] }
   finally {
     teLoading.value = false
@@ -83,13 +84,13 @@ async function submitTimeEntry() {
       return
     }
     const now = new Date().toISOString()
-    const body: Record<string, any> = {
+    const body: CreateTimeEntryPayload = {
       comment: teForm.value.comment,
       override: hours,
       started_at: now,
       stopped_at: now,
     }
-    await api.post(`/issues/${props.issueId}/time-entries`, body)
+    await createIssueTimeEntry(props.issueId, body)
     await load()
     showTeForm.value = false
   } catch (e: unknown) { teError.value = errMsg(e, 'Failed to save.') }
@@ -135,7 +136,7 @@ async function saveDuration(entry: TimeEntry) {
   if (entry.user_id !== authStore.user?.id) {
     if (!await confirm({ message: `You are editing ${entry.username}'s time entry. Continue?`, confirmLabel: 'Edit' })) return
   }
-  await api.put(`/time-entries/${entry.id}`, { override: parsed })
+  await updateTimeEntry(entry.id, { override: parsed })
   await load()
 }
 
@@ -155,13 +156,13 @@ async function saveComment(entry: TimeEntry) {
   if (entry.user_id !== authStore.user?.id) {
     if (!await confirm({ message: `You are editing ${entry.username}'s time entry. Continue?`, confirmLabel: 'Edit' })) return
   }
-  await api.put(`/time-entries/${entry.id}`, { comment: editingTeComment.value })
+  await updateTimeEntry(entry.id, { comment: editingTeComment.value })
   await load()
 }
 
 async function clearOverride(entry: TimeEntry) {
   if (!await confirm({ message: 'Clear the manual time override? The original tracked duration will be restored.', confirmLabel: 'Clear', danger: true })) return
-  await api.put(`/time-entries/${entry.id}`, { clear_override: true })
+  await updateTimeEntry(entry.id, { clear_override: true })
   await load()
 }
 
@@ -171,7 +172,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
     ? `You are deleting ${entry.username}'s time entry. This cannot be undone.`
     : 'Delete this time entry?'
   if (!await confirm({ message: msg, confirmLabel: 'Delete', danger: true })) return
-  await api.delete(`/time-entries/${entry.id}`)
+  await deleteTimeEntryById(entry.id)
   timeEntries.value = timeEntries.value.filter(e => e.id !== entry.id)
 }
 </script>

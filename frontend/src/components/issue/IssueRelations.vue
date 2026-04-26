@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api, errMsg } from '@/api/client'
+import { errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
 import AppIcon from '@/components/AppIcon.vue'
 import type { Issue, IssueRelation } from '@/types'
+import { addIssueRelation, loadIssueRelations, removeIssueRelation } from '@/services/issueRelations'
 
 const props = defineProps<{
   issueId: number
@@ -28,7 +29,7 @@ async function load() {
   if (!props.issueId) return
   relLoading.value = true
   try {
-    relations.value = await api.get<IssueRelation[]>(`/issues/${props.issueId}/relations`)
+    relations.value = await loadIssueRelations(props.issueId)
   } catch { relations.value = [] }
   finally { relLoading.value = false }
 }
@@ -65,7 +66,7 @@ async function addRelation() {
   if (!target) { relFormError.value = `Issue "${key}" not found in this project.`; return }
   relSaving.value = true
   try {
-    await api.post(`/issues/${props.issueId}/relations`, { target_id: target.id, type: relFormType.value })
+    await addIssueRelation(props.issueId, target.id, relFormType.value)
     await load()
     relFormTarget.value = ''
   } catch (e: unknown) { relFormError.value = errMsg(e, 'Failed to add relation.') }
@@ -74,7 +75,7 @@ async function addRelation() {
 
 async function removeRelation(rel: IssueRelation) {
   if (!await confirm({ message: 'Remove this relation?', confirmLabel: 'Remove' })) return
-  await api.delete(`/issues/${props.issueId}/relations`, { target_id: rel.target_id, type: rel.type })
+  await removeIssueRelation(props.issueId, rel.target_id, rel.type)
   relations.value = relations.value.filter(r => !(r.target_id === rel.target_id && r.type === rel.type))
 }
 
