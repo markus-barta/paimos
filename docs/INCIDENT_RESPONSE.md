@@ -313,3 +313,4 @@ The review should be readable cold by future-maintainer six months on. Don't wri
   - Trust evidence matrix: [`claim-matrix.md`](claim-matrix.md)
   - Solo-maintainer continuity (bus-factor planning): [`CONTINUITY.md`](CONTINUITY.md)
   - Threat model + security invariants (the model an incident threatens): [`THREAT_MODEL.md`](THREAT_MODEL.md)
+  - Operator hardening guide (the deployment-side hardening checklist): [`HARDENING.md`](HARDENING.md)

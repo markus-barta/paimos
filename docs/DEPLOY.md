@@ -4,6 +4,12 @@ Single-source-of-truth rule: **the git tag is the version.** Everything else
 (`VERSION` file, `docs/CHANGELOG.md`, Docker tags, running containers) is
 derived from or pinned to it.
 
+> Bringing a fresh PAIMOS deployment online? Walk
+> [`HARDENING.md`](HARDENING.md) before exposing it to users. This
+> document covers release / rollback / image lifecycle; the hardening
+> guide covers TLS / auth / files / audit / secrets / backups against
+> the [`THREAT_MODEL.md`](THREAT_MODEL.md) invariants.
+
 Two instances, both pulling from the same registry:
 
 | Instance | Host                  | Auth                | Storage           |

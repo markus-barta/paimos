@@ -292,6 +292,7 @@ These are honest gaps in the regression layer, not unenforced invariants. The co
 - **[`claim-matrix.md`](claim-matrix.md)** — claim ↔ shipped-evidence registry; checked at release time.
 - **[`2.0_AUDIT.md`](2.0_AUDIT.md)** — programme-scope audit + decisions log; D-001 through D-005 frame the architectural constraints this threat model is built on.
 - **[`paimos.com/trust.html`](https://paimos.com/trust.html)** — public outward-facing trust posture; §05 limits aligns with this document's §5 out-of-scope.
+- **[`HARDENING.md`](HARDENING.md)** — operator-facing companion to this document. Where this threat model says *what must be true*, the hardening guide says *how to make it true* in a deployment, with explicit verification commands per checklist item.
 - **`backend/handlers/security_regression_test.go`** — the canonical regression suite for the security defects PAI-110-118 fixed; new invariants should add tests here.
 - **`backend/handlers/authz_fuzz_test.go`** — authorization fuzzer (PAI-127); new role × endpoint pairs should land here.
 - **`backend/handlers/ai_optimize_audit_test.go`** — audit-shape regression (PAI-153); the no-bodies invariant lives here.
