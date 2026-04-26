@@ -20,6 +20,14 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - Saved views now restore flat/tree mode reliably, including older and fallback views that previously lacked an explicit `treeView` value.
 
+## [2.1.7] — 2026-04-26
+
+### Changed
+
+- Undo activity now opens as a right-edge sidebar (shared width with the issue panel and project workspace dock) instead of a popup card; only one sidebar is visible at a time.
+- App header keeps a single explicit Undo button — the duplicate rewind icon inside the search field is gone.
+- AppFooter logo is right-aligned and links to paimos.com; on the project detail view the footer no longer doubles up with the workspace rail.
+
 ## [2.1.6] — 2026-04-26
 
 ### Changed
