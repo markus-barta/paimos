@@ -32,6 +32,7 @@ GET    /projects/:id/manifest
 PUT    /projects/:id/manifest       {data}
 POST   /projects/:id/anchors        {repo_id, schema_version, repo_revision, generated_at, anchors}
 GET    /projects/:id/graph          ?root=issue:42&depth=2
+GET    /projects/:id/graph/blast-radius ?issue=PAI-79&depth=3
 POST   /projects/:id/retrieve       {q, k}
 ```
 
@@ -185,6 +186,7 @@ form the project-context layer for agents:
   owners, NFRs, and ADR references.
 - `anchors` ingests machine-generated issue-to-file locations per repo.
 - `graph` exposes typed entity relations (issues, repos, anchors, project).
+- `graph/blast-radius` answers "what else is affected if this changes?" in a grouped-by-type shape.
 - `retrieve` returns mixed context hits from issue text, anchors, manifest,
   and graph-neighbor expansion.
 

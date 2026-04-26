@@ -95,6 +95,8 @@ Get started:
 
 	cmd.AddCommand(authCmd())
 	cmd.AddCommand(projectCmd())
+	cmd.AddCommand(anchorsCmd())
+	cmd.AddCommand(manifestCmd())
 	cmd.AddCommand(issueCmd())
 	cmd.AddCommand(relationCmd())
 	cmd.AddCommand(schemaCmd())

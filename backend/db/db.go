@@ -3501,8 +3501,10 @@ func migrate(db *sql.DB) error {
 	}},
 
 	// M76: PAI-30 foundations — generic entity relations and embeddings.
-	// issue_relations remains in place for backward compatibility; the
-	// handlers layer can dual-write or bridge incrementally.
+	// Confidence tiers follow the declared / derived / suggested pattern
+	// popularized by code-review-graph. issue_relations remains in place
+	// for backward compatibility; the handlers layer can dual-write or
+	// bridge incrementally.
 	{76, []string{
 		`CREATE TABLE IF NOT EXISTS entity_relations (
 			id            INTEGER PRIMARY KEY AUTOINCREMENT,

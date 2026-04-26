@@ -180,6 +180,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/graph/blast-radius", handlers.BlastRadius)
 			r.With(auth.RequireProjectView).Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
 			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
 

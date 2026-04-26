@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -150,6 +151,7 @@ func DeleteProjectRepo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @paimos PAI-68 "anchor ingest endpoint"
 func IngestProjectAnchors(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
@@ -293,6 +295,26 @@ func ListProjectEntityRelations(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{"nodes": nodes, "edges": out})
 }
 
+// @paimos PAI-79 "blast radius endpoint"
+func BlastRadius(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	rootType, rootID, depth, err := parseBlastRadiusRequest(r)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	out, err := computeBlastRadius(projectID, rootType, rootID, depth)
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, out)
+}
+
 func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
@@ -321,6 +343,34 @@ func RetrieveProjectContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]any{"hits": hits})
+}
+
+func parseBlastRadiusRequest(r *http.Request) (string, int64, int, error) {
+	depth := 3
+	if raw := strings.TrimSpace(r.URL.Query().Get("depth")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 || n > 5 {
+			return "", 0, 0, fmt.Errorf("invalid depth")
+		}
+		depth = n
+	}
+	if issueRef := strings.TrimSpace(r.URL.Query().Get("issue")); issueRef != "" {
+		issueID, ok := auth.ResolveIssueRef(issueRef)
+		if !ok {
+			return "", 0, 0, fmt.Errorf("invalid issue")
+		}
+		return "issue", issueID, depth, nil
+	}
+	root := strings.TrimSpace(r.URL.Query().Get("root"))
+	parts := strings.SplitN(root, ":", 2)
+	if len(parts) != 2 {
+		return "", 0, 0, fmt.Errorf("issue or root is required")
+	}
+	rootID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || rootID <= 0 {
+		return "", 0, 0, fmt.Errorf("invalid root")
+	}
+	return parts[0], rootID, depth, nil
 }
 
 func projectIDFromRequest(r *http.Request) (int64, bool) {
@@ -586,6 +636,127 @@ func expandContextNeighbors(projectID int64, entityType string, entityID int64) 
 		})
 	}
 	return out
+}
+
+func computeBlastRadius(projectID int64, rootType string, rootID int64, depth int) (map[string]any, error) {
+	type queueItem struct {
+		typ      string
+		id       int64
+		distance int
+	}
+	allowed := map[string]bool{
+		"depends_on":        true,
+		"impacts":           true,
+		"blocks":            true,
+		"related":           true,
+		"anchored_to_issue": true,
+		"anchored_inside":   true,
+		"in_repo":           true,
+		"project_uses_repo": true,
+	}
+	queue := []queueItem{{typ: rootType, id: rootID, distance: 0}}
+	visited := map[string]int{nodeKey(rootType, rootID): 0}
+	reached := map[string][]map[string]any{}
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+		if item.distance >= depth {
+			continue
+		}
+		rows, err := queryEntityRelations(`
+			SELECT id, project_id, source_type, source_id, target_type, target_id, edge_type, confidence, metadata, created_at
+			FROM entity_relations
+			WHERE project_id = ? AND ((source_type=? AND source_id=?) OR (target_type=? AND target_id=?))
+			ORDER BY id ASC
+			LIMIT 200
+		`, projectID, item.typ, item.id, item.typ, item.id)
+		if err != nil {
+			return nil, err
+		}
+		for _, rel := range rows {
+			if !allowed[rel.EdgeType] {
+				continue
+			}
+			nextType := rel.TargetType
+			nextID := rel.TargetID
+			if rel.SourceType != item.typ || rel.SourceID != item.id {
+				nextType = rel.SourceType
+				nextID = rel.SourceID
+			}
+			key := nodeKey(nextType, nextID)
+			nextDistance := item.distance + 1
+			if prev, ok := visited[key]; ok && prev <= nextDistance {
+				continue
+			}
+			visited[key] = nextDistance
+			queue = append(queue, queueItem{typ: nextType, id: nextID, distance: nextDistance})
+			if nextDistance == 0 {
+				continue
+			}
+			entry := resolveBlastRadiusNode(nextType, nextID)
+			entry["distance"] = nextDistance
+			reached[nextType] = append(reached[nextType], entry)
+		}
+	}
+	for typ := range reached {
+		slices.SortFunc(reached[typ], func(a, b map[string]any) int {
+			ad, _ := a["distance"].(int)
+			bd, _ := b["distance"].(int)
+			if ad != bd {
+				return ad - bd
+			}
+			at, _ := a["title"].(string)
+			bt, _ := b["title"].(string)
+			return strings.Compare(at, bt)
+		})
+	}
+	return map[string]any{
+		"root":           map[string]any{"entity_type": rootType, "entity_id": rootID},
+		"reached":        reached,
+		"depth_explored": depth,
+	}, nil
+}
+
+func resolveBlastRadiusNode(typ string, id int64) map[string]any {
+	node := map[string]any{"id": id}
+	switch typ {
+	case "issue":
+		var title, projectKey string
+		var issueNumber int
+		if err := db.DB.QueryRow(`
+			SELECT i.title, p.key, i.issue_number
+			FROM issues i
+			JOIN projects p ON p.id = i.project_id
+			WHERE i.id=?
+		`, id).Scan(&title, &projectKey, &issueNumber); err == nil {
+			node["title"] = title
+			node["issue_key"] = fmt.Sprintf("%s-%d", projectKey, issueNumber)
+		}
+	case "anchor":
+		var label, filePath string
+		var line int
+		if err := db.DB.QueryRow(`SELECT label, file_path, line FROM issue_anchors WHERE id=?`, id).Scan(&label, &filePath, &line); err == nil {
+			node["label"] = label
+			node["title"] = defaultString(label, fmt.Sprintf("%s:%d", filePath, line))
+			node["file"] = filePath
+			node["line"] = line
+		}
+	case "repo":
+		var label, url string
+		if err := db.DB.QueryRow(`SELECT COALESCE(label,''), url FROM project_repos WHERE id=?`, id).Scan(&label, &url); err == nil {
+			node["title"] = defaultString(label, deriveRepoLabel(url))
+			node["url"] = url
+		}
+	default:
+		raw := resolveEntityNode(typ, id)
+		for k, v := range raw {
+			if k == "entity_type" || k == "entity_id" {
+				continue
+			}
+			node[k] = v
+		}
+	}
+	return node
 }
 
 func upsertIssueEntityRelation(sourceID, targetID int64, edgeType string) {

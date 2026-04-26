@@ -126,4 +126,17 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if !foundExpanded {
 		t.Fatalf("retrieve missing expanded graph hit: %#v", retrieve.Hits)
 	}
+
+	blastResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/graph/blast-radius?issue="+issue.IssueKey+"&depth=2", ts.adminCookie)
+	assertStatus(t, blastResp, http.StatusOK)
+	var blast struct {
+		Reached map[string][]map[string]any `json:"reached"`
+	}
+	decode(t, blastResp, &blast)
+	if len(blast.Reached["issue"]) == 0 {
+		t.Fatalf("blast radius issue set empty: %#v", blast.Reached)
+	}
+	if len(blast.Reached["anchor"]) == 0 {
+		t.Fatalf("blast radius anchor set empty: %#v", blast.Reached)
+	}
 }

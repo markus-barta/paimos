@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -84,6 +86,60 @@ func toolTextResult(text string, isError bool) map[string]any {
 // methods).
 func (s *Server) tools() []Tool {
 	return []Tool{
+		{
+			Name:        "paimos_retrieve",
+			Description: "Retrieve mixed project context hits for one PMO project.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"q":       map[string]any{"type": "string"},
+					"project": map[string]any{"type": "string"},
+					"k":       map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+				},
+				"required": []string{"q"},
+			},
+			handler: s.toolProjectRetrieve,
+		},
+		{
+			Name:        "paimos_graph",
+			Description: "Traverse the typed project graph from a root entity.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"root":    map[string]any{"type": "string"},
+					"project": map[string]any{"type": "string"},
+					"depth":   map[string]any{"type": "integer", "minimum": 1, "maximum": 5},
+				},
+				"required": []string{"root"},
+			},
+			handler: s.toolProjectGraph,
+		},
+		{
+			Name:        "paimos_blast_radius",
+			Description: "Return grouped blast-radius results for an issue in one project.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"issue":   map[string]any{"type": "string"},
+					"project": map[string]any{"type": "string"},
+					"depth":   map[string]any{"type": "integer", "minimum": 1, "maximum": 5},
+				},
+				"required": []string{"issue"},
+			},
+			handler: s.toolBlastRadius,
+		},
+		{
+			Name:        "paimos_search",
+			Description: "Run the global PAIMOS search endpoint.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"q": map[string]any{"type": "string"},
+				},
+				"required": []string{"q"},
+			},
+			handler: s.toolSearch,
+		},
 		{
 			Name:        "paimos_schema",
 			Description: "Returns the PAIMOS API schema (enums, transitions, entity shapes). Use this before choosing status/type/priority values to avoid typos.",
@@ -307,6 +363,166 @@ func (s *Server) toolIssueCreate(args map[string]any) (string, error) {
 		return "", err
 	}
 	return string(raw), nil
+}
+
+func (s *Server) toolProjectRetrieve(args map[string]any) (string, error) {
+	q, _ := args["q"].(string)
+	if strings.TrimSpace(q) == "" {
+		return "", fmt.Errorf("q is required")
+	}
+	projectID, err := s.resolveProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	k := 20
+	if raw, ok := args["k"].(float64); ok && raw > 0 {
+		k = int(raw)
+	}
+	raw, err := s.client.Do("POST", fmt.Sprintf("/api/projects/%d/retrieve", projectID), map[string]any{"q": q, "k": k})
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func (s *Server) toolProjectGraph(args map[string]any) (string, error) {
+	root, _ := args["root"].(string)
+	if strings.TrimSpace(root) == "" {
+		return "", fmt.Errorf("root is required")
+	}
+	projectID, err := s.resolveProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	depth := 2
+	if raw, ok := args["depth"].(float64); ok && raw > 0 {
+		depth = int(raw)
+	}
+	path := fmt.Sprintf("/api/projects/%d/graph?root=%s&depth=%d", projectID, url.QueryEscape(root), depth)
+	raw, err := s.client.Do("GET", path, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func (s *Server) toolBlastRadius(args map[string]any) (string, error) {
+	issue, _ := args["issue"].(string)
+	if strings.TrimSpace(issue) == "" {
+		return "", fmt.Errorf("issue is required")
+	}
+	projectID, err := s.resolveProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	depth := 3
+	if raw, ok := args["depth"].(float64); ok && raw > 0 {
+		depth = int(raw)
+	}
+	path := fmt.Sprintf("/api/projects/%d/graph/blast-radius?issue=%s&depth=%d", projectID, url.QueryEscape(issue), depth)
+	raw, err := s.client.Do("GET", path, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func (s *Server) toolSearch(args map[string]any) (string, error) {
+	q, _ := args["q"].(string)
+	if strings.TrimSpace(q) == "" {
+		return "", fmt.Errorf("q is required")
+	}
+	raw, err := s.client.Do("GET", "/api/search?q="+url.QueryEscape(q), nil)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func (s *Server) resolveProjectID(args map[string]any) (int64, error) {
+	if project, _ := args["project"].(string); strings.TrimSpace(project) != "" {
+		return s.lookupProjectID(project)
+	}
+	if project := strings.TrimSpace(os.Getenv("PAIMOS_PROJECT")); project != "" {
+		return s.lookupProjectID(project)
+	}
+	remote, err := gitRemoteURL()
+	if err != nil {
+		return 0, fmt.Errorf("project not specified and git remote detection failed: %w", err)
+	}
+	projectsRaw, err := s.client.Do("GET", "/api/projects", nil)
+	if err != nil {
+		return 0, err
+	}
+	var projects []struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(projectsRaw, &projects); err != nil {
+		return 0, err
+	}
+	want := normalizeRepoURL(remote)
+	for _, project := range projects {
+		reposRaw, err := s.client.Do("GET", fmt.Sprintf("/api/projects/%d/repos", project.ID), nil)
+		if err != nil {
+			continue
+		}
+		var repos []struct {
+			URL string `json:"url"`
+		}
+		if json.Unmarshal(reposRaw, &repos) != nil {
+			continue
+		}
+		for _, repo := range repos {
+			if normalizeRepoURL(repo.URL) == want {
+				return project.ID, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("could not infer project from git remote %q", remote)
+}
+
+func (s *Server) lookupProjectID(ref string) (int64, error) {
+	projectsRaw, err := s.client.Do("GET", "/api/projects", nil)
+	if err != nil {
+		return 0, err
+	}
+	var projects []struct {
+		ID  int64  `json:"id"`
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(projectsRaw, &projects); err != nil {
+		return 0, err
+	}
+	for _, project := range projects {
+		if project.Key == ref {
+			return project.ID, nil
+		}
+	}
+	return 0, fmt.Errorf("project %q not found", ref)
+}
+
+func gitRemoteURL() (string, error) {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir, _ = os.Getwd()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func normalizeRepoURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimSuffix(s, ".git")
+	s = strings.TrimRight(s, "/")
+	if strings.HasPrefix(s, "git@") {
+		s = strings.TrimPrefix(s, "git@")
+		parts := strings.SplitN(s, ":", 2)
+		if len(parts) == 2 {
+			s = "https://" + parts[0] + "/" + parts[1]
+		}
+	}
+	return strings.ToLower(s)
 }
 
 // toolIssueUpdate → PUT /api/issues/{ref}.
