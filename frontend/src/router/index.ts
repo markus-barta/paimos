@@ -69,6 +69,12 @@ router.beforeEach(async (to) => {
   if (to.path === '/login' && auth.user) {
     return auth.user.role === 'external' ? '/portal' : '/'
   }
+  // PAI-179: legacy /settings?tab=crm deep links redirect to the new
+  // location under Integrations. Keep this redirect indefinitely —
+  // bookmarks have a long tail.
+  if (to.path === '/settings' && to.query.tab === 'crm') {
+    return { path: '/integrations', query: { tab: 'crm' } }
+  }
   // Admin-only routes
   if (to.meta.adminOnly && auth.user?.role !== 'admin') return '/'
   // External users: redirect away from internal routes to portal

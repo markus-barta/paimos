@@ -8,6 +8,7 @@ import type { MetaOption } from '@/components/MetaSelect.vue'
 import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
+import SettingsCRMTab from '@/components/settings/SettingsCRMTab.vue'
 import { STATUSES } from '@/constants/status'
 
 const auth   = useAuthStore()
@@ -18,16 +19,20 @@ const router = useRouter()
 if (auth.user && auth.user.role !== 'admin') router.replace('/')
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-type TabId = 'jira' | 'mite'
+type TabId = 'jira' | 'mite' | 'crm'
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'jira',  label: 'Jira',  icon: 'upload' },
   { id: 'mite',  label: 'Mite',  icon: 'clock' },
+  { id: 'crm',   label: 'CRM',   icon: 'users' },
 ]
 
-// Support old tab IDs from bookmarks
+// Support old tab IDs from bookmarks. `?tab=crm` from the legacy
+// Settings → CRM URL is also accepted here so deep links keep working
+// after PAI-179 moved CRM out of Settings.
 function resolveTab(t: string | undefined): TabId {
   if (t === 'jira-import' || t === 'jira') return 'jira'
   if (t === 'mite') return 'mite'
+  if (t === 'crm') return 'crm'
   return 'jira'
 }
 
@@ -852,6 +857,11 @@ async function cancelMiteImport() {
         </div>
       </template>
     </div>
+  </div>
+
+  <!-- ── CRM tab (PAI-179: relocated from Settings) ──────────────────────── -->
+  <div v-else-if="activeTab === 'crm'" class="tab-panel">
+    <SettingsCRMTab />
   </div>
 
   <AppFooter />

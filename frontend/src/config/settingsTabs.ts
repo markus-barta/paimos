@@ -9,7 +9,6 @@ import SettingsSprintsTab from '@/components/settings/SettingsSprintsTab.vue'
 import SettingsDevelopmentTab from '@/components/settings/SettingsDevelopmentTab.vue'
 import SettingsTrashTab from '@/components/settings/SettingsTrashTab.vue'
 import SettingsPermissionsTab from '@/components/settings/SettingsPermissionsTab.vue'
-import SettingsCRMTab from '@/components/settings/SettingsCRMTab.vue'
 import SettingsAITab from '@/components/settings/SettingsAITab.vue'
 import SettingsAIPromptsTab from '@/components/settings/SettingsAIPromptsTab.vue'
 
@@ -21,7 +20,6 @@ export type SettingsTab =
   | 'permissions'
   | 'sprints'
   | 'views'
-  | 'crm'
   | 'ai'
   | 'ai-prompts'
   | 'development'
@@ -44,7 +42,6 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
   { id: 'permissions', label: 'Permissions', adminOnly: true, component: SettingsPermissionsTab },
   { id: 'sprints', label: 'Sprints', adminOnly: true, component: SettingsSprintsTab },
   { id: 'views', label: 'Views', adminOnly: true, component: SettingsViewsTab },
-  { id: 'crm', label: 'CRM', adminOnly: true, component: SettingsCRMTab },
   { id: 'ai', label: 'AI', adminOnly: true, component: SettingsAITab },
   { id: 'ai-prompts', label: 'AI prompts', adminOnly: true, component: SettingsAIPromptsTab },
   { id: 'development', label: 'Development', adminOnly: true, component: SettingsDevelopmentTab },
