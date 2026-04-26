@@ -44,6 +44,10 @@ import {
   lsFiltersKey,
 } from '@/constants/storage'
 import { useSidePanelWidth } from '@/composables/useSidePanelWidth'
+import {
+  notifySidePanelOpened,
+  onOtherSidePanelOpened,
+} from '@/composables/useSidePanelExclusion'
 
 const props = defineProps<{
   projectId?: number
@@ -539,6 +543,7 @@ function openSidePanel(issue: Issue, edit = false) {
   }
   sidePanelIssueId.value = issue.id
   sidePanelEdit.value = edit
+  notifySidePanelOpened('issue')
 }
 
 function closeSidePanel() {
@@ -576,6 +581,17 @@ function onPinnedChange(pinned: boolean) {
 }
 
 function navigateTo(issue: Issue) { openSidePanel(issue) }
+
+// Close the issue side panel when another right-edge panel (undo or
+// project workspace) opens — only one sidebar is visible at a time.
+let unbindIssuePanelExclusion: (() => void) | null = null
+onMounted(() => {
+  unbindIssuePanelExclusion = onOtherSidePanelOpened('issue', closeSidePanel)
+})
+onUnmounted(() => {
+  unbindIssuePanelExclusion?.()
+  unbindIssuePanelExclusion = null
+})
 
 // ── Progressive rendering ─────────────────────────────────────────────────
 const RENDER_BATCH = 100

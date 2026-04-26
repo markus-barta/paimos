@@ -122,15 +122,6 @@ defineExpose({
             @keydown="onKeydown"
           />
           <button
-            class="ah-search-history"
-            :title="undo.panelOpen ? 'Close recent activity' : 'Recent activity'"
-            @mousedown.prevent="
-              undo.panelOpen ? undo.closePanel() : undo.openPanel()
-            "
-          >
-            <AppIcon name="rewind" :size="12" />
-          </button>
-          <button
             v-if="search.query"
             class="ah-search-clear"
             title="Clear search"
@@ -229,7 +220,7 @@ defineExpose({
 .ah-search-input {
   width: 100%;
   height: 32px;
-  padding: 0 56px 0 30px;
+  padding: 0 28px 0 30px;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--bg);
@@ -255,9 +246,9 @@ defineExpose({
   display: none;
 }
 
-.ah-search-history,
 .ah-search-clear {
   position: absolute;
+  right: 8px;
   background: none;
   border: none;
   padding: 2px;
@@ -270,13 +261,6 @@ defineExpose({
     color 0.15s,
     background 0.15s;
 }
-.ah-search-history {
-  right: 28px;
-}
-.ah-search-clear {
-  right: 8px;
-}
-.ah-search-history:hover,
 .ah-search-clear:hover {
   color: var(--text);
   background: var(--bg);

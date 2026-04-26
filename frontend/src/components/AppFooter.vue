@@ -6,8 +6,16 @@ const { branding } = useBranding()
 
 <template>
   <footer :class="['app-footer', { 'app-footer--compact': compact }]">
-    <img :src="branding.logo" alt="" class="footer-logo" aria-hidden="true" />
     <span>{{ branding.company }}</span>
+    <a
+      class="footer-logo-link"
+      href="https://paimos.com"
+      target="_blank"
+      rel="noopener"
+      title="paimos.com"
+    >
+      <img :src="branding.logo" alt="paimos" class="footer-logo" />
+    </a>
   </footer>
 </template>
 
@@ -15,6 +23,7 @@ const { branding } = useBranding()
 .app-footer {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: .4rem;
   padding: 1.25rem 0 .5rem;
   margin-top: 2rem;
@@ -32,6 +41,17 @@ const { branding } = useBranding()
   border-top: none;
   font-size: 10px;
   opacity: .42;
+}
+.footer-logo-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  opacity: .85;
+  transition: opacity .15s;
+}
+.footer-logo-link:hover,
+.footer-logo-link:focus-visible {
+  opacity: 1;
 }
 .footer-logo { width: 16px; height: 16px; object-fit: contain; }
 </style>

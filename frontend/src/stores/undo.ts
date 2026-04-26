@@ -14,6 +14,7 @@ import {
   resolveRedo,
 } from "@/services/undoActivity";
 import { ApiError } from "@/api/client";
+import { notifySidePanelOpened } from "@/composables/useSidePanelExclusion";
 
 interface UndoToastState {
   id: number;
@@ -53,6 +54,7 @@ export const useUndoStore = defineStore("undo", () => {
   }
 
   function openPanel() {
+    notifySidePanelOpened("undo");
     panelOpen.value = true;
     void refresh();
   }

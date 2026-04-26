@@ -8,6 +8,10 @@ import IssueSidePanel from '@/components/IssueSidePanel.vue'
 import { api, errMsg } from '@/api/client'
 import type { Issue, Sprint, User } from '@/types'
 import { useConfirm } from '@/composables/useConfirm'
+import {
+  notifySidePanelOpened,
+  onOtherSidePanelOpened,
+} from '@/composables/useSidePanelExclusion'
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 const route        = useRoute()
@@ -172,8 +176,23 @@ const activeTab = ref<'planning' | 'reporting'>('planning')
 
 // Side panel for reporting row clicks
 const reportPanelIssueId = ref<number | null>(null)
-function openReportPanel(id: number) { reportPanelIssueId.value = id }
+function openReportPanel(id: number) {
+  reportPanelIssueId.value = id
+  notifySidePanelOpened('issue')
+}
 function closeReportPanel() { reportPanelIssueId.value = null }
+
+// Sprint board has its own right-edge IssueSidePanel for the reporting
+// tab; subscribe to the exclusion bus so it closes when undo / aux
+// panels open.
+let unbindReportPanelExclusion: (() => void) | null = null
+onMounted(() => {
+  unbindReportPanelExclusion = onOtherSidePanelOpened('issue', closeReportPanel)
+})
+onUnmounted(() => {
+  unbindReportPanelExclusion?.()
+  unbindReportPanelExclusion = null
+})
 
 // Locale-aware number formatting
 const fmtNum = (v: number, decimals = 1) => v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })

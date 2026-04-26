@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 
 import AppModal from '@/components/AppModal.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import IssueList from '@/components/IssueList.vue'
 import TagChip from '@/components/TagChip.vue'
 import TagSelector from '@/components/TagSelector.vue'
@@ -55,6 +54,10 @@ import ProjectContextSection from '@/components/project/ProjectContextSection.vu
 // "description") so the prompt reminder fits a stakeholder audience.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
+import {
+  notifySidePanelOpened,
+  onOtherSidePanelOpened,
+} from '@/composables/useSidePanelExclusion'
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -152,7 +155,19 @@ function resetWorkspaceState() {
 
 function toggleWorkspace(panel: Exclude<ProjectWorkspace, null>) {
   workspacePanel.value = workspacePanel.value === panel ? null : panel
+  if (workspacePanel.value !== null) notifySidePanelOpened('aux')
 }
+
+let unbindAuxPanelExclusion: (() => void) | null = null
+onMounted(() => {
+  unbindAuxPanelExclusion = onOtherSidePanelOpened('aux', () => {
+    workspacePanel.value = null
+  })
+})
+onUnmounted(() => {
+  unbindAuxPanelExclusion?.()
+  unbindAuxPanelExclusion = null
+})
 
 function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
   contextSummary.value = payload
@@ -723,7 +738,6 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
         </Transition>
 
         <div class="pd-workspace-footer">
-          <AppFooter compact />
           <div class="pd-workspace-rail">
             <button
               type="button"
