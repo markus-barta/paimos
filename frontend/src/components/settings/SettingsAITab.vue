@@ -343,20 +343,26 @@ async function onSave() {
 }
 
 // ── Computed UI state ─────────────────────────────────────────────
-// PAI-159: The Test button is enabled when the form has the three
-// values needed for a roundtrip. We can only test what the admin
-// typed; the saved key cannot be re-used because the SPA never
-// receives it from the backend.
+// PAI-159 + PAI-180: Test connection is enabled when we have something
+// the backend can run a roundtrip with. Either:
+//   - the form is filled in (admin typing fresh values), OR
+//   - a key was previously saved (hasStoredKey) AND a model is set.
+// The backend falls back to the saved settings for empty form fields,
+// so requiring the form to be fully populated would gate the button
+// off in the common "I just opened the page and want to verify" case.
 const canTest = computed(() =>
   form.provider !== '' &&
-  form.model.trim() !== '' &&
-  form.api_key.trim() !== ''
+  (form.model.trim() !== '' /* always copied into the form on load */) &&
+  (form.api_key.trim() !== '' || hasStoredKey.value)
 )
 const testTooltip = computed(() => {
-  if (!form.api_key.trim()) {
-    return 'Enter an API key to test the connection. The saved key is never echoed back, so a test always uses the value typed in this form.'
-  }
   if (!form.model.trim()) return 'Pick a model first.'
+  if (!form.api_key.trim() && !hasStoredKey.value) {
+    return 'Add an API key — the saved key is reused if the field is empty.'
+  }
+  if (!form.api_key.trim() && hasStoredKey.value) {
+    return 'Pings the provider with the saved API key. Type one in the field to test a different key.'
+  }
   return 'Send a one-shot ping to the provider with the form values above.'
 })
 const canEnable = computed(() => hasStoredKey.value && form.model.trim() !== '')
@@ -445,6 +451,88 @@ function relTime(iso: string): string {
     <div v-else-if="loadError" class="ai-banner ai-banner--error">{{ loadError }}</div>
 
     <template v-else>
+      <!-- ── PAI-180: STICKY ACTION BAR ───────────────────────────
+           Pinned to the top of the scroll viewport so admins can
+           hit Save / Test connection without scrolling through
+           the long form. Lives at the top of the loaded section
+           (above the toggle card) and uses position:sticky with
+           a backdrop-blurred surface so content scrolling under
+           it stays legible. -->
+      <footer class="ai-actions ai-actions--sticky">
+        <span class="ai-actions-meta">
+          <template v-if="form.updated_at">
+            Last saved <time :datetime="form.updated_at">{{ relTime(form.updated_at) }}</time>
+          </template>
+          <template v-else>—</template>
+        </span>
+        <div class="ai-actions-buttons">
+          <button
+            type="button"
+            class="btn btn-ghost ai-test-btn"
+            :disabled="!canTest || testing"
+            :title="testTooltip"
+            @click="onTestConnection"
+          >
+            <AppIcon v-if="testing" name="loader-circle" :size="13" class="spin" />
+            <AppIcon v-else name="plug" :size="13" />
+            {{ testing ? 'Testing…' : 'Test connection' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary ai-save"
+            :disabled="saving"
+            @click="onSave"
+          >
+            <AppIcon v-if="saving" name="loader-circle" :size="13" class="spin" />
+            {{ saving ? 'Saving…' : 'Save changes' }}
+          </button>
+        </div>
+      </footer>
+
+      <!-- Banners + test result sit just below the sticky bar so
+           the response of clicking either button shows up where the
+           user just clicked, without scrolling. -->
+      <p v-if="saveError" class="ai-banner ai-banner--error">
+        <AppIcon name="alert-triangle" :size="14" /> {{ saveError }}
+      </p>
+      <p v-if="saveOK" class="ai-banner ai-banner--ok">
+        <AppIcon name="check-circle" :size="14" /> Settings saved.
+      </p>
+      <div
+        v-if="testResult"
+        :class="['ai-test-result', testResult.ok ? 'ai-test-result--ok' : 'ai-test-result--fail']"
+        role="status"
+      >
+        <div class="ai-test-result-head">
+          <AppIcon :name="testResult.ok ? 'check-circle' : 'alert-triangle'" :size="16" />
+          <strong class="ai-test-result-msg">{{ testResult.message }}</strong>
+          <button
+            type="button"
+            class="ai-test-result-x"
+            aria-label="Dismiss"
+            @click="clearTestResult"
+          >×</button>
+        </div>
+        <div v-if="testResult.response_text" class="ai-test-result-body">
+          <span class="ai-test-result-label">Reply</span>
+          <span class="ai-test-result-quote">{{ testResult.response_text }}</span>
+        </div>
+        <div class="ai-test-result-meta">
+          <span v-if="testResult.model" class="ai-test-result-pill">
+            <AppIcon name="cpu" :size="11" /> {{ testResult.model }}
+          </span>
+          <span v-if="testResult.latency_ms" class="ai-test-result-pill">
+            <AppIcon name="zap" :size="11" /> {{ testResult.latency_ms }} ms
+          </span>
+          <span v-if="testResult.prompt_tokens != null && testResult.completion_tokens != null && (testResult.prompt_tokens + testResult.completion_tokens) > 0" class="ai-test-result-pill">
+            {{ testResult.prompt_tokens }}p + {{ testResult.completion_tokens }}c tokens
+          </span>
+          <span v-if="testResult.marker" :class="['ai-test-result-pill', `ai-test-result-pill--${testResult.marker.toLowerCase()}`]">
+            marker: {{ testResult.marker }}
+          </span>
+        </div>
+      </div>
+
       <!-- ── 2. STATUS / TOGGLE ──────────────────────────────────── -->
       <section class="ai-card">
         <header class="ai-card-headrow">
@@ -747,85 +835,6 @@ function relTime(iso: string): string {
         </template>
       </section>
 
-      <!-- ── BANNERS ─────────────────────────────────────────────── -->
-      <p v-if="saveError" class="ai-banner ai-banner--error">
-        <AppIcon name="alert-triangle" :size="14" /> {{ saveError }}
-      </p>
-      <p v-if="saveOK" class="ai-banner ai-banner--ok">
-        <AppIcon name="check-circle" :size="14" /> Settings saved.
-      </p>
-
-      <!-- ── PAI-159: TEST RESULT ─────────────────────────────────
-           Detailed result card for the test connection ping. Lives
-           above the action footer so admins see latency + the
-           model's funny line right next to the button that fired
-           the call. -->
-      <div
-        v-if="testResult"
-        :class="['ai-test-result', testResult.ok ? 'ai-test-result--ok' : 'ai-test-result--fail']"
-        role="status"
-      >
-        <div class="ai-test-result-head">
-          <AppIcon :name="testResult.ok ? 'check-circle' : 'alert-triangle'" :size="16" />
-          <strong class="ai-test-result-msg">{{ testResult.message }}</strong>
-          <button
-            type="button"
-            class="ai-test-result-x"
-            aria-label="Dismiss"
-            @click="clearTestResult"
-          >×</button>
-        </div>
-        <div v-if="testResult.response_text" class="ai-test-result-body">
-          <span class="ai-test-result-label">Reply</span>
-          <span class="ai-test-result-quote">{{ testResult.response_text }}</span>
-        </div>
-        <div class="ai-test-result-meta">
-          <span v-if="testResult.model" class="ai-test-result-pill">
-            <AppIcon name="cpu" :size="11" /> {{ testResult.model }}
-          </span>
-          <span v-if="testResult.latency_ms" class="ai-test-result-pill">
-            <AppIcon name="zap" :size="11" /> {{ testResult.latency_ms }} ms
-          </span>
-          <span v-if="testResult.prompt_tokens != null && testResult.completion_tokens != null && (testResult.prompt_tokens + testResult.completion_tokens) > 0" class="ai-test-result-pill">
-            {{ testResult.prompt_tokens }}p + {{ testResult.completion_tokens }}c tokens
-          </span>
-          <span v-if="testResult.marker" :class="['ai-test-result-pill', `ai-test-result-pill--${testResult.marker.toLowerCase()}`]">
-            marker: {{ testResult.marker }}
-          </span>
-        </div>
-      </div>
-
-      <!-- ── ACTIONS ─────────────────────────────────────────────── -->
-      <footer class="ai-actions">
-        <span class="ai-actions-meta">
-          <template v-if="form.updated_at">
-            Last saved <time :datetime="form.updated_at">{{ relTime(form.updated_at) }}</time>
-          </template>
-          <template v-else>—</template>
-        </span>
-        <div class="ai-actions-buttons">
-          <button
-            type="button"
-            class="btn btn-ghost ai-test-btn"
-            :disabled="!canTest || testing"
-            :title="testTooltip"
-            @click="onTestConnection"
-          >
-            <AppIcon v-if="testing" name="loader-circle" :size="13" class="spin" />
-            <AppIcon v-else name="plug" :size="13" />
-            {{ testing ? 'Testing…' : 'Test connection' }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary ai-save"
-            :disabled="saving"
-            @click="onSave"
-          >
-            <AppIcon v-if="saving" name="loader-circle" :size="13" class="spin" />
-            {{ saving ? 'Saving…' : 'Save changes' }}
-          </button>
-        </div>
-      </footer>
     </template>
   </div>
 </template>
@@ -1446,6 +1455,24 @@ function relTime(iso: string): string {
   box-shadow: 0 1px 2px rgba(0,0,0,.02);
   margin-top: .25rem;
 }
+
+/* PAI-180: sticky variant for the action bar at the top of the
+   tab. The hero scrolls naturally; this bar pins to top:0 so
+   admins always have Test + Save reachable while editing the
+   long form below. Backdrop-blur keeps the content scrolling
+   under it legible against the soft tab background. */
+.ai-actions--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-top: 0;
+  /* Slightly heavier shadow when stuck so the divide between bar
+     and content is obvious during scroll. */
+  box-shadow: 0 4px 14px rgba(15, 35, 65, .06), 0 1px 2px rgba(0,0,0,.04);
+  backdrop-filter: saturate(1.1) blur(6px);
+  -webkit-backdrop-filter: saturate(1.1) blur(6px);
+}
+
 .ai-actions-meta {
   font-size: 12px;
   color: var(--text-muted);

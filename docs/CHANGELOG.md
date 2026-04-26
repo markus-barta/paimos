@@ -5,6 +5,77 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.3] — 2026-04-26
+
+### Changed — Settings → AI prompts edit modal (PAI-183)
+
+Full UX rewrite of the edit modal. The first cut had four real
+problems: the "Enabled" checkbox sat centered while its label
+right-aligned, the dry-run was buried in a `<details>`, the Cancel /
+Run / Save buttons were three different shapes and sizes, and the
+dry-run "Issue ID" was a raw number input.
+
+The redesign organises the modal into card-shaped sections with
+small uppercase tracked-out titles + one-line hints — Identity (for
+custom rows) · Placement · Status · Prompt template · Dry-run
+console. The Enabled control became a proper iOS-style switch with
+the label on the left. Cancel + Save are now visually identical
+40px buttons in a sticky footer that pins to the modal viewport
+bottom with a subtle backdrop-blur.
+
+The variable chips above the prompt textarea now insert at the
+**cursor position** (and restore focus + caret) instead of
+appending to the end — feels considerably better when an admin is
+composing a prompt and wants to drop a variable mid-sentence.
+
+The dry-run console is now a permanent panel, not a `<details>`,
+with the issue picker on the left and a "Run preview" button on
+the right (both 40px tall, aligned). Result renders as a meta
+strip (model · latency · tokens · "code default" pill) plus a
+2-pane grid: rendered prompt | model response, each in monospace
+with a 320px scroll cap.
+
+### Added — Smart issue search picker (PAI-183)
+
+New `IssueSearchInput.vue` component replaces the raw number
+input in the dry-run console:
+- Empty state: input with leading magnifier and placeholder
+- 200ms debounced `GET /api/issues?q=…&fields=list&limit=10`
+- Results popover renders type icon + key (mono pill) + status dot
+  + title per row
+- Keyboard nav: ↑/↓/Enter/Esc; outside-click and Esc dismissal
+- Selected state: bordered chip with the same row shape and a ✕ to
+  clear, focusing the input back on clear so admins can immediately
+  type a new query
+- Self-contained: v-model is the id (number | null), the component
+  manages its own `selectedIssue` ref for chip rendering
+
+### Changed — AI Settings sticky action bar (PAI-182)
+
+The Last saved + Test connection + Save changes footer moved to
+the top of the AI Settings tab and is pinned with `position:
+sticky; top: 0`. Test result + save banners sit just below the
+bar so the response of clicking either button shows up where the
+user just clicked, without scrolling.
+
+### Fixed — Test connection accepts the saved key (PAI-180)
+
+The endpoint had been demanding model + API key in the form payload,
+which forced admins to re-paste the key just to run a smoke test
+(the SPA never echoes the saved key back). Now the backend falls
+back to `ai_settings` for any blank form field; the frontend's
+`canTest` flips on as soon as the form has a model AND either a
+typed key or a previously-saved one.
+
+### Note on commit-message ticket numbers
+
+Commits in v1.10.1 and v1.10.2 use the labels `PAI-178` / `PAI-179`
+in their messages. Those labels collide with real existing tickets
+(PAI-178 is the parked AI web-tool epic; PAI-179 is the CRM-move
+ticket). The canonical backing for the polish work is **PAI-180**
+(v1.10.1) and **PAI-181** (v1.10.2). The commit labels remain as
+historical record.
+
 ## [1.10.2] — 2026-04-26
 
 ### Fixed

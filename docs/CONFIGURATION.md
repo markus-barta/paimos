@@ -113,68 +113,175 @@ Per-subject GDPR endpoints (admin only):
 - `POST /api/users/{id}/gdpr-erase`  — replaces PII with placeholders, drops sessions/keys, sets `status='deleted'`.
 - `GET  /api/gdpr/retention`         — current retention policy (introspection).
 
-## AI text optimization (PAI-146)
+## AI assist (PAI-146 / PAI-159 → PAI-183)
 
-The AI optimize feature (small "AI" action on multiline editors) is
-**off by default**. Configuration is in the database — admins set it
-under **Settings → AI**, not via env vars — so this section is here
-for reference rather than env tuning. Persistence lives in the M74
-`ai_settings` row; nothing else is required.
+The AI assist feature exposes a multi-action menu next to multiline
+text fields and on issue-level surfaces (issue header, side panel).
+**Off by default.** Configuration is in the database — admins set it
+under **Settings → AI** and **Settings → AI prompts**, not via env
+vars — so this section is reference, not tuning.
 
-What's logged when the feature is used:
+### Provider + model
 
-- One stdout audit line per call, in the structured `audit:` format
-  the rest of PAIMOS uses:
+`ai_settings` (M74, singleton row) holds:
 
-  ```
-  audit: ai_optimize user_id=42 field=description issue_id=123
-         model="anthropic/claude-3.5-haiku" outcome=ok
-         latency_ms=850 prompt_tokens=100 completion_tokens=50
-  ```
+- `enabled`, `provider` (only `openrouter` ships today; PAI-122
+  reserves the field for local-model backends), `model` (the
+  OpenRouter model slug — e.g. `anthropic/claude-sonnet-4.5`),
+  `api_key`, `optimize_instruction` (admin-editable preface to the
+  Optimize action's wrapper).
 
-  Outcome is a closed enum (one bucket per exit path of the handler):
+Set them from **Settings → AI**:
+- **Test connection** runs a fixed-prompt smoke test against the
+  unsaved form values, falling back to the saved key when the field
+  is blank — admins don't have to re-paste the key just to verify.
+  Audited under a separate `audit: ai_test ...` line.
+- The **model picker** is fed live by `GET /api/ai/models`
+  (server-cached 1h) showing top 4 models in six categories: Frontier,
+  Value, Fastest, Cheapest, Open-weights, Free. Frontier picks are
+  vendor-diverse (one model from each of Anthropic / OpenAI / xAI /
+  Google). Manual model-id input stays always-visible.
 
-  - `ok` — provider returned a rewrite (token counts populated)
-  - `fail_timeout` — our handler-imposed deadline fired before the
-    provider responded (raise the cap or pick a faster model)
-  - `fail_upstream` — provider replied with 4xx / 5xx or a structurally
-    invalid body (transient: retry, or check provider status)
-  - `denied` — caller cannot view the target issue
-  - `unconfigured` — feature toggle off or settings incomplete
-  - `bad_request` — body decode failed, field not in the allow-list,
-    text empty, or text exceeded the 32 KiB cap
-  - `provider_missing` — configured provider name not registered
-  - `cfg_load_fail` — settings row failed to load (DB error)
-  - `ctx_fail` — issue-context lookup failed (DB error, not access)
-  - `unauth` — unauthenticated (defensive; the route is auth-gated so
-    this is unreachable in practice)
+### Actions
 
-  Every exit path of the handler emits exactly one line, so the line
-  count equals the attempt count regardless of outcome.
+Each action is registered in code and surfaced via the
+`POST /api/ai/action` dispatcher.
 
-- **Prompt and response bodies are NOT logged.** The audit line carries
-  metadata only. PAI-146 explicitly forbids storing the optimization
-  payload by default; a regression test in
-  `backend/handlers/ai_optimize_audit_test.go` enforces this and will
-  fail CI if a future refactor reintroduces body text into the line.
+Built-in actions (11):
+- `optimize`, `optimize_customer` — rewrite the field
+- `suggest_enhancement` (sub-actions: security, performance, ux, dx,
+  flow, risks)
+- `spec_out` — description → AC checklist
+- `find_parent` — top-3 plausible parents from the project tree
+- `translate` (sub-actions: de_en, en_de)
+- `generate_subtasks` — propose 3–7 child issues
+- `estimate_effort` — hours + LP + reasoning
+- `detect_duplicates` — top-5 similar issues in the project
+- `ui_generation` — markdown UI spec
+- `tone_check` — de-sales rewrite (customer surface)
 
-- Provider-rejection responses (e.g. "model not found", "rate limited")
-  are logged separately at the call site, also without bodies. Admins
-  can see the upstream message in the SPA banner; operators can see
-  the full chain in `docker compose logs paimos`.
+### Placement (PAI-181)
 
-Operational guidance:
+Each action carries a `placement` field — `text`, `issue`, or
+`both`:
+- **text** — inline next to text fields (textareas)
+- **issue** — in issue-level menus only (issue header, side-panel
+  header, edit-mode toolbar)
+- **both** — everywhere
 
-- Pin a specific model slug (e.g. `anthropic/claude-3.5-haiku`) — the
-  presets in the settings UI are starting points, not a curated catalog.
-- Token cost is on the operator's OpenRouter account. The endpoint
-  caps input at 32 KiB and output at ~3000 tokens per call; the
-  per-user rate is implicitly limited by the diff-overlay UX (one
-  call per click).
-- The api_key is stored unencrypted in the SQLite database. Keep the
-  data volume on encrypted storage if your threat model requires that
-  — the rest of the secrets surface (session cookies, OIDC client
-  secret, etc.) has the same property.
+Defaults: `optimize`, `suggest_enhancement`, `spec_out`, `translate`,
+`ui_generation`, `tone_check`, `optimize_customer` → text.
+`find_parent`, `generate_subtasks`, `estimate_effort`,
+`detect_duplicates` → issue.
+
+Admins override per-row in **Settings → AI prompts → Edit**.
+
+### Prompt CRUD (PAI-175 → PAI-177)
+
+`ai_prompts` (M78, with `placement` added in M79) is the admin-edited
+prompt store. Built-in rows are seeded lazily from the action
+registry on first list call, so admins see the actual default in the
+editor (not an empty textarea). Action handlers read the live row at
+request time via `resolveActionPrompt(key)` with constant-default
+fallback — admin edits actually take effect.
+
+Endpoints (admin-only, CSRF-protected):
+- `GET /api/ai/prompts` — list
+- `POST /api/ai/prompts` — create custom
+- `PUT /api/ai/prompts/{id}` — update (built-in: prompt + enabled +
+  placement; custom: all editable fields)
+- `DELETE /api/ai/prompts/{id}` — delete (custom only)
+- `POST /api/ai/prompts/{id}/reset` — reset built-in to current
+  code default
+- `POST /api/ai/prompts/{id}/dry-run` — render the template against
+  a real issue and call the LLM; returns rendered prompt + response
+  side-by-side. NO state changes.
+
+Templates use Go `text/template` syntax. Surface-specific variables:
+- Issue: `Title`, `Description`, `AcceptanceCriteria`, `Notes`,
+  `Type`, `Status`, `IssueKey`, `ProjectName`, `ParentEpic`
+- Customer: `CustomerName`, `Industry`, `Notes`, `CooperationType`,
+  `SLADetails`, `CooperationNotes`
+
+### Usage cap (PAI-161)
+
+`ai_usage` (M77) tracks per-user per-day token spend. Default cap is
+**100 000 tokens / user / day**, configurable via the env var
+`PAIMOS_AI_DAILY_CAP_TOKENS`. Per-user override goes to
+`users.ai_cap_override_tokens` (nullable INT; null = use default,
+0 = disabled, positive = raised cap). Admins are exempt from the
+soft block but get an `X-AI-Over-Cap: true` response header for UI
+warning. Settings → AI surfaces the org-wide totals + per-user
+table.
+
+### Audit shape
+
+One stdout audit line per call:
+
+```
+audit: ai_action action=optimize sub_action= user_id=42
+       field=description issue_id=123
+       model="anthropic/claude-sonnet-4.5" outcome=ok
+       latency_ms=850 prompt_tokens=100 completion_tokens=50
+```
+
+Test-connection pings emit a separate `audit: ai_test ...` line
+(fewer fields). The audit prefix moved from `ai_optimize` to
+`ai_action action=<key>` in v1.10.0 — operators with grep patterns
+on `ai_optimize` need a one-line update.
+
+Outcome is a closed enum (one bucket per exit path):
+
+- `ok` — provider returned a result (token counts populated)
+- `fail_timeout` — handler-imposed deadline fired before the provider
+  responded (raise the cap or pick a faster model)
+- `fail_upstream` — provider replied with 4xx / 5xx or a structurally
+  invalid body (transient: retry, or check provider status)
+- `denied` — caller cannot view the target issue
+- `unconfigured` — feature toggle off or settings incomplete
+- `bad_request` — body decode failed, action not registered, field
+  not in the allow-list, text empty / too large, or daily cap hit
+- `provider_missing` — configured provider name not registered
+- `cfg_load_fail` — settings row failed to load (DB error)
+- `ctx_fail` — issue-context lookup failed (DB error, not access)
+- `unauth` — unauthenticated (defensive; the route is auth-gated so
+  this is unreachable in practice)
+
+Every exit path emits exactly one line, so the line count equals
+the attempt count regardless of outcome. Test-connection has its
+own outcomes (`test_ok`, `test_fail`).
+
+### What is NOT logged
+
+**Prompt and response bodies are NEVER logged.** The audit line
+carries metadata only. PAI-146 / PAI-153 explicitly forbid body
+logging; a regression test in
+`backend/handlers/ai_optimize_audit_test.go` (renamed to cover
+auditAction) enforces this and will fail CI if a future refactor
+reintroduces body text into the line.
+
+Provider-rejection responses (e.g. "model not found", "rate
+limited") are logged separately at the call site, also without
+bodies. Admins see the upstream message in the SPA banner;
+operators see the full chain in `docker compose logs paimos`.
+
+### Operational guidance
+
+- The `api_key` is stored unencrypted in the SQLite database. Keep
+  the data volume on encrypted storage if your threat model requires
+  that — the rest of the secrets surface (session cookies, OIDC
+  client secret) has the same property.
+- Token cost is on the operator's OpenRouter account. The optimize
+  endpoint caps input at 32 KiB and output at ~3000 tokens per call;
+  per-user spend is bounded by `PAIMOS_AI_DAILY_CAP_TOKENS`.
+- "Test connection" calls don't go through the per-user cap (admin
+  smoke tests should always work) but they do count against
+  OpenRouter billing.
+- Frontier picks pull from an undocumented OpenRouter frontend
+  endpoint (`/api/frontend/models/find?order=top-weekly`); it can
+  break. The picker has a static-fallback list for cold-start
+  resilience and serves the last-known-good snapshot when the
+  upstream call fails (with a `stale: true` flag in the response).
 
 ## Attachments (MinIO / S3 — optional)
 
