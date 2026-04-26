@@ -546,6 +546,7 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
 </script>
 
 <template>
+  <div class="pd-page">
     <div v-if="loading" class="loading">Loading…</div>
     <template v-else-if="project">
       <Teleport defer to="#app-header-left">
@@ -721,37 +722,40 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
           </div>
         </Transition>
 
-        <div class="pd-workspace-rail">
-          <button
-            type="button"
-            :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'docs' }]"
-            :title="workspaceSummary.docs"
-            @click="toggleWorkspace('docs')"
-          >
-            <AppIcon name="file-stack" :size="13" />
-            <span>Docs</span>
-            <span class="pd-workspace-rail__meta">{{ docCount }} file{{ docCount === 1 ? '' : 's' }}</span>
-          </button>
-          <button
-            type="button"
-            :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'cooperation' }]"
-            :title="workspaceSummary.cooperation"
-            @click="toggleWorkspace('cooperation')"
-          >
-            <AppIcon name="handshake" :size="13" />
-            <span>Coop</span>
-            <span class="pd-workspace-rail__meta">{{ cooperationPopulated ? 'configured' : 'empty' }}</span>
-          </button>
-          <button
-            type="button"
-            :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'context' }]"
-            :title="workspaceSummary.context"
-            @click="toggleWorkspace('context')"
-          >
-            <AppIcon name="git-branch" :size="13" />
-            <span>Context</span>
-            <span class="pd-workspace-rail__meta">{{ contextStatusLabel }}</span>
-          </button>
+        <div class="pd-workspace-footer">
+          <AppFooter compact />
+          <div class="pd-workspace-rail">
+            <button
+              type="button"
+              :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'docs' }]"
+              :title="workspaceSummary.docs"
+              @click="toggleWorkspace('docs')"
+            >
+              <AppIcon name="file-stack" :size="13" />
+              <span>Docs</span>
+              <span class="pd-workspace-rail__meta">{{ docCount }} file{{ docCount === 1 ? '' : 's' }}</span>
+            </button>
+            <button
+              type="button"
+              :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'cooperation' }]"
+              :title="workspaceSummary.cooperation"
+              @click="toggleWorkspace('cooperation')"
+            >
+              <AppIcon name="handshake" :size="13" />
+              <span>Coop</span>
+              <span class="pd-workspace-rail__meta">{{ cooperationPopulated ? 'configured' : 'empty' }}</span>
+            </button>
+            <button
+              type="button"
+              :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'context' }]"
+              :title="workspaceSummary.context"
+              @click="toggleWorkspace('context')"
+            >
+              <AppIcon name="git-branch" :size="13" />
+              <span>Context</span>
+              <span class="pd-workspace-rail__meta">{{ contextStatusLabel }}</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -781,30 +785,30 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
           @summary="updateContextSummary"
         />
       </div>
-    <!-- Delete confirm modal -->
-    <AppModal title="Delete Project" :open="showDeleteConfirm" @close="showDeleteConfirm=false" confirm-key="d" @confirm="deleteProject">
-      <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
-        Soft-delete <strong>{{ project?.name }}</strong>? The project and all its issues will be hidden from the UI. All data is preserved and can be restored via database update.
-      </p>
-      <div style="display:flex;justify-content:flex-end;gap:.5rem">
-        <button class="btn btn-ghost" @click="showDeleteConfirm=false"><u>C</u>ancel</button>
-        <button class="btn btn-danger" :disabled="deletingProject" @click="deleteProject"><template v-if="deletingProject">Deleting…</template><template v-else><u>D</u>elete project</template></button>
-      </div>
-    </AppModal>
-</template>
+    </template>
+  </div>
 
-    <AppFooter />
+  <!-- Delete confirm modal -->
+  <AppModal title="Delete Project" :open="showDeleteConfirm" @close="showDeleteConfirm=false" confirm-key="d" @confirm="deleteProject">
+    <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
+      Soft-delete <strong>{{ project?.name }}</strong>? The project and all its issues will be hidden from the UI. All data is preserved and can be restored via database update.
+    </p>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem">
+      <button class="btn btn-ghost" @click="showDeleteConfirm=false"><u>C</u>ancel</button>
+      <button class="btn btn-danger" :disabled="deletingProject" @click="deleteProject"><template v-if="deletingProject">Deleting…</template><template v-else><u>D</u>elete project</template></button>
+    </div>
+  </AppModal>
 
-    <!-- Import collision modal -->
-    <ImportCollisionModal
-      :open="showImportModal"
-      :preflight="importPreflight"
-      @confirm="onImportConfirm"
-      @cancel="showImportModal=false; pendingImportFile=null"
-    />
+  <!-- Import collision modal -->
+  <ImportCollisionModal
+    :open="showImportModal"
+    :preflight="importPreflight"
+    @confirm="onImportConfirm"
+    @cancel="showImportModal=false; pendingImportFile=null"
+  />
 
-    <!-- Edit project modal -->
-    <AppModal title="Edit Project" :open="showEdit" @close="showEdit=false" max-width="1100px">
+  <!-- Edit project modal -->
+  <AppModal title="Edit Project" :open="showEdit" @close="showEdit=false" max-width="1100px">
       <form @submit.prevent="saveProject" class="form">
         <div class="field">
           <label>Name</label>
@@ -928,8 +932,8 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
       </form>
     </AppModal>
 
-    <!-- Purge time entries modal (admin only) -->
-    <AppModal v-if="isAdmin" title="Purge Time Entries" :open="showPurge" @close="closePurge" max-width="540px">
+  <!-- Purge time entries modal (admin only) -->
+  <AppModal v-if="isAdmin" title="Purge Time Entries" :open="showPurge" @close="closePurge" max-width="540px">
       <div class="purge-body">
         <div class="purge-filters">
           <div class="field">
@@ -1192,8 +1196,15 @@ textarea { resize: vertical; min-height: 80px; }
   margin-top: .15rem;
 }
 
+.pd-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
 .pd-workspaces {
-  margin-top: 1rem;
+  margin-top: auto;
+  padding-top: .6rem;
 }
 
 .pd-workspace-dock {
@@ -1285,12 +1296,17 @@ textarea { resize: vertical; min-height: 80px; }
   line-height: 1.5;
 }
 
+.pd-workspace-footer {
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+}
+
 .pd-workspace-rail {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  padding: 0.2rem 0;
-  border-top: 1px solid var(--border);
+  padding: 0.1rem 0 0;
 }
 
 .pd-workspace-rail__btn {
