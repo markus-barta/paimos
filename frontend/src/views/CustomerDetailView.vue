@@ -85,6 +85,12 @@ function onCustomerNotesAccept(text: string) {
   editForm.value.notes = text
 }
 
+async function applyCustomerAiResult(info: { action: string; intent?: string; values?: Record<string, unknown>; body?: any }) {
+  if (info.intent !== 'replace-text') return
+  if (info.action !== 'tone_check') return
+  editForm.value.notes = String(info.values?.text ?? info.body?.optimized ?? info.body?.optimized_text ?? editForm.value.notes ?? '')
+}
+
 function openEdit() {
   if (!customer.value) return
   editForm.value = {
@@ -320,7 +326,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
             :on-accept="onCustomerNotesAccept"
           />
         </div>
-        <AiSurfaceFeedback host-key="customer-detail:notes" />
+        <AiSurfaceFeedback host-key="customer-detail:notes" :apply="applyCustomerAiResult" />
         <textarea v-model="editForm.notes" rows="3" />
       </div>
 

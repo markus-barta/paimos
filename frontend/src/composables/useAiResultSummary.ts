@@ -35,6 +35,9 @@ export function summarizeAiResult(input: AiResultSummaryInput): string {
     case 'tone_check': {
       const removed = Number(body?.counters?.phrases_removed ?? 0)
       if (removed > 0) return `${removed} persuasive phrase${removed === 1 ? '' : 's'} removed`
+      const before = sourceText.length
+      const after = String(body?.optimized ?? body?.optimized_text ?? '').length
+      if (before && after) return `${Math.abs(before - after)} chars softened`
       return 'Tone rewrite ready'
     }
     case 'suggest_enhancement':

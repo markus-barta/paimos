@@ -36,6 +36,7 @@ const aiAction = useAiAction()
 const aiOptimize = useAiOptimize()
 const undoState = ref<ActionApplyResult | null>(null)
 let undoTimer: number | null = null
+const modalOpen = ref(false)
 
 const actionActivity = computed(() => aiAction.activity.value?.hostKey === props.hostKey ? aiAction.activity.value : null)
 const optimizeActivity = computed(() => aiOptimize.activity.value?.hostKey === props.hostKey ? aiOptimize.activity.value : null)
@@ -53,8 +54,12 @@ const resultSummary = computed(() => {
     action: actionResult.value.action,
     body: actionResult.value.body,
     sourceText: actionResult.value.sourceText,
-    optimizedText: (actionResult.value.body as any)?.optimized_text ?? '',
+    optimizedText: (actionResult.value.body as any)?.optimized ?? (actionResult.value.body as any)?.optimized_text ?? '',
   })
+})
+const modalShapeAction = computed(() => {
+  const action = actionResult.value?.action
+  return action === 'suggest_enhancement' || action === 'spec_out' || action === 'generate_subtasks' || action === 'ui_generation'
 })
 
 const actionDecision = computed(() => {
@@ -124,6 +129,28 @@ const actionDecision = computed(() => {
       },
     }
   }
+  if (r.action === 'tone_check' && ((r.body as any)?.optimized || (r.body as any)?.optimized_text)) {
+    const rewritten = (r.body as any).optimized ?? (r.body as any).optimized_text
+    return {
+      copy: t('ai.applyToneCheck'),
+      primary: {
+        label: t('ai.apply'),
+        action: () => runApply({
+          action: r.action,
+          subAction: r.subAction,
+          field: r.field,
+          fieldLabel: r.fieldLabel,
+          issueId: r.issueId,
+          body: r.body,
+          intent: 'replace-text',
+          values: { text: rewritten },
+        }),
+      },
+      secondary: [
+        { label: t('ai.dismiss'), action: () => aiAction.reset() },
+      ],
+    }
+  }
   if (r.action === 'detect_duplicates' && Array.isArray((r.body as any)?.matches) && (r.body as any).matches.length > 0) {
     const top = (r.body as any).matches[0]
     const relationAction = (type: string, issueKey: string) => runApply({
@@ -162,19 +189,26 @@ function clearError() {
 
 async function runApply(args: ActionApplyArgs) {
   if (!props.apply) return
-  const res = await props.apply(args)
+  try {
+    const res = await props.apply(args)
+    aiAction.clearError()
+    modalOpen.value = false
   if (undoTimer) {
     window.clearTimeout(undoTimer)
     undoTimer = null
   }
-  if (res?.undo) {
-    undoState.value = res
-    undoTimer = window.setTimeout(() => {
+    if (res?.undo) {
+      undoState.value = res
+      undoTimer = window.setTimeout(() => {
+        undoState.value = null
+        undoTimer = null
+      }, 5000)
+    } else {
       undoState.value = null
-      undoTimer = null
-    }, 5000)
-  } else {
-    undoState.value = null
+    }
+  } catch (e: any) {
+    aiAction.lastError.value = e?.message ?? 'Apply failed'
+    aiAction.lastErrorHostKey.value = props.hostKey
   }
 }
 
@@ -217,11 +251,13 @@ async function undoLastApply() {
       :title="t('ai.resultTitle', { action: actionResult.fieldLabel || actionResult.action })"
       :summary="resultSummary"
       :details-label="t('ai.details')"
+      :details-mode="modalShapeAction ? 'modal' : 'inline'"
       :primary="actionDecision?.primary"
       :secondary="actionDecision?.secondary"
       :explain="actionDecision?.explain"
       :dismissable="true"
       :auto-dismiss-ms="actionDecision ? undefined : 12000"
+      @details="modalOpen = true"
       @dismiss="aiAction.reset()"
     >
       <template v-if="actionDecision" #decision>
@@ -253,13 +289,25 @@ async function undoLastApply() {
             </div>
           </div>
         </template>
+        <template v-else-if="actionResult.action === 'tone_check'">
+          <div class="ai-inline-list">
+            <div class="ai-inline-card">
+              <span class="ai-inline-card__meta">Current</span>
+              <p>{{ actionResult.sourceText }}</p>
+            </div>
+            <div class="ai-inline-card">
+              <span class="ai-inline-card__meta">Neutralized</span>
+              <p>{{ (actionResult.body as any)?.optimized || (actionResult.body as any)?.optimized_text || '' }}</p>
+            </div>
+          </div>
+        </template>
         <template v-else>
           <p>{{ t('ai.detailsHint') }}</p>
         </template>
       </div>
     </AiResultStrip>
 
-    <AiActionResultModal :host-key="hostKey" :apply="apply" />
+    <AiActionResultModal :host-key="hostKey" :apply="apply" :manual="modalShapeAction" :open="modalOpen" />
 
     <AiResultStrip
       v-if="undoState?.undo"

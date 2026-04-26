@@ -121,6 +121,7 @@ export default {
     detailsHint: 'Open the result modal to inspect and apply the full payload.',
     setAsParent: 'Set the top suggestion as parent ({issueKey})?',
     applyEstimate: 'Apply this estimate to the issue?',
+    applyToneCheck: 'Replace the current text with the neutralized draft?',
     showReasoning: 'Show reasoning',
     linkAsRelated: 'Link the top match to this issue ({issueKey})?',
     linkRelated: 'Link as related',

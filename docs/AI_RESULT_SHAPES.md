@@ -25,17 +25,17 @@ The `result` payload is action-specific. Optional counters live under
 
 ```json
 {
-  "optimized_text": "..."
+  "optimized": "..."
 }
 ```
 
-Frontend summary: char / sentence delta from `source_text` vs. `optimized_text`.
+Frontend summary: char / sentence delta from `source_text` vs. `optimized`.
 
 ### `translate`
 
 ```json
 {
-  "optimized_text": "..."
+  "optimized": "..."
 }
 ```
 
@@ -45,12 +45,14 @@ Frontend summary: translated copy length and sentence delta.
 
 ```json
 {
-  "optimized_text": "...",
+  "optimized": "...",
   "counters": {
     "phrases_removed": 4
   }
 }
 ```
+
+Frontend details: current text vs. neutralized text inline, plus a replace-text apply path.
 
 ### `suggest_enhancement`
 
@@ -149,7 +151,7 @@ Frontend summary: translated copy length and sentence delta.
 
 ```json
 {
-  "markdown": "...",
+  "spec_markdown": "...",
   "counters": {
     "words": 142
   }

@@ -34,6 +34,20 @@ function onCooperationNotesAccept(text: string) {
   if (draft.value) draft.value.cooperation_notes = text
 }
 
+async function applyCooperationAiResult(info: { action: string; field: string; intent?: string; values?: Record<string, unknown>; body?: any }) {
+  if (!draft.value) return
+  if (info.intent !== 'replace-text') return
+  if (info.action !== 'tone_check') return
+  const nextText = String(info.values?.text ?? info.body?.optimized ?? info.body?.optimized_text ?? '')
+  if (info.field === 'cooperation_sla_details') {
+    draft.value.sla_details = nextText
+    return
+  }
+  if (info.field === 'cooperation_notes') {
+    draft.value.cooperation_notes = nextText
+  }
+}
+
 const props = defineProps<{ projectId: number; canWrite: boolean }>()
 
 // Emit `populated` so a parent (ProjectDetailView's segmented control)
@@ -295,7 +309,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
               />
             </div>
             <textarea v-model="draft.sla_details" rows="4" placeholder="Detailed SLA terms, escalation path…" />
-            <AiSurfaceFeedback host-key="cooperation:sla_details" />
+            <AiSurfaceFeedback host-key="cooperation:sla_details" :apply="applyCooperationAiResult" />
           </div>
         </div>
       </div>
@@ -314,7 +328,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
         </div>
         <textarea v-model="draft.cooperation_notes" rows="4"
                   placeholder="Data retention, special arrangements, anything else worth knowing." />
-        <AiSurfaceFeedback host-key="cooperation:notes" />
+        <AiSurfaceFeedback host-key="cooperation:notes" :apply="applyCooperationAiResult" />
       </div>
 
       <p v-if="saveError" class="coop-error">{{ saveError }}</p>

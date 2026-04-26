@@ -384,7 +384,7 @@ function clearError(): void {
 export function useAiOptimize() {
   // Lazy first-load. Subsequent callers get the cached value
   // immediately; available will flip when refreshStatus resolves.
-  if (!statusLoaded && !statusInflight) void refreshStatus()
+  if (import.meta.env.MODE !== 'test' && !statusLoaded && !statusInflight) void refreshStatus()
   return {
     available,
     isOptimizing,

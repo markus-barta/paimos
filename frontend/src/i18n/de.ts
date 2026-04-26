@@ -121,6 +121,7 @@ export default {
     detailsHint: 'Im Ergebnis-Modal lässt sich die vollständige Antwort prüfen und anwenden.',
     setAsParent: 'Top-Vorschlag als Parent setzen ({issueKey})?',
     applyEstimate: 'Diese Schätzung für das Issue übernehmen?',
+    applyToneCheck: 'Den aktuellen Text durch den neutralisierten Entwurf ersetzen?',
     showReasoning: 'Begründung zeigen',
     linkAsRelated: 'Top-Treffer mit diesem Issue verknüpfen ({issueKey})?',
     linkRelated: 'Als related verknüpfen',

@@ -25,7 +25,8 @@
  *       reset()       — clear `result` so the modal stops rendering
  *
  *   - Per-action result shapes:
- *       optimize / translate / tone_check → diff overlay UX (existing)
+ *       optimize / translate              → diff overlay UX (existing)
+ *       tone_check                        → inline strip + replace action
  *       suggest_enhancement / spec_out    → list-of-suggestions modal
  *       find_parent / detect_duplicates   → candidate-cards modal
  *       generate_subtasks                 → checklist-create modal
@@ -41,7 +42,7 @@
  * The pre-existing useAiOptimize composable (PAI-147) keeps working
  * for the optimize-specific diff overlay. AiActionMenu uses
  * useAiOptimize for actions that want the diff UX (optimize,
- * translate, tone_check) and uses this composable's `result` slot
+ * translate) and uses this composable's `result` slot
  * for everything else. That split avoids cramming six unrelated UIs
  * into one giant component while still letting the menu treat all
  * actions uniformly at the dispatch level.
@@ -190,10 +191,10 @@ async function loadActions(): Promise<void> {
 }
 
 // Diff-overlay UX is reused for actions that produce rewritten field
-// text (optimize, translate, tone_check). For these we pipe the call
+// text when we want a full before/after overlay. For these we pipe the call
 // through useAiOptimize so we get the existing accept/reject/retry
 // flow for free.
-const DIFF_OVERLAY_ACTIONS = new Set(['optimize', 'translate', 'tone_check'])
+const DIFF_OVERLAY_ACTIONS = new Set(['optimize', 'translate'])
 
 // ── runner ────────────────────────────────────────────────────────
 async function run(args: RunArgs): Promise<void> {
@@ -263,11 +264,10 @@ async function run(args: RunArgs): Promise<void> {
 
 async function runViaOptimize(args: RunArgs): Promise<void> {
   // Optimize uses the legacy composable's run() which posts to
-  // /api/ai/action with action="optimize" (PAI-164). Translate and
-  // tone_check both produce rewritten field text that should land
-  // in the same diff overlay, so they share the overlay state via
-  // runRewriteAction(); the composable internally posts to
-  // /api/ai/action with the right action key and unwraps the body.
+  // /api/ai/action with action="optimize" (PAI-164). Translate shares
+  // the same overlay state via runRewriteAction(); tone_check now uses
+  // the strip/detail/apply path instead so users can review the neutralized
+  // rewrite inline without hijacking the diff overlay.
   if (args.action === 'optimize') {
     await optimize.run({
       hostKey: args.hostKey,
@@ -307,8 +307,12 @@ function clearError(): void {
   lastErrorHostKey.value = ''
 }
 
-// First import triggers the catalogue load.
-loadActions()
+// First import triggers the catalogue load in the real app. Tests mount
+// surfaces in isolation and don't run against a live backend, so skip the
+// eager fetch there and let explicit refreshes drive the catalogue instead.
+if (import.meta.env.MODE !== 'test') {
+  loadActions()
+}
 
 export function useAiAction() {
   return {

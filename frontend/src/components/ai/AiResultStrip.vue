@@ -15,6 +15,7 @@ const props = defineProps<{
   title: string
   summary: string
   detailsLabel?: string
+  detailsMode?: 'inline' | 'modal'
   primary?: StripButton
   secondary?: StripButton[]
   explain?: StripButton
@@ -25,6 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'dismiss'): void
   (e: 'primary'): void
+  (e: 'details'): void
 }>()
 
 const open = ref(false)
@@ -59,7 +61,7 @@ const { t } = useI18n()
           v-if="detailsLabel"
           type="button"
           class="btn btn-ghost aux-res-btn"
-          @click="open = !open"
+          @click="props.detailsMode === 'modal' ? $emit('details') : open = !open"
         >
           <AppIcon :name="open ? 'chevron-up' : 'chevron-down'" :size="12" />
           {{ detailsLabel }}
@@ -74,7 +76,7 @@ const { t } = useI18n()
       <slot name="decision" />
     </AiDecisionRow>
 
-    <div v-if="open" class="aux-res-details">
+    <div v-if="open && props.detailsMode !== 'modal'" class="aux-res-details">
       <slot />
     </div>
   </div>

@@ -27,4 +27,24 @@ describe('AiResultStrip', () => {
     expect(dismiss).toHaveBeenCalledTimes(1)
     await mounted.unmount()
   })
+
+  it('emits details instead of toggling inline content in modal mode', async () => {
+    const details = vi.fn()
+    const mounted = await mountComponent(AiResultStrip, {
+      actionKey: 'spec_out',
+      title: 'Spec out',
+      summary: '6 acceptance items drafted',
+      detailsLabel: 'Details',
+      detailsMode: 'modal',
+      onDetails: details,
+    })
+
+    const button = Array.from(mounted.el.querySelectorAll('button')).find((b) => b.textContent?.includes('Details'))
+    button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(details).toHaveBeenCalledTimes(1)
+    expect(mounted.el.textContent).not.toContain('Inline detail body')
+    await mounted.unmount()
+  })
 })

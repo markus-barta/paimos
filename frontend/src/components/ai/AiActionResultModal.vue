@@ -57,6 +57,8 @@ interface ActionApplyResult {
 }
 const props = defineProps<{
   hostKey?: string
+  open?: boolean
+  manual?: boolean
   apply?: (info: ActionApplyArgs) => void | Promise<void> | ActionApplyResult | Promise<ActionApplyResult | void>
 }>()
 
@@ -66,7 +68,16 @@ const activeResult = computed(() => {
   if (props.hostKey && r.hostKey !== props.hostKey) return null
   return r
 })
-const open = computed(() => activeResult.value !== null && !shouldUseDiffOverlay.value)
+const MODAL_ACTIONS = new Set(['suggest_enhancement', 'spec_out', 'generate_subtasks', 'ui_generation'])
+const shouldUseInlineSurface = computed(() => {
+  const a = activeResult.value?.action
+  return a === 'find_parent' || a === 'estimate_effort' || a === 'detect_duplicates'
+})
+const open = computed(() => {
+  if (props.manual) return !!props.open && activeResult.value !== null
+  if (shouldUseInlineSurface.value) return false
+  return activeResult.value !== null && !shouldUseDiffOverlay.value && MODAL_ACTIONS.has(action.value)
+})
 // Close = clear the result; the composable's reset() is the canonical path.
 function close() { aiAction.reset() }
 

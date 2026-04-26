@@ -38,6 +38,12 @@ function onCustomerNotesAccept(text: string) {
   form.value.notes = text
 }
 
+async function applyCustomerAiResult(info: { action: string; intent?: string; values?: Record<string, unknown>; body?: any }) {
+  if (info.intent !== 'replace-text') return
+  if (info.action !== 'tone_check') return
+  form.value.notes = String(info.values?.text ?? info.body?.optimized ?? info.body?.optimized_text ?? form.value.notes ?? '')
+}
+
 watch(() => props.open, (open) => {
   if (open) {
     form.value = { name: '', industry: '', contact_name: '', contact_email: '', address: '', country: '', rate_hourly: null, rate_lp: null, notes: '' }
@@ -118,7 +124,7 @@ async function submit() {
             :on-accept="onCustomerNotesAccept"
           />
         </div>
-        <AiSurfaceFeedback host-key="customer-create:notes" />
+        <AiSurfaceFeedback host-key="customer-create:notes" :apply="applyCustomerAiResult" />
         <textarea v-model="form.notes" rows="3" placeholder="Anything worth remembering about this customer." />
       </div>
 
