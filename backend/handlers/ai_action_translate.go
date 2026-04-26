@@ -54,16 +54,12 @@ func translateHandler(ax *aiActionContext) (any, string, int, int, string, error
 		return nil, "", 0, 0, "", err
 	}
 
-	systemPrompt := fmt.Sprintf(`You are a professional translator working inside PAIMOS, a project-management tool used by software engineers and product owners. Translate the provided text from %s to %s.
-
-Translation rules:
-  - Preserve markdown structure exactly: headings, ordered/unordered lists, checklists ("- [ ]" / "- [x]"), code blocks (do NOT translate code), inline code, links.
-  - Preserve every named entity verbatim: project names, issue keys (e.g. "PAI-146"), URLs, file paths, version numbers, table/column names, function names, error codes.
-  - Preserve quoted strings and inline code spans verbatim — they may be referenced by other systems.
-  - Use the natural register a senior software engineer would use in %s — neither overly formal nor casual slang.
-  - Do NOT add or remove information, do NOT reorganise sections, do NOT translate code blocks.
-  - Return ONLY the translated text. No preamble, no explanation, no markdown fences around the whole reply.`, src, tgt, tgt)
-
+	// PAI-178: resolved prompt + per-call source/target language
+	// substitution. The default constant talks about
+	// "SOURCE / TARGET languages given in the user prompt"; we
+	// pass them in the user prompt so the system prompt stays
+	// admin-editable without language-specific clutter.
+	systemPrompt := resolveActionPrompt("translate")
 	userPrompt := fmt.Sprintf("Translate from %s to %s:\n\n%s", src, tgt, ax.Text)
 
 	ctx, cancel := context.WithTimeout(ax.Ctx, optimizeRequestTimeout)

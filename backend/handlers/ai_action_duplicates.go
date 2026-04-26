@@ -66,17 +66,7 @@ func detectDuplicatesHandler(ax *aiActionContext) (any, string, int, int, string
 
 	tree := renderIssueTree(rows, true)
 
-	systemPrompt := `You are reviewing an issue inside PAIMOS, a project-management tool, looking for the top 5 most similar / duplicate issues in the same project.
-
-Match rules:
-  - Compare topic, scope, named entities, error codes, and concrete deliverables. Title alone is not enough.
-  - Similarity:
-      "high"  — almost certainly the same work or a strict subset/superset.
-      "med"   — same area, plausible overlap.
-      "low"   — weak / speculative overlap, included only if the project has no stronger candidates.
-  - Return AT MOST 5 matches sorted by similarity desc. Empty list is fine.
-
-Schema: {"matches":[{"issue_key":"...","title":"...","similarity":"high|med|low","rationale":"..."}]}`
+	systemPrompt := resolveActionPrompt("detect_duplicates")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

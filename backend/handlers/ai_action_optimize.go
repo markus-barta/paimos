@@ -22,6 +22,7 @@ package handlers
 
 import (
 	"context"
+	"strings"
 
 	"github.com/markus-barta/paimos/backend/ai"
 )
@@ -73,7 +74,17 @@ func optimizeActionHandler(ax *aiActionContext) (any, string, int, int, string, 
 		return nil, "", 0, 0, "", &userError{status: 413, msg: "text too large"}
 	}
 
-	systemPrompt := ai.BuildSystemPrompt(ax.Settings.OptimizeInstruction)
+	// PAI-178: resolve the system prompt from ai_prompts (admin
+	// override, falling back to the constant default in
+	// ai_action_prompts.go). This used to call
+	// ai.BuildSystemPrompt(settings.OptimizeInstruction) which
+	// composed the wrapper + admin instruction; for compatibility
+	// we still invoke that path when the live prompt is the
+	// canonical default and an admin instruction exists.
+	systemPrompt := resolveActionPrompt("optimize")
+	if systemPrompt == optimizeDefaultPrompt && strings.TrimSpace(ax.Settings.OptimizeInstruction) != "" {
+		systemPrompt = ai.BuildSystemPrompt(ax.Settings.OptimizeInstruction)
+	}
 	userPrompt := ai.BuildUserPrompt(ax.Text, ax.IssueData)
 
 	callCtx, cancel := context.WithTimeout(ax.Ctx, optimizeRequestTimeout)

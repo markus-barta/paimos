@@ -120,19 +120,36 @@ const CATEGORIES: Array<{
   { key: 'free',         label: 'Free',          icon: 'gift',         hint: 'Cost nothing per token. Often rate-limited; great for experimentation.' },
 ]
 
-// PAI-160: tag styling. Falls back to a neutral pill if the backend
-// adds a tag the frontend hasn't styled yet.
+// PAI-160 + PAI-178: tag styling. Falls back to a neutral pill if
+// the backend adds a tag the frontend hasn't styled yet. Vendor
+// tags are rendered as `vendor:anthropic` etc. — the helper
+// labelForTag() rewrites them to a friendly label at render time.
 const TAG_LABEL: Record<string, string> = {
-  fast:         'Fast',
-  fastest:      'Fastest',
-  quality:      'Quality',
-  frontier:     'Frontier',
-  open:         'Open',
-  open_weights: 'Open weights',
-  cheap:        'Cheap',
-  cheapest:     'Cheapest',
-  value:        'Value',
-  free:         'Free',
+  fast:           'Fast',
+  fastest:        'Fastest',
+  quality:        'Quality',
+  frontier:       'Frontier',
+  open:           'Open',
+  open_weights:   'Open weights',
+  cheap:          'Cheap',
+  cheapest:       'Cheapest',
+  value:          'Value',
+  free:           'Free',
+  'vendor:anthropic': 'Anthropic',
+  'vendor:openai':    'OpenAI',
+  'vendor:xai':       'xAI',
+  'vendor:google':    'Google',
+}
+function labelForTag(t: string): string {
+  if (TAG_LABEL[t]) return TAG_LABEL[t]
+  if (t.startsWith('vendor:')) return t.slice('vendor:'.length).replace(/^./, c => c.toUpperCase())
+  return t
+}
+function tagClass(t: string): string {
+  // CSS class names can't include ":" — translate vendor:foo →
+  // ai-preset-tag--vendor-foo so the existing styles per vendor
+  // can target the right class.
+  return 'ai-preset-tag--' + t.replace(/:/g, '-')
 }
 
 const form = reactive<AISettings>({
@@ -617,8 +634,8 @@ function relTime(iso: string): string {
                 <div class="ai-preset-tags">
                   <span
                     v-for="t in m.tags" :key="t"
-                    :class="['ai-preset-tag', `ai-preset-tag--${t}`]"
-                  >{{ TAG_LABEL[t] || t }}</span>
+                    :class="['ai-preset-tag', tagClass(t)]"
+                  >{{ labelForTag(t) }}</span>
                 </div>
               </button>
             </div>
@@ -815,11 +832,13 @@ function relTime(iso: string): string {
 
 <style scoped>
 /* The whole tab: capped width so wide screens don't stretch the form
-   into uselessness, but inputs inside still flex to the column edge. */
+   into uselessness, but inputs inside still flex to the column edge.
+   PAI-178: bumped from 920 → 1200 so the four-card model picker
+   row fits comfortably without cards squeezing below readable. */
 .ai-tab {
   display: flex; flex-direction: column;
   gap: 1rem;
-  max-width: 920px;
+  max-width: 1200px;
 }
 
 /* ── HERO ─────────────────────────────────────────────────────── */
@@ -1141,10 +1160,23 @@ function relTime(iso: string): string {
   color: var(--text-muted);
   margin-top: .25rem;
 }
+/* PAI-178: lock the model picker to 4 cards per row at the
+   standard tab width (1200px). The fixed grid stops cards from
+   wrapping into a 2 + 1 / 2 + 2 split that read awkwardly. On
+   narrow viewports the responsive override below kicks in. */
 .ai-presets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: .65rem;
+}
+@media (max-width: 1100px) {
+  .ai-presets-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 820px) {
+  .ai-presets-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 540px) {
+  .ai-presets-grid { grid-template-columns: 1fr; }
 }
 .ai-preset {
   position: relative;
@@ -1218,6 +1250,13 @@ function relTime(iso: string): string {
 .ai-preset-tag--cheapest     { background: #d1fae5; color: #065f46; }
 .ai-preset-tag--value        { background: #fce7f3; color: #9d174d; }
 .ai-preset-tag--free         { background: #ccfbf1; color: #115e59; }
+/* PAI-178: vendor pills on Frontier cards. Each vendor gets its
+   own brand-tinted pill so admins can scan the row at a glance:
+   Anthropic plum, OpenAI green, xAI black, Google blue. */
+.ai-preset-tag--vendor-anthropic { background: #f3e8ff; color: #6b21a8; }
+.ai-preset-tag--vendor-openai    { background: #d1fae5; color: #065f46; }
+.ai-preset-tag--vendor-xai       { background: #1e293b; color: white; }
+.ai-preset-tag--vendor-google    { background: #dbeafe; color: #1d4ed8; }
 
 /* PAI-160: category sections inside the Model card. */
 .ai-cat {

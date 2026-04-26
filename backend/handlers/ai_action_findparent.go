@@ -70,18 +70,7 @@ func findParentHandler(ax *aiActionContext) (any, string, int, int, string, erro
 
 	tree := renderIssueTree(rows, false)
 
-	systemPrompt := `You are a senior engineer triaging an issue inside PAIMOS, a project-management tool. Given the current issue and the project's issue tree, suggest the TOP 3 plausible parent candidates. A "candidate" must be an issue (epic, ticket, or task) the current issue would naturally fit under.
-
-Selection rules:
-  - The current issue cannot parent itself or its own descendants. Don't suggest those.
-  - Match by topic, scope, and naming similarity. Prefer parents whose title or type makes the current issue read as a natural sub-item.
-  - "Confidence" should be honest:
-      "high" — same topic, very strong match
-      "med"  — same area, plausible match
-      "low"  — weak / speculative
-  - Return AT MOST 3 candidates. Fewer is fine when only 1-2 are plausible. Empty list is fine when nothing fits.
-
-Schema: {"candidates":[{"issue_key":"...","title":"...","rationale":"...","confidence":"high|med|low"}]}`
+	systemPrompt := resolveActionPrompt("find_parent")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

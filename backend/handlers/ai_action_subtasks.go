@@ -55,17 +55,11 @@ func subtasksHandler(ax *aiActionContext) (any, string, int, int, string, error)
 		childType = "task"
 	}
 
-	systemPrompt := fmt.Sprintf(`You are a senior engineer breaking down work for a software team using PAIMOS. The parent issue below is a %s. Suggest 3-7 child %ss that decompose its work.
-
-Decomposition rules:
-  - Each child is a self-contained piece of work with a clear deliverable. Avoid "do half of X" / "continue X".
-  - Each child should be sequenceable: ideally pick-up-able by one engineer in 1-3 days.
-  - Children must NOT add scope beyond what the parent describes. If the parent doesn't mention a thing, don't decompose into it.
-  - Title: imperative verb-led, ≤ 80 chars ("Add CSP report endpoint", not "CSP report endpoint should exist").
-  - Description: 1-3 sentences with concrete next steps; reference the parent's own entities verbatim where applicable.
-  - Type: "%s" for every child (we know the parent type).
-
-Schema: {"suggestions":[{"title":"...","description":"...","type":"%s"}]}`, parentType, childType, childType, childType)
+	// PAI-178: resolved prompt + per-call parent/child type
+	// reminder appended to the user prompt below. Keeps the
+	// admin-editable surface small — they tune the role and
+	// rules, not the per-call data.
+	systemPrompt := resolveActionPrompt("generate_subtasks")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {
@@ -87,7 +81,7 @@ Schema: {"suggestions":[{"title":"...","description":"...","type":"%s"}]}`, pare
 	if ax.Text != "" {
 		fmt.Fprintf(&u, "\n%s field:\n%s\n", ax.IssueData.FieldName, ax.Text)
 	}
-	fmt.Fprintf(&u, "\nReturn 3-7 child %s suggestions per the schema.", childType)
+	fmt.Fprintf(&u, "\nParent type: %s. Required child type: %s. Return 3-7 child %s suggestions per the schema.", parentType, childType, childType)
 
 	ctx, cancel := context.WithTimeout(ax.Ctx, 60*time.Second)
 	defer cancel()

@@ -5,6 +5,57 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] — 2026-04-26
+
+### Changed — AI polish round
+
+- **Test connection now works with the saved key.** The endpoint
+  was demanding a model + API key in the form payload, which made
+  admins re-paste the key just to run a smoke test (the SPA never
+  echoes the saved key back). Now the handler falls back to the
+  saved settings for any missing field; pasting in the form still
+  overrides them. Friendlier failure copy when nothing is set up
+  on either side.
+- **Frontier model picks are vendor-diverse.** The Frontier
+  category used to cluster on whichever vendor was trending that
+  week; now the picker explicitly takes the top frontier-priced
+  model from each of Anthropic, OpenAI, xAI, and Google in that
+  order, with vendor pills on the cards so the row is scannable
+  at a glance. Trending order still drives the choice WITHIN each
+  vendor's bucket.
+- **Model picker grid pinned to 4 cards per row** at the new
+  1200px tab width; 3/2/1 column responsive overrides kick in on
+  narrower viewports.
+- **Settings → AI tab widened from 920px → 1200px** to fit the
+  4-up grid without squeezing cards below the readable minimum.
+- **Project Context moved into the toolbar toggle cluster** next
+  to Docs and Coop, instead of rendering full-width above the
+  issue tabs. The section now slides in from the right like the
+  other aux panels; the toggle button shows a small "i" badge
+  when at least one repo or any manifest content exists.
+
+### Added — Real prompts in the prompt editor
+
+- **Built-in action prompts now seed into `ai_prompts.prompt_template`
+  on first list call**, so admins see the actual default in the
+  Settings → AI prompts editor instead of an empty textarea. Backfill
+  for instances that seeded under v1.10.0 (which left the column
+  empty) runs idempotently on the next list.
+- **Each action handler now reads its system prompt from the
+  ai_prompts row**, falling back to the code-defined constant when
+  the row is missing or empty. Net effect: edits in Settings →
+  AI prompts actually take effect at request time.
+- **Reset writes the current code default into the row** instead
+  of clearing it. The editor stays useful after reset and
+  benefits from any future default changes shipped in code.
+- **All 11 built-in prompts rewritten / sharpened** with explicit
+  invariants, output schemas, named-entity preservation rules,
+  and per-action style guidance (verb-first sentences for optimize,
+  testable single conditions for spec-out, vendor-honest
+  confidence tiers for find-parent, etc.). The prompts live in
+  `backend/handlers/ai_action_prompts.go` as the single source of
+  truth; the handlers are now thin and admin-tunable.
+
 ## [1.10.0] — 2026-04-25
 
 ### Added — AI action suite (PAI-159 → PAI-177)

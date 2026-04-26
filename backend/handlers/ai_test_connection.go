@@ -131,11 +131,32 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 	if req.Provider == "" {
 		req.Provider = "openrouter"
 	}
+
+	// PAI-178: fall back to the saved settings when the form leaves a
+	// field blank. Admins typically don't re-type the API key (the
+	// SPA never echoes it back) — making them paste it just to run a
+	// smoke test was unnecessary friction. Same fallback for model
+	// and provider so "Test connection" works on a settings page that
+	// was opened, examined, and immediately tested.
+	if req.Model == "" || req.APIKey == "" {
+		if saved, lerr := LoadAISettings(); lerr == nil {
+			if req.APIKey == "" {
+				req.APIKey = saved.APIKey
+			}
+			if req.Model == "" {
+				req.Model = saved.Model
+			}
+			if req.Provider == "" && saved.Provider != "" {
+				req.Provider = saved.Provider
+			}
+		}
+	}
+
 	if req.Model == "" || req.APIKey == "" {
 		auditTest(userID, req.Model, "test_fail", 0, 0, 0)
 		jsonOK(w, aiTestResponse{
 			OK:      false,
-			Message: "Model and API key are required to test the connection.",
+			Message: "No saved API key or model — paste one in the form (or save it first) and retry.",
 		})
 		return
 	}

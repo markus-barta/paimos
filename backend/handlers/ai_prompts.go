@@ -91,9 +91,15 @@ func AIListPrompts(w http.ResponseWriter, r *http.Request) {
 }
 
 // seedBuiltinPrompts walks the action registry and ensures one
-// is_builtin row exists per key. We DO NOT delete rows for actions
-// that disappear — a feature-flagged-off action should keep its
-// admin-edited prompt for when it returns.
+// is_builtin row exists per key, populating prompt_template with
+// the code-defined default so admins see the real prompt in the
+// editor instead of an empty textarea (PAI-178).
+//
+// We DO NOT delete rows for actions that disappear — a feature-
+// flagged-off action should keep its admin-edited prompt for when
+// it returns. We also DON'T update existing rows: INSERT OR IGNORE
+// keeps any admin edits that landed before this seeder gained the
+// "populate default" behaviour.
 func seedBuiltinPrompts() error {
 	for _, d := range actionRegistry {
 		if !d.Implemented {
@@ -101,13 +107,33 @@ func seedBuiltinPrompts() error {
 			// seed once the action's real handler ships.
 			continue
 		}
+		def := builtinDefaultPromptFor(d.Key)
 		_, err := db.DB.Exec(
-			`INSERT OR IGNORE INTO ai_prompts(key, label, surface, parent_action, sub_action, is_builtin)
-			 VALUES (?, ?, ?, ?, ?, 1)`,
-			d.Key, d.Label, d.Surface, "", "",
+			`INSERT OR IGNORE INTO ai_prompts(key, label, surface, parent_action, sub_action, prompt_template, is_builtin)
+			 VALUES (?, ?, ?, ?, ?, ?, 1)`,
+			d.Key, d.Label, d.Surface, "", "", def,
 		)
 		if err != nil {
 			return fmt.Errorf("seed %q: %w", d.Key, err)
+		}
+		// Backfill: rows seeded by an older binary (before PAI-178)
+		// have prompt_template = ''. Detect that and populate the
+		// default so the editor renders a useful textarea on the
+		// next list call. We only touch rows that are STILL empty
+		// — admins who explicitly cleared their override via the
+		// reset endpoint also land with '' (which falls back to the
+		// constant via resolveActionPrompt anyway), so the backfill
+		// is idempotent in effect.
+		if def != "" {
+			_, err := db.DB.Exec(
+				`UPDATE ai_prompts
+				 SET prompt_template = ?
+				 WHERE key = ? AND is_builtin = 1 AND prompt_template = ''`,
+				def, d.Key,
+			)
+			if err != nil {
+				return fmt.Errorf("backfill %q: %w", d.Key, err)
+			}
 		}
 	}
 	return nil
@@ -348,8 +374,16 @@ func AIResetPrompt(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "reset only applies to built-in rows", http.StatusBadRequest)
 		return
 	}
+	// PAI-178: reset writes the *current* code default into the row
+	// rather than blanking it. Two reasons:
+	//   1. The editor stays useful after reset — admins see the
+	//      canonical prompt rather than an empty textarea.
+	//   2. If a future PAIMOS upgrade tweaks the default, an admin
+	//      who hits Reset gets the new default deterministically;
+	//      the resolver-fallback path stays as a safety net.
+	def := builtinDefaultPromptFor(existing.Key)
 	if _, err := db.DB.Exec(
-		`UPDATE ai_prompts SET prompt_template = '', updated_at = datetime('now') WHERE id = ?`, id,
+		`UPDATE ai_prompts SET prompt_template = ?, updated_at = datetime('now') WHERE id = ?`, def, id,
 	); err != nil {
 		log.Printf("ai_prompts: reset: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)

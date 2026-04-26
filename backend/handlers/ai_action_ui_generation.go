@@ -43,25 +43,7 @@ func uiGenerationHandler(ax *aiActionContext) (any, string, int, int, string, er
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "ui_generation needs a title or description"}
 	}
 
-	systemPrompt := `You are a senior product designer who writes implementation-ready UI specs in markdown. The issue below describes a feature or screen; produce a TEXTUAL ui spec a frontend engineer can hand to a designer or implement directly.
-
-Spec sections (use these exact ## headings, in this order):
-  ## Layout
-  ## Components
-  ## States
-  ## Interactions & keyboard
-  ## Accessibility
-  ## Microcopy
-
-Style rules:
-  - Markdown only. No image links, no embedded HTML, no rendered mockups (text spec, not picture).
-  - Reference concrete entities from the issue (table names, API endpoints, copy strings) verbatim where applicable.
-  - The "States" section MUST cover at least: default, loading, error, empty. Add more states only if the issue calls for them.
-  - "Microcopy" is short copy strings: button labels, error toasts, empty-state lines. Keep them short and natural.
-  - DO NOT propose tech-stack choices ("use Vue 3 + Tailwind") — assume PAIMOS conventions and stay UI-shape-focused.
-  - Total length: 30-80 lines. Aim for tight and useful, not exhaustive.
-
-Return ONLY the markdown spec. No preamble, no explanation, no fences around the whole reply.`
+	systemPrompt := resolveActionPrompt("ui_generation")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

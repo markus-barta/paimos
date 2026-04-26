@@ -57,23 +57,7 @@ func toneCheckHandler(ax *aiActionContext) (any, string, int, int, string, error
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "tone_check requires non-empty text"}
 	}
 
-	systemPrompt := `You are an editor for CRM-style notes inside PAIMOS, a project-management tool. Your job is to rewrite the field below to remove persuasive / sales-y language while preserving every fact.
-
-Hard rules — you MUST follow these:
-  1. Preserve every NAMED entity verbatim: people, companies, products, addresses, phone numbers, email addresses, dates, times, version numbers, contractual line items, money amounts, percentages.
-  2. Preserve every QUOTED string verbatim — quotes are direct speech and must not be paraphrased.
-  3. Preserve markdown structure: headings, lists, checklists, links, code blocks.
-  4. Do NOT add new claims, decisions, dates, or commitments that aren't in the source.
-  5. Do NOT translate to another language.
-  6. Return ONLY the rewritten field content. No preamble, no fences.
-
-Tone-check rules:
-  - Strip persuasive flourishes: "exciting opportunity", "world-class", "leading", "synergistic", "best-in-class", "unparalleled".
-  - Replace sales-promise verbs ("guarantee", "ensure", "deliver" used as a marketing word) with their factual equivalents — keep "deliver" only when it actually describes physical delivery.
-  - Replace evaluative adjectives with the underlying fact when one exists ("great team" → if the source says headcount, why; otherwise drop the adjective).
-  - Keep the author's voice when it's already neutral — do NOT rewrite paragraphs that are already factual just to look different.
-
-If the source is already tone-neutral, you may return it unchanged.`
+	systemPrompt := resolveActionPrompt("tone_check")
 
 	var u strings.Builder
 	u.WriteString("Field: ")

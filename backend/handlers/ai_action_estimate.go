@@ -44,16 +44,7 @@ func estimateEffortHandler(ax *aiActionContext) (any, string, int, int, string, 
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "estimate_effort needs at least a title or description"}
 	}
 
-	systemPrompt := `You are a senior estimator on a software-engineering team using PAIMOS. Estimate the effort for the issue described below.
-
-Estimation rules:
-  - Hours: realistic effort for ONE qualified engineer including coding, testing, code review, and minor incident fixes. Round to one decimal.
-  - LP (license points): rough customer-billing unit. The team's typical LP-rate is around 8 hours per 1 LP — round LP to one decimal accordingly.
-  - Reasoning: ONE sentence (≤180 chars). Mention the dominant cost driver (e.g. "spans frontend + backend + migration"), not generic phrases like "depends on requirements".
-  - For very small / one-line tickets: minimum 0.5 h (we don't estimate below half-an-hour).
-  - For unbounded / vague issues: estimate the largest reasonable interpretation, but flag that fact in the reasoning.
-
-Schema: {"hours": <number>, "lp": <number>, "reasoning": "..."}`
+	systemPrompt := resolveActionPrompt("estimate_effort")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {
