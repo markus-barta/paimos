@@ -2,7 +2,6 @@
 import { ref, computed } from 'vue'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
-import { useConfirm } from '@/composables/useConfirm'
 import { useSort } from '@/composables/useSort'
 import AppModal from '@/components/AppModal.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -12,7 +11,6 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import type { User } from '@/types'
 
 const auth = useAuthStore()
-const { confirm } = useConfirm()
 
 const ROLE_OPTIONS: MetaOption[] = [{ value: 'member', label: 'Member' }, { value: 'admin', label: 'Admin' }, { value: 'external', label: 'External' }]
 
@@ -72,49 +70,11 @@ const { sorted: sortedUsers, sortIndicator: userSortInd, thProps: userThProps } 
   created_at: { value: u => u.created_at, type: 'date' },
 })
 
-// ── User project access (external users) ──────────────────────────────────
-interface UserProjectAccess { project_id: number; name: string; key: string }
-interface SimpleProject { id: number; name: string; key: string }
-const userProjectsTarget = ref<User | null>(null)
-const userProjects = ref<UserProjectAccess[]>([])
-const allProjects = ref<SimpleProject[]>([])
-const addProjectId = ref<number | null>(null)
-const projectsLoading = ref(false)
-
-async function openUserProjects(u: User) {
-  userProjectsTarget.value = u
-  projectsLoading.value = true
-  try {
-    const [up, ap] = await Promise.all([
-      api.get<UserProjectAccess[]>(`/users/${u.id}/projects`),
-      api.get<SimpleProject[]>('/projects'),
-    ])
-    userProjects.value = up
-    allProjects.value = ap
-  } catch { /* ignore */ }
-  projectsLoading.value = false
-}
-async function addUserProject() {
-  if (!userProjectsTarget.value || !addProjectId.value) return
-  try {
-    await api.post(`/users/${userProjectsTarget.value.id}/projects`, { project_id: addProjectId.value })
-    const proj = allProjects.value.find(p => p.id === addProjectId.value)
-    if (proj) userProjects.value.push({ project_id: proj.id, name: proj.name, key: proj.key })
-    addProjectId.value = null
-  } catch { /* ignore */ }
-}
-async function removeUserProject(projectId: number) {
-  if (!userProjectsTarget.value) return
-  if (!await confirm({ message: 'Remove this user from the project?', confirmLabel: 'Remove' })) return
-  try {
-    await api.delete(`/users/${userProjectsTarget.value.id}/projects/${projectId}`)
-    userProjects.value = userProjects.value.filter(p => p.project_id !== projectId)
-  } catch { /* ignore */ }
-}
-
-// ── Membership matrix editor (all users, all projects, viewer/editor/none) ─
+// ── Per-user project access (unified matrix; replaces legacy Projects flow) ─
 
 type AccessLevel = 'none' | 'viewer' | 'editor'
+type FilterMode = 'explicit' | 'all'
+
 interface MembershipRow {
   project_id: number
   project_key: string
@@ -122,19 +82,65 @@ interface MembershipRow {
   access_level: AccessLevel
 }
 
-const membershipsTarget = ref<User | null>(null)
-const memberships = ref<MembershipRow[]>([])
-const membershipsLoading = ref(false)
 const ACCESS_LEVELS: { value: AccessLevel; label: string }[] = [
   { value: 'none',   label: 'None'   },
   { value: 'viewer', label: 'Viewer' },
   { value: 'editor', label: 'Editor' },
 ]
 
+const membershipsTarget   = ref<User | null>(null)
+const memberships         = ref<MembershipRow[]>([])
+const membershipsLoading  = ref(false)
+const filter              = ref<FilterMode>('all')
+const addProjectId        = ref<number | null>(null)
+const addLevel            = ref<AccessLevel>('viewer')
+
+const isExternal = computed(() => membershipsTarget.value?.role === 'external')
+// Role default mirrors backend logic in ListUserMemberships: admin/member → editor, external → none.
+const roleDefault = computed<AccessLevel>(() => isExternal.value ? 'none' : 'editor')
+const roleDefaultLabel = computed(() => roleDefault.value)
+const roleHint = computed(() => {
+  if (!membershipsTarget.value) return ''
+  return isExternal.value
+    ? 'Externals start with no access. Grant per project below.'
+    : 'Members default to editor. Use this to override per project.'
+})
+// Externals can only be None or Viewer; the Editor level is hidden for them.
+const visibleLevels = computed(() =>
+  isExternal.value ? ACCESS_LEVELS.filter(l => l.value !== 'editor') : ACCESS_LEVELS
+)
+const explicitRows = computed(() =>
+  memberships.value
+    .filter(r => r.access_level !== roleDefault.value)
+    .slice()
+    .sort((a, b) => a.project_key.localeCompare(b.project_key))
+)
+const defaultRows = computed(() =>
+  memberships.value
+    .filter(r => r.access_level === roleDefault.value)
+    .slice()
+    .sort((a, b) => a.project_key.localeCompare(b.project_key))
+)
+// Pickable in the Add bar = projects without an explicit grant yet. Includes
+// defaulted rows: picking one promotes it to the chosen level.
+const addableProjects = computed(() => {
+  const explicitIds = new Set(explicitRows.value.map(r => r.project_id))
+  return memberships.value
+    .filter(r => !explicitIds.has(r.project_id))
+    .slice()
+    .sort((a, b) => a.project_key.localeCompare(b.project_key))
+})
+
 async function openMemberships(u: User) {
   membershipsTarget.value = u
   membershipsLoading.value = true
   memberships.value = []
+  // External rows are sparse (no seeded grants) — explicit-only is the
+  // useful default. Staff defaults to editor everywhere — show all so
+  // overrides are visible.
+  filter.value = u.role === 'external' ? 'explicit' : 'all'
+  addProjectId.value = null
+  addLevel.value = 'viewer'
   try {
     memberships.value = await api.get<MembershipRow[]>(`/users/${u.id}/memberships`)
   } catch { /* ignore */ }
@@ -159,11 +165,27 @@ async function resetMembership(row: MembershipRow) {
   const prev = row.access_level
   try {
     await api.delete(`/users/${uid}/memberships/${row.project_id}`)
-    // After deleting the explicit row, the backend falls back to the
-    // role default. Re-read memberships for accuracy.
+    // After deleting the explicit row the backend falls back to the role
+    // default — re-read memberships so the row reflects that default.
     memberships.value = await api.get<MembershipRow[]>(`/users/${uid}/memberships`)
   } catch {
     row.access_level = prev
+  }
+}
+
+async function addRow() {
+  if (!membershipsTarget.value || !addProjectId.value) return
+  const uid = membershipsTarget.value.id
+  const pid = addProjectId.value
+  const lvl: AccessLevel = isExternal.value ? 'viewer' : addLevel.value
+  const row = memberships.value.find(r => r.project_id === pid)
+  const prev = row?.access_level
+  if (row) row.access_level = lvl // optimistic
+  try {
+    await api.put(`/users/${uid}/memberships/${pid}`, { access_level: lvl })
+    addProjectId.value = null
+  } catch {
+    if (row && prev !== undefined) row.access_level = prev
   }
 }
 
@@ -315,7 +337,6 @@ loadUsers()
             <td class="muted" :title="u.last_login_at ?? ''">{{ u.last_login_at ? relativeTime(u.last_login_at) : 'Never' }}</td>
             <td class="actions-cell">
               <button class="btn btn-ghost btn-sm" @click="openEditUser(u)">Edit</button>
-              <button v-if="u.role === 'external'" class="btn btn-ghost btn-sm" @click="openUserProjects(u)" title="Manage project access">Projects</button>
               <button v-if="!isSelf(u)" class="btn btn-ghost btn-sm" @click="openMemberships(u)" title="Per-project access levels">Access</button>
               <template v-if="!isSelf(u)">
                 <button v-if="u.status === 'active'" class="btn btn-ghost btn-sm" @click="disableUserTarget=u" title="Disable account">Disable</button>
@@ -409,25 +430,72 @@ loadUsers()
     </form>
   </AppModal>
 
-  <!-- Per-project access matrix (viewer/editor/none for every project) -->
-  <AppModal :title="`Access: ${membershipsTarget?.username}`" :open="!!membershipsTarget" @close="membershipsTarget=null">
-    <div v-if="membershipsLoading" style="padding:1rem;color:var(--text-muted)">Loading...</div>
-    <div v-else class="form">
-      <p class="empty-hint" style="margin-bottom:.75rem">
-        Pick an access level per project. <strong>None</strong> blocks view and edit; <strong>Viewer</strong> allows read-only; <strong>Editor</strong> allows full write.
-        Use <em>Reset</em> to revert to the user's role default (members are editors by default).
-      </p>
-      <div class="memb-table-wrap">
+  <!-- Unified per-user project access (matrix + role-aware filter + add picker) -->
+  <AppModal :title="`Access: ${membershipsTarget?.username}`" :open="!!membershipsTarget" max-width="680px" @close="membershipsTarget=null">
+    <div v-if="membershipsLoading" class="memb-loading">Loading…</div>
+
+    <div v-else class="memb-body">
+      <p class="empty-hint memb-hint">{{ roleHint }}</p>
+
+      <div class="memb-toolbar">
+        <div class="memb-segmented" role="tablist" aria-label="View">
+          <button
+            type="button" role="tab"
+            class="memb-segmented__opt"
+            :class="{ 'is-active': filter === 'explicit' }"
+            :aria-selected="filter === 'explicit'"
+            @click="filter = 'explicit'"
+          >Explicit grants</button>
+          <button
+            type="button" role="tab"
+            class="memb-segmented__opt"
+            :class="{ 'is-active': filter === 'all' }"
+            :aria-selected="filter === 'all'"
+            @click="filter = 'all'"
+          >All projects</button>
+        </div>
+
+        <div class="memb-add" :class="{ 'is-disabled': addableProjects.length === 0 }">
+          <select v-model="addProjectId" class="memb-add__field memb-add__pick" :disabled="addableProjects.length === 0">
+            <option :value="null" disabled>{{ addableProjects.length === 0 ? 'No projects to add' : 'Pick a project…' }}</option>
+            <option v-for="p in addableProjects" :key="p.project_id" :value="p.project_id">
+              {{ p.project_key }} — {{ p.project_name }}
+            </option>
+          </select>
+          <select v-if="!isExternal" v-model="addLevel" class="memb-add__field memb-add__lvl">
+            <option value="viewer">Viewer</option>
+            <option value="editor">Editor</option>
+          </select>
+          <span v-else class="memb-add__lvl-locked" title="Externals can only be granted Viewer access">Viewer</span>
+          <button
+            type="button"
+            class="memb-add__btn"
+            :disabled="!addProjectId"
+            @click="addRow"
+          >Add</button>
+        </div>
+      </div>
+
+      <div v-if="memberships.length === 0" class="memb-empty">
+        <span class="memb-empty__icon" aria-hidden="true">⌀</span>
+        No projects to manage yet.
+      </div>
+      <div v-else-if="filter === 'explicit' && explicitRows.length === 0" class="memb-empty">
+        <span class="memb-empty__icon" aria-hidden="true">∅</span>
+        <span>No explicit grants yet.<br />Use the picker above to assign access.</span>
+      </div>
+
+      <div v-else class="memb-table-wrap">
         <table class="settings-table memb-table">
           <thead>
             <tr>
               <th>Project</th>
-              <th>Access</th>
-              <th></th>
+              <th class="th-access">Access</th>
+              <th class="th-reset" aria-label="Reset to default"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in memberships" :key="row.project_id">
+            <tr v-for="row in explicitRows" :key="`e-${row.project_id}`">
               <td>
                 <span class="project-access-key">{{ row.project_key }}</span>
                 <span class="project-access-name">{{ row.project_name }}</span>
@@ -435,7 +503,7 @@ loadUsers()
               <td>
                 <div class="memb-lvl-group">
                   <button
-                    v-for="lvl in ACCESS_LEVELS" :key="lvl.value"
+                    v-for="lvl in visibleLevels" :key="lvl.value"
                     type="button"
                     class="btn btn-sm"
                     :class="row.access_level === lvl.value ? 'btn-primary' : 'btn-ghost'"
@@ -444,37 +512,46 @@ loadUsers()
                 </div>
               </td>
               <td>
-                <button class="btn btn-ghost btn-sm" @click="resetMembership(row)" title="Revert to role default">Reset</button>
+                <button class="btn btn-ghost btn-sm memb-reset" @click="resetMembership(row)" title="Revert to role default">Reset</button>
+              </td>
+            </tr>
+
+            <tr
+              v-if="filter === 'all' && explicitRows.length > 0 && defaultRows.length > 0"
+              class="memb-divider-row"
+              aria-hidden="true"
+            >
+              <td colspan="3">
+                <div class="memb-divider"><span>Defaults — {{ roleDefaultLabel }}</span></div>
+              </td>
+            </tr>
+
+            <tr v-for="row in defaultRows" :key="`d-${row.project_id}`">
+              <td>
+                <span class="project-access-key">{{ row.project_key }}</span>
+                <span class="project-access-name">{{ row.project_name }}</span>
+              </td>
+              <td>
+                <div class="memb-lvl-group">
+                  <button
+                    v-for="lvl in visibleLevels" :key="lvl.value"
+                    type="button"
+                    class="btn btn-sm"
+                    :class="row.access_level === lvl.value ? 'btn-primary' : 'btn-ghost'"
+                    @click="setMembership(row, lvl.value)"
+                  >{{ lvl.label }}</button>
+                </div>
+              </td>
+              <td>
+                <button class="btn btn-ghost btn-sm memb-reset" disabled title="Already at role default">Reset</button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" @click="membershipsTarget=null">Close</button>
-      </div>
-    </div>
-  </AppModal>
-
-  <AppModal :title="`Project Access: ${userProjectsTarget?.username}`" :open="!!userProjectsTarget" @close="userProjectsTarget=null">
-    <div v-if="projectsLoading" style="padding:1rem;color:var(--text-muted)">Loading...</div>
-    <div v-else class="form">
-      <div v-if="userProjects.length > 0" class="project-access-list">
-        <div v-for="p in userProjects" :key="p.project_id" class="project-access-row">
-          <span class="project-access-key">{{ p.key }}</span>
-          <span class="project-access-name">{{ p.name }}</span>
-          <button class="btn btn-ghost btn-sm danger" @click="removeUserProject(p.project_id)" title="Remove access">Remove</button>
-        </div>
-      </div>
-      <p v-else class="empty-hint">No projects assigned yet.</p>
-      <div class="project-access-add">
-        <select v-model="addProjectId" style="flex:1">
-          <option :value="null" disabled>Select project...</option>
-          <option v-for="p in allProjects.filter(ap => !userProjects.some(up => up.project_id === ap.id))" :key="p.id" :value="p.id">
-            {{ p.key }} — {{ p.name }}
-          </option>
-        </select>
-        <button class="btn btn-primary btn-sm" :disabled="!addProjectId" @click="addUserProject">Add</button>
       </div>
     </div>
   </AppModal>
@@ -515,27 +592,199 @@ loadUsers()
 .row-muted td { opacity: .65; }
 .row-muted:hover td { opacity: .85; }
 .badge-active   { background: #d4edda; color: #155724; }
-.memb-table-wrap { max-height: 60vh; overflow-y: auto; margin-bottom: .75rem; border: 1px solid var(--border); border-radius: var(--radius); }
-.memb-table { margin: 0; }
-.memb-table td { padding: .45rem .6rem; }
-.memb-lvl-group { display: inline-flex; gap: .25rem; }
-.project-access-key  { font-family: monospace; font-weight: 600; font-size: 12px; color: var(--text-muted); margin-right: .5rem; }
-.project-access-name { font-weight: 600; font-size: 13px; }
-
-/* ── Project access modal ────────────────────────────────────────────── */
-.project-access-list { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .75rem; }
-.project-access-row {
-  display: flex; align-items: center; gap: .75rem;
-  padding: .4rem .5rem; border-radius: var(--radius);
-  background: var(--bg);
-}
+/* ── Per-user access modal: chips, table, toolbar ───────────────────── */
 .project-access-key {
   font-size: 11px; font-weight: 700; letter-spacing: .03em;
   padding: .1rem .4rem; border-radius: 3px;
   background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  margin-right: .5rem;
 }
-.project-access-name { flex: 1; font-size: 13px; font-weight: 500; }
-.project-access-add {
-  display: flex; gap: .5rem; align-items: center;
+.project-access-name { font-weight: 500; font-size: 13px; }
+
+.memb-body { display: flex; flex-direction: column; }
+.memb-loading { padding: 1rem; color: var(--text-muted); font-size: 13px; }
+.memb-hint    { margin: 0 0 .9rem; padding: 0; }
+
+.memb-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: .65rem;
+  margin-bottom: .9rem;
+}
+
+/* Filter — a "view setting" pill, distinct from action buttons */
+.memb-segmented {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  padding: 2px;
+}
+.memb-segmented__opt {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  padding: .35rem .8rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s ease, color .12s ease;
+}
+.memb-segmented__opt:hover:not(.is-active) { color: var(--text); }
+.memb-segmented__opt.is-active {
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+}
+
+/* Add bar — one composed control with hairline-divided segments */
+.memb-add {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.memb-add:focus-within {
+  border-color: var(--bp-blue);
+  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+}
+.memb-add.is-disabled { opacity: .55; }
+
+/* Native selects stripped of their chrome so the bar reads as one shell;
+   custom caret SVG keeps the affordance visible. */
+.memb-add__field {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  padding: 0 1.6rem 0 .75rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'><path d='M0 0l4 5 4-5z' fill='%237a8597'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right .6rem center;
+}
+.memb-add__field:disabled { cursor: not-allowed; }
+.memb-add__pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  text-overflow: ellipsis;
+}
+.memb-add__lvl {
+  flex: 0 0 92px;
+  border-right: 1px solid var(--border);
+}
+.memb-add__lvl-locked {
+  display: inline-flex; align-items: center;
+  flex: 0 0 92px;
+  padding: 0 .75rem;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .01em;
+}
+/* Custom-styled instead of .btn-primary so it sits flush in the bar
+   (no nested border, no rounded-corner mismatch). */
+.memb-add__btn {
+  border: none;
+  background: var(--bp-blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  padding: 0 1rem;
+  cursor: pointer;
+  transition: background .12s ease;
+  white-space: nowrap;
+}
+.memb-add__btn:hover:not(:disabled) { background: var(--bp-blue-dark); }
+.memb-add__btn:disabled {
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Empty states */
+.memb-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: .55rem;
+  min-height: 120px;
+  padding: 1.5rem;
+  margin-bottom: .9rem;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  line-height: 1.45;
+}
+.memb-empty__icon {
+  font-family: 'DM Mono','Fira Code',monospace;
+  font-size: 22px;
+  color: var(--border);
+  line-height: 1;
+}
+
+/* Table */
+.memb-table-wrap {
+  max-height: 56vh;
+  overflow-y: auto;
+  margin-bottom: .9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.memb-table { margin: 0; }
+.memb-table thead th { position: sticky; top: 0; z-index: 1; }
+.memb-table td { padding: .5rem .6rem; }
+.memb-table .th-access { width: 220px; }
+.memb-table .th-reset  { width: 76px; }
+.memb-lvl-group { display: inline-flex; gap: .25rem; }
+
+/* Reset is neutral, not destructive — keep its hover off the danger palette. */
+.memb-reset:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+.memb-reset:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Divider row — hairline + small label, Linear-style "below the fold". */
+.memb-divider-row td {
+  padding: 1rem .6rem .35rem;
+  background: transparent;
+  border-bottom: none;
+}
+.memb-divider-row:hover td { background: transparent; }
+.memb-divider {
+  display: flex; align-items: center; gap: .75rem;
+}
+.memb-divider::before {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.memb-divider span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 </style>
