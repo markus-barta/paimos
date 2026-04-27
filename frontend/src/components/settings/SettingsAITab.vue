@@ -1631,7 +1631,15 @@ function relTime(iso: string): string {
   border-bottom: 1px solid #f1f5f9;
   color: var(--text);
 }
-.ai-usage-num { text-align: right; font-family: 'DM Mono', monospace; }
+/* Numeric columns: header *and* value share right-alignment so a vertical
+   eye-trace from header label to value never crosses columns (PAI-220).
+   Doubled-up class selector wins over `.ai-usage-table thead th`. */
+.ai-usage-table th.ai-usage-num,
+.ai-usage-table td.ai-usage-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ai-usage-table td.ai-usage-num { font-family: 'DM Mono', monospace; }
 .ai-usage-row--over td { background: #fef2f2; }
 .ai-usage-admin-tag {
   margin-left: .4rem;

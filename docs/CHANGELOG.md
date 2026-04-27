@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.11] — 2026-04-27
+
+### Fixed
+
+- PAI-220 — `Settings → AI → Usage today` table headers (Prompt + completion / Calls / Cap) now share right-alignment with their numeric values. The previous `.ai-usage-table thead th` rule's specificity was beating `.ai-usage-num`, leaving headers left-aligned while values rendered right-aligned. Numeric headers also use `tabular-nums` so digits line up cleanly.
+
 ## [2.1.10] — 2026-04-27
 
 ### Fixed
