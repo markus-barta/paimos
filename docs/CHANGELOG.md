@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.14] — 2026-04-27
+
+### Fixed
+
+- `+pm/P30.c6aad81` — AppHeader now shrinks alongside the main content when the issue side panel is **pinned**. The panel is `position: fixed`, so it never pushes layout; the previous shrink-when-pinned logic only ran on the inner `.issue-list-root` and the top `AppHeader` stayed full-width and got covered by the panel. A new `useSidePanelPinned` singleton lifts the pinned + visible state out of `IssueList`, and `AppLayout` consumes it (together with `useSidePanelWidth`) to apply `padding-right` on `.main`. Both the header and the main content now reflow as one column.
+
 ## [2.1.13] — 2026-04-27
 
 ### Changed

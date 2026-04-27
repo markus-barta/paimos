@@ -40,10 +40,13 @@ import EpicCascadeDialog from '@/components/EpicCascadeDialog.vue'
 import IssueListRefreshBanner from '@/components/IssueListRefreshBanner.vue'
 import {
   LS_EPIC_DISPLAY_MODE as EPIC_MODE_KEY,
-  LS_SIDEBAR_PINNED    as LS_PIN_KEY,
   lsFiltersKey,
 } from '@/constants/storage'
-import { useSidePanelWidth } from '@/composables/useSidePanelWidth'
+import {
+  useSidePanelPinned,
+  setSidePanelPinned,
+  setSidePanelVisible,
+} from '@/composables/useSidePanelPinned'
 import {
   notifySidePanelOpened,
   onOtherSidePanelOpened,
@@ -525,10 +528,13 @@ async function deleteRow(issue: Issue) {
 }
 
 // ── Side panel ──────────────────────────────────────────────────────────
+// Pinned state lives in `useSidePanelPinned` (singleton) so AppLayout
+// can apply the right-edge inset on `.main`, which shrinks both the
+// AppHeader and the main content together. Width still flows through
+// `useSidePanelWidth` (consumed by AppLayout for the inset value).
 const sidePanelIssueId = ref<number | null>(null)
 const sidePanelEdit    = ref(false)
-const sidePanelPinned  = ref(localStorage.getItem(LS_PIN_KEY) === '1')
-const { width: sidePanelWidth } = useSidePanelWidth()
+const { pinned: sidePanelPinned } = useSidePanelPinned()
 
 const sidePanelIssueIds = computed(() => finalIssues.value.map(i => i.id))
 
@@ -576,9 +582,11 @@ function onSidePanelNavigate(id: number) {
 }
 
 function onPinnedChange(pinned: boolean) {
-  sidePanelPinned.value = pinned
-  localStorage.setItem(LS_PIN_KEY, pinned ? '1' : '0')
+  setSidePanelPinned(pinned)
 }
+
+watch(sidePanelIssueId, (id) => setSidePanelVisible(!!id), { immediate: true })
+onUnmounted(() => setSidePanelVisible(false))
 
 function navigateTo(issue: Issue) { openSidePanel(issue) }
 
@@ -803,7 +811,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 </script>
 
 <template>
-  <div class="issue-list-root" :style="sidePanelPinned && sidePanelIssueId ? { marginRight: sidePanelWidth + 'px' } : {}">
+  <div class="issue-list-root">
   <!-- Transient flash toast (copy-to-clipboard, view saved, …) -->
   <Transition name="flash-toast">
     <div v-if="flashToast" class="flash-toast">{{ flashToast }}</div>

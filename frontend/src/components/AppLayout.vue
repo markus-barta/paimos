@@ -15,6 +15,8 @@ import { api } from '@/api/client'
 import { instanceLabel, loadInstance } from '@/api/instance'
 import AppIcon from '@/components/AppIcon.vue'
 import AppHeader from '@/components/AppHeader.vue'
+import { useSidePanelPinned } from '@/composables/useSidePanelPinned'
+import { useSidePanelWidth } from '@/composables/useSidePanelWidth'
 import SidebarTimerPanel from '@/components/SidebarTimerPanel.vue'
 import SidebarSprintTargets from '@/components/SidebarSprintTargets.vue'
 import SidebarRecentProjects from '@/components/SidebarRecentProjects.vue'
@@ -100,6 +102,18 @@ async function loadDevSummary() {
     completeFailures.value = s.failures ?? s.complete_failures ?? 0
   } catch { /* ignore */ }
 }
+
+// ── Pinned side-panel inset ──────────────────────────────────────────────────
+// IssueSidePanel is `position: fixed`, so when pinned it would otherwise paint
+// on top of AppHeader and the main content. Mirroring the panel width as
+// `padding-right` on `.main` shrinks both the header and the content together.
+const { pinned: sidePanelPinned, visible: sidePanelVisible } = useSidePanelPinned()
+const { width: sidePanelWidth } = useSidePanelWidth()
+const mainStyle = computed(() => ({
+  paddingRight: (sidePanelPinned.value && sidePanelVisible.value)
+    ? sidePanelWidth.value + 'px'
+    : '0px',
+}))
 
 // ── Sidebar style ────────────────────────────────────────────────────────────
 const sidebarStyle = computed(() => {
@@ -199,7 +213,7 @@ onMounted(() => {
       </div>
     </aside>
 
-    <main class="main">
+    <main class="main" :style="mainStyle">
       <AppHeader ref="appHeaderRef" />
 
       <div class="main-content">
@@ -427,6 +441,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  transition: padding-right 0.18s ease;
 }
 
 .main-content {
