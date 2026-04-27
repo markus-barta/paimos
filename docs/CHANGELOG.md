@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.13] — 2026-04-27
+
+### Changed
+
+- PAI-246 — App-header right cluster polish: Undo button now inherits `.btn-sm` like the per-view Edit button next to it, so the two read at the same size and weight (the global `.btn` padding was previously winning over the missing `.btn-sm` rule in `AppHeader.vue`).
+- PAI-246 — Project Detail header collapses the Export CSV / Import CSV / Edit project trio behind a single `⋯` menu. The menu items show icon + label, respect the existing admin/edit permission gates, and close on outside click, Esc, and selection.
+- PAI-246 — Within that menu, Export CSV uses an up/out arrow and Import CSV uses a down/in arrow, following the data-flow convention (data *leaves* on export, *enters* on import); the labels in the menu disambiguate any icon-only ambiguity that convention introduces vs. the more common user-device convention.
+
 ## [2.1.12] — 2026-04-27
 
 ### Changed

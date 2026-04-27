@@ -116,6 +116,22 @@ const issueListRef  = ref<InstanceType<typeof IssueList> | null>(null)
 const exporting     = ref(false)
 const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, search.query))
 
+// PAI-246: header ⋯ menu (Export / Import / Edit project).
+const overflowOpen = ref(false)
+const overflowRoot = ref<HTMLElement | null>(null)
+function closeOverflow() { overflowOpen.value = false }
+function onOverflowOutsideClick(e: MouseEvent) {
+  if (!overflowOpen.value) return
+  const target = e.target as Node
+  if (overflowRoot.value && !overflowRoot.value.contains(target)) closeOverflow()
+}
+function onOverflowKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && overflowOpen.value) closeOverflow()
+}
+function onMenuExport() { closeOverflow(); void exportCSV() }
+function onMenuImport() { closeOverflow(); triggerImport() }
+function onMenuEdit() { closeOverflow(); openEdit() }
+
 // ── Admin-default views as tabs ───────────────────────────────────────────────
 
 // Synthetic fallback views used when no admin-default views exist in the DB.
@@ -163,10 +179,14 @@ onMounted(() => {
   unbindAuxPanelExclusion = onOtherSidePanelOpened('aux', () => {
     workspacePanel.value = null
   })
+  document.addEventListener('mousedown', onOverflowOutsideClick)
+  document.addEventListener('keydown', onOverflowKey)
 })
 onUnmounted(() => {
   unbindAuxPanelExclusion?.()
   unbindAuxPanelExclusion = null
+  document.removeEventListener('mousedown', onOverflowOutsideClick)
+  document.removeEventListener('keydown', onOverflowKey)
 })
 
 function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
@@ -589,15 +609,36 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
         </span>
         <span :class="`badge badge-${project.status}`">{{ project.status }}</span>
         <TagChip v-for="t in project.tags" :key="t.id" :tag="t" />
-        <button class="btn btn-ghost btn-sm icon-only" @click="exportCSV" :disabled="exporting" :title="exporting ? 'Preparing download…' : 'Export CSV'">
-          <AppIcon v-if="!exporting" name="download" :size="14" />
-          <AppIcon v-else name="loader" :size="14" class="spin" />
-        </button>
-        <button v-if="isAdmin && canEditProject" class="btn btn-ghost btn-sm icon-only" @click="triggerImport" :disabled="importing" title="Import CSV">
-          <AppIcon name="upload" :size="14" />
-        </button>
         <input ref="importInputRef" type="file" accept=".csv" style="display:none" @change="onImportFile" />
-        <button v-if="isAdmin && canEditProject" class="btn btn-ghost btn-sm" @click="openEdit">Edit</button>
+        <!-- PAI-246: Export / Import / Edit folded into a single ⋯ menu so
+             the right cluster doesn't outweigh the global Undo / Edit
+             controls. Icon convention here is data-flow oriented:
+             Export = data leaves (up arrow), Import = data enters (down). -->
+        <div class="pd-overflow" ref="overflowRoot">
+          <button
+            class="btn btn-ghost btn-sm icon-only"
+            :class="{ active: overflowOpen }"
+            :title="overflowOpen ? 'Close menu' : 'More project actions'"
+            @click="overflowOpen = !overflowOpen"
+          >
+            <AppIcon name="more-horizontal" :size="14" />
+          </button>
+          <div v-if="overflowOpen" class="pd-overflow-menu" role="menu">
+            <button class="pd-overflow-item" :disabled="exporting" @click="onMenuExport">
+              <AppIcon v-if="!exporting" name="upload" :size="14" />
+              <AppIcon v-else name="loader" :size="14" class="spin" />
+              <span>{{ exporting ? 'Preparing download…' : 'Export CSV' }}</span>
+            </button>
+            <button v-if="isAdmin && canEditProject" class="pd-overflow-item" :disabled="importing" @click="onMenuImport">
+              <AppIcon name="download" :size="14" />
+              <span>Import CSV</span>
+            </button>
+            <button v-if="isAdmin && canEditProject" class="pd-overflow-item" @click="onMenuEdit">
+              <AppIcon name="pencil" :size="14" />
+              <span>Edit project</span>
+            </button>
+          </div>
+        </div>
       </Teleport>
 
       <!-- Export error banner -->
@@ -1198,6 +1239,31 @@ textarea { resize: vertical; min-height: 80px; }
   transition: border-color .15s, color .15s, background .15s;
   white-space: nowrap;
 }
+
+/* PAI-246: ⋯ overflow menu in the right cluster (Export / Import / Edit). */
+.pd-overflow { position: relative; display: inline-flex; }
+.pd-overflow > .btn.active { background: var(--bg); color: var(--text); }
+.pd-overflow-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  min-width: 180px;
+  padding: .25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.pd-overflow-item {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .45rem .6rem;
+  font-size: 12.5px; color: var(--text);
+  background: transparent; border: none; border-radius: 6px;
+  cursor: pointer; text-align: left; font-family: inherit;
+  white-space: nowrap;
+}
+.pd-overflow-item:hover:not(:disabled) { background: var(--bg); }
+.pd-overflow-item:disabled { color: var(--text-muted); cursor: not-allowed; }
+.pd-overflow-item :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
 .pd-customer-pill:hover {
   border-color: var(--bp-blue);
   color: var(--bp-blue-dark);

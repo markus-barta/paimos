@@ -291,6 +291,11 @@ defineExpose({
   flex-wrap: wrap;
 }
 
+/* PAI-246: `.btn-sm` is defined per-view (ProjectDetailView etc.) but
+   not globally, so AppHeader's own buttons (Undo here) need their own
+   copy to match the Edit button next to them. */
+.btn-sm { padding: 0.3rem 0.65rem; font-size: 12px; }
+
 /* Undo button now matches the ghost-button neighbours (Edit, import,
    export). Active state keeps a soft tint without a colored pill. */
 .ah-undo-button.ah-undo-button--active {
@@ -299,16 +304,16 @@ defineExpose({
   border-color: color-mix(in srgb, var(--bp-blue) 25%, var(--border));
 }
 .ah-undo-button .ah-undo-count {
-  min-width: 1.1rem;
-  padding: 0 0.3rem;
+  min-width: 1rem;
+  padding: 0 0.28rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bp-blue) 14%, transparent);
   color: var(--bp-blue-dark);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  margin-left: 0.1rem;
+  margin-left: 0.05rem;
 }
 
 @media (max-width: 900px) {
