@@ -21,6 +21,7 @@ import { api, sessionExpired } from '@/api/client'
 import router from '@/router'
 import i18n from '@/i18n'
 import { setDisplayTimezone } from '@/utils/formatTime'
+import { useSearchStore } from '@/stores/search'
 
 export interface User {
   id: number
@@ -180,6 +181,10 @@ export const useAuthStore = defineStore('auth', () => {
     totpEnabled.value = false
     totpChecked.value = false
     checked.value = true
+    // PAI-242: search query persists across users via localStorage; reset
+    // it on logout so the next login doesn't pre-fill the prior session's
+    // sidebar search input.
+    useSearchStore().clear()
     router.push('/login')
   }
 

@@ -41,7 +41,7 @@ const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const searchQuery = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
-const dropdownPos = ref({ top: '0px', left: '0px', minWidth: '0px' })
+const dropdownPos = ref({ top: '0px', left: '0px', minWidth: '0px', maxHeight: '' })
 
 const selected = computed(() =>
   props.options.find(o => o.value === props.modelValue) ?? null
@@ -64,10 +64,23 @@ function toggleOpen() {
   if (open.value) {
     if (root.value) {
       const rect = root.value.getBoundingClientRect()
+      // PAI-243: flip the dropdown above the trigger when there isn't
+      // enough room below it (e.g. status/priority cells in the bottom
+      // rows of a long table). Estimated panel height is the search row
+      // (~36px) plus the options scroll cap (240px) plus border/padding.
+      const margin = 8
+      const estimatedHeight = (props.searchable ? 36 : 0) + 240 + 12
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const flipUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow
+      const usable = Math.max(120, Math.floor((flipUp ? spaceAbove : spaceBelow)))
       dropdownPos.value = {
-        top: rect.bottom + 4 + 'px',
+        top: flipUp
+          ? Math.max(margin, rect.top - 4 - Math.min(estimatedHeight, usable)) + 'px'
+          : rect.bottom + 4 + 'px',
         left: rect.left + 'px',
         minWidth: Math.max(rect.width, 140) + 'px',
+        maxHeight: usable + 'px',
       }
     }
     if (props.searchable) {
@@ -114,7 +127,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
     </button>
 
     <Teleport to="body">
-    <div v-if="open" class="meta-select-dropdown meta-select-dropdown--teleported" :style="{ top: dropdownPos.top, left: dropdownPos.left, minWidth: dropdownPos.minWidth }">
+    <div v-if="open" class="meta-select-dropdown meta-select-dropdown--teleported" :style="{ top: dropdownPos.top, left: dropdownPos.left, minWidth: dropdownPos.minWidth, maxHeight: dropdownPos.maxHeight }">
       <!-- Search input -->
       <div v-if="searchable" class="ms-search-wrap">
         <input ref="searchInput" v-model="searchQuery" type="text" class="ms-search" placeholder="Search…" autocomplete="off" @keydown.escape="open = false" />
@@ -220,15 +233,16 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   padding: .25rem 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
-.ms-search-wrap { padding: .3rem .5rem; }
+.ms-search-wrap { padding: .3rem .5rem; flex: 0 0 auto; }
 .ms-search {
   width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 4px;
   padding: .3rem .5rem; font-size: 12px; font-family: inherit; outline: none;
   background: var(--bg);
 }
 .ms-search:focus { border-color: var(--bp-blue); }
-.ms-options-scroll { max-height: 240px; overflow-y: auto; }
+.ms-options-scroll { flex: 1 1 auto; min-height: 0; max-height: 240px; overflow-y: auto; }
 .ms-no-results { padding: .4rem .75rem; font-size: 11px; color: var(--text-muted); }
 
 .ms-option {

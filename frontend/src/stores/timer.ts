@@ -20,11 +20,28 @@ import { ref, computed, reactive } from 'vue'
 import { api } from '@/api/client'
 import type { TimeEntry } from '@/types'
 
+// PAI-244: peer tabs/windows for the same user broadcast timer state
+// changes so each one resyncs without a page refresh. BroadcastChannel
+// is strict same-origin within one browser; falls back silently when
+// not available (older browsers, sandboxed contexts).
+const SYNC_CHANNEL = 'paimos:timer'
+type SyncMsg = { kind: 'changed' }
+
 export const useTimerStore = defineStore('timer', () => {
   const runningEntries = ref<TimeEntry[]>([])
   const recentEntries = ref<TimeEntry[]>([])
   const elapsedMap = reactive<Map<number, number>>(new Map())
   let tickInterval: ReturnType<typeof setInterval> | null = null
+  let bc: BroadcastChannel | null = null
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      bc = new BroadcastChannel(SYNC_CHANNEL)
+      bc.onmessage = (e: MessageEvent<SyncMsg>) => {
+        if (e.data?.kind === 'changed') void fetchRunning()
+      }
+    } catch { bc = null }
+  }
+  function broadcastChanged() { try { bc?.postMessage({ kind: 'changed' }) } catch { /* ignore */ } }
 
   const hasRunning = computed(() => runningEntries.value.length > 0)
 
@@ -102,6 +119,11 @@ export const useTimerStore = defineStore('timer', () => {
 
   /** Start a timer, prompting if other timers are running. */
   async function start(issueId: number) {
+    // PAI-244: another tab or session may have started/stopped a timer
+    // since we last refreshed. Pull current state from the server so
+    // the "other timers running — switch / both / cancel" prompt isn't
+    // raised against stale local cache.
+    await fetchRunning()
     // Already running on this issue — no-op
     if (isRunning(issueId)) return
     // No other timers running — just start
@@ -145,6 +167,7 @@ export const useTimerStore = defineStore('timer', () => {
     try {
       await api.post(`/issues/${issueId}/time-entries`, {})
       await fetchRunning()
+      broadcastChanged()
     } catch (e) {
       /* error swallowed — timer UI shows stale state as feedback */
     }
@@ -156,6 +179,7 @@ export const useTimerStore = defineStore('timer', () => {
       await api.put(`/time-entries/${entryId}`, { stopped_at: now })
       await fetchRunning()
       await fetchRecent()
+      broadcastChanged()
     } catch (e) {
       /* error swallowed */
     }
@@ -173,6 +197,7 @@ export const useTimerStore = defineStore('timer', () => {
     }
     await fetchRunning()
     await fetchRecent()
+    broadcastChanged()
   }
 
   return {

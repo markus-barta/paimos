@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.10] — 2026-04-27
+
+### Fixed
+
+- PAI-242 — Sidebar search field is now cleared on logout instead of bleeding the previous user's last query into the next session via the persisted `paimos:search:lastQuery` localStorage key.
+- PAI-243 — `MetaSelect` (status / priority / type / assignee dropdowns) now flips above the trigger when there isn't enough room below the viewport, and the option list's `max-height` is clamped to the available space so options never disappear off the bottom of the screen.
+- PAI-244 — Timer `start()` now refreshes running state from the server before checking, so the "other timers running — switch / both / cancel" prompt is no longer raised against stale local cache when another tab/session has already stopped the timer. Same-browser tabs additionally sync via a `BroadcastChannel('paimos:timer')` so stopping/starting in one tab updates peer tabs immediately.
+
 ## [2.1.9] — 2026-04-27
 
 ### Fixed
