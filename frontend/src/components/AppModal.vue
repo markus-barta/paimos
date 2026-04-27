@@ -51,7 +51,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   position: fixed; inset: 0;
   background: rgba(10,20,35,.5);
   display: flex; align-items: flex-start; justify-content: center;
-  z-index: 100;
+  z-index: 1000;
   padding: 2rem 1rem;
   overflow-y: auto;
 }

@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.9] — 2026-04-27
+
+### Fixed
+
+- AI result modals (`AC checklist`, AI suggestions, sub-tasks, UI spec) now layer above the issue side panel and project workspace dock instead of being clipped by them. The `AppModal` overlay z-index moved from 100 to 1000, putting it above every right-edge sidebar while staying below confirm dialogs.
+
 ## [2.1.8] — 2026-04-27
 
 ### Fixed
