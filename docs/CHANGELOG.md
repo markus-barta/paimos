@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.15] — 2026-04-27
+
+### Changed
+
+- `+pm/P30.1567bd8` — AppHeader now degrades gracefully when its container shrinks (pinned side panel, narrow viewport, etc.). Header height is locked at 52px and the right cluster never wraps to a second row. `.main` is a container-query root (`container-type: inline-size`); `.app-header` collapses through four `@container` tiers at 1100 / 920 / 760 / 600px of `.main` width: T1 drops the project subtitle and tag chips and shrinks the search; T2 ellipsis-truncates the title at 14ch, strips the "updated Xh ago" prefix from the meta (keeping the issue-key link), and reduces the customer pill to icon-only; T3 collapses the search to a 36px icon-button (it expands inline on focus) and drops the "Undo" label; T4 hides the title entirely. A soft right-edge fade mask on `.ah-left` softens breadcrumb truncation. Mobile viewport (< 900px) is unchanged — the multi-row stack is preserved with `height: auto`. `ProjectDetailView` wraps the timestamp prefix in a new `.ah-meta-prefix` span so T2 can hide it without nuking the issue-key link.
+
 ## [2.1.14] — 2026-04-27
 
 ### Fixed
