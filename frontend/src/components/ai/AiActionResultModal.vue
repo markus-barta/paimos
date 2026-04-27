@@ -381,7 +381,7 @@ export { catLabel, globalIndex }
 .ar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
 .ar-item { width: 100%; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
 .ar-row { display: flex; align-items: flex-start; gap: .75rem; cursor: pointer; width: 100%; }
-.ar-row > input[type="checkbox"] { margin-top: .3rem; }
+.ar-row > input[type="checkbox"] { margin-top: .3rem; flex: 0 0 auto; width: auto; }
 .ar-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
 .ar-row-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
 .ar-row-text { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; }

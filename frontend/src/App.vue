@@ -131,7 +131,7 @@ svg.lucide {
   vertical-align: middle;
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]),
 select,
 textarea {
   font-family: inherit;
@@ -146,7 +146,7 @@ textarea {
   transition: border-color 0.15s;
   width: 100%;
 }
-input:focus,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):focus,
 select:focus,
 textarea:focus {
   border-color: var(--bp-blue);

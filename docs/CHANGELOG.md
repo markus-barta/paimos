@@ -5,6 +5,13 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.8] — 2026-04-27
+
+### Fixed
+
+- AI suggestions modal (`suggest_enhancement`, `generate_subtasks`) no longer collapses each suggestion into a one-word-per-line column on the right edge; the row checkbox stays compact and the suggestion title, impact pill, target pill and body render on a normal flex row.
+- Global `input,select,textarea` form-control style is now scoped to text-input types, so checkboxes, radios, file/range/color inputs are no longer forced to `width: 100%` with text-input padding/border.
+
 ## [2.1.4] — 2026-04-26
 
 ### Fixed
