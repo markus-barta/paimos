@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { errMsg } from '@/api/client'
-import AppIcon from '@/components/AppIcon.vue'
-import type { ProjectManifest, ProjectRepo } from '@/types'
-import { addProjectContextRepo, loadProjectContext, removeProjectContextRepo, saveProjectContextManifest } from '@/services/projectContext'
+import type { ProjectRepo } from '@/types'
+import { addProjectContextRepo, loadProjectContext, removeProjectContextRepo } from '@/services/projectContext'
+import ProjectManifestTabs from '@/components/project/ProjectManifestTabs.vue'
 
 const props = defineProps<{
   projectId: number
@@ -13,36 +13,32 @@ const props = defineProps<{
 
 // PAI-178: parents mount this component as a sentinel and listen
 // to `populated` to light up a toggle-button badge. True when at
-// least one repo is linked OR the manifest has any non-empty key.
+// least one repo is linked OR any of the manifest tabs has content.
 const emit = defineEmits<{
   populated: [v: boolean]
   summary: [payload: { repoCount: number; hasManifest: boolean; populated: boolean }]
 }>()
 
 const repos = ref<ProjectRepo[]>([])
-const manifest = ref<ProjectManifest>({ project_id: 0, data: {} })
-const manifestDraft = ref('{}')
 const loading = ref(true)
-const savingManifest = ref(false)
 const saveError = ref('')
-const saveOk = ref('')
 const repoForm = ref({ url: '', default_branch: 'main', label: '' })
 const addingRepo = ref(false)
 
-const hasManifest = computed(() => Object.keys(manifest.value.data || {}).length > 0)
-const manifestPretty = computed(() => JSON.stringify(manifest.value.data || {}, null, 2))
+// Driven by ProjectManifestTabs via @populated / @summary.
+// hasManifestArea aggregates manifest + guardrails + glossary so the
+// parent's existing `hasManifest` semantics still mean "the manifest
+// area is populated".
+const hasManifestArea = ref(false)
 
-// PAI-178: re-emit `populated` whenever repos or the manifest
-// change. Sentinel parents (ProjectDetailView's hidden mount of
-// this component) read this to drive the toolbar toggle badge.
-const isPopulated = computed(() => repos.value.length > 0 || hasManifest.value)
+const isPopulated = computed(() => repos.value.length > 0 || hasManifestArea.value)
 watch(isPopulated, (v) => emit('populated', v), { immediate: true })
 watch(
-  [repos, hasManifest, isPopulated],
+  [repos, hasManifestArea, isPopulated],
   () => {
     emit('summary', {
       repoCount: repos.value.length,
-      hasManifest: hasManifest.value,
+      hasManifest: hasManifestArea.value,
       populated: isPopulated.value,
     })
   },
@@ -55,8 +51,6 @@ async function load() {
   try {
     const data = await loadProjectContext(props.projectId)
     repos.value = data.repos
-    manifest.value = data.manifest
-    manifestDraft.value = JSON.stringify(data.manifest.data || {}, null, 2)
   } catch (e) {
     saveError.value = errMsg(e, 'Failed to load project context.')
   } finally {
@@ -90,22 +84,7 @@ async function removeRepo(repo: ProjectRepo) {
   }
 }
 
-async function saveManifest() {
-  savingManifest.value = true
-  saveError.value = ''
-  saveOk.value = ''
-  try {
-    const parsed = JSON.parse(manifestDraft.value || '{}')
-    manifest.value = await saveProjectContextManifest(props.projectId, parsed)
-    manifestDraft.value = JSON.stringify(manifest.value.data || {}, null, 2)
-    saveOk.value = 'Manifest saved.'
-    setTimeout(() => { saveOk.value = '' }, 2500)
-  } catch (e) {
-    saveError.value = errMsg(e, 'Failed to save manifest.')
-  } finally {
-    savingManifest.value = false
-  }
-}
+function onManifestPopulated(v: boolean) { hasManifestArea.value = v }
 
 onMounted(load)
 </script>
@@ -121,7 +100,6 @@ onMounted(load)
     </div>
 
     <div v-if="saveError" class="context-error">{{ saveError }}</div>
-    <div v-if="saveOk" class="context-ok">{{ saveOk }}</div>
 
     <div class="context-grid">
       <div class="context-card">
@@ -156,23 +134,11 @@ onMounted(load)
       </div>
 
       <div class="context-card">
-        <div class="card-head">
-          <div>
-            <h3>Manifest</h3>
-            <p>Structured project truth: stack, commands, environments, ADRs, NFRs, and ownership.</p>
-          </div>
-        </div>
-
-        <template v-if="canWrite">
-          <textarea v-model="manifestDraft" class="manifest-editor" spellcheck="false"></textarea>
-          <div class="manifest-actions">
-            <button class="btn btn-primary btn-sm" @click="saveManifest" :disabled="savingManifest">
-              {{ savingManifest ? 'Saving…' : 'Save manifest' }}
-            </button>
-          </div>
-        </template>
-        <pre v-else-if="hasManifest" class="manifest-read">{{ manifestPretty }}</pre>
-        <div v-else class="context-empty">No manifest saved yet.</div>
+        <ProjectManifestTabs
+          :project-id="projectId"
+          :can-write="canWrite"
+          @populated="onManifestPopulated"
+        />
       </div>
     </div>
   </section>
@@ -198,7 +164,7 @@ onMounted(load)
 .repo-url:hover { color: var(--bp-blue-dark); text-decoration: underline; }
 .repo-meta { margin-top: .25rem; font-size: 12px; color: var(--text-muted); }
 .repo-form { display: grid; grid-template-columns: 1fr 1.4fr .7fr auto; gap: .55rem; }
-.repo-form input, .manifest-editor {
+.repo-form input {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -207,9 +173,6 @@ onMounted(load)
   font: inherit;
   padding: .55rem .65rem;
 }
-.manifest-editor { min-height: 320px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.45; resize: vertical; }
-.manifest-read { margin: 0; padding: .85rem .95rem; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); overflow: auto; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5; color: var(--text); }
-.manifest-actions { display: flex; justify-content: flex-end; }
 @media (max-width: 980px) {
   .context-grid { grid-template-columns: 1fr; }
   .repo-form { grid-template-columns: 1fr; }
