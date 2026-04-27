@@ -163,11 +163,18 @@ defineExpose({
 <style scoped>
 .app-header {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(260px, 32vw) minmax(0, 1fr);
+  /* Center column auto-sizes from the search wrapper (which has its own
+     max-width clamp), so left/right share the rest. Avoids the prior
+     `minmax(260px, 32vw)` floor that ignored container shrinkage. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   padding: 0 2rem 0 2.35rem;
-  min-height: 52px;
+  /* Hard height — header is structural chrome, never wraps, never grows.
+     Mobile layout (< 900px viewport) overrides this to allow the
+     multi-row stack. */
+  height: 52px;
+  overflow: hidden;
   border-bottom: 1px solid var(--border);
   background: var(--bg-card);
   flex-shrink: 0;
@@ -184,6 +191,19 @@ defineExpose({
   min-width: 0;
   overflow: hidden;
   padding-left: 0.15rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  /* Soft right-edge fade so breadcrumb truncation dissolves rather
+     than hard-clipping mid-letter when content overflows. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
+}
+.ah-left :deep(.ah-title),
+.ah-left :deep(.ah-subtitle) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 /* CENTER */
@@ -208,7 +228,7 @@ defineExpose({
   align-items: center;
   width: 280px;
   max-width: min(48vw, 420px);
-  transition: width 0.2s;
+  transition: width 0.18s ease, max-width 0.18s ease;
 }
 .ah-search-wrap.focused {
   width: 380px;
@@ -277,7 +297,8 @@ defineExpose({
   justify-content: flex-end;
   gap: 0.5rem;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* Slot the per-view Teleport content (customer pill, meta text, status,
@@ -288,7 +309,15 @@ defineExpose({
   justify-content: flex-end;
   gap: 0.5rem;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ah-right-slot :deep(.pd-customer-pill),
+.ah-right-slot :deep(.ah-meta-text) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* PAI-246: `.btn-sm` is defined per-view (ProjectDetailView etc.) but
@@ -316,6 +345,57 @@ defineExpose({
   margin-left: 0.05rem;
 }
 
+/* ── Tiered autolayout ──────────────────────────────────────────────────
+   Container queries on `.main` (see AppLayout.vue) so the header reacts
+   to its own width, not the viewport. Pinning the side panel shrinks
+   `.main` without changing the viewport, which @media never sees.
+   Each tier is additive: Tier 2 also gets Tier 1's rules, etc.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Smooth opacity-based hides for elements that fade out across tiers. */
+.ah-left :deep(.ah-subtitle),
+.ah-right-slot :deep(.ah-meta-prefix),
+.ah-right-slot :deep(.pd-customer-pill span),
+.ah-undo-button > span:not(.ah-undo-count) {
+  transition: opacity 0.18s ease, max-width 0.18s ease;
+}
+
+/* Tier 1: pinned-panel & similar — shed decoration. */
+@container appchrome (max-width: 1100px) {
+  .ah-left :deep(.ah-subtitle) { display: none; }
+  .ah-right-slot :deep(.tag-chip) { display: none; }
+  .ah-search-wrap { width: 220px; }
+  .ah-search-wrap.focused { width: 300px; }
+}
+
+/* Tier 2: narrower — title truncates harder, meta strips its prefix,
+   customer pill drops its text and keeps the icon-link affordance. */
+@container appchrome (max-width: 920px) {
+  .ah-left :deep(.ah-title) { max-width: 14ch; }
+  .ah-right-slot :deep(.ah-meta-prefix) { display: none; }
+  .ah-right-slot :deep(.pd-customer-pill span) { display: none; }
+  .ah-right-slot :deep(.pd-customer-pill) { padding-left: 0.35rem; padding-right: 0.35rem; }
+}
+
+/* Tier 3: tight — search collapses to icon-button, expands inline on
+   focus (existing .focused width animation handles the expand). Undo
+   button drops its text label, keeps the icon + count. */
+@container appchrome (max-width: 760px) {
+  .ah-search-wrap { width: 36px; max-width: 36px; }
+  .ah-search-wrap .ah-search-input { padding-right: 0; }
+  .ah-search-wrap.focused { width: 280px; max-width: 280px; }
+  .ah-search-wrap.focused .ah-search-input { padding-right: 28px; }
+  .ah-undo-button > span:not(.ah-undo-count) { display: none; }
+}
+
+/* Tier 4: minimal — title hides, project key badge alone identifies
+   the view. Status badge becomes a flat dot via the existing styling. */
+@container appchrome (max-width: 600px) {
+  .ah-left :deep(.ah-title) { display: none; }
+}
+
+/* Mobile viewport — restore the multi-row stack. The hard 52px height
+   is desktop-only; mobile needs to grow to fit three rows. */
 @media (max-width: 900px) {
   .app-header {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -324,7 +404,19 @@ defineExpose({
       "center center";
     gap: 0.75rem 1rem;
     padding: 0.75rem 1.1rem 0.75rem 1.25rem;
+    height: auto;
+    overflow: visible;
   }
+  /* Mobile layout owns its own truncation behaviour; drop the fade
+     mask so wrapped breadcrumb segments are fully visible. */
+  .ah-left {
+    mask-image: none;
+    -webkit-mask-image: none;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  .ah-right { flex-wrap: wrap; white-space: normal; }
+  .ah-right-slot { flex-wrap: wrap; white-space: normal; overflow: visible; }
 
   .ah-left {
     grid-area: left;

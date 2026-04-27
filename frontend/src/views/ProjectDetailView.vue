@@ -604,7 +604,7 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
           <span>{{ project.customer_name }}</span>
         </RouterLink>
         <span v-if="lastChanged" class="ah-meta-text">
-          updated {{ lastChanged.when }}
+          <span class="ah-meta-prefix">updated {{ lastChanged.when }}</span>
           <RouterLink :to="`/projects/${projectId}/issues/${lastChanged.id}`" class="ah-meta-link">{{ lastChanged.key }}</RouterLink>
         </span>
         <span :class="`badge badge-${project.status}`">{{ project.status }}</span>

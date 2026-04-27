@@ -442,6 +442,11 @@ onMounted(() => {
   flex-direction: column;
   min-width: 0;
   transition: padding-right 0.18s ease;
+  /* Make .main a container-query root so AppHeader can react to its
+     own width — needed because pinning the side panel shrinks .main
+     without changing the viewport, which @media can't see. */
+  container-type: inline-size;
+  container-name: appchrome;
 }
 
 .main-content {
