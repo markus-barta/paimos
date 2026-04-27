@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.17] — 2026-04-27
+
+### Changed
+
+- `+pm/P35.62b5b4e` — Settings → Users action column collapses the legacy "Projects" + "Access" buttons into a single matrix dialog. Every grant now flows through `/api/users/{id}/memberships` (none / viewer / editor + reset-to-default per project) and produces one audit-trail entry — the legacy `/users/{id}/projects` UI flow is gone. The dialog adapts to role: a segmented "Explicit grants" / "All projects" filter (default ON for externals, OFF for staff) keeps the ~30-row "None" noise out of the way for sparse externals, an "Add project" composed bar at the top makes assignment discoverable, a hairline "Defaults — {role-default}" divider separates explicit overrides from defaulted rows, and the Editor pill is hidden everywhere (per-row + Add bar) for external users since they can only be Viewer. Backend `/users/{id}/projects` endpoints stay alive for now (still exercised by `backend/handlers/portal_test.go`); endpoint deprecation is a follow-up.
+
 ## [2.1.16] — 2026-04-27
 
 ### Added
