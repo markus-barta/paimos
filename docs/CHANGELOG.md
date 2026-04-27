@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.16] — 2026-04-27
+
+### Added
+
+- `+pm/P40.854a7db` — Manifest editor in `ProjectContextSection` is now a three-tab editor (Manifest / Guardrails / Glossary) with a per-tab "Structure with AI" button. Guardrails persist under `manifest.data._guardrails`, Glossary under `manifest.data._glossary` (reserved keys); the Manifest tab edits everything else. Save merges all three slices through the existing `/projects/{id}/manifest` endpoint — no backend changes for persistence. The AI button routes through `useAiOptimize.runRewriteAction()` + `AiSurfaceFeedback` so accept/reject UX matches every other AI rewrite. Per-tab drafts survive tab switching; tab dots indicate which slices have content. The PAI-178 sentinel contract on `ProjectContextSection` is preserved — `hasManifest` now means "the manifest area is populated" (any of the three slices). Backend follow-up (separate ticket): three new action handlers (`structure_manifest`, `structure_guardrails`, `structure_glossary`) under `backend/ai/`, registered in the dispatcher + `/api/ai/actions` catalog. Until those land, the AI buttons render but error out at request time with the standard red-pill UX.
+
 ## [2.1.15] — 2026-04-27
 
 ### Changed
