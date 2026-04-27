@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <code>phase 2 — platform</code> · <code>v2.0.0</code> · <code>AGPL-3.0</code>
+  <code>phase 2 — platform</code> · <code>v2.1.17</code> · <code>AGPL-3.0</code>
 </p>
 
 <p align="center">
@@ -66,8 +66,11 @@ port, backed by SQLite. Docker up, browser open, done.
   `manifests` (stack, commands, services, owners, NFRs, ADRs),
   issue→file `anchors`, a typed entity `graph`, and a mixed-context
   `retrieve` API. Agents stop grepping six issues to figure out
-  which repo to clone and where the work actually lives. See
-  [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
+  which repo to clone and where the work actually lives. The manifest
+  editor is a three-tab surface (Manifest / Guardrails / Glossary)
+  with a per-tab "Structure with AI" button that turns prose into
+  structured JSON via the unified `/ai/action` dispatcher (v2.1.16).
+  See [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
   and the route group in [`api-minimal.md`](docs/api-minimal.md#agent-context).
 - **In-app AI assist.** Eleven admin-tunable text actions —
   optimize · translate · spec-out · suggest-enhancement (six sub-actions)
