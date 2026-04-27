@@ -136,23 +136,27 @@ defineExpose({
             @close="onPaletteClose"
           />
         </div>
-        <button
-          class="ah-undo-button"
-          :class="{ 'ah-undo-button--active': undo.panelOpen }"
-          :title="undo.panelOpen ? 'Close undo history' : 'Open undo history'"
-          @click="undo.panelOpen ? undo.closePanel() : undo.openPanel()"
-        >
-          <AppIcon name="rewind" :size="13" />
-          <span>Undo</span>
-          <span v-if="undoStackCount" class="ah-undo-count">
-            {{ undoStackCount }}
-          </span>
-        </button>
       </div>
     </div>
 
-    <!-- RIGHT: contextual actions — filled via Teleport from each view -->
-    <div id="app-header-right" class="ah-right" />
+    <!-- RIGHT: contextual actions (filled via Teleport from each view)
+         followed by the Undo control, which sits to the far right
+         next to whichever per-view "Edit" button the view teleports in. -->
+    <div class="ah-right">
+      <div id="app-header-right" class="ah-right-slot" />
+      <button
+        class="btn btn-ghost btn-sm ah-undo-button"
+        :class="{ 'ah-undo-button--active': undo.panelOpen }"
+        :title="undo.panelOpen ? 'Close undo history' : 'Open undo history'"
+        @click="undo.panelOpen ? undo.closePanel() : undo.openPanel()"
+      >
+        <AppIcon name="rewind" :size="13" />
+        <span>Undo</span>
+        <span v-if="undoStackCount" class="ah-undo-count">
+          {{ undoStackCount }}
+        </span>
+      </button>
+    </div>
   </header>
 </template>
 
@@ -276,45 +280,35 @@ defineExpose({
   flex-wrap: wrap;
 }
 
-.ah-undo-button {
-  display: inline-flex;
+/* Slot the per-view Teleport content (customer pill, meta text, status,
+   Edit button …) lives in. Sits to the left of the global Undo control. */
+.ah-right-slot {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  height: 32px;
-  padding: 0 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  transition:
-    border-color 0.15s,
-    background 0.15s,
-    color 0.15s;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.ah-undo-button:hover {
-  background: var(--bg-card);
-  color: var(--text);
-}
-
-.ah-undo-button--active {
-  border-color: color-mix(in srgb, var(--bp-blue) 35%, var(--border));
-  background: color-mix(in srgb, var(--bp-blue) 10%, var(--bg-card));
+/* Undo button now matches the ghost-button neighbours (Edit, import,
+   export). Active state keeps a soft tint without a colored pill. */
+.ah-undo-button.ah-undo-button--active {
+  background: color-mix(in srgb, var(--bp-blue) 8%, transparent);
   color: var(--bp-blue-dark);
+  border-color: color-mix(in srgb, var(--bp-blue) 25%, var(--border));
 }
-
-.ah-undo-count {
-  min-width: 1.25rem;
-  padding: 0.05rem 0.3rem;
+.ah-undo-button .ah-undo-count {
+  min-width: 1.1rem;
+  padding: 0 0.3rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bp-blue) 16%, transparent);
-  color: inherit;
-  font-size: 11px;
+  background: color-mix(in srgb, var(--bp-blue) 14%, transparent);
+  color: var(--bp-blue-dark);
+  font-size: 10.5px;
+  font-weight: 600;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  margin-left: 0.1rem;
 }
 
 @media (max-width: 900px) {
@@ -370,11 +364,6 @@ defineExpose({
 
   .ah-center-row {
     flex-wrap: wrap;
-  }
-
-  .ah-undo-button {
-    width: 100%;
-    justify-content: center;
   }
 }
 </style>

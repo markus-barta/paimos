@@ -131,7 +131,12 @@ svg.lucide {
   vertical-align: middle;
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]),
+/* PAI-245: wrap the type negations in `:where()` so this rule keeps
+   single-element specificity (0,0,1). Without `:where()`, the chain of
+   `:not(...)` selectors stacks to (0,5,1) and starts overriding
+   component-scoped padding (e.g. the 30px left-pad that clears the
+   search icon in AppHeader). */
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"])),
 select,
 textarea {
   font-family: inherit;
@@ -146,7 +151,7 @@ textarea {
   transition: border-color 0.15s;
   width: 100%;
 }
-input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):focus,
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"])):focus,
 select:focus,
 textarea:focus {
   border-color: var(--bp-blue);
@@ -379,16 +384,42 @@ textarea:focus {
 }
 /* Right zone */
 .ah-meta-text {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted);
   white-space: nowrap;
+  font-weight: 500;
 }
 .ah-meta-link {
-  color: var(--bp-blue);
+  color: var(--text);
   text-decoration: none;
+  font-weight: 600;
 }
 .ah-meta-link:hover {
+  color: var(--bp-blue-dark);
   text-decoration: underline;
+}
+
+/* PAI-245: status badges inside the app-header right slot read at the
+   same visual weight as the ghost-styled Edit / Undo buttons next to
+   them — outline style, muted color, no oversized pill. */
+.ah-right-slot .badge {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 0.1rem 0.5rem;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.ah-right-slot .badge-active {
+  color: #15803d;
+  border-color: #bbf7d0;
+  background: transparent;
+}
+.ah-right-slot .badge-archived {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
 }
 
 /* Global search term highlight — used with v-html + useHighlight composable */

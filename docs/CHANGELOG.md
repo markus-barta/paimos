@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.12] — 2026-04-27
+
+### Changed
+
+- PAI-245 — App-header refinements: the global Undo control moved from the center cluster to the far right of the header, immediately next to the per-view Edit button, and is now styled as a ghost button matching its neighbours instead of a rounded pill. Right-slot status badges (`active` / `archived`) and the `updated …` meta line now read with the same muted weight as the ghost buttons next to them, so the right cluster no longer outweighs Edit visually.
+
+### Fixed
+
+- PAI-245 — Search-input placeholder no longer overlaps the magnifying-glass icon. The `:not()` chain on the global form-control rule (added in 2.1.8) was bumping its specificity to (0,5,1) and overriding component-scoped padding; the negations are now wrapped in `:where()` so the rule keeps single-element specificity.
+
 ## [2.1.11] — 2026-04-27
 
 ### Fixed
