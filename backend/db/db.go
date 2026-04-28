@@ -3738,6 +3738,19 @@ func migrate(db *sql.DB) error {
 		{85, []string{
 			`ALTER TABLE sessions ADD COLUMN via_dev_login INTEGER NOT NULL DEFAULT 0`,
 		}},
+
+		// M86: PAI-261 — encryption-at-rest for ai_settings.api_key. New
+		// column api_key_encrypted (BLOB) holds the secretvault-encrypted
+		// envelope; the existing plaintext api_key column stays as a
+		// transitional read fallback. PutAISettings writes the encrypted
+		// column on every save and clears plaintext, so the lazy
+		// migration completes the first time an admin re-saves their
+		// key after the deploy. Pre-PAI-261 deployments keep working
+		// without operator action — the read path falls through to the
+		// plaintext column.
+		{86, []string{
+			`ALTER TABLE ai_settings ADD COLUMN api_key_encrypted BLOB`,
+		}},
 	}
 
 	for _, m := range migrations {

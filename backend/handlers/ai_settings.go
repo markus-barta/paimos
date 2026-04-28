@@ -28,10 +28,12 @@
 //     a fresh install. Lives here (not in a config file) because it is
 //     part of the product surface that the prompt wrapper layers around.
 //
-// The api_key is plaintext at rest. PAIMOS does not promise encrypted
-// secrets — operators who need that mount the SQLite volume on encrypted
-// storage. Pretending otherwise here would give a guarantee we do not
-// keep, which is worse than being explicit.
+// PAI-261: api_key is encrypted at rest under the `ai:openrouter`
+// secretvault domain. The legacy plaintext column (`api_key`) stays as
+// a transitional read fallback so deployments that haven't re-saved
+// their key since the upgrade keep working untouched. On the next
+// PutAISettings call the encrypted column is populated and the
+// plaintext column is cleared — the migration is lazy by design.
 
 package handlers
 
@@ -39,11 +41,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/secretvault"
 )
+
+// aiSecretDomain is the HKDF info string the secretvault package uses
+// to derive a per-domain subkey for the AI provider api_key. PAI-261:
+// changing this string silently bricks every existing encrypted
+// api_key on next decrypt — treat it as part of the on-disk data
+// contract.
+const aiSecretDomain = "ai:openrouter"
 
 // DefaultOptimizeInstruction is the admin-editable instruction layered
 // inside the fixed wrapper. Phrased as "an editor's brief" rather than
@@ -81,13 +92,21 @@ type AISettings struct {
 // that have never been set. Used by both the settings handler and the
 // optimize handler — the latter only needs the resolved values, not the
 // raw row.
+//
+// PAI-261: api_key resolution prefers the encrypted column. The
+// transitional plaintext column is the fallback for deployments that
+// have not re-saved their key since the upgrade. Once an admin
+// re-saves, PutAISettings clears the plaintext column and only the
+// encrypted column carries the value going forward.
 func LoadAISettings() (AISettings, error) {
 	var s AISettings
 	var enabled int
+	var plaintextKey string
+	var encryptedKey []byte
 	err := db.DB.QueryRow(
-		`SELECT enabled, provider, model, api_key, optimize_instruction, updated_at
+		`SELECT enabled, provider, model, api_key, api_key_encrypted, optimize_instruction, updated_at
 		 FROM ai_settings WHERE id = 1`,
-	).Scan(&enabled, &s.Provider, &s.Model, &s.APIKey, &s.OptimizeInstruction, &s.UpdatedAt)
+	).Scan(&enabled, &s.Provider, &s.Model, &plaintextKey, &encryptedKey, &s.OptimizeInstruction, &s.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Migration M74 seeds id=1 on first apply, so this should not
 		// happen — but if a hand-edited DB drops the row, we don't want
@@ -101,6 +120,20 @@ func LoadAISettings() (AISettings, error) {
 		return AISettings{}, err
 	}
 	s.Enabled = enabled == 1
+	// PAI-261: prefer the encrypted column. Failure to decrypt is an
+	// operational error, not a data error — surface it loudly so the
+	// admin sees something obviously wrong rather than silently
+	// falling back to plaintext.
+	switch {
+	case len(encryptedKey) > 0:
+		plain, derr := secretvault.Decrypt(aiSecretDomain, encryptedKey)
+		if derr != nil {
+			return AISettings{}, fmt.Errorf("ai_settings.api_key_encrypted decrypt: %w", derr)
+		}
+		s.APIKey = string(plain)
+	case plaintextKey != "":
+		s.APIKey = plaintextKey // legacy row, will get re-encrypted on next save
+	}
 	if s.OptimizeInstruction == "" {
 		s.OptimizeInstruction = DefaultOptimizeInstruction
 	}
@@ -172,6 +205,10 @@ func PutAISettings(w http.ResponseWriter, r *http.Request) {
 		enabled = 1
 	}
 	if p.APIKey == nil {
+		// "Leave the key as-is" path — admin is editing the model or
+		// instruction without re-typing the secret. Don't touch either
+		// api_key column. (A row that was carried in plaintext stays in
+		// plaintext until an actual re-save.)
 		_, err := db.DB.Exec(
 			`UPDATE ai_settings
 			 SET enabled = ?, provider = ?, model = ?,
@@ -185,12 +222,29 @@ func PutAISettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
+		// PAI-261: every save of a new key value goes through the
+		// secretvault under the `ai:openrouter` domain. We always
+		// clear the plaintext column at the same time so the lazy
+		// migration completes for legacy rows on the first re-save
+		// after the deploy. Empty-string clears (admin "removes" the
+		// key) wipe both columns.
+		var encrypted []byte
+		if *p.APIKey != "" {
+			ct, eerr := secretvault.Encrypt(aiSecretDomain, []byte(*p.APIKey))
+			if eerr != nil {
+				log.Printf("ai_settings encrypt: %v", eerr)
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			encrypted = ct
+		}
 		_, err := db.DB.Exec(
 			`UPDATE ai_settings
-			 SET enabled = ?, provider = ?, model = ?, api_key = ?,
+			 SET enabled = ?, provider = ?, model = ?,
+			     api_key = '', api_key_encrypted = ?,
 			     optimize_instruction = ?, updated_at = datetime('now')
 			 WHERE id = 1`,
-			enabled, p.Provider, p.Model, *p.APIKey, p.OptimizeInstruction,
+			enabled, p.Provider, p.Model, encrypted, p.OptimizeInstruction,
 		)
 		if err != nil {
 			log.Printf("ai_settings update: %v", err)
