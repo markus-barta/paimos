@@ -18,7 +18,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import { useExternalProvider } from '@/composables/useExternalProvider'
-import type { ExternalProvider, ExternalProviderConfig, ExternalProviderConfigField } from '@/types'
+import type { CRMTestResult, ExternalProvider, ExternalProviderConfig, ExternalProviderConfigField } from '@/types'
 
 const providers = ref<ExternalProvider[]>([])
 const loading = ref(true)
@@ -31,9 +31,21 @@ const drafts = reactive<Record<string, Record<string, string>>>({})
 // (so the input shows when the admin clicks "Replace" but hides again on
 // save / cancel).
 const replacing = reactive<Record<string, Record<string, boolean>>>({})
+// PAI-259: per-(provider × field) eye-toggle state for secret inputs.
+const showSecret = reactive<Record<string, Record<string, boolean>>>({})
 const saving = reactive<Record<string, boolean>>({})
 const saveError = reactive<Record<string, string>>({})
 const togglingEnabled = reactive<Record<string, boolean>>({})
+
+// PAI-259: per-provider Test integration state.
+interface TestLog {
+  ts: number
+  ok: boolean
+  message: string
+  lines: string[]
+}
+const testing = reactive<Record<string, boolean>>({})
+const testLogs = reactive<Record<string, TestLog[]>>({})
 
 const { refresh: refreshProviderCache } = useExternalProvider()
 
@@ -98,11 +110,18 @@ function startReplace(providerId: string, fieldKey: string) {
 function cancelReplace(providerId: string, fieldKey: string) {
   replacing[providerId] = { ...(replacing[providerId] ?? {}), [fieldKey]: false }
   drafts[providerId][fieldKey] = ''
+  // Re-mask the field on cancel so a subsequent Replace doesn't reveal
+  // whatever the admin typed last.
+  showSecret[providerId] = { ...(showSecret[providerId] ?? {}), [fieldKey]: false }
 }
 function clearSecret(providerId: string, fieldKey: string) {
   // "Clear" sends an empty string; the backend treats that as detach.
   drafts[providerId][fieldKey] = ''
   replacing[providerId] = { ...(replacing[providerId] ?? {}), [fieldKey]: true }
+}
+function toggleShowSecret(providerId: string, fieldKey: string) {
+  const current = showSecret[providerId]?.[fieldKey] ?? false
+  showSecret[providerId] = { ...(showSecret[providerId] ?? {}), [fieldKey]: !current }
 }
 
 async function saveConfig(p: ExternalProvider) {
@@ -117,9 +136,19 @@ async function saveConfig(p: ExternalProvider) {
   for (const f of cfg.fields) {
     const draftValue = drafts[p.id][f.key] ?? ''
     if (f.type === 'secret') {
-      if (replacing[p.id]?.[f.key]) {
-        // Empty string = clear; non-empty = set new value.
-        patch[f.key] = draftValue === '' ? '' : draftValue
+      // PAI-259: secrets get sent in two scenarios:
+      //  1. Replace flow: admin clicked "Replace" on a previously-set
+      //     secret — empty input means clear, non-empty means overwrite.
+      //  2. First-time setup: no value persisted yet (`!f.has_value`)
+      //     and the admin typed something. Previously this case was
+      //     silently dropped, which made the backend reject the save
+      //     with "must not be empty" against a clearly non-empty input.
+      const isReplaceFlow = replacing[p.id]?.[f.key]
+      const isFirstTimeSetup = !f.has_value
+      if (isReplaceFlow) {
+        patch[f.key] = draftValue
+      } else if (isFirstTimeSetup && draftValue !== '') {
+        patch[f.key] = draftValue
       }
     } else {
       patch[f.key] = draftValue
@@ -139,6 +168,9 @@ async function saveConfig(p: ExternalProvider) {
     }
     drafts[p.id] = newDraft
     replacing[p.id] = {}
+    // Re-mask any revealed secret inputs after save — typed value is
+    // now persisted; nothing to verify against the visible draft.
+    showSecret[p.id] = {}
     // Refetch the provider list so configured/enabled flags update.
     await loadProviders()
     refreshProviderCache()
@@ -147,6 +179,49 @@ async function saveConfig(p: ExternalProvider) {
   } finally {
     saving[p.id] = false
   }
+}
+
+// PAI-259: Test integration. Calls the new POST endpoint, appends a
+// timestamped entry to the per-provider log. Doesn't include the
+// secret on the wire — the backend uses the persisted config, not
+// what's currently in the unsaved draft.
+async function testProvider(p: ExternalProvider) {
+  if (testing[p.id]) return
+  testing[p.id] = true
+  try {
+    const result = await api.post<CRMTestResult>(`/integrations/crm/${p.id}/test`, {})
+    appendTestLog(p.id, {
+      ts: Date.now(),
+      ok: !!result.ok,
+      message: result.message ?? (result.ok ? 'OK' : 'Test failed'),
+      lines: result.lines ?? [],
+    })
+  } catch (e: unknown) {
+    appendTestLog(p.id, {
+      ts: Date.now(),
+      ok: false,
+      message: errMsg(e, 'Test request failed.'),
+      lines: [],
+    })
+  } finally {
+    testing[p.id] = false
+  }
+}
+
+function appendTestLog(providerId: string, entry: TestLog) {
+  const existing = testLogs[providerId] ?? []
+  // Keep the last 20 attempts so the panel doesn't grow unbounded
+  // across a long admin session.
+  testLogs[providerId] = [entry, ...existing].slice(0, 20)
+}
+
+function clearTestLog(providerId: string) {
+  testLogs[providerId] = []
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts)
+  return d.toLocaleTimeString(undefined, { hour12: false })
 }
 
 function statusLabel(p: ExternalProvider): string {
@@ -246,12 +321,23 @@ const hasProviders = computed(() => providers.value.length > 0)
                   </button>
                 </div>
                 <div v-else class="crm-secret-input-row">
-                  <input
-                    v-model="drafts[p.id][f.key]"
-                    type="password"
-                    autocomplete="new-password"
-                    :placeholder="f.placeholder ?? ''"
-                  />
+                  <div class="crm-secret-input-wrap">
+                    <input
+                      v-model="drafts[p.id][f.key]"
+                      :type="showSecret[p.id]?.[f.key] ? 'text' : 'password'"
+                      autocomplete="new-password"
+                      :placeholder="f.placeholder ?? ''"
+                    />
+                    <button
+                      type="button"
+                      class="crm-secret-eye"
+                      :title="showSecret[p.id]?.[f.key] ? 'Hide value' : 'Show value'"
+                      :aria-label="showSecret[p.id]?.[f.key] ? 'Hide value' : 'Show value'"
+                      @click="toggleShowSecret(p.id, f.key)"
+                    >
+                      <AppIcon :name="showSecret[p.id]?.[f.key] ? 'eye-off' : 'eye'" :size="14" />
+                    </button>
+                  </div>
                   <button
                     v-if="f.has_value"
                     type="button"
@@ -288,10 +374,49 @@ const hasProviders = computed(() => providers.value.length > 0)
             <p v-if="saveError[p.id]" class="crm-banner-error">{{ saveError[p.id] }}</p>
 
             <div class="crm-form-actions">
+              <button
+                v-if="p.test_supported"
+                type="button"
+                class="btn btn-ghost"
+                :disabled="!p.configured || testing[p.id]"
+                :title="!p.configured ? 'Save configuration first' : 'Run a connection test against the live API'"
+                @click="testProvider(p)"
+              >
+                <AppIcon name="plug" :size="13" />
+                {{ testing[p.id] ? 'Testing…' : 'Test integration' }}
+              </button>
               <button type="submit" class="btn btn-primary" :disabled="saving[p.id]">
                 {{ saving[p.id] ? 'Saving…' : 'Save configuration' }}
               </button>
             </div>
+
+            <!-- PAI-259: inline log panel for the most recent test attempts.
+                 Stays empty (and hidden) until the admin runs the first
+                 test in this session. -->
+            <section v-if="(testLogs[p.id]?.length ?? 0) > 0" class="crm-testlog">
+              <header class="crm-testlog-head">
+                <span class="crm-testlog-title">Test integration · log</span>
+                <button type="button" class="btn btn-ghost btn-sm" @click="clearTestLog(p.id)">
+                  Clear
+                </button>
+              </header>
+              <ul class="crm-testlog-list">
+                <li
+                  v-for="(entry, idx) in testLogs[p.id]"
+                  :key="entry.ts + ':' + idx"
+                  :class="['crm-testlog-entry', entry.ok ? 'crm-testlog-entry--ok' : 'crm-testlog-entry--fail']"
+                >
+                  <div class="crm-testlog-row">
+                    <span class="crm-testlog-time">{{ fmtTime(entry.ts) }}</span>
+                    <span class="crm-testlog-status">{{ entry.ok ? 'OK' : 'FAIL' }}</span>
+                    <span class="crm-testlog-message">{{ entry.message }}</span>
+                  </div>
+                  <ul v-if="entry.lines.length" class="crm-testlog-lines">
+                    <li v-for="(line, lidx) in entry.lines" :key="lidx">{{ line }}</li>
+                  </ul>
+                </li>
+              </ul>
+            </section>
           </form>
         </div>
       </article>
@@ -408,5 +533,120 @@ const hasProviders = computed(() => providers.value.length > 0)
 .crm-secret-input-row { display: flex; gap: .5rem; align-items: center; }
 .crm-secret-input-row input { flex: 1; }
 
-.crm-form-actions { display: flex; justify-content: flex-end; }
+/* PAI-259: eye-toggle button sits inside the input box on the right. */
+.crm-secret-input-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+}
+.crm-secret-input-wrap input {
+  width: 100%;
+  padding-right: 2.2rem;
+}
+.crm-secret-eye {
+  position: absolute;
+  right: .35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.crm-secret-eye:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.crm-secret-eye:focus-visible {
+  outline: 2px solid var(--bp-blue);
+  outline-offset: 1px;
+}
+
+.crm-form-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+
+/* PAI-259: inline log panel for "Test integration" attempts. */
+.crm-testlog {
+  margin-top: .85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  overflow: hidden;
+}
+.crm-testlog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .35rem .5rem .35rem .75rem;
+  border-bottom: 1px solid var(--border);
+  background: #fafbfc;
+}
+.crm-testlog-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+.crm-testlog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.crm-testlog-entry {
+  padding: .45rem .75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.crm-testlog-entry:last-child { border-bottom: 0; }
+.crm-testlog-row {
+  display: flex;
+  align-items: baseline;
+  gap: .55rem;
+}
+.crm-testlog-time {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.crm-testlog-status {
+  font-family: 'DM Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: .05rem .4rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.crm-testlog-entry--ok   .crm-testlog-status { background: #dcfce7; color: #166534; }
+.crm-testlog-entry--fail .crm-testlog-status { background: #fee2e2; color: #b91c1c; }
+.crm-testlog-message {
+  color: var(--text);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.crm-testlog-lines {
+  list-style: none;
+  margin: .35rem 0 0 0;
+  padding: .35rem .55rem;
+  background: var(--surface-2);
+  border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.crm-testlog-lines li {
+  padding: .05rem 0;
+  word-break: break-all;
+}
 </style>

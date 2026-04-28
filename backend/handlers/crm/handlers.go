@@ -16,6 +16,7 @@
 package crm
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -43,12 +44,13 @@ import (
 // ── Admin: list registered providers + per-provider state ───────────
 
 type providerListItem struct {
-	ID         string         `json:"id"`
-	Name       string         `json:"name"`
-	LogoURL    string         `json:"logo_url"`
-	Enabled    bool           `json:"enabled"`
-	Configured bool           `json:"configured"` // true when all required fields have a value
-	Schema     ConfigSchema   `json:"schema"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	LogoURL       string       `json:"logo_url"`
+	Enabled       bool         `json:"enabled"`
+	Configured    bool         `json:"configured"` // true when all required fields have a value
+	Schema        ConfigSchema `json:"schema"`
+	TestSupported bool         `json:"test_supported"` // PAI-259: provider implements ConnectionTester
 }
 
 func ListProviders(w http.ResponseWriter, r *http.Request) {
@@ -61,16 +63,58 @@ func ListProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		merged := rec.MergedValues()
 		schema := p.ConfigSchema()
+		_, testable := p.(ConnectionTester)
 		out = append(out, providerListItem{
-			ID:         p.ID(),
-			Name:       p.Name(),
-			LogoURL:    p.LogoURL(),
-			Enabled:    rec.Enabled,
-			Configured: schemaSatisfied(schema, merged),
-			Schema:     schema,
+			ID:            p.ID(),
+			Name:          p.Name(),
+			LogoURL:       p.LogoURL(),
+			Enabled:       rec.Enabled,
+			Configured:    schemaSatisfied(schema, merged),
+			Schema:        schema,
+			TestSupported: testable,
 		})
 	}
 	jsonOK(w, out)
+}
+
+// TestProviderConnection is POST /api/integrations/crm/{id}/test (PAI-259).
+// Admin-only. Loads the persisted config, defers to the provider's
+// ConnectionTester implementation, and returns a structured result the
+// admin UI surfaces inline. The endpoint never sees nor logs the secret
+// itself — it round-trips through the same merged config that powers
+// real imports.
+func TestProviderConnection(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	p, ok := Get(id)
+	if !ok {
+		jsonError(w, "unknown provider", http.StatusNotFound)
+		return
+	}
+	tester, ok := p.(ConnectionTester)
+	if !ok {
+		jsonError(w, "this provider does not support connection testing", http.StatusNotImplemented)
+		return
+	}
+	rec, err := LoadConfig(id)
+	if err != nil {
+		jsonError(w, "config load failed", http.StatusInternalServerError)
+		return
+	}
+	merged := rec.MergedValues()
+	if !schemaSatisfied(p.ConfigSchema(), merged) {
+		jsonOK(w, TestResult{
+			OK:      false,
+			Message: "configure required fields and save before testing",
+		})
+		return
+	}
+	// Bound the test so a stuck upstream can't pin an admin tab. The
+	// provider's own client may apply a tighter timeout — this is the
+	// outer cap.
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	result := tester.TestConnection(ctx, ProviderConfig{Values: merged})
+	jsonOK(w, result)
 }
 
 // ── Admin: get one provider's config (no secret values) ─────────────

@@ -40,6 +40,11 @@ func init() {
 	crm.Register(&Provider{})
 }
 
+// apiBase is the upstream HubSpot REST host. Exposed as a package var
+// (not a const) so tests can swap in an httptest server URL — there
+// is no production code path that mutates it.
+var apiBase = "https://api.hubapi.com"
+
 // Provider implements crm.Provider for HubSpot. Stateless — the API
 // token + portal_id come in via crm.ProviderConfig on every call.
 type Provider struct{}
@@ -153,7 +158,7 @@ type hubspotCompany struct {
 // fetchCompany calls HubSpot's CRM API for the named properties.
 func (p *Provider) fetchCompany(ctx context.Context, companyID, token string) (*hubspotCompany, error) {
 	props := "name,domain,industry,city,country,phone"
-	endpoint := "https://api.hubapi.com/crm/v3/objects/companies/" + url.PathEscape(companyID) +
+	endpoint := apiBase + "/crm/v3/objects/companies/" + url.PathEscape(companyID) +
 		"?properties=" + url.QueryEscape(props)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -239,6 +244,85 @@ func (p *Provider) DeepLink(externalID string, cfg crm.ProviderConfig) string {
 		return ""
 	}
 	return fmt.Sprintf("https://app.hubspot.com/contacts/%s/company/%s", portal, externalID)
+}
+
+// TestConnection (PAI-259) verifies the stored token authenticates
+// against HubSpot without needing a specific company id. Hits the
+// scope-light `crm/v3/objects/companies?limit=1` endpoint — that's the
+// same scope (`crm.objects.companies.read`) the import flow uses, so
+// an OK here means the integration is genuinely usable.
+//
+// We deliberately do NOT call the `/account-info/v3/details` endpoint
+// even though it works without scopes: a token that authenticates but
+// lacks `crm.objects.companies.read` would pass that test and still
+// fail the first import. Picking the same endpoint as the real flow
+// makes "Test integration" a faithful smoke test.
+func (p *Provider) TestConnection(ctx context.Context, cfg crm.ProviderConfig) crm.TestResult {
+	token := strings.TrimSpace(cfg.Get("token"))
+	portal := strings.TrimSpace(cfg.Get("portal_id"))
+	if token == "" {
+		return crm.TestResult{OK: false, Message: "no access token configured"}
+	}
+	if portal == "" {
+		return crm.TestResult{OK: false, Message: "no portal_id configured"}
+	}
+
+	endpoint := apiBase + "/crm/v3/objects/companies?limit=1"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return crm.TestResult{OK: false, Message: "request build failed: " + err.Error()}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	cli := &http.Client{Timeout: 10 * time.Second}
+	t0 := time.Now()
+	resp, err := cli.Do(req)
+	latency := time.Since(t0)
+	lines := []string{
+		"GET " + endpoint,
+		fmt.Sprintf("portal_id=%s", portal),
+	}
+	if err != nil {
+		lines = append(lines, "transport error: "+err.Error())
+		return crm.TestResult{OK: false, Message: "HubSpot unreachable", Lines: lines}
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	lines = append(lines, fmt.Sprintf("status %d in %dms", resp.StatusCode, latency.Milliseconds()))
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		// Don't try to parse the body — the count alone is meaningful.
+		// Truncate just in case the response is huge or empty so the log
+		// stays readable.
+		var preview struct {
+			Results []struct {
+				ID string `json:"id"`
+			} `json:"results"`
+		}
+		_ = json.Unmarshal(body, &preview)
+		count := len(preview.Results)
+		lines = append(lines, fmt.Sprintf("companies endpoint OK · %d row(s) returned", count))
+		return crm.TestResult{
+			OK:      true,
+			Message: fmt.Sprintf("Authenticated to HubSpot portal %s · companies scope verified", portal),
+			Lines:   lines,
+		}
+	case resp.StatusCode == http.StatusUnauthorized:
+		lines = append(lines, "401 Unauthorized — token rejected by HubSpot")
+		return crm.TestResult{OK: false, Message: "HubSpot rejected the token (401)", Lines: lines}
+	case resp.StatusCode == http.StatusForbidden:
+		lines = append(lines, "403 Forbidden — token authenticates but lacks crm.objects.companies.read")
+		return crm.TestResult{OK: false, Message: "Token is missing the crm.objects.companies.read scope (403)", Lines: lines}
+	default:
+		lines = append(lines, "response: "+truncateForLog(body, 160))
+		return crm.TestResult{
+			OK:      false,
+			Message: fmt.Sprintf("HubSpot returned status %d", resp.StatusCode),
+			Lines:   lines,
+		}
+	}
 }
 
 // ── helpers ─────────────────────────────────────────────────────────

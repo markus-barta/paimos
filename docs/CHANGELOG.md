@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.21] — 2026-04-28
+
+### Fixed
+
+- [PAI-259](https://pm.barta.cm/projects/6/issues/PAI-259) — CRM Settings: first-time save now correctly persists the secret. `SettingsCRMTab.vue:120` previously gated all secret writes on `replacing[p.id]?.[f.key]`, which is only set when the admin clicks **Replace** on an already-set secret. On first-time setup `f.has_value` was false, the password input rendered, the admin typed the token, but the value never landed in the patch — the backend then rejected the save with "access token must not be empty" against a clearly non-empty input. The save logic now also sends the secret on first-time setup (`!f.has_value && draftValue !== ''`).
+
+### Added
+
+- [PAI-259](https://pm.barta.cm/projects/6/issues/PAI-259) — CRM Settings: **eye / eye-off toggle** on every secret input so admins can verify what they pasted before saving. Toggle re-masks automatically on Save, Cancel-replace, or when the panel is closed.
+- [PAI-259](https://pm.barta.cm/projects/6/issues/PAI-259) — CRM Settings: **Test integration** button + inline log panel. New optional `crm.ConnectionTester` interface lets each provider opt in to a structured smoke test; HubSpot's implementation hits `/crm/v3/objects/companies?limit=1` (same scope as the real import flow, so OK ⇒ genuinely usable). New endpoint `POST /api/integrations/crm/{id}/test` (admin-only) returns `{ok, message, lines}`. The frontend keeps the last 20 attempts per provider in a scrollable card; pass / fail is colour-coded; the test never accepts or echoes the secret on the wire — it round-trips through the same persisted config that powers real imports.
+
 ## [2.1.20] — 2026-04-28
 
 ### Fixed

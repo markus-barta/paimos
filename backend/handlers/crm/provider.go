@@ -75,6 +75,37 @@ type Provider interface {
 	DeepLink(externalID string, cfg ProviderConfig) string
 }
 
+// ConnectionTester is an OPTIONAL provider hook used by the admin
+// "Test integration" button (PAI-259). Providers that implement it
+// expose a quick, scope-light authenticated read so admins can verify
+// the persisted config works before relying on it for real imports.
+//
+// Why an opt-in side interface instead of a method on Provider
+// ------------------------------------------------------------
+// Adding a method to Provider would force every existing and future
+// in-tree provider to implement it, which is unfair to read-only
+// shims and not all CRMs have a clean "verify auth" endpoint. Type-
+// assertion keeps the contract minimal: the handler renders the Test
+// button only when the provider implements this interface.
+//
+// Implementations MUST NOT echo the secret in either the returned
+// message or the lines slice — the log surface is rendered inline in
+// the admin UI and accidentally including the token would defeat the
+// secret-hiding model.
+type ConnectionTester interface {
+	TestConnection(ctx context.Context, cfg ProviderConfig) TestResult
+}
+
+// TestResult is the structured response of a connection test. OK is the
+// only thing the UI gates on; Message is a one-liner shown next to a
+// status pill; Lines is a small log surface (timestamps not included —
+// the frontend stamps them on receipt).
+type TestResult struct {
+	OK      bool     `json:"ok"`
+	Message string   `json:"message"`
+	Lines   []string `json:"lines,omitempty"`
+}
+
 // ConfigSchema is the set of fields a provider needs from the admin to
 // function. Rendered by the admin Integrations UI (PAI-105).
 type ConfigSchema struct {

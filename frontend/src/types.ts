@@ -67,6 +67,15 @@ export interface ExternalProvider {
   enabled: boolean
   configured: boolean
   schema: ExternalProviderSchema
+  /** PAI-259: provider implements the optional ConnectionTester hook. */
+  test_supported?: boolean
+}
+
+/** PAI-259: response shape of POST /api/integrations/crm/{id}/test */
+export interface CRMTestResult {
+  ok: boolean
+  message: string
+  lines?: string[]
 }
 
 export interface ExternalProviderSchema {
