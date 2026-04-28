@@ -25,6 +25,7 @@ import AppFooter from '@/components/AppFooter.vue'
 import GlobalNewIssueModal from '@/components/GlobalNewIssueModal.vue'
 import AttachmentLightbox from '@/components/issue/AttachmentLightbox.vue'
 import SessionExpiredBanner from '@/components/SessionExpiredBanner.vue'
+import AppDevLoginBanner from '@/components/AppDevLoginBanner.vue'
 import { LS_SIDEBAR_COLLAPSED as COLLAPSED_KEY } from '@/constants/storage'
 
 const auth    = useAuthStore()
@@ -140,6 +141,7 @@ onMounted(() => {
        layout down without fighting the sidebar/header geometry. The
        banner lives outside .layout; .layout still owns the grid. -->
   <div class="app-shell">
+    <AppDevLoginBanner />
     <SessionExpiredBanner />
     <div :class="['layout', { 'sidebar-collapsed': sidebarCollapsed }]">
 

@@ -38,3 +38,10 @@ deploy-pmo tag="":
 # and screenshots don't drift out of sync with the new code.
 doc-sync tag="":
     @./scripts/release-doc-sync.sh {{tag}}
+
+# PAI-267 — bring up the local dev stack with the dev-login build
+# tag enabled, fixtures seeded, backend on :8888, vite on :5173.
+# Drops the operator (or an agent) into a logged-in UI in one
+# command. See scripts/dev-up.sh for what it actually does.
+dev-up:
+    @./scripts/dev-up.sh

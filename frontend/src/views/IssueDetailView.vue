@@ -15,6 +15,7 @@ import { useConfirm } from "@/composables/useConfirm";
 import { useMarkdown } from "@/composables/useMarkdown";
 import { useTimeUnit } from "@/composables/useTimeUnit";
 import { api, errMsg } from "@/api/client";
+import { isDevFixtureUser } from "@/utils/devUsers";
 import { attachmentsEnabled } from "@/api/instance";
 import { useNewIssueStore } from "@/stores/newIssue";
 import { provideIssueContext } from "@/composables/useIssueContext";
@@ -137,7 +138,8 @@ async function load() {
   parentIssue.value = data.parentIssue;
   children.value = data.children;
   projectIssues.value = data.projectIssues;
-  users.value = data.users;
+  // PAI-267: filter dev_* fixture users out of the assignee picker.
+  users.value = data.users.filter((u) => !isDevFixtureUser(u.username));
   allTags.value = data.allTags;
   allSprints.value = data.allSprints;
   costUnits.value = data.costUnits;

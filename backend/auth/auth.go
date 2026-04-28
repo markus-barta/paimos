@@ -67,6 +67,25 @@ type contextKey string
 
 const UserKey contextKey = "user"
 
+// devLoginKey is the context flag set by Middleware when the request's
+// session was created via dev-login (PAI-267). MeHandler reads it to
+// surface `via_dev_login: true` to the frontend banner.
+type devLoginKeyType struct{}
+
+var devLoginKey = devLoginKeyType{}
+
+func withDevLoginFlag(ctx context.Context, v bool) context.Context {
+	return context.WithValue(ctx, devLoginKey, v)
+}
+
+// IsViaDevLogin reports whether the current request authenticated via
+// the dev-login route. Returns false for API-key auth, normal session
+// auth, or unauthenticated requests.
+func IsViaDevLogin(ctx context.Context) bool {
+	v, _ := ctx.Value(devLoginKey).(bool)
+	return v
+}
+
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. Try API key: Authorization: Bearer <BRAND_API_KEY_PREFIX>...
@@ -89,7 +108,7 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		user, csrfTok, err := sessionUserAndCSRF(cookie.Value)
+		user, csrfTok, viaDevLogin, err := sessionUserAndCSRF(cookie.Value)
 		if err != nil {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
@@ -106,6 +125,7 @@ func Middleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), UserKey, user)
 		ctx = WithAccessCache(ctx)
 		ctx = withSessionAuth(ctx, csrfTok)
+		ctx = withDevLoginFlag(ctx, viaDevLogin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -139,33 +159,37 @@ func userScanDests(u *models.User) []any {
 const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses`
 
 func sessionUser(sessionID string) (*models.User, error) {
-	u, _, err := sessionUserAndCSRF(sessionID)
+	u, _, _, err := sessionUserAndCSRF(sessionID)
 	return u, err
 }
 
-// sessionUserAndCSRF resolves a session id to its user AND the per-session
-// CSRF token (PAI-113). The token is empty for sessions created before
-// migration 72 — Middleware lazy-upgrades those on the first authenticated
-// request so the user does not have to log in again at deploy time.
-func sessionUserAndCSRF(sessionID string) (*models.User, string, error) {
+// sessionUserAndCSRF resolves a session id to its user, the per-session
+// CSRF token (PAI-113), and the via_dev_login flag (PAI-267). The
+// token is empty for sessions created before migration 72 — Middleware
+// lazy-upgrades those on the first authenticated request so the user
+// does not have to log in again at deploy time. via_dev_login is 0
+// (false) for sessions created before migration 85 since the column
+// defaults to 0.
+func sessionUserAndCSRF(sessionID string) (*models.User, string, bool, error) {
 	u := &models.User{}
 	var csrfTok string
-	dests := append([]any{&csrfTok}, userScanDests(u)...)
+	var viaDevLoginInt int
+	dests := append([]any{&csrfTok, &viaDevLoginInt}, userScanDests(u)...)
 	row := db.DB.QueryRow(`
-		SELECT s.csrf_token, `+userSelectCols+`
+		SELECT s.csrf_token, s.via_dev_login, `+userSelectCols+`
 		FROM sessions s JOIN users u ON s.user_id = u.id
 		WHERE s.id = ? AND s.expires_at > datetime('now')
 	`, sessionID)
 	if err := row.Scan(dests...); err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 	if u.Status == "inactive" || u.Status == "deleted" {
 		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
 			log.Printf("sessionUser: delete session %s: %v", sessionID, err)
 		}
-		return nil, "", fmt.Errorf("account disabled")
+		return nil, "", false, fmt.Errorf("account disabled")
 	}
-	return u, csrfTok, nil
+	return u, csrfTok, viaDevLoginInt != 0, nil
 }
 
 // Login handler
@@ -292,17 +316,25 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 // summary. Returned by /auth/me, /auth/login (on success), and
 // /auth/totp/verify so the client can hydrate its access cache in one
 // round-trip instead of issuing a separate request per project.
+//
+// PAI-267: ViaDevLogin is true iff the current request authenticated
+// via the dev-login route. The frontend renders a non-dismissable
+// red banner whenever this is set so the operator can never confuse
+// a dev session for a real one. Always false on production builds
+// (the dev_login_prod stub never sets the context flag).
 type MeResponse struct {
-	User   *models.User   `json:"user"`
-	Access AccessResponse `json:"access"`
+	User         *models.User   `json:"user"`
+	Access       AccessResponse `json:"access"`
+	ViaDevLogin  bool           `json:"via_dev_login,omitempty"`
 }
 
 func MeHandler(w http.ResponseWriter, r *http.Request) {
 	user := GetUser(r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MeResponse{
-		User:   user,
-		Access: BuildAccessResponse(user),
+		User:        user,
+		Access:      BuildAccessResponse(user),
+		ViaDevLogin: IsViaDevLogin(r.Context()),
 	})
 }
 

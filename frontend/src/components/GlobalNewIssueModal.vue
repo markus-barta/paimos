@@ -6,6 +6,7 @@ import { useNewIssueStore } from '@/stores/newIssue'
 import { useRecentProjects } from '@/composables/useRecentProjects'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { api } from '@/api/client'
+import { isDevFixtureUser } from '@/utils/devUsers'
 import type { User, Tag, Project, Sprint, Issue } from '@/types'
 
 // Global fallback "New Issue" modal — picks up newIssueStore.trigger on routes
@@ -41,7 +42,10 @@ async function ensureMeta() {
     api.get<string[]>('/cost-units').catch(() => [] as string[]),
     api.get<string[]>('/releases').catch(() => [] as string[]),
   ])
-  users.value     = u
+  // PAI-267: filter dev_* fixture users out of the assignee picker so
+  // they don't pollute real user dropdowns. The seeder is the SSOT
+  // for the convention; isDevFixtureUser is the shared helper.
+  users.value     = u.filter((x) => !isDevFixtureUser(x.username))
   projects.value  = p
   allTags.value   = t
   costUnits.value = cu

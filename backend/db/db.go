@@ -3729,6 +3729,15 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE mutation_log ADD COLUMN redoable INTEGER NOT NULL DEFAULT 0`,
 			`UPDATE mutation_log SET after_state = before_state WHERE after_state = '{}' OR after_state = ''`,
 		}},
+
+		// M85: PAI-267 — flag dev-login sessions so /auth/me can surface
+		// `via_dev_login: true` to the frontend banner. The column lives on
+		// sessions (not users) because the same human can hold both a real
+		// and a dev session; the flag belongs to the session that authed
+		// the current request.
+		{85, []string{
+			`ALTER TABLE sessions ADD COLUMN via_dev_login INTEGER NOT NULL DEFAULT 0`,
+		}},
 	}
 
 	for _, m := range migrations {

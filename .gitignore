@@ -3,6 +3,11 @@
 /backend/paimos
 /backend/tmp/
 
+# PAI-267 — `just dev-up` artifacts (built backend + log dir).
+/.dev-up-backend
+/.dev-up-logs/
+/.playwright-mcp/
+
 # ── Maintainer-local (not for contributors) ──────────────────────────────────
 /scripts/brand-scan.sh
 /BRANDING_GUARD.md

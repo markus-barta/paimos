@@ -30,6 +30,7 @@ import (
 	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/brand"
 	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/devseed"
 	"github.com/markus-barta/paimos/backend/handlers"
 	"github.com/markus-barta/paimos/backend/handlers/crm"
 	"github.com/markus-barta/paimos/backend/storage"
@@ -41,6 +42,31 @@ import (
 )
 
 func main() {
+	// PAI-267: dev-seed subcommand. Recognised only when the dev_login
+	// build tag is active (otherwise auth.DevLoginEnabled() is false
+	// and we ignore the arg). Re-using the same binary keeps the
+	// fixtures co-located with the runtime that uses them and ensures
+	// the seed code is build-tag-gated alongside the dev-login handler.
+	if len(os.Args) > 1 && os.Args[1] == "dev-seed" {
+		if !auth.DevLoginEnabled() {
+			log.Fatalf("dev-seed: this binary was not built with -tags dev_login")
+		}
+		if err := db.Open(); err != nil {
+			log.Fatalf("dev-seed: db.Open: %v", err)
+		}
+		if err := devseed.Run(); err != nil {
+			log.Fatalf("dev-seed: %v", err)
+		}
+		log.Printf("dev-seed: ok")
+		return
+	}
+
+	// PAI-267: validate dev-login config at boot. No-op on production
+	// builds (prod stub returns immediately). On dev builds, panics if
+	// PAIMOS_ENV=production OR if PAIMOS_DEV_LOGIN_TOKEN is set but
+	// invalid.
+	auth.ValidateDevLoginConfig()
+
 	if err := db.Open(); err != nil {
 		log.Fatalf("db: %v", err)
 	}
@@ -92,6 +118,12 @@ func main() {
 		// Auth (public — no session possible yet)
 		r.Post("/auth/login", auth.LoginHandler)
 		r.Post("/auth/totp/verify", auth.TOTPVerify)
+		// PAI-267: dev-login route — only mounted when the dev_login
+		// build tag is active. Production binaries do not contain
+		// the handler symbol and the route returns chi's stock 404.
+		if auth.DevLoginEnabled() {
+			r.Post("/auth/dev-login", auth.DevLoginHandler)
+		}
 
 		// PAI-120: OpenID Connect SSO. Status is always reachable so the
 		// SPA can decide whether to render the SSO button; login starts

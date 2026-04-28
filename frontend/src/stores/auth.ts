@@ -72,9 +72,14 @@ export interface AccessResponse {
 
 // MeResponse is the envelope returned by /auth/login, /auth/totp/verify,
 // and /auth/me. Parsed once to hydrate the access Map.
+//
+// PAI-267: via_dev_login is true iff the current request authenticated
+// via the dev-login route. Only set in development builds with the
+// dev_login backend tag — production /auth/me always omits it.
 export interface MeResponse {
   user: User
   access: AccessResponse
+  via_dev_login?: boolean
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -88,6 +93,12 @@ export const useAuthStore = defineStore('auth', () => {
   // both branches.
   const accessibleProjects = ref<Map<number, AccessLevel>>(new Map())
   const allProjects = ref(false)
+
+  // PAI-267: true iff the current session was created via the
+  // dev-login route. Drives the non-dismissable AppDevLoginBanner in
+  // AppLayout. Always false in production frontend builds talking to a
+  // production backend — the backend simply never sets the field.
+  const viaDevLogin = ref(false)
 
   function hydrateAccess(access: AccessResponse | undefined | null) {
     const m = new Map<number, AccessLevel>()
@@ -118,6 +129,7 @@ export const useAuthStore = defineStore('auth', () => {
       const resp = await api.get<MeResponse>('/auth/me')
       user.value = resp.user
       hydrateAccess(resp.access)
+      viaDevLogin.value = !!resp.via_dev_login
       if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
       setDisplayTimezone(user.value?.timezone)
       await fetchTOTPStatus()
@@ -125,6 +137,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       allProjects.value = false
       accessibleProjects.value = new Map()
+      viaDevLogin.value = false
       totpEnabled.value = false
       totpChecked.value = false
     } finally {
@@ -136,6 +149,7 @@ export const useAuthStore = defineStore('auth', () => {
     const resp = await api.post<MeResponse>('/auth/login', { username, password })
     user.value = resp.user
     hydrateAccess(resp.access)
+    viaDevLogin.value = !!resp.via_dev_login
     if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
     checked.value = true
     sessionExpired.value = false
@@ -178,6 +192,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     allProjects.value = false
     accessibleProjects.value = new Map()
+    viaDevLogin.value = false
     totpEnabled.value = false
     totpChecked.value = false
     checked.value = true
@@ -196,6 +211,7 @@ export const useAuthStore = defineStore('auth', () => {
       const resp = await api.get<MeResponse>('/auth/me')
       user.value = resp.user
       hydrateAccess(resp.access)
+      viaDevLogin.value = !!resp.via_dev_login
     } catch { /* ignore */ }
   }
 
@@ -206,6 +222,7 @@ export const useAuthStore = defineStore('auth', () => {
     totpChecked,
     accessibleProjects,
     allProjects,
+    viaDevLogin,
     fetchMe,
     login,
     setUser,
