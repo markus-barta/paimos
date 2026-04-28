@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.25] — 2026-04-28
+
+### Changed
+
+- [PAI-263](https://pm.barta.cm/projects/6/issues/PAI-263) — `AppFooter` hoisted into `AppLayout` as a single source of truth. The 15 top-level views that each imported and rendered `<AppFooter />` (`SettingsView`, `ProjectsView`, `CustomersView`, `CustomerDetailView`, `DashboardView`, `IssuesView`, `IssueDetailView`, `SprintsView`, `SprintBoardView`, `ReportingView`, `IntegrationsView`, `ImportView`, `LieferberichtView`, `UsersView`, `DevelopmentView`) no longer do. AppLayout now wraps `<slot />` in a `flex:1; flex-direction:column; min-height:0` `view-body` div and renders `<AppFooter />` after it, so every authenticated view gets the footer for free at the bottom of `.main-content`. Side benefit: `ProjectDetailView` and the loaded state of `IssueDetailView` — the only authenticated views that previously rendered no footer at all — now get one. `AccrualsPrintView` opts out via `route.meta.hideAppFooter` since it ships its own colophon.
+
+### Fixed
+
+- [PAI-264](https://pm.barta.cm/projects/6/issues/PAI-264) — `scripts/release.sh` no longer deadlocks when called from a non-TTY shell. Three new opt-outs short-circuit the CHANGELOG-editor step and commit the auto-generated draft as-is: `--no-edit` flag, `RELEASE_NO_EDIT=1` env var, and dummy `$EDITOR` detection (empty / `true` / `:` / `cat` / `tee`). Plus an idempotent-recovery branch: if a prior run already bumped `VERSION` and prepended the `CHANGELOG.md` entry but bailed before committing (the failure mode hit cutting v2.1.23 and v2.1.24 by hand), a re-run with the same mode now picks up where it left off instead of failing the `working tree clean` gate. Bounded strictly — only `VERSION` + `docs/CHANGELOG.md` may differ, and they must already match the targeted bump. Interactive behaviour is unchanged: with a real `$EDITOR`, the editor still opens for review.
+
 ## [2.1.24] — 2026-04-28
 
 ### Fixed
