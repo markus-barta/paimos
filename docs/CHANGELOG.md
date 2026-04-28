@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.22] — 2026-04-28
+
+### Added
+
+- [PAI-260](https://pm.barta.cm/projects/6/issues/PAI-260) — `paimos issue tag add` / `paimos issue tag rm` subcommands. Closes a long-standing gap where `bon26/PMO.md` documented these as the canonical lane-management recipe but the CLI never shipped them, forcing agents to fall back to a racy read-modify-write of `tag_ids` over raw `PUT /api/issues/{id}`. The new verbs sit parallel to `issue relation add/rm`, accept either `--tag <key>` (resolved against `/api/tags`) or `--tag-id <int>` (mutually exclusive), and are idempotent server-side via `INSERT OR IGNORE` / no-op `DELETE`. `--json` mode mirrors `issue update`. `<ref>` accepts both an issue key and a numeric DB id. Unknown tag-key / tag-id surfaces a 404 here rather than a silent no-op against the upstream endpoint. PMO.md needs no edit — its existing recipe (`paimos issue tag-add 2445 --tag dev`) keeps working with the new spelling once `tag-add` is rewritten as `tag add` in client repos that adopt the new verb.
+
 ## [2.1.21] — 2026-04-28
 
 ### Fixed

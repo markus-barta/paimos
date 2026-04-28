@@ -536,3 +536,178 @@ func resolveIssueRefToID(client *Client, ref string) (int64, error) {
 	}
 	return iss.ID, nil
 }
+
+// ── PAI-260: paimos issue tag add / tag rm ──────────────────────────
+//
+// `bon26/PMO.md` documented these subcommands as the canonical recipe
+// for lane management before they actually existed; agents fell back
+// to raw `PUT /api/issues/{id}` with the full `tag_ids` array (which
+// is racy under concurrent edits) until this landed.
+//
+// Server-side idempotency is already provided:
+//   - POST   /api/issues/{id}/tags        → INSERT OR IGNORE
+//   - DELETE /api/issues/{id}/tags/{tag_id} → no-op on missing row
+// So the CLI is a thin shape over those endpoints — no read-modify-write,
+// no race window. Mirrors the surface of `issue relation add/rm`.
+
+// issueTagCmd: paimos issue tag {add|rm} <ref> [--tag <key> | --tag-id N]
+func issueTagCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "tag",
+		Short: "Add or remove tags on an issue",
+	}
+	c.AddCommand(issueTagAddCmd())
+	c.AddCommand(issueTagRmCmd())
+	return c
+}
+
+func issueTagAddCmd() *cobra.Command {
+	var (
+		tagKey string
+		tagID  int64
+	)
+	c := &cobra.Command{
+		Use:   "add <ref>",
+		Short: "Attach a tag to an issue (idempotent)",
+		Long: `Adds a tag to an issue. Pass either --tag <key> or --tag-id <int>
+(mutually exclusive). Tag keys are resolved against the instance's
+global /api/tags catalog.
+
+Idempotent: re-running with an already-attached tag is a no-op.
+
+Examples:
+  paimos issue tag add BON26-2445 --tag dev
+  paimos issue tag add 2445       --tag-id 99 --instance pmo`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runIssueTagMutate(args[0], tagKey, tagID, true)
+		},
+	}
+	c.Flags().StringVar(&tagKey, "tag", "", "tag key to attach (resolved against /api/tags)")
+	c.Flags().Int64Var(&tagID, "tag-id", 0, "tag id to attach (alternative to --tag)")
+	c.MarkFlagsMutuallyExclusive("tag", "tag-id")
+	return c
+}
+
+func issueTagRmCmd() *cobra.Command {
+	var (
+		tagKey string
+		tagID  int64
+	)
+	c := &cobra.Command{
+		Use:   "rm <ref>",
+		Short: "Remove a tag from an issue (idempotent)",
+		Long: `Removes a tag from an issue. Pass either --tag <key> or
+--tag-id <int> (mutually exclusive).
+
+Idempotent: re-running on an already-detached tag is a no-op.
+
+Examples:
+  paimos issue tag rm BON26-2445 --tag dev
+  paimos issue tag rm 2445       --tag-id 99 --instance pmo`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runIssueTagMutate(args[0], tagKey, tagID, false)
+		},
+	}
+	c.Flags().StringVar(&tagKey, "tag", "", "tag key to remove (resolved against /api/tags)")
+	c.Flags().Int64Var(&tagID, "tag-id", 0, "tag id to remove (alternative to --tag)")
+	c.MarkFlagsMutuallyExclusive("tag", "tag-id")
+	return c
+}
+
+// runIssueTagMutate is the shared body of `issue tag add` and
+// `issue tag rm`. Split out so both verbs share resolution / error /
+// output handling without copy-paste.
+func runIssueTagMutate(ref, tagKey string, tagID int64, add bool) error {
+	if err := requireTagSelector(tagKey, tagID); err != nil {
+		return err
+	}
+	client, err := instanceClient()
+	if err != nil {
+		return err
+	}
+	issueID, err := resolveIssueRefToID(client, ref)
+	if err != nil {
+		return reportError(err)
+	}
+	resolved, err := resolveTagSelector(client, tagKey, tagID)
+	if err != nil {
+		return reportError(err)
+	}
+
+	verb := "added"
+	if add {
+		_, err = client.do("POST",
+			fmt.Sprintf("/api/issues/%d/tags", issueID),
+			map[string]any{"tag_id": resolved.ID})
+	} else {
+		verb = "removed"
+		_, err = client.do("DELETE",
+			fmt.Sprintf("/api/issues/%d/tags/%d", issueID, resolved.ID), nil)
+	}
+	if err != nil {
+		return reportError(err)
+	}
+
+	if flagJSON {
+		return emitJSON(map[string]any{
+			"ok":       true,
+			"ref":      ref,
+			"issue_id": issueID,
+			"tag_id":   resolved.ID,
+			"tag":      resolved.Name,
+			"action":   map[bool]string{true: "add", false: "rm"}[add],
+		})
+	}
+	fmt.Fprintf(stdout, "✓ %s tag %s on %s\n", verb, resolved.Name, ref)
+	return nil
+}
+
+// requireTagSelector enforces that exactly one of --tag / --tag-id is
+// set. Cobra's MarkFlagsMutuallyExclusive handles the "both" case at
+// parse time; the "neither" case is a usage error we surface here.
+func requireTagSelector(tagKey string, tagID int64) error {
+	if strings.TrimSpace(tagKey) == "" && tagID == 0 {
+		return &usageError{msg: "one of --tag or --tag-id is required"}
+	}
+	return nil
+}
+
+// resolvedTag is the slice of /api/tags we care about — id + name only.
+type resolvedTag struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// resolveTagSelector returns the (id, name) tuple to use for the
+// add/rm call. When --tag-id is passed we still fetch the catalog so
+// the human / JSON output can include the name, and so a typo'd id
+// fails with a 404 here rather than a silent no-op on the upstream
+// idempotent endpoints (DELETE on a non-existent tag_id is otherwise
+// indistinguishable from "tag wasn't attached").
+func resolveTagSelector(client *Client, tagKey string, tagID int64) (resolvedTag, error) {
+	body, err := client.do("GET", "/api/tags", nil)
+	if err != nil {
+		return resolvedTag{}, err
+	}
+	var tags []resolvedTag
+	if err := json.Unmarshal(body, &tags); err != nil {
+		return resolvedTag{}, fmt.Errorf("decode tags: %w", err)
+	}
+	if tagID != 0 {
+		for _, t := range tags {
+			if t.ID == tagID {
+				return t, nil
+			}
+		}
+		return resolvedTag{}, fmt.Errorf("tag id %d not found in /api/tags", tagID)
+	}
+	key := strings.TrimSpace(tagKey)
+	for _, t := range tags {
+		if t.Name == key {
+			return t, nil
+		}
+	}
+	return resolvedTag{}, fmt.Errorf("tag %q not found in /api/tags", key)
+}
