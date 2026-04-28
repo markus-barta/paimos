@@ -16,21 +16,20 @@
 package crm
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"sync"
 
 	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/secretvault"
 )
+
+// crmSecretDomain is the HKDF info string used by the secretvault
+// package to derive a per-domain subkey for CRM provider creds. PAI-261:
+// changing this string silently bricks every existing CRM ciphertext on
+// the next decrypt — treat it as part of the on-disk data contract.
+const crmSecretDomain = "crm:provider_configs"
 
 // PAI-104. Provider config storage with secret hygiene.
 //
@@ -81,8 +80,13 @@ func LoadConfig(providerID string) (configRecord, error) {
 		}
 	}
 	if len(secretBlob) > 0 {
-		plain, err := decryptSecrets(secretBlob)
-		if err != nil {
+		// PAI-261: secretvault.DecryptJSON tries v1 (per-domain HKDF
+		// subkey) first and falls back to v0 (legacy CRM root-key
+		// direct), so existing pre-PAI-261 ciphertexts in production
+		// keep decrypting on first read after the deploy without any
+		// operator action.
+		plain := map[string]string{}
+		if err := secretvault.DecryptJSON(crmSecretDomain, secretBlob, &plain); err != nil {
 			return rec, fmt.Errorf("decrypt secrets: %w", err)
 		}
 		rec.Secret = plain
@@ -115,7 +119,12 @@ func SaveConfig(rec configRecord, updatedBy int64) error {
 	}
 	var secretBlob []byte
 	if len(rec.Secret) > 0 {
-		secretBlob, err = encryptSecrets(rec.Secret)
+		// PAI-261: every new write is a v1 envelope under the
+		// `crm:provider_configs` domain subkey — see secretvault docs
+		// for envelope shape + HKDF derivation. The previous v0
+		// ciphertexts (root key direct, no version byte) are still
+		// readable but are NEVER produced any more.
+		secretBlob, err = secretvault.EncryptJSON(crmSecretDomain, rec.Secret)
 		if err != nil {
 			return fmt.Errorf("encrypt secrets: %w", err)
 		}
@@ -142,114 +151,8 @@ func SaveConfig(rec configRecord, updatedBy int64) error {
 	return err
 }
 
-// ── Secret encryption ───────────────────────────────────────────────
-
-var (
-	secretKeyOnce sync.Once
-	secretKey     []byte
-	secretKeyErr  error
-)
-
-// secretsKey returns the 32-byte AES-256 key used for at-rest secret
-// encryption. Resolved lazily and cached for the process lifetime:
-//
-//   1. PAIMOS_SECRET_KEY env (base64 of 32 bytes) — for ops that want
-//      to manage the key themselves (k8s secret, vault, etc).
-//   2. $DATA_DIR/.secret-key — auto-generated on first boot, 0600.
-//      Stable across restarts.
-//
-// A fresh install with no env var generates a new key on first save
-// and persists it to disk. Backing the data dir backs the key too.
-func secretsKey() ([]byte, error) {
-	secretKeyOnce.Do(func() {
-		if envKey := os.Getenv("PAIMOS_SECRET_KEY"); envKey != "" {
-			k, err := base64.StdEncoding.DecodeString(envKey)
-			if err != nil || len(k) != 32 {
-				secretKeyErr = fmt.Errorf("PAIMOS_SECRET_KEY must be base64 of exactly 32 bytes")
-				return
-			}
-			secretKey = k
-			return
-		}
-		dir := os.Getenv("DATA_DIR")
-		if dir == "" {
-			dir = "./data"
-		}
-		path := filepath.Join(dir, ".secret-key")
-		if data, err := os.ReadFile(path); err == nil && len(data) == 32 {
-			secretKey = data
-			return
-		}
-		// Generate + persist.
-		k := make([]byte, 32)
-		if _, err := rand.Read(k); err != nil {
-			secretKeyErr = fmt.Errorf("generate secret key: %w", err)
-			return
-		}
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			secretKeyErr = fmt.Errorf("mkdir data: %w", err)
-			return
-		}
-		if err := os.WriteFile(path, k, 0o600); err != nil {
-			secretKeyErr = fmt.Errorf("write secret key: %w", err)
-			return
-		}
-		secretKey = k
-	})
-	return secretKey, secretKeyErr
-}
-
-// encryptSecrets serialises the secret map as JSON and AES-GCM-encrypts
-// it. Output layout: 12-byte nonce || ciphertext || GCM tag.
-func encryptSecrets(secrets map[string]string) ([]byte, error) {
-	plain, err := json.Marshal(secrets)
-	if err != nil {
-		return nil, err
-	}
-	key, err := secretsKey()
-	if err != nil {
-		return nil, err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-	out := gcm.Seal(nonce, nonce, plain, nil)
-	return out, nil
-}
-
-func decryptSecrets(blob []byte) (map[string]string, error) {
-	key, err := secretsKey()
-	if err != nil {
-		return nil, err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	if len(blob) < gcm.NonceSize() {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-	nonce, ciphertext := blob[:gcm.NonceSize()], blob[gcm.NonceSize():]
-	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]string{}
-	if err := json.Unmarshal(plain, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
+// PAI-261 removed the hand-rolled secret-encryption helpers that used
+// to live in this file (secretsKey / encryptSecrets / decryptSecrets).
+// The shared backend/secretvault package now owns key resolution,
+// per-domain HKDF subkey derivation, and the v0/v1 envelope read
+// path. CRM is one of two consumers (the other is ai_settings).
