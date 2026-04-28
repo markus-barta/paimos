@@ -48,8 +48,14 @@ func TestRun_Idempotency(t *testing.T) {
 	if projects1 != 4 {
 		t.Errorf("first run: projects count = %d, want 4", projects1)
 	}
-	if issues1 != 20 {
-		t.Errorf("first run: issues count = %d, want 20 (5 per project × 4 projects)", issues1)
+	// PAI-269: phase-1 + phase-2 totals.
+	//   PAIT  =   5  (phase-1 only — no rich seed)
+	//   ACME  =  33  (phase-1's 5 + 3 sprints + 25 rich tickets)
+	//   BUGZ  = 100  (phase-2 fills to 100 regardless of phase-1 floor)
+	//   LOGS  =  10  (phase-2 fills to 10)
+	const wantIssues = 148
+	if issues1 != wantIssues {
+		t.Errorf("first run: issues count = %d, want %d (PAIT 5 + ACME 33 + BUGZ 100 + LOGS 10)", issues1, wantIssues)
 	}
 
 	// Second seed — must be a no-op
@@ -163,4 +169,89 @@ func count(t *testing.T, query string) int {
 		t.Fatalf("count %q: %v", query, err)
 	}
 	return n
+}
+
+// TestRun_RichFixtures pins the PAI-269 phase-2 surface assertions:
+// ACME has 3 sprints + time entries; BUGZ has soft-deleted rows +
+// depends_on / blocks relations; LOGS has comments. These are the
+// signature rows the dev-up walkthrough relies on — without them the
+// reporting / trash / relation / comment surfaces have nothing to
+// render.
+func TestRun_RichFixtures(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("PAIMOS_TEST_MODE", "1")
+	if err := db.Open(); err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if db.DB != nil {
+			db.DB.Close()
+			db.DB = nil
+		}
+	})
+	if err := devseed.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// ACME — 3 sprint-typed issues.
+	acmeSprints := count(t, `
+		SELECT COUNT(*) FROM issues
+		WHERE type='sprint' AND project_id=(SELECT id FROM projects WHERE key='ACME')
+	`)
+	if acmeSprints != 3 {
+		t.Errorf("ACME sprints: got %d, want 3", acmeSprints)
+	}
+
+	// ACME — at least one time entry on a project issue. Reporting +
+	// billing surfaces need this to render anything meaningful.
+	acmeTimeEntries := count(t, `
+		SELECT COUNT(*) FROM time_entries
+		WHERE issue_id IN (SELECT id FROM issues WHERE project_id=(SELECT id FROM projects WHERE key='ACME'))
+	`)
+	if acmeTimeEntries < 15 {
+		t.Errorf("ACME time entries: got %d, want at least 15 (2-3 entries × 15 tickets)", acmeTimeEntries)
+	}
+
+	// BUGZ — at least 5 soft-deleted issues for the trash + restore flow.
+	bugzDeleted := count(t, `
+		SELECT COUNT(*) FROM issues
+		WHERE deleted_at IS NOT NULL AND project_id=(SELECT id FROM projects WHERE key='BUGZ')
+	`)
+	if bugzDeleted < 5 {
+		t.Errorf("BUGZ soft-deleted: got %d, want at least 5", bugzDeleted)
+	}
+
+	// BUGZ — depends_on + blocks relations between project issues.
+	bugzRelations := count(t, `
+		SELECT COUNT(*) FROM issue_relations
+		WHERE type IN ('depends_on','blocks')
+		  AND source_id IN (SELECT id FROM issues WHERE project_id=(SELECT id FROM projects WHERE key='BUGZ'))
+	`)
+	if bugzRelations < 8 {
+		t.Errorf("BUGZ depends_on+blocks relations: got %d, want at least 8", bugzRelations)
+	}
+
+	// LOGS — at least 5 comments per issue × 5 newly-seeded issues.
+	logsComments := count(t, `
+		SELECT COUNT(*) FROM comments
+		WHERE issue_id IN (SELECT id FROM issues WHERE project_id=(SELECT id FROM projects WHERE key='LOGS'))
+	`)
+	if logsComments < 25 {
+		t.Errorf("LOGS comments: got %d, want at least 25 (5 comments × 5 phase-2 issues)", logsComments)
+	}
+
+	// LOGS issues have non-trivial markdown bodies (the seeder feeds a
+	// shared multi-paragraph body — at minimum it should be longer
+	// than the 5-issue phase-1 floor's empty-string default).
+	var bodyMin int
+	if err := db.DB.QueryRow(`
+		SELECT MIN(LENGTH(description)) FROM issues
+		WHERE project_id=(SELECT id FROM projects WHERE key='LOGS')
+		  AND type != 'sprint'
+		  AND description != ''
+	`).Scan(&bodyMin); err == nil && bodyMin < 200 {
+		// Phase-1 issues have empty descriptions, so we filter description != ''.
+		// Among the rich-seed issues, the shared body is several hundred chars.
+		t.Errorf("LOGS rich-seed body: shortest non-empty description is %d chars, want at least 200", bodyMin)
+	}
 }
