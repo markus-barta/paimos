@@ -61,6 +61,18 @@ func main() {
 		return
 	}
 
+	// PAI-261: secrets subcommand (rotate, ...). Operator-side; runs
+	// on the host where the SQLite file lives. The expected workflow
+	// is `service stop → paimos secrets rotate ... → update env →
+	// service start` and the subcommand prints that guidance.
+	if len(os.Args) > 1 && os.Args[1] == "secrets" {
+		if err := db.Open(); err != nil {
+			log.Fatalf("secrets: db.Open: %v", err)
+		}
+		runSecretsSubcommand(os.Args[2:])
+		return
+	}
+
 	// PAI-267: validate dev-login config at boot. No-op on production
 	// builds (prod stub returns immediately). On dev builds, panics if
 	// PAIMOS_ENV=production OR if PAIMOS_DEV_LOGIN_TOKEN is set but
