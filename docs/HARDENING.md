@@ -167,10 +167,55 @@ The seven domains map roughly to [`THREAT_MODEL.md` §4](THREAT_MODEL.md) invari
 
 ### 3.6 · Secrets management
 
+#### Field-level encryption at rest (PAI-261)
+
+User-entered secrets stored in the SQLite DB (CRM provider tokens, the
+OpenRouter `api_key`, future webhook secrets) are AES-256-GCM
+encrypted with per-domain HKDF-derived subkeys. Both consumers go
+through `backend/secretvault`; the master key resolves from
+`PAIMOS_SECRET_KEY` env > `$DATA_DIR/.secret-key` disk file.
+
+There are two operationally distinct tiers — **pick one explicitly
+based on your threat model**, don't drift between them by accident:
+
+**Tier 1 — tamper-evident (default; suitable for dev / single-node).**
+The master key auto-generates to `$DATA_DIR/.secret-key` (mode 0600)
+on first boot. Encrypted values are unreadable without the key. **Does
+NOT protect against** stolen backup tarballs or volume snapshots,
+because the key sits next to the ciphertext on the same volume — anyone
+who can read the data dir can read both. Defends against application-
+layer file leaks, casual peeks, and "I dumped the DB to look at it"
+scenarios.
+
+**Tier 2 — operator-managed (recommended for production).** The master
+key lives in your secret manager (sops / 1Password / k8s secret /
+Vault) and ships into the container as `PAIMOS_SECRET_KEY` (base64 of
+32 bytes). The key never lands on the data volume; backup tarballs
+(`scripts/deploy.sh` snapshots the data dir, not the env var) are
+useless without the env-supplied key. This is the configuration your
+HARDENING audit should aim for in production.
+
+**Migrating T1 → T2.** Read the current bytes from
+`$DATA_DIR/.secret-key`, base64-encode them, set as `PAIMOS_SECRET_KEY`
+in your secret manager, restart. The same key bytes — no rotation
+needed — just moves the key off-disk. Optionally remove
+`$DATA_DIR/.secret-key` after the env-var-only restart succeeds; the
+backend prefers env over disk.
+
+**Rotation.** Both tiers support rotation via the
+`paimos secrets rotate --new-key <base64> [--dry-run]` operator
+subcommand (PAI-261 phase 3). Stop the service, run rotate (atomic
+across all rows in a single transaction — partial failure rolls back
+cleanly), update `PAIMOS_SECRET_KEY` (or replace `.secret-key`),
+restart. Today, swapping the master key without running rotate
+corrupts every existing ciphertext — don't do that.
+
 | Item | Verification | Invariant |
 |---|---|---|
+| `PAIMOS_SECRET_KEY` set from a secret manager (Tier 2); `$DATA_DIR/.secret-key` not present in production deployments | `docker compose exec paimos env \| grep ^PAIMOS_SECRET_KEY` returns the var; `ls $DATA_DIR/.secret-key` returns "no such file" | INV-PROV-01 |
+| Master key documented in your operations log (which tier, where the bytes live, who can rotate) | operations log section "PAIMOS secrets" | – |
+| Rotation cadence chosen and recorded (PAIMOS recommends annual minimum; sooner if ever exposed in logs / shells / shoulder-surfing) | rotation entries in the operations log; each entry includes the dry-run output that proved the rotation succeeded | – |
 | `OIDC_CLIENT_SECRET`, `MINIO_SECRET_KEY`, `SMTP_PASS` sourced from your secret manager, never from a checked-in `.env` file | `git log` of your deployment repo shows no `*_SECRET` / `*_PASSWORD` strings | INV-PROV-01 / 02 / 03 |
-| OpenRouter `api_key` stored in SQLite; `$DATA_DIR` on encrypted FS if your threat model requires | LUKS / dm-crypt / eCryptfs / FileVault on the storage volume | INV-PROV-01 |
 | Rotation cadence: OIDC client secret + SMTP creds + MinIO secret rotated **at least quarterly** unless your provider requires otherwise | rotation entries in the operations log | – |
 | API keys (PAIMOS-issued, `paimos_…`) audited every six months; unused keys revoked | UI: `Settings → Users → <user> → API keys`; the recent `last_used_at` column drives the decision | INV-AUTH-03 |
 | `ADMIN_PASSWORD` env var **never re-set** after first boot (it's first-run-only and ignored if `admin` user exists) | `docker compose exec paimos env \| grep ADMIN_PASSWORD` is empty | INV-AUTH-01 |
