@@ -470,14 +470,17 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-/* PAI-263: isolates the view's own flex children from AppFooter so
-   each view's layout is self-contained. flex:1 lets a short view's
-   AppFooter sit at the bottom of `.main-content` naturally. */
+/* PAI-262: do NOT add `flex: 1` here. It was tried in PAI-263 but it
+   caused tall-content views (Settings, IssueDetail, …) to overflow
+   past `.view-body`'s flex-allocated box while AppFooter stayed pinned
+   to that box's bottom — so the footer painted on top of the
+   overflowing content. The footer's own `margin-top: auto` (set in
+   AppFooter.vue) consumes leftover space inside `.main-content` for
+   short views, which is what pins it to the bottom; tall views get
+   their natural height and the footer follows in flow. */
 .view-body {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
   min-width: 0;
 }
 
