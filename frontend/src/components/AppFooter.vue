@@ -26,7 +26,8 @@ const { branding } = useBranding()
   justify-content: space-between;
   gap: .4rem;
   padding: 1.25rem 0 .5rem;
-  margin-top: 2rem;
+  /* PAI-262: pin to bottom of `.main-content` flex column when view is short. */
+  margin-top: auto;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 11px;
