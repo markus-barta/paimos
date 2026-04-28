@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] — 2026-04-28
+
+### Added — TODO fill in before committing
+
+- chore(dev): self-bootstrap go via direnv when shell isn't hooked (PAI-267)
+- fix(layout): drop view-body flex:1 so tall views don't bleed into AppFooter (PAI-262)
+- feat(devseed): rich fixture data for ACME / BUGZ / LOGS (PAI-269)
+- docs: DEV_LOGIN.md — token, security model, user matrix (PAI-271)
+- feat(dev): build-tag-gated dev-login + minimal-fixture seed (PAI-267 phase 1)
+- fix(deploy): use containerized tar for bind storage backups
+
 ## [2.2.0] — 2026-04-28
 
 ### Added
