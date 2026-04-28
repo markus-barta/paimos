@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.23] — 2026-04-28
+
+### Fixed
+
+- [PAI-262](https://pm.barta.cm/projects/6/issues/PAI-262) — `AppFooter` no longer floats into mid-page when the active view is shorter than the viewport. `AppLayout.vue`'s `.main-content` is a `flex-direction: column` scroller, but `AppFooter.vue` was a plain block with `margin-top: 2rem`, so on short views (Integrations Jira tab pre-preview, Reporting, Users, Settings, etc.) the footer rendered flush against the last content block — visually bleeding into the page mid-screen instead of pinning to the bottom. Swapping the static `2rem` for `margin-top: auto` lets the flex item consume leftover column space and pin to the bottom; long-content views are unaffected (auto collapses when no slack remains, and the `1.25rem` `padding-top` still provides separation from the content above the `border-top`). One-line CSS change in `AppFooter.vue:30`. Follow-up [PAI-263](https://pm.barta.cm/projects/6/issues/PAI-263) tracks hoisting `<AppFooter />` out of the 14 view templates and into `AppLayout.vue` as a single source of truth.
+
 ## [2.1.22] — 2026-04-28
 
 ### Added
