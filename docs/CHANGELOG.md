@@ -5,6 +5,18 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-04-28
+
+### Added
+
+- [PAI-261](https://pm.barta.cm/projects/6/issues/PAI-261) — **Encryption-at-rest for user-entered secrets.** New `backend/secretvault` package: AES-256-GCM with per-domain HKDF-SHA256 subkeys, versioned envelope (v1 = `0x01 || nonce(12) || cipher || tag`), v0-fallback read path so existing CRM provider ciphertexts keep decrypting untouched. CRM provider configs (`crm:provider_configs` domain) and the OpenRouter `api_key` (`ai:openrouter` domain, M86 adds `ai_settings.api_key_encrypted` BLOB) both consume the package. AI api_key migration is **lazy** — pre-existing plaintext rows decrypt via fallback until the next admin save, which encrypts under the new domain subkey and clears the plaintext column. Cross-domain ciphertext replay (e.g. a leaked CRM blob played against the AI store) fails AEAD verification at decrypt time. Master-key sourcing is unchanged (`PAIMOS_SECRET_KEY` env > `$DATA_DIR/.secret-key` disk file); operators move from Tier 1 (default, key on volume) to Tier 2 (key in secret manager, env-only) by reusing the same key bytes — no rotation needed for the move.
+- [PAI-261](https://pm.barta.cm/projects/6/issues/PAI-261) — **`paimos secrets rotate --new-key <b64> [--dry-run]` operator subcommand.** Decrypts every secret-bearing row under the current `PAIMOS_SECRET_KEY` and re-encrypts under the new key in a single SQLite transaction across both consumer tables. Partial failure (any row that fails to decrypt or re-encrypt) rolls back cleanly — the service keeps working on the OLD key, no recovery needed. `--dry-run` decrypts every row to confirm rotation can proceed, reports counts, writes nothing. Operator workflow on success is `service stop → rotate → update env → service start` and the CLI prints the recipe. Today, swapping `PAIMOS_SECRET_KEY` without first running rotate corrupts every existing ciphertext — that gap is now closed.
+
+### Changed
+
+- [`HARDENING.md` § 3.6](HARDENING.md#36--secrets-management) rewritten with explicit **Tier 1 / Tier 2** framing: T1 = master key auto-generated to `$DATA_DIR/.secret-key` (default, suitable for dev / single-node, does NOT defend against stolen backup tarballs); T2 = master key from secret manager via `PAIMOS_SECRET_KEY` env (recommended for production, backup tarballs are useless without the env-supplied key). Plus a T1→T2 migration recipe that re-uses the same key bytes — no rotation needed, just a location move.
+- [`THREAT_MODEL.md` § 5](THREAT_MODEL.md) — the "physical attacker with disk access" clause now acknowledges the field-level encryption that PAI-261 introduces, with explicit "T2 protects against backup theft, T1 doesn't" framing so an operator reading the model gets the honest picture rather than the obsolete "PAIMOS doesn't encrypt at rest" wording.
+
 ## [2.2.1] — 2026-04-28
 
 ### Added — TODO fill in before committing
