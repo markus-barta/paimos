@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-04-28
+
+### Added
+
+- [PAI-266](https://pm.barta.cm/projects/6/issues/PAI-266) — Customer search with CRM fan-out. Typing into the existing customer search field now triggers a 300ms-debounced query against the local DB; when local matches are zero and the field has 2+ characters, the search fans out in parallel to every enabled + configured CRM provider that implements the new optional `crm.Searcher` interface. Remote results render as a dropdown beneath the search input, grouped per provider with its logo, with per-group loading + error states inline (one broken integration cannot kill the dropdown). Clicking "Import" opens an inline confirm step and reuses the existing `/customers/import` endpoint. Hits already imported locally — joined on `(provider_id, external_id)` — render muted with an "Open in PAIMOS" link to the existing customer detail page. The legacy URL/ID paste flow is demoted to an "Advanced" affordance in the empty state. **HubSpot** is the first reference implementation, against `POST /crm/v3/objects/companies/search` — same `crm.objects.companies.read` scope as `ImportRef`, no new permissions for operators to grant. New endpoint: `GET /api/integrations/crm/search?q=&limit=` (admin-only). Backend tests cover happy path, 401/403/500/network failure modes, parallel fan-out, per-provider error isolation, and `already_imported` dedup.
+
+### Changed
+
+- HubSpot integration help-text is now blunter about which token format works in practice: only Private App tokens (`pat-na1-…`) have authenticated reliably; Personal Access Keys and Service Account keys are accepted by the form but have failed against HubSpot in our testing. Required scope is documented as the single `crm.objects.companies.read` checkbox — PAIMOS does not write to HubSpot or read contacts, deals, schemas, or sensitive-classified fields.
+
 ## [2.1.25] — 2026-04-28
 
 ### Changed
