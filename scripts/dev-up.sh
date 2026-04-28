@@ -23,6 +23,20 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
+# Self-bootstrap the devenv toolchain when the invoking shell hasn't
+# already activated direnv. Lets `just dev-up` work from any shell
+# (including non-login subshells where the direnv hook hasn't loaded)
+# as long as `direnv allow` has been run once on this repo.
+if ! command -v go >/dev/null 2>&1 && command -v direnv >/dev/null 2>&1 && [[ -f "$ROOT/.envrc" ]]; then
+  eval "$(direnv export bash 2>/dev/null || true)"
+fi
+if ! command -v go >/dev/null 2>&1; then
+  echo "error: go not on PATH" >&2
+  echo "  one-time setup: 'direnv allow' in $ROOT (devenv.nix supplies go + node)" >&2
+  echo "  or hook direnv into your shell — see https://direnv.net/docs/hook.html" >&2
+  exit 1
+fi
+
 TOKEN_FILE="${PAIMOS_DEV_LOGIN_TOKEN_FILE:-$HOME/Secrets/dev/PAIMOS_DEV_LOGIN_TOKEN.env}"
 if [[ ! -f "$TOKEN_FILE" ]]; then
   echo "error: $TOKEN_FILE not found" >&2
