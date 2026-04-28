@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import IssueList from '@/components/IssueList.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import { api, errMsg } from '@/api/client'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import type { Issue, Project, Tag, Sprint, User } from '@/types'
@@ -114,8 +113,6 @@ function onDeleted(id: number) {
         </button>
       </div>
     </template>
-
-    <AppFooter />
   </div>
 </template>
 

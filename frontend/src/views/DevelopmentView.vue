@@ -4,7 +4,6 @@ import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 const auth   = useAuthStore()
@@ -155,8 +154,6 @@ const missingReports = computed(() =>
         </div>
       </div>
     </div>
-
-    <AppFooter />
   </div>
 </template>
 

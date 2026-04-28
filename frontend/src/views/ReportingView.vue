@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 const reports = [
@@ -32,8 +31,6 @@ const reports = [
       <p class="report-card-desc">{{ r.description }}</p>
     </RouterLink>
   </div>
-
-  <AppFooter />
 </template>
 
 <style scoped>

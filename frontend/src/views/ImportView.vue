@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useRouter, RouterLink } from 'vue-router'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
-import AppFooter from '@/components/AppFooter.vue'
 
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
@@ -458,8 +457,6 @@ async function startImport() {
       <div v-if="filteredJiraProjects.length === 0" class="browser-empty">No projects match "{{ projectBrowserQuery }}"</div>
     </div>
   </AppModal>
-
-  <AppFooter />
 </template>
 
 <style scoped>

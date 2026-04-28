@@ -18,7 +18,6 @@ import { RouterLink, useRouter } from 'vue-router'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useExternalProvider } from '@/composables/useExternalProvider'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ProviderBadge from '@/components/customer/ProviderBadge.vue'
 import CustomerCreateModal from '@/components/customer/CustomerCreateModal.vue'
@@ -186,8 +185,6 @@ function fmtRate(v: number | null | undefined): string {
       </div>
     </RouterLink>
   </div>
-
-  <AppFooter />
 
   <CustomerCreateModal :open="showCreate" @close="showCreate = false" @created="onCreated" />
   <CustomerImportModal

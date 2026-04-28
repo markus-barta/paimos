@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import IssueList from '@/components/IssueList.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useSearchStore } from '@/stores/search'
@@ -275,8 +274,6 @@ function onDeleted(id: number) {
         <span v-if="loadingMore" class="scroll-loading">Loading more…</span>
       </div>
     </template>
-
-    <AppFooter />
   </div>
 </template>
 

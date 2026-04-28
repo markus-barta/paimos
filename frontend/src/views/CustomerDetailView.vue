@@ -16,7 +16,6 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import ProviderBadge from '@/components/customer/ProviderBadge.vue'
@@ -291,8 +290,6 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
       :can-write="isAdmin"
     />
   </template>
-
-  <AppFooter />
 
   <!-- ── Edit modal ─────────────────────────────────────────────── -->
   <AppModal title="Edit customer" :open="showEdit" @close="showEdit = false" confirm-key="s" @confirm="saveEdit">

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { api, errMsg } from '@/api/client'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
@@ -256,8 +255,6 @@ const totalIssues = computed(() => report.value?.groups.reduce((n, g) => n + g.i
       </tfoot>
     </table>
   </div>
-
-  <AppFooter />
 </template>
 
 <style scoped>

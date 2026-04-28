@@ -5,7 +5,6 @@ import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import SettingsAITab from '@/components/settings/SettingsAITab.vue'
@@ -870,8 +869,6 @@ async function cancelMiteImport() {
   <div v-else-if="activeTab === 'ai'" class="tab-panel">
     <SettingsAITab />
   </div>
-
-  <AppFooter />
 </template>
 
 <style scoped>

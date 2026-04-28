@@ -3,7 +3,6 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
 import AppModal from '@/components/AppModal.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ImportCollisionModal from '@/components/ImportCollisionModal.vue'
 import type { PreflightResult, CollisionStrategy } from '@/components/ImportCollisionModal.vue'
@@ -577,8 +576,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
-
-    <AppFooter />
 
     <!-- Import collision modal -->
     <ImportCollisionModal

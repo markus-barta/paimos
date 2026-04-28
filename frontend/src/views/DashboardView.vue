@@ -2,7 +2,6 @@
 import { ref, onMounted, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
-import AppFooter from '@/components/AppFooter.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -130,8 +129,6 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
           </ul>
         </section>
       </div>
-
-      <AppFooter />
     </template>
 </template>
 

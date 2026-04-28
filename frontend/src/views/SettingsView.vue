@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import AppFooter from '@/components/AppFooter.vue'
 import { useSettingsTabs } from '@/composables/useSettingsTabs'
 
 const auth    = useAuthStore()
@@ -27,8 +26,6 @@ const { tabs, activeTab, activeTabDef, activeTabProps, setTab } = useSettingsTab
   <div class="tab-content">
     <component :is="activeTabDef.component" v-bind="activeTabProps" />
   </div>
-
-  <AppFooter />
 </template>
 
 <style scoped>

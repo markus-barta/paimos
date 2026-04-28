@@ -21,6 +21,7 @@ import SidebarTimerPanel from '@/components/SidebarTimerPanel.vue'
 import SidebarSprintTargets from '@/components/SidebarSprintTargets.vue'
 import SidebarRecentProjects from '@/components/SidebarRecentProjects.vue'
 import SidebarFooter from '@/components/SidebarFooter.vue'
+import AppFooter from '@/components/AppFooter.vue'
 import GlobalNewIssueModal from '@/components/GlobalNewIssueModal.vue'
 import AttachmentLightbox from '@/components/issue/AttachmentLightbox.vue'
 import SessionExpiredBanner from '@/components/SessionExpiredBanner.vue'
@@ -221,7 +222,16 @@ onMounted(() => {
           <span class="totp-warning-pulse" aria-hidden="true"></span>
           <span class="totp-warning-label">Two-factor authentication is not enabled. <button class="totp-warning-link" type="button" @click="goTo2FASetup">Set it up now</button> to secure your account.</span>
         </div>
-        <slot />
+        <!-- PAI-263: views were each rendering <AppFooter /> as their own
+             last child. Hoisted here so it's a single source of truth and
+             every authenticated route gets a footer (incl. ProjectDetailView,
+             which previously had none). Routes that render their own
+             footer/colophon (e.g. AccrualsPrintView) opt out via
+             route.meta.hideAppFooter. -->
+        <div class="view-body">
+          <slot />
+        </div>
+        <AppFooter v-if="!route.meta.hideAppFooter" />
       </div>
     </main>
     </div>
@@ -457,6 +467,16 @@ onMounted(() => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+/* PAI-263: isolates the view's own flex children from AppFooter so
+   each view's layout is self-contained. flex:1 lets a short view's
+   AppFooter sit at the bottom of `.main-content` naturally. */
+.view-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* ── 2FA warning ─────────────────────────────────────────────────────────── */

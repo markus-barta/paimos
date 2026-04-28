@@ -7,7 +7,6 @@ import {
   onBeforeRouteLeave,
 } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import AppFooter from "@/components/AppFooter.vue";
 import IssueList from "@/components/IssueList.vue";
 import AppIcon from "@/components/AppIcon.vue";
 import StatusDot from "@/components/StatusDot.vue";
@@ -1626,7 +1625,6 @@ async function cancelEdit() {
       </button>
     </footer>
   </template>
-  <AppFooter v-else />
 
   <!-- History overlay -->
   <IssueHistory

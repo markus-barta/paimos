@@ -2,7 +2,6 @@
 import { ref, onMounted, computed } from 'vue'
 
 import AppModal from '@/components/AppModal.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
 import { api, errMsg } from '@/api/client'
@@ -132,8 +131,6 @@ async function updateUser() {
         </tbody>
       </table>
     </div>
-
-    <AppFooter />
 
     <!-- Create modal -->
     <AppModal title="New User" :open="showCreate" @close="showCreate=false; createForm={username:'',password:'',role:'member'}">

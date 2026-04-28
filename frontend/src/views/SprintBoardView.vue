@@ -2,7 +2,6 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import IssueSidePanel from '@/components/IssueSidePanel.vue'
 import { api, errMsg } from '@/api/client'
@@ -841,8 +840,6 @@ function sprintLabel(s: Sprint): string {
         </div>
       </div>
     </template>
-
-    <AppFooter />
   </div>
 </template>
 

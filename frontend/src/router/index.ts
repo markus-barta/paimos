@@ -54,7 +54,7 @@ const router = createRouter({
     {
       path: "/projects/accruals/print",
       component: () => import("@/views/AccrualsPrintView.vue"),
-      meta: { adminOnly: true },
+      meta: { adminOnly: true, hideAppFooter: true },
     },
     {
       path: "/projects/:id",
