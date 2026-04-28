@@ -17,7 +17,25 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
-MODE="${1:-}"
+# PAI-264: parse `--no-edit` flag out of $@ so `just release patch --no-edit`
+# works. Also honor RELEASE_NO_EDIT=1 and treat dummy editors (true / : /
+# cat / tee / empty) as opt-outs so non-TTY callers (Claude Code agents,
+# CI dry-runs) don't deadlock on the editor step.
+NO_EDIT=0
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --no-edit) NO_EDIT=1 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+MODE="${ARGS[0]:-}"
+case "${EDITOR:-}" in
+  ""|true|:|cat|tee) NO_EDIT=1 ;;
+esac
+if [[ "${RELEASE_NO_EDIT:-}" == "1" ]]; then
+  NO_EDIT=1
+fi
 
 git fetch --tags --quiet origin
 
@@ -60,8 +78,26 @@ if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
   exit 1
 fi
 
+# PAI-264: detect resume from a prior half-applied run. If a previous run
+# already bumped VERSION and prepended the CHANGELOG entry but bailed
+# before committing (e.g., $EDITOR exited non-zero, the user Ctrl-C'd, or
+# the editor step refused to run on a non-TTY), pick up where it left off
+# instead of failing the working-tree-clean gate. Strictly bounded: only
+# the two expected files may differ, and they must already match the
+# targeted bump.
+RESUMING=0
+if [[ "$(cat VERSION 2>/dev/null)" == "$NEW" ]] && \
+   grep -qE "^## \[$NEW\] " docs/CHANGELOG.md 2>/dev/null; then
+  CHANGED=$( { git diff --name-only HEAD; git diff --cached --name-only; } | sort -u | grep -v '^$' || true )
+  EXPECTED=$'VERSION\ndocs/CHANGELOG.md'
+  if [[ "$CHANGED" == "$EXPECTED" ]]; then
+    echo "Resuming half-applied $NEW_TAG (VERSION + CHANGELOG already match)."
+    RESUMING=1
+  fi
+fi
+
 # Preconditions
-if ! git diff --quiet || ! git diff --cached --quiet; then
+if [[ $RESUMING -eq 0 ]] && { ! git diff --quiet || ! git diff --cached --quiet; }; then
   echo "error: working tree not clean — commit or stash first" >&2
   exit 1
 fi
@@ -82,7 +118,10 @@ fi
 # PAI-123: claim/evidence gate. Refuses to cut a release if any
 # `aspirational` row in docs/claim-matrix.md lacks a follow-on ticket.
 # Bypass (with reason in the commit message): scripts/check-claims.sh --yolo
-"$ROOT/scripts/check-claims.sh"
+# PAI-264: skip on resume — gate already passed in the originating run.
+if [[ $RESUMING -eq 0 ]]; then
+  "$ROOT/scripts/check-claims.sh"
+fi
 
 echo "Bumping $LAST_TAG → $NEW_TAG"
 TODAY=$(date -u +%Y-%m-%d)
@@ -112,8 +151,15 @@ else
   mv "$tmp" docs/CHANGELOG.md
 
   echo
-  echo "Opening CHANGELOG in \$EDITOR (${EDITOR:-vi}) for review…"
-  "${EDITOR:-vi}" docs/CHANGELOG.md
+  # PAI-264: skip $EDITOR step under --no-edit / RELEASE_NO_EDIT=1 / dummy
+  # $EDITOR ("" / true / : / cat / tee). Auto-generated draft is committed
+  # as-is. Operators can amend the CHANGELOG later if they want richer prose.
+  if [[ $NO_EDIT -eq 1 ]]; then
+    echo "CHANGELOG: NO_EDIT — committing auto-generated draft as-is. Amend later if needed."
+  else
+    echo "Opening CHANGELOG in \$EDITOR (${EDITOR:-vi}) for review…"
+    "${EDITOR:-vi}" docs/CHANGELOG.md
+  fi
 fi
 
 # 3. Commit + tag + push
