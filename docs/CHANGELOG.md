@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.24] — 2026-04-28
+
+### Fixed
+
+- [PAI-265](https://pm.barta.cm/projects/6/issues/PAI-265) — Project Detail: the **⋯ More project actions** dropdown (Export CSV / Import CSV / Edit project) appeared to do nothing on click. State was actually toggling correctly — the panel was just rendered-and-clipped. Both trigger and panel lived inside `<Teleport to="#app-header-right">`, and `.ah-right-slot` carries `overflow:hidden` (load-bearing for long customer-pill / tag-chip ellipsis behaviour, can't be removed). The absolutely-positioned `.pd-overflow-menu` was therefore clipped to the slot's box and invisible. Fix: split the teleport — trigger stays in `#app-header-right`, panel teleports separately to `<body>` with `position:fixed`, anchored to the trigger's `getBoundingClientRect()` on open and recomputed on `window` `resize` + `scroll` (capture phase, so a `.main-content` scroll also re-anchors). Outside-click handler now checks both `triggerRef` and `panelRef` since the panel is no longer a descendant of the wrapper.
+
 ## [2.1.23] — 2026-04-28
 
 ### Fixed
