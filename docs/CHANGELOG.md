@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.18] — 2026-04-28
+
+### Added
+
+- [PAI-254](https://pm.barta.cm/projects/6/issues/PAI-254) — Backend handlers for the `structure_*` AI actions exposed by the Project Manifest tab editor (frontend shipped in 2.1.16, backend was the deferred follow-up). Five action keys are now registered with real handlers + admin-overridable system prompts in Settings → AI prompts: `structure_manifest`, `structure_guardrails`, `structure_glossary`, plus two new ones for the new tabs — `structure_dev` and `structure_ops`. Each takes free-form prose and returns a JSON candidate scoped to the right manifest slice; the diff overlay UX is unchanged. Field allow-list extended with `manifest_json` / `guardrails_json` / `glossary_json` / `dev_json` / `ops_json`. `ProjectManifestTabs.vue` gains the **Dev** (`_dev`, terminal icon) and **Ops** (`_ops`, server icon) tabs after Glossary, mirroring the Guardrails/Glossary save + AI-structure flow exactly. The new slices are positioned as future LLM-command sources.
+
+### Changed
+
+- Project-management workflow: paimos product tickets now live in PAIMOS itself (https://pm.barta.cm, project `PAI`, id 6) — the local `+pm/backlog` and `+pm/done` markdown directories are deprecated and the five entries that lived under `+pm/done/` were migrated to PAI-249 through PAI-253. The `+pm/` directory is retained for long-form product framing only (PRD, FIELD_MATRIX). Documented in `+pm/README.md`, `docs/DEVELOPER_GUIDE.md`, and the repo `README.md`.
+
 ## [2.1.17] — 2026-04-27
 
 ### Changed

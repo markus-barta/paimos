@@ -1,164 +1,64 @@
 # Project Management (+pm)
 
-This directory contains project management artifacts: product requirements, backlog items, and task tracking.
+Tickets, backlog, and task tracking for paimos product work live in
+**PAIMOS itself** — that is the single source of truth.
 
----
+> **Instance:** <https://pm.barta.cm> (the `ppm` instance)
+> **Project:** PAIMOS — key `PAI`, id `6`
 
-## Structure
+This directory exists for **long-form product framing only**:
 
 ```
 +pm/
-├── README.md                 # This file
-├── PRD.md                    # Product Requirements Document (vision)
-├── backlog/                  # Active backlog items
-│   └── P50.hhhhhhh.description.md
-└── done/                     # Completed items
-    └── P50.hhhhhhh.description.md
+├── README.md       # This file
+├── PRD.md          # Product Requirements Document (vision)
+└── FIELD_MATRIX.md # Field/feature matrix
 ```
 
----
-
-## File Naming Convention
-
-Backlog items follow this format:
-
-```
-LNN.hhhhhhh.description.md
-```
-
-**Components**:
-- **L**: A-Z character for priority level (A is highest, Z is lowest)
-- **NN**: 2-digit numeric sub-priority (00 is highest, 99 is lowest)
-- **hhhhhhh**: 7-character hex hash (unique identifier, collision-checked)
-- **description**: Kebab-case slug (a-z, 0-9, hyphens only)
-
-**Examples**:
-- `A00.a1b2c3d.critical-security-fix.md` (Absolute highest priority)
-- `P50.c7d2b4a.refactor-auth-middleware.md` (Standard priority, default)
-- `Z99.e1f9c2b.nice-to-have-feature.md` (Lowest priority)
+The previous `backlog/` and `done/` markdown workflow is **deprecated**.
+Past `done/` items have been migrated into PAIMOS as `done` tickets;
+new work is filed directly in PAIMOS.
 
 ---
 
-## Creating Backlog Items
+## Filing new work
 
-### Using Scripts (Required)
+Open the project in the UI:
 
-Run from repository root:
+    https://pm.barta.cm/projects/6
 
-```bash
-# Create with priority and description
-./scripts/create-backlog-item.sh A10 implement-feature-x
+Or use the API (Bearer token from `~/Secrets/ppm/PPMAPIKEY.env`):
 
-# Create with defaults (priority: P50, description: timestamp)
-./scripts/create-backlog-item.sh
-```
+    curl -A "<your-ua>" \
+         -H "Authorization: Bearer $PPMAPIKEY" \
+         -H "Content-Type: application/json" \
+         -d @body.json \
+         https://pm.barta.cm/api/projects/6/issues
 
-### Manual Creation
+Issue schema (subset):
 
-If creating manually:
+| field                 | values                                              |
+| --------------------- | --------------------------------------------------- |
+| `type`                | `ticket`, `epic`, `task`                            |
+| `status`              | `new`, `backlog`, `accepted`, `done`, `cancelled`   |
+| `priority`            | `low`, `medium`, `high`                             |
+| `title`               | string                                              |
+| `description`         | markdown                                            |
+| `acceptance_criteria` | markdown checklist                                  |
+| `parent_id`           | int (epic/parent linkage), nullable                 |
 
-1. Generate unique hash: `./scripts/lib/generate-hash.sh`
-2. Choose priority (A00-Z99)
-3. Create file: `+pm/backlog/LNN.hash.description.md`
-4. Use standard template (see below)
-
----
-
-## Backlog Item Template
-
-```markdown
-# Title: [Short Description]
-
-## Description
-[Detailed description of the backlog item goes here.]
-
-## Priority
-LNN
-
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
-
-## Additional Requirements
-[Dependencies, estimates, notes, etc.]
-
-## Status
-[Draft | In Progress | Review | Done | Cancelled]
-```
+References to a ticket use its key, e.g. `PAI-188`, with the canonical
+URL `https://pm.barta.cm/projects/6/issues/PAI-188`.
 
 ---
 
-## Workflow
+## Long-form docs in this directory
 
-### 1. Create
-```bash
-./scripts/create-backlog-item.sh A10 implement-oauth
-```
+- **`PRD.md`** — product vision and requirement framing. Long-form
+  context that would clutter individual tickets. Update via PR; link
+  from tickets that depend on it.
+- **`FIELD_MATRIX.md`** — feature/field matrix.
 
-### 2. Work
-- Edit the markdown file
-- Add detailed requirements
-- Define acceptance criteria
-- Update status as you progress
-
-### 3. Complete
-```bash
-# Move to done/ folder
-mv +pm/backlog/A10.abc1234.implement-oauth.md +pm/done/
-```
-
-### 4. Cancel (if needed)
-```bash
-# Update status to Cancelled in the file, then delete or keep
-```
-
----
-
-## Priority Guidelines
-
-| Level | Range | Use Case |
-|-------|-------|----------|
-| **A-E** | 00-99 | Critical, blocking, core foundation |
-| **F-O** | 00-99 | High priority features and fixes |
-| **P** | 00-99 | Standard priority (P50 is default) |
-| **Q-V** | 00-99 | Nice-to-have, improvements |
-| **W-Z** | 00-99 | Low priority, experimental, future |
-
----
-
-## Hash Generation
-
-Hashes are 7-character hexadecimal identifiers generated by `scripts/lib/generate-hash.sh`:
-
-- **Collision-checked**: Script verifies uniqueness in +pm/ directory
-- **Bash built-ins**: Uses `$RANDOM`, no external dependencies
-- **Format**: Lowercase hex (0-9, a-f)
-- **Length**: 7 characters (28 bits entropy)
-
----
-
-## LLM/Agent Usage
-
-When working with AI agents:
-
-- **Always use the scripts** to create backlog items
-- **Never manually generate hashes** -- use `generate-hash.sh`
-- Scripts are documented in `AGENTS.md`
-- AI shall decide priority to "fit in" based on existing items
-
----
-
-## PRD Integration
-
-The `PRD.md` file contains the product vision and requirements. Backlog items should trace back to PRD requirements where applicable.
-
----
-
-## Tips
-
-- **Keep descriptions short** -- slug should be under 50 chars
-- **Use kebab-case** -- all lowercase, hyphens for spaces
-- **Be specific** -- "add-login-form" not "improve-auth"
-- **Track status** -- update the Status field as work progresses
-- **Archive completed** -- move to done/ when finished
+If a doc here grows enough that someone would actually file a ticket
+against *it* (e.g. "rewrite section X"), the ticket goes in PAIMOS
+and links back to the doc — not the other way around.

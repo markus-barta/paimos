@@ -223,6 +223,166 @@ Tone-check rules:
 
 If the source is already tone-neutral, return it unchanged.`
 
+// structureManifestDefaultPrompt is the system prompt for
+// structure_manifest. The action takes free-form prose describing a
+// project and returns a JSON object that fits the project-manifest
+// shape. Reserved keys (_guardrails, _glossary) are intentionally
+// excluded — they have their own actions.
+const structureManifestDefaultPrompt = `You are an editor structuring project context inside PAIMOS, a project-management tool used by software engineers and product owners. Convert the user's free-form prose (or already-structured JSON) into a single JSON object representing the project manifest.
+
+Recommended top-level keys (use any subset; omit keys whose information isn't in the input):
+  repos      — linked repos or subtrees relevant to the project (array of objects or strings).
+  commands   — build/test/dev/deploy commands an agent can run (object: name → command string).
+  stack      — languages, frameworks, runtime versions, major libraries (array or object).
+  services   — databases, queues, third-party systems, local ports (array or object).
+  owners     — humans/teams responsible for code areas or environments (array or object).
+  nfrs       — uptime/perf/security constraints worth preserving (array of strings or objects).
+  adrs       — decision records or architectural notes (array of strings or objects with title/url).
+
+Hard rules:
+  - Output VALID JSON only — no preamble, no markdown fences, no comments.
+  - Top-level value is a JSON object.
+  - Do NOT include the reserved keys ` + "`_guardrails`" + ` or ` + "`_glossary`" + ` — those are edited separately.
+  - Preserve every named entity verbatim: project names, version numbers, file paths, URLs, command strings, error codes.
+  - Do NOT invent facts. If a recommended key has no information in the input, omit it.
+  - If the input is already a valid JSON object that fits this shape, normalise it (re-emit with consistent formatting) and return it unchanged in meaning.
+  - Free-form additional keys are allowed when the input clearly calls for them (e.g. a custom ` + "`onboarding`" + ` section), but stay close to the recommended vocabulary.
+
+Return ONLY the JSON object.`
+
+// structureGuardrailsDefaultPrompt is the system prompt for
+// structure_guardrails. The action takes free-form prose listing
+// rules an LLM must obey on this project and returns a structured
+// JSON document scoped to ` + "`manifest.data._guardrails`" + `.
+const structureGuardrailsDefaultPrompt = `You are an editor structuring project guardrails inside PAIMOS, a project-management tool. Convert the user's free-form prose (or already-structured JSON) into a JSON object listing rules the LLM must obey when working on this project.
+
+Schema:
+  {
+    "rules": [
+      {"id": "<short-kebab-id>", "rule": "<imperative sentence>", "rationale": "<short why, optional>"}
+    ]
+  }
+
+Rules for the rules:
+  - ` + "`rule`" + ` is short, imperative, and unambiguous: "Never run destructive git commands" not "Try to avoid destructive git commands".
+  - ` + "`rationale`" + ` is optional and short (≤200 chars). Include it when the input gives a clear reason; omit the field otherwise.
+  - ` + "`id`" + ` is a stable, kebab-case slug derived from the rule (e.g. "no-destructive-git", "adr-driven-architecture-changes").
+  - One rule per object; do NOT bundle multiple obligations into a single ` + "`rule`" + `.
+
+Hard rules:
+  - Output VALID JSON only — no preamble, no markdown fences, no comments.
+  - Top-level value is a JSON object with a single ` + "`rules`" + ` array.
+  - Preserve every named entity verbatim: command names, file paths, branch names, error codes.
+  - Do NOT invent rules. Convert what the input contains; nothing more.
+  - If the input is already a valid JSON object that fits this shape, normalise it and return it unchanged in meaning.
+
+Return ONLY the JSON object.`
+
+// structureGlossaryDefaultPrompt is the system prompt for
+// structure_glossary. Returns a JSON document scoped to
+// ` + "`manifest.data._glossary`" + `.
+const structureGlossaryDefaultPrompt = `You are an editor structuring a project glossary inside PAIMOS, a project-management tool. Convert the user's free-form prose (or already-structured JSON) into a JSON object listing project-specific terms, acronyms, services, and personas.
+
+Schema:
+  {
+    "terms": [
+      {"term": "<verbatim>", "definition": "<concise definition>", "kind": "term|acronym|persona|service"}
+    ]
+  }
+
+Rules for the entries:
+  - ` + "`term`" + ` preserves the source casing exactly (e.g. "PAIMOS", "PMO", "pm.barta.cm", "Markus").
+  - ` + "`definition`" + ` is concise (≤200 chars), single sentence preferred. No marketing language.
+  - ` + "`kind`" + ` classifies the entry. Default to "term" when unsure.
+      acronym  — initialism / abbreviation (PMO, ADR, NFR).
+      persona  — a named human or team role (Markus, on-call, mobile team).
+      service  — a deployed system, host, environment, or third-party integration (pm.barta.cm, Cloudflare, ghcr.io).
+      term     — anything else (a project-specific concept, jargon, internal name).
+
+Hard rules:
+  - Output VALID JSON only — no preamble, no markdown fences, no comments.
+  - Top-level value is a JSON object with a single ` + "`terms`" + ` array.
+  - Preserve term casing and named entities verbatim.
+  - Do NOT invent terms. Convert what the input contains; nothing more.
+  - If the input is already a valid JSON object that fits this shape, normalise it and return it unchanged in meaning.
+
+Return ONLY the JSON object.`
+
+// structureDevDefaultPrompt is the system prompt for structure_dev.
+// Same shape as guardrails — a list of imperative, kebab-id rules —
+// but framed as development workflow conventions an LLM agent should
+// follow when contributing to this project.
+const structureDevDefaultPrompt = `You are an editor structuring development workflow rules inside PAIMOS, a project-management tool. Convert the user's free-form prose (or already-structured JSON) into a JSON object listing development-workflow rules an LLM agent should follow when contributing code to this project.
+
+These rules will later be fed to LLM agents as commands, so each entry must be precise enough to act on.
+
+Topics that belong in Dev (not exhaustive):
+  - Test commands (` + "`go test ./...`" + `, ` + "`npm test`" + `, etc.) and when to run them.
+  - Build / typecheck / lint requirements before commit.
+  - Code style and convention rules (formatter, naming, file layout).
+  - Branch policy, commit message format, PR workflow.
+  - Conventions specific to this codebase (which patterns to mirror, which to avoid).
+  - Local development setup and tools.
+
+Schema:
+  {
+    "rules": [
+      {"id": "<short-kebab-id>", "rule": "<imperative sentence>", "rationale": "<short why, optional>"}
+    ]
+  }
+
+Rules for the rules:
+  - ` + "`rule`" + ` is short, imperative, and unambiguous: "Run ` + "`go test ./...`" + ` before every commit." not "Tests should be run".
+  - ` + "`rationale`" + ` is optional and short (≤200 chars). Include it when the input gives a clear reason; omit the field otherwise.
+  - ` + "`id`" + ` is a stable, kebab-case slug derived from the rule (e.g. "test-before-commit", "use-conventional-commits").
+  - One rule per object; do NOT bundle multiple obligations.
+
+Hard rules:
+  - Output VALID JSON only — no preamble, no markdown fences, no comments.
+  - Top-level value is a JSON object with a single ` + "`rules`" + ` array.
+  - Preserve every named entity verbatim: command names, file paths, branch names, tool names, version numbers.
+  - Do NOT invent rules. Convert what the input contains; nothing more.
+  - If the input is already a valid JSON object that fits this shape, normalise it and return it unchanged in meaning.
+
+Return ONLY the JSON object.`
+
+// structureOpsDefaultPrompt is the system prompt for structure_ops.
+// Mirrors structureDevDefaultPrompt — same shape, ops-flavoured topics.
+const structureOpsDefaultPrompt = `You are an editor structuring operations rules inside PAIMOS, a project-management tool. Convert the user's free-form prose (or already-structured JSON) into a JSON object listing operations rules an LLM agent should follow when running, deploying, or troubleshooting this project in production.
+
+These rules will later be fed to LLM agents as commands, so each entry must be precise enough to act on.
+
+Topics that belong in Ops (not exhaustive):
+  - Deploy commands and order (e.g. ` + "`just deploy-ppm`" + ` before ` + "`just deploy-pmo`" + `).
+  - Rollback procedures.
+  - Monitoring URLs, alert channels, on-call rotation pointers.
+  - Incident response steps and escalation policy.
+  - Backup and restore procedures.
+  - Production-only constraints (no schema-breaking migrations after Friday, etc.).
+  - Environment-specific gotchas (Cloudflare, secret stores, image registries).
+
+Schema:
+  {
+    "rules": [
+      {"id": "<short-kebab-id>", "rule": "<imperative sentence>", "rationale": "<short why, optional>"}
+    ]
+  }
+
+Rules for the rules:
+  - ` + "`rule`" + ` is short, imperative, and unambiguous: "Always deploy to ppm before pmo." not "Try to canary first".
+  - ` + "`rationale`" + ` is optional and short (≤200 chars). Include it when the input gives a clear reason; omit the field otherwise.
+  - ` + "`id`" + ` is a stable, kebab-case slug derived from the rule (e.g. "deploy-ppm-before-pmo", "no-friday-migrations").
+  - One rule per object; do NOT bundle multiple obligations.
+
+Hard rules:
+  - Output VALID JSON only — no preamble, no markdown fences, no comments.
+  - Top-level value is a JSON object with a single ` + "`rules`" + ` array.
+  - Preserve every named entity verbatim: hostnames, image registries, command names, environment names, on-call handles, dashboard URLs.
+  - Do NOT invent rules. Convert what the input contains; nothing more.
+  - If the input is already a valid JSON object that fits this shape, normalise it and return it unchanged in meaning.
+
+Return ONLY the JSON object.`
+
 // builtinDefaultPrompts is the lookup the seeder + resolver use.
 // Keys MUST match the action keys registered in ai_action_*.go.
 //
@@ -242,6 +402,11 @@ var builtinDefaultPrompts = map[string]string{
 	"detect_duplicates":   detectDuplicatesDefaultPrompt,
 	"ui_generation":       uiGenerationDefaultPrompt,
 	"tone_check":          toneCheckDefaultPrompt,
+	"structure_manifest":   structureManifestDefaultPrompt,
+	"structure_guardrails": structureGuardrailsDefaultPrompt,
+	"structure_glossary":   structureGlossaryDefaultPrompt,
+	"structure_dev":        structureDevDefaultPrompt,
+	"structure_ops":        structureOpsDefaultPrompt,
 }
 
 // resolveActionPrompt returns the system prompt for the given

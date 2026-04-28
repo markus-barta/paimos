@@ -81,7 +81,9 @@ docs/
   api-minimal.md       compact API surface reference
   brand/               visual identity (mark + wordmark + brand guide)
 +agents/rules/         rules agents follow when editing this codebase
-+pm/                   product framing (PRD, roadmap)
++pm/                   long-form product framing only (PRD, FIELD_MATRIX).
+                       Tickets/backlog live in PAIMOS itself —
+                       https://pm.barta.cm, project PAI (id 6).
 scripts/               maintenance helpers
 ```
 

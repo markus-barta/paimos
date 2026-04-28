@@ -528,5 +528,5 @@ obligation.
 - `docs/CONFIGURATION.md` — every env var, every branding knob
 - `docs/brand/BRAND.md` — brand guide (name, mark, voice)
 - `docs/DEVELOPER_GUIDE.md` — deeper implementation notes
-- `+pm/PRD.md` — product requirements framing
+- `+pm/PRD.md` — product requirements framing (long-form only — tickets live in PAIMOS at <https://pm.barta.cm>, project PAI)
 - `+agents/rules/AGENTS.md` — agent collaboration rules

@@ -37,17 +37,18 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   populated: [v: boolean]
-  summary: [payload: { hasManifest: boolean; hasGuardrails: boolean; hasGlossary: boolean; populated: boolean }]
+  summary: [payload: { hasManifest: boolean; hasGuardrails: boolean; hasGlossary: boolean; hasDev: boolean; hasOps: boolean; populated: boolean }]
 }>()
 
-type TabKey = 'manifest' | 'guardrails' | 'glossary'
+type TabKey = 'manifest' | 'guardrails' | 'glossary' | 'dev' | 'ops'
+type ReservedKey = '_guardrails' | '_glossary' | '_dev' | '_ops'
 
 interface TabDef {
   key: TabKey
   label: string
   description: string
   icon: string
-  reservedKey: '_guardrails' | '_glossary' | null
+  reservedKey: ReservedKey | null
   aiAction: string
   hostKey: string
   fieldLabel: string
@@ -88,9 +89,31 @@ const TABS: TabDef[] = [
     fieldLabel: 'Glossary',
     emptySeed: '{}',
   },
+  {
+    key: 'dev',
+    label: 'Dev',
+    description: 'Development workflow rules — test/lint/build commands, branch policy, code style. Future LLM commands draw from here.',
+    icon: 'terminal',
+    reservedKey: '_dev',
+    aiAction: 'structure_dev',
+    hostKey: 'project-context:dev',
+    fieldLabel: 'Dev',
+    emptySeed: '{}',
+  },
+  {
+    key: 'ops',
+    label: 'Ops',
+    description: 'Operations rules — deploy steps, monitoring, incident response, on-call procedures. Future LLM commands draw from here.',
+    icon: 'server',
+    reservedKey: '_ops',
+    aiAction: 'structure_ops',
+    hostKey: 'project-context:ops',
+    fieldLabel: 'Ops',
+    emptySeed: '{}',
+  },
 ]
 
-const RESERVED_KEYS = TABS.map(t => t.reservedKey).filter((k): k is '_guardrails' | '_glossary' => !!k)
+const RESERVED_KEYS = TABS.map(t => t.reservedKey).filter((k): k is ReservedKey => !!k)
 
 const aiOptimize = useAiOptimize()
 const aiAvailable = aiOptimize.available
@@ -105,22 +128,26 @@ const drafts = ref<Record<TabKey, string>>({
   manifest: '{}',
   guardrails: '{}',
   glossary: '{}',
+  dev: '{}',
+  ops: '{}',
 })
 
 const savingTab = ref<TabKey | null>(null)
-const tabError = ref<Record<TabKey, string>>({ manifest: '', guardrails: '', glossary: '' })
-const tabOk = ref<Record<TabKey, string>>({ manifest: '', guardrails: '', glossary: '' })
+const tabError = ref<Record<TabKey, string>>({ manifest: '', guardrails: '', glossary: '', dev: '', ops: '' })
+const tabOk = ref<Record<TabKey, string>>({ manifest: '', guardrails: '', glossary: '', dev: '', ops: '' })
 
 function splitManifest(data: Record<string, any>): Record<TabKey, any> {
   const body: Record<string, any> = {}
   for (const [k, v] of Object.entries(data || {})) {
-    if (RESERVED_KEYS.includes(k as any)) continue
+    if (RESERVED_KEYS.includes(k as ReservedKey)) continue
     body[k] = v
   }
   return {
     manifest: body,
     guardrails: data?._guardrails ?? {},
     glossary: data?._glossary ?? {},
+    dev: data?._dev ?? {},
+    ops: data?._ops ?? {},
   }
 }
 
@@ -129,6 +156,8 @@ function refreshDrafts() {
   drafts.value.manifest = JSON.stringify(split.manifest, null, 2)
   drafts.value.guardrails = JSON.stringify(split.guardrails, null, 2)
   drafts.value.glossary = JSON.stringify(split.glossary, null, 2)
+  drafts.value.dev = JSON.stringify(split.dev, null, 2)
+  drafts.value.ops = JSON.stringify(split.ops, null, 2)
 }
 
 function isNonEmptyObject(v: unknown): boolean {
@@ -141,14 +170,20 @@ const hasManifestBody = computed(() => {
 })
 const hasGuardrails = computed(() => isNonEmptyObject((manifest.value.data || {})._guardrails))
 const hasGlossary = computed(() => isNonEmptyObject((manifest.value.data || {})._glossary))
-const populated = computed(() => hasManifestBody.value || hasGuardrails.value || hasGlossary.value)
+const hasDev = computed(() => isNonEmptyObject((manifest.value.data || {})._dev))
+const hasOps = computed(() => isNonEmptyObject((manifest.value.data || {})._ops))
+const populated = computed(() =>
+  hasManifestBody.value || hasGuardrails.value || hasGlossary.value || hasDev.value || hasOps.value,
+)
 
 watch(populated, (v) => emit('populated', v), { immediate: true })
-watch([hasManifestBody, hasGuardrails, hasGlossary, populated], () => {
+watch([hasManifestBody, hasGuardrails, hasGlossary, hasDev, hasOps, populated], () => {
   emit('summary', {
-    hasManifest: hasManifestBody.value || hasGuardrails.value || hasGlossary.value,
+    hasManifest: populated.value,
     hasGuardrails: hasGuardrails.value,
     hasGlossary: hasGlossary.value,
+    hasDev: hasDev.value,
+    hasOps: hasOps.value,
     populated: populated.value,
   })
 }, { immediate: true })
@@ -157,6 +192,8 @@ const tabFilledMap = computed<Record<TabKey, boolean>>(() => ({
   manifest: hasManifestBody.value,
   guardrails: hasGuardrails.value,
   glossary: hasGlossary.value,
+  dev: hasDev.value,
+  ops: hasOps.value,
 }))
 
 const activeDef = computed(() => TABS.find(t => t.key === activeTab.value)!)

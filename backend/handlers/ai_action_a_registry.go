@@ -60,6 +60,17 @@ func init() {
 		// Customer surface (PAI-173) — text-level rewrites of the
 		// field the menu is attached to.
 		{Key: "tone_check", Label: "Tone check", Surface: "customer", Placement: "text", Handler: stubHandler},
+
+		// Project-context structure actions (PAI-252 follow-up): take
+		// free-form prose pasted into the manifest tab editor and
+		// emit a JSON candidate scoped to one slice of the project
+		// manifest. Rendered through the same diff overlay as
+		// optimize, so the user accepts/rejects the structured output.
+		{Key: "structure_manifest", Label: "Structure project manifest", Surface: "issue", Placement: "text", Handler: stubHandler},
+		{Key: "structure_guardrails", Label: "Structure project guardrails", Surface: "issue", Placement: "text", Handler: stubHandler},
+		{Key: "structure_glossary", Label: "Structure project glossary", Surface: "issue", Placement: "text", Handler: stubHandler},
+		{Key: "structure_dev", Label: "Structure project dev rules", Surface: "issue", Placement: "text", Handler: stubHandler},
+		{Key: "structure_ops", Label: "Structure project ops rules", Surface: "issue", Placement: "text", Handler: stubHandler},
 	}
 	for _, d := range stubs {
 		registerAction(d)
