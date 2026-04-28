@@ -88,7 +88,10 @@ fi
 RESUMING=0
 if [[ "$(cat VERSION 2>/dev/null)" == "$NEW" ]] && \
    grep -qE "^## \[$NEW\] " docs/CHANGELOG.md 2>/dev/null; then
-  CHANGED=$( { git diff --name-only HEAD; git diff --cached --name-only; } | sort -u | grep -v '^$' || true )
+  # LC_ALL=C forces deterministic ASCII sort across macOS / Linux locales
+  # (default macOS collation is case-insensitive and put `docs/` before
+  # `VERSION`, breaking a naive equality check).
+  CHANGED=$( { git diff --name-only HEAD; git diff --cached --name-only; } | LC_ALL=C sort -u | grep -v '^$' || true )
   EXPECTED=$'VERSION\ndocs/CHANGELOG.md'
   if [[ "$CHANGED" == "$EXPECTED" ]]; then
     echo "Resuming half-applied $NEW_TAG (VERSION + CHANGELOG already match)."
