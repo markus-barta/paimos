@@ -129,6 +129,7 @@ The seven domains map roughly to [`THREAT_MODEL.md` §4](THREAT_MODEL.md) invari
 | OIDC IdP enforces `email_verified=true`; users with unverified email are refused at PAIMOS | trigger an SSO login with an unverified email; expect redirect to `/login?sso_error=email_required` | INV-AUTH-08 |
 | Password reset link expiry is the documented 60 min; never extended | `PAIMOS_RETENTION_DAYS_RESET_TOKENS=7` (default; this is post-use audit retention, not link-expiry) | INV-AUTH-06 |
 | Rate-limit window observed for login / forgot / reset / TOTP-verify (5 attempts / 10 min / IP+identity) | trigger 6 attempts with bad credentials; expect 429 on the 6th | INV-AUTH-04 |
+| **Dev-login route is absent from this binary.** Production builds do not compile the `dev_login` package; CI's `PAI-270` step asserts the canary strings are absent on every release. See [`DEV_LOGIN.md`](DEV_LOGIN.md). | `strings $(which paimos) \| grep -c 'DEV-LOGIN ROUTE ENABLED'` returns `0` | INV-AUTH-09 (PAI-267) |
 
 ### 3.3 · Authorization
 

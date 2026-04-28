@@ -170,6 +170,13 @@ devenv shell -- bash -c "cd backend && DATA_DIR=../data STATIC_DIR=../frontend/d
 devenv shell -- bash -c "cd frontend && npm run dev"
 ```
 
+For agent-driven UI work that needs an authenticated session locally,
+see [`docs/DEV_LOGIN.md`](docs/DEV_LOGIN.md) — `just dev-up` builds the
+backend with the dev-login build tag, seeds fixture users + projects,
+and prints the `curl` recipe for grabbing a session cookie. The
+dev-login route is build-tag-gated and **does not exist in
+production binaries** (CI re-asserts this on every push).
+
 ## Agent integration
 
 PAIMOS is built for humans **and** AI agents. The recommended way to
