@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.20] — 2026-04-28
+
+### Fixed
+
+- [PAI-258](https://pm.barta.cm/projects/6/issues/PAI-258) — HubSpot CRM integration accepts the new **Personal Access Key** format. The `ValidateConfig` check in `backend/handlers/crm/hubspot/provider.go` previously gated on `strings.HasPrefix(token, "pat-")`, which rejected HubSpot's newer opaque-base64 keys (e.g. `CiRldTEtN…`) even though they authenticate the exact same Bearer-token endpoints. Replaced the prefix gate with a permissive sanity check (non-empty, no whitespace, ≥20 chars, surfaces the "you pasted `Bearer …` by mistake" case explicitly), and updated the Settings UI hint + placeholder to advertise both flavours. Added `provider_test.go` to pin the invariant — the next time HubSpot changes the format, this test fails with a clear signal rather than silently breaking integrations.
+
 ## [2.1.19] — 2026-04-28
 
 ### Fixed

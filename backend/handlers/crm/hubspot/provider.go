@@ -56,11 +56,11 @@ func (p *Provider) ConfigSchema() crm.ConfigSchema {
 	return crm.ConfigSchema{Fields: []crm.ConfigField{
 		{
 			Key:         "token",
-			Label:       "Private App Token",
+			Label:       "Access Token",
 			Type:        "secret",
 			Required:    true,
-			Help:        "HubSpot Private App access token with crm.objects.companies.read scope.",
-			Placeholder: "pat-na1-…",
+			Help:        "HubSpot Private App token (pat-na1-…) or the newer Personal Access Key (opaque, e.g. CiRl…). Either format is accepted; needs the crm.objects.companies.read scope.",
+			Placeholder: "pat-na1-… or CiRl…",
 		},
 		{
 			Key:         "portal_id",
@@ -75,13 +75,38 @@ func (p *Provider) ConfigSchema() crm.ConfigSchema {
 
 var portalIDRe = regexp.MustCompile(`^\d+$`)
 
+// minTokenLen is a generous floor that catches obvious paste-truncation
+// without being prescriptive about HubSpot's actual format. Real Private
+// App tokens are ~70 chars, real Personal Access Keys ~50 chars; 20 is
+// short enough that anything below it is almost certainly a mistake.
+const minTokenLen = 20
+
 func (p *Provider) ValidateConfig(values map[string]string) error {
 	if !portalIDRe.MatchString(values["portal_id"]) {
 		return errors.New("portal_id must be a numeric HubSpot account id")
 	}
-	if !strings.HasPrefix(values["token"], "pat-") {
-		return errors.New("token must be a HubSpot Private App token (pat-…)")
+	token := strings.TrimSpace(values["token"])
+	if token == "" {
+		return errors.New("access token must not be empty")
 	}
+	// Paste-of-Bearer-header is the most common copy-paste mistake;
+	// surface it explicitly instead of failing the length / format
+	// check with a misleading message.
+	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
+		return errors.New("paste the token only — drop the leading 'Bearer '")
+	}
+	if strings.ContainsAny(token, " \t\n\r") {
+		return errors.New("access token must not contain whitespace")
+	}
+	if len(token) < minTokenLen {
+		return errors.New("access token looks too short — paste the full HubSpot key")
+	}
+	// PAI-258: HubSpot ships at least two valid token formats — the old
+	// Private App Token (`pat-na1-…`) and the newer Personal Access Key
+	// (opaque base64-looking string with no stable prefix, e.g.
+	// `CiRldTEtN…`). Both authenticate the same Bearer-token endpoints,
+	// so we accept either rather than gating on a prefix that HubSpot
+	// already proved willing to change.
 	return nil
 }
 
