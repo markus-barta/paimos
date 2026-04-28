@@ -50,6 +50,48 @@ jobs:
         working-directory: backend
         run: go test -count=1 -run '^TestRegression_|^TestAuthzFuzz_' ./handlers/...
 
+      # PAI-270: prove the dev-login route does NOT ship in production
+      # binaries. Build the production binary the same way the
+      # Dockerfile does (no `-tags dev_login`, `-ldflags="-s -w"`)
+      # and assert the dev-only canary strings are absent. `-s -w`
+      # strips debug info but leaves string literals intact, so a
+      # string-search is a reliable post-strip invariant. If a future
+      # refactor accidentally moves dev-login code into a non-tagged
+      # file, one of these greps catches it before the image ships.
+      - name: Backend — dev-login symbol absent in production binary (PAI-270)
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/paimos-prod .
+          # Two canaries: a panic message + a boot-warning, both only
+          # in dev_login_dev.go (the build-tag-gated file). Neither
+          # appears anywhere else in the codebase as a string literal.
+          for canary in \
+              "PAIMOS_DEV_LOGIN_TOKEN must be at least 32 chars" \
+              "DEV-LOGIN ROUTE ENABLED"
+          do
+            if strings /tmp/paimos-prod | grep -qF "$canary"; then
+              echo "::error::production binary contains dev-login canary: $canary"
+              echo "::error::either the build-tag chain is broken or dev-login code leaked into a non-tagged file"
+              exit 1
+            fi
+          done
+          # Inverse sanity check: under -tags dev_login the canaries
+          # MUST be present, otherwise the test gives a false-positive
+          # all-clear when the canary strings themselves are removed.
+          go build -tags dev_login -trimpath -ldflags="-s -w -buildid=" -o /tmp/paimos-dev .
+          for canary in \
+              "PAIMOS_DEV_LOGIN_TOKEN must be at least 32 chars" \
+              "DEV-LOGIN ROUTE ENABLED"
+          do
+            if ! strings /tmp/paimos-dev | grep -qF "$canary"; then
+              echo "::error::dev-build binary is missing canary: $canary"
+              echo "::error::canary string was removed; this test is no longer load-bearing — pick a new canary"
+              exit 1
+            fi
+          done
+          echo "✓ dev-login canaries: absent in prod build, present in dev build"
+
       - name: Anchor index — verify dogfood anchors
         working-directory: backend
         run: go run ./cmd/paimos anchors verify --repo-root .. --index ../.pmo/anchors.json
