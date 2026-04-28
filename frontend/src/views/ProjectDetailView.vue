@@ -117,13 +117,33 @@ const exporting     = ref(false)
 const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, search.query))
 
 // PAI-246: header ⋯ menu (Export / Import / Edit project).
+// PAI-265: panel is teleported to <body> with position:fixed because the
+// teleport-target #app-header-right has `overflow:hidden` (load-bearing for
+// header truncation), which clips an absolute-positioned panel inside it.
 const overflowOpen = ref(false)
-const overflowRoot = ref<HTMLElement | null>(null)
+const overflowTriggerRef = ref<HTMLElement | null>(null)
+const overflowPanelRef = ref<HTMLElement | null>(null)
+const overflowPanelStyle = ref<{ top: string; right: string }>({ top: '0px', right: '0px' })
+function recomputeOverflowPosition() {
+  const el = overflowTriggerRef.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  overflowPanelStyle.value = {
+    top: `${r.bottom + 6}px`,
+    right: `${window.innerWidth - r.right}px`,
+  }
+}
 function closeOverflow() { overflowOpen.value = false }
+function toggleOverflow() {
+  overflowOpen.value = !overflowOpen.value
+  if (overflowOpen.value) void nextTick(recomputeOverflowPosition)
+}
 function onOverflowOutsideClick(e: MouseEvent) {
   if (!overflowOpen.value) return
   const target = e.target as Node
-  if (overflowRoot.value && !overflowRoot.value.contains(target)) closeOverflow()
+  const inTrigger = overflowTriggerRef.value?.contains(target) ?? false
+  const inPanel = overflowPanelRef.value?.contains(target) ?? false
+  if (!inTrigger && !inPanel) closeOverflow()
 }
 function onOverflowKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && overflowOpen.value) closeOverflow()
@@ -181,12 +201,18 @@ onMounted(() => {
   })
   document.addEventListener('mousedown', onOverflowOutsideClick)
   document.addEventListener('keydown', onOverflowKey)
+  // PAI-265: keep teleported panel anchored to trigger across viewport changes.
+  // Capture phase catches scrolls inside nested scrollers (.main-content) too.
+  window.addEventListener('resize', recomputeOverflowPosition)
+  window.addEventListener('scroll', recomputeOverflowPosition, true)
 })
 onUnmounted(() => {
   unbindAuxPanelExclusion?.()
   unbindAuxPanelExclusion = null
   document.removeEventListener('mousedown', onOverflowOutsideClick)
   document.removeEventListener('keydown', onOverflowKey)
+  window.removeEventListener('resize', recomputeOverflowPosition)
+  window.removeEventListener('scroll', recomputeOverflowPosition, true)
 })
 
 function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
@@ -614,30 +640,40 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
              the right cluster doesn't outweigh the global Undo / Edit
              controls. Icon convention here is data-flow oriented:
              Export = data leaves (up arrow), Import = data enters (down). -->
-        <div class="pd-overflow" ref="overflowRoot">
-          <button
-            class="btn btn-ghost btn-sm icon-only"
-            :class="{ active: overflowOpen }"
-            :title="overflowOpen ? 'Close menu' : 'More project actions'"
-            @click="overflowOpen = !overflowOpen"
-          >
-            <AppIcon name="more-horizontal" :size="14" />
+        <button
+          ref="overflowTriggerRef"
+          class="btn btn-ghost btn-sm icon-only pd-overflow-trigger"
+          :class="{ active: overflowOpen }"
+          :title="overflowOpen ? 'Close menu' : 'More project actions'"
+          @click="toggleOverflow"
+        >
+          <AppIcon name="more-horizontal" :size="14" />
+        </button>
+      </Teleport>
+
+      <!-- PAI-265: panel teleported to <body> with position:fixed so it
+           escapes #app-header-right's overflow:hidden clip. -->
+      <Teleport to="body">
+        <div
+          v-if="overflowOpen"
+          ref="overflowPanelRef"
+          class="pd-overflow-menu"
+          role="menu"
+          :style="overflowPanelStyle"
+        >
+          <button class="pd-overflow-item" :disabled="exporting" @click="onMenuExport">
+            <AppIcon v-if="!exporting" name="upload" :size="14" />
+            <AppIcon v-else name="loader" :size="14" class="spin" />
+            <span>{{ exporting ? 'Preparing download…' : 'Export CSV' }}</span>
           </button>
-          <div v-if="overflowOpen" class="pd-overflow-menu" role="menu">
-            <button class="pd-overflow-item" :disabled="exporting" @click="onMenuExport">
-              <AppIcon v-if="!exporting" name="upload" :size="14" />
-              <AppIcon v-else name="loader" :size="14" class="spin" />
-              <span>{{ exporting ? 'Preparing download…' : 'Export CSV' }}</span>
-            </button>
-            <button v-if="isAdmin && canEditProject" class="pd-overflow-item" :disabled="importing" @click="onMenuImport">
-              <AppIcon name="download" :size="14" />
-              <span>Import CSV</span>
-            </button>
-            <button v-if="isAdmin && canEditProject" class="pd-overflow-item" @click="onMenuEdit">
-              <AppIcon name="pencil" :size="14" />
-              <span>Edit project</span>
-            </button>
-          </div>
+          <button v-if="isAdmin && canEditProject" class="pd-overflow-item" :disabled="importing" @click="onMenuImport">
+            <AppIcon name="download" :size="14" />
+            <span>Import CSV</span>
+          </button>
+          <button v-if="isAdmin && canEditProject" class="pd-overflow-item" @click="onMenuEdit">
+            <AppIcon name="pencil" :size="14" />
+            <span>Edit project</span>
+          </button>
         </div>
       </Teleport>
 
@@ -1241,10 +1277,11 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 /* PAI-246: ⋯ overflow menu in the right cluster (Export / Import / Edit). */
-.pd-overflow { position: relative; display: inline-flex; }
-.pd-overflow > .btn.active { background: var(--bg); color: var(--text); }
+.pd-overflow-trigger.active { background: var(--bg); color: var(--text); }
+/* PAI-265: position:fixed + inline top/right (computed from trigger rect)
+   so the panel escapes #app-header-right's overflow:hidden clip. */
 .pd-overflow-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  position: fixed; z-index: 60;
   min-width: 180px;
   padding: .25rem;
   background: var(--bg-card);
