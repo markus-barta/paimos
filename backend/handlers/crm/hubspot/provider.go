@@ -64,8 +64,8 @@ func (p *Provider) ConfigSchema() crm.ConfigSchema {
 			Label:       "Access Token",
 			Type:        "secret",
 			Required:    true,
-			Help:        "HubSpot Private App token (pat-na1-…) or the newer Personal Access Key (opaque, e.g. CiRl…). Either format is accepted; needs the crm.objects.companies.read scope.",
-			Placeholder: "pat-na1-… or CiRl…",
+			Help:        "Use a HubSpot Private App token (pat-na1-…) — that is the only format we have seen authenticate reliably. Personal Access Keys and Service Account keys (Service-Schlüssel) are accepted by this form but have failed against HubSpot in practice; prefer a Private App. Only one scope is required: crm.objects.companies.read — tick that single box and leave everything else off (PAIMOS does not write to HubSpot and does not read contacts, deals, schemas, or sensitive-classified fields).",
+			Placeholder: "pat-na1-…",
 		},
 		{
 			Key:         "portal_id",
@@ -323,6 +323,81 @@ func (p *Provider) TestConnection(ctx context.Context, cfg crm.ProviderConfig) c
 			Lines:   lines,
 		}
 	}
+}
+
+// Search (PAI-266) implements crm.Searcher against HubSpot's
+// /crm/v3/objects/companies/search endpoint. Same `crm.objects.companies.read`
+// scope as ImportRef — no new permission for operators to grant. The
+// `query` field does HubSpot-side full-text search across the default
+// company properties (name, domain, phone, website); we explicitly ask
+// for the props we render in the dropdown so a single request answers
+// the search.
+func (p *Provider) Search(ctx context.Context, query string, limit int, cfg crm.ProviderConfig) ([]crm.SearchHit, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	token := strings.TrimSpace(cfg.Get("token"))
+	if token == "" {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderBadRequest, Msg: "no access token configured"}
+	}
+	body := map[string]any{
+		"query":      query,
+		"limit":      limit,
+		"properties": []string{"name", "domain", "industry", "city", "country"},
+	}
+	enc, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := apiBase + "/crm/v3/objects/companies/search"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(enc)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	cli := &http.Client{Timeout: 10 * time.Second}
+	resp, err := cli.Do(req)
+	if err != nil {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderUnreachable, Msg: "HubSpot API unreachable: " + err.Error()}
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		// fall through
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderAuth, Msg: "HubSpot rejected the token"}
+	default:
+		return nil, &crm.ProviderError{
+			Kind: crm.ErrProviderUnknown,
+			Msg:  fmt.Sprintf("HubSpot search status %d: %s", resp.StatusCode, truncateForLog(raw, 200)),
+		}
+	}
+	var out struct {
+		Total   int              `json:"total"`
+		Results []hubspotCompany `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderUnknown, Msg: "decode HubSpot search response: " + err.Error()}
+	}
+	hits := make([]crm.SearchHit, 0, len(out.Results))
+	for _, c := range out.Results {
+		hits = append(hits, crm.SearchHit{
+			ExternalID:  c.ID,
+			Name:        propString(c.Properties, "name"),
+			Industry:    propString(c.Properties, "industry"),
+			Address:     joinAddress(propString(c.Properties, "city"), propString(c.Properties, "country")),
+			ExternalURL: p.DeepLink(c.ID, cfg),
+		})
+	}
+	return hits, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────

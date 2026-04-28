@@ -13,7 +13,7 @@
  admin has at least one provider enabled + configured.
 -->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -50,6 +50,140 @@ const filtered = computed(() => {
     || c.contact_email.toLowerCase().includes(q),
   )
 })
+
+// ── PAI-266: remote CRM search fan-out ───────────────────────────────
+// Triggered when local filter has 0 hits and the field has been idle
+// 300ms with at least 2 chars entered. Renders below the search input
+// as an overlay; never displaces local card matches above. State is
+// inline here rather than in a separate composable because nothing
+// else in the app needs it.
+type RemoteHit = {
+  external_id: string
+  name: string
+  industry?: string
+  address?: string
+  external_url?: string
+  already_imported?: boolean
+  local_customer_id?: number
+}
+type RemoteProviderResult = {
+  id: string
+  name: string
+  logo_url: string
+  hits: RemoteHit[]
+  error?: string
+}
+
+const remoteResults = ref<RemoteProviderResult[]>([])
+const remoteLoading = ref(false)
+const remoteError = ref('')
+const confirmingHit = ref<{ providerId: string; externalId: string } | null>(null)
+const importingHit = ref<{ providerId: string; externalId: string } | null>(null)
+
+let remoteDebounceTimer: ReturnType<typeof setTimeout> | null = null
+// Sequence counter — most-recent-wins. Each runRemoteSearch captures
+// its seq; if a newer call has bumped it by the time the response
+// resolves, the stale result is discarded. Cheaper than wiring an
+// AbortController through the api wrapper.
+let remoteSeq = 0
+
+const showRemoteDropdown = computed(() => {
+  if (search.value.trim().length < 2) return false
+  if (filtered.value.length > 0) return false
+  if (!enabledProviders.value.length) return false
+  return remoteLoading.value || remoteError.value !== '' || remoteResults.value.length > 0
+})
+
+function clearRemote() {
+  remoteResults.value = []
+  remoteError.value = ''
+  remoteLoading.value = false
+  confirmingHit.value = null
+}
+
+async function runRemoteSearch(q: string) {
+  const seq = ++remoteSeq
+  remoteLoading.value = true
+  remoteError.value = ''
+  try {
+    const url = `/integrations/crm/search?q=${encodeURIComponent(q)}&limit=10`
+    const res = await api.get<{ providers: RemoteProviderResult[] }>(url)
+    if (seq !== remoteSeq) return
+    remoteResults.value = Array.isArray(res?.providers) ? res.providers : []
+  } catch (e: unknown) {
+    if (seq !== remoteSeq) return
+    remoteError.value = errMsg(e, 'Search failed.')
+    remoteResults.value = []
+  } finally {
+    if (seq === remoteSeq) remoteLoading.value = false
+  }
+}
+
+watch([search, filtered], () => {
+  if (remoteDebounceTimer) {
+    clearTimeout(remoteDebounceTimer)
+    remoteDebounceTimer = null
+  }
+  confirmingHit.value = null
+  const q = search.value.trim()
+  // Fast path: hide remote results entirely when local has matches or
+  // the query is too short to be meaningful upstream.
+  if (q.length < 2 || filtered.value.length > 0 || !enabledProviders.value.length) {
+    remoteSeq++ // invalidate any in-flight response
+    clearRemote()
+    return
+  }
+  remoteDebounceTimer = setTimeout(() => { void runRemoteSearch(q) }, 300)
+})
+
+async function importRemoteHit(providerId: string, externalId: string) {
+  importingHit.value = { providerId, externalId }
+  try {
+    const ref_ = externalId
+    const res = await api.post<{ id: number }>('/customers/import', { provider: providerId, ref: ref_ })
+    router.push(`/customers/${res.id}`)
+  } catch (e: unknown) {
+    remoteError.value = errMsg(e, 'Import failed.')
+  } finally {
+    importingHit.value = null
+    confirmingHit.value = null
+  }
+}
+
+function isConfirming(providerId: string, externalId: string): boolean {
+  return confirmingHit.value?.providerId === providerId && confirmingHit.value?.externalId === externalId
+}
+function isImporting(providerId: string, externalId: string): boolean {
+  return importingHit.value?.providerId === providerId && importingHit.value?.externalId === externalId
+}
+
+// Click-outside closes the remote dropdown so it doesn't linger when
+// the user shifts focus elsewhere on the page.
+const searchWrapRef = ref<HTMLElement | null>(null)
+function onDocumentMouseDown(e: MouseEvent) {
+  if (!showRemoteDropdown.value) return
+  const t = e.target as Node
+  if (searchWrapRef.value && !searchWrapRef.value.contains(t)) {
+    clearRemote()
+  }
+}
+onMounted(() => document.addEventListener('mousedown', onDocumentMouseDown))
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDocumentMouseDown)
+  if (remoteDebounceTimer) clearTimeout(remoteDebounceTimer)
+  remoteSeq++ // invalidate any in-flight response
+})
+
+// PAI-266: "Advanced: paste URL/ID" affordance in the dropdown's empty
+// state. Picks the first enabled provider; admin can pick a different
+// one via the Add menu split-button if they have several configured.
+function openAdvancedPaste() {
+  const p = enabledProviders.value[0]
+  if (!p) return
+  importProvider.value = p
+  showImport.value = true
+  clearRemote()
+}
 
 async function load() {
   loading.value = true
@@ -93,9 +227,105 @@ function fmtRate(v: number | null | undefined): string {
   </Teleport>
 
   <div class="cv-toolbar">
-    <div class="cv-search">
-      <AppIcon name="search" :size="14" />
-      <input v-model="search" type="text" placeholder="Search customers, industry, contact…" />
+    <div ref="searchWrapRef" class="cv-search-wrap">
+      <div class="cv-search">
+        <AppIcon name="search" :size="14" />
+        <input v-model="search" type="text" placeholder="Search customers, industry, contact…" />
+        <button
+          v-if="search"
+          type="button"
+          class="cv-search-clear"
+          title="Clear search"
+          @click="search = ''"
+        ><AppIcon name="x" :size="13" /></button>
+      </div>
+      <!-- PAI-266: remote CRM fan-out dropdown. Shows under the search
+           input ONLY when local results are empty + query has 2+ chars. -->
+      <div v-if="showRemoteDropdown" class="cv-remote">
+        <div v-if="remoteLoading && !remoteResults.length" class="cv-remote-status">
+          <AppIcon name="refresh-cw" :size="13" class="spinning" />
+          <span>Searching CRM providers…</span>
+        </div>
+        <div v-if="remoteError" class="cv-remote-status cv-remote-status--error">
+          <AppIcon name="alert-triangle" :size="13" />
+          <span>{{ remoteError }}</span>
+        </div>
+        <div v-for="g in remoteResults" :key="g.id" class="cv-remote-group">
+          <div class="cv-remote-group-head">
+            <img v-if="g.logo_url" :src="g.logo_url" :alt="g.name" class="cv-remote-logo" />
+            <AppIcon v-else name="globe" :size="14" />
+            <span>From {{ g.name }}</span>
+            <span v-if="remoteLoading" class="cv-remote-group-loading">
+              <AppIcon name="refresh-cw" :size="11" class="spinning" />
+            </span>
+          </div>
+          <div v-if="g.error" class="cv-remote-group-error">
+            <AppIcon name="alert-triangle" :size="12" />
+            <span>{{ g.error }}</span>
+          </div>
+          <div v-else-if="!g.hits.length" class="cv-remote-group-empty">No matches.</div>
+          <ul v-else class="cv-remote-hits">
+            <li
+              v-for="h in g.hits"
+              :key="h.external_id"
+              class="cv-remote-hit"
+              :class="{ 'cv-remote-hit--imported': h.already_imported }"
+            >
+              <div class="cv-remote-hit-main">
+                <div class="cv-remote-hit-name">{{ h.name }}</div>
+                <div v-if="h.industry || h.address" class="cv-remote-hit-meta">
+                  <span v-if="h.industry">{{ h.industry }}</span>
+                  <span v-if="h.industry && h.address" class="cv-remote-hit-sep">·</span>
+                  <span v-if="h.address">{{ h.address }}</span>
+                </div>
+              </div>
+              <div class="cv-remote-hit-actions">
+                <RouterLink
+                  v-if="h.already_imported && h.local_customer_id"
+                  :to="`/customers/${h.local_customer_id}`"
+                  class="btn btn-ghost btn-sm"
+                  @click="clearRemote()"
+                >Open in PAIMOS</RouterLink>
+                <template v-else-if="isConfirming(g.id, h.external_id)">
+                  <span class="cv-remote-confirm">Import {{ h.name }}?</span>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="isImporting(g.id, h.external_id)"
+                    @click="importRemoteHit(g.id, h.external_id)"
+                  >
+                    <AppIcon v-if="isImporting(g.id, h.external_id)" name="refresh-cw" :size="13" class="spinning" />
+                    <span v-else>Yes, import</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-sm"
+                    :disabled="isImporting(g.id, h.external_id)"
+                    @click="confirmingHit = null"
+                  >Cancel</button>
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  @click="confirmingHit = { providerId: g.id, externalId: h.external_id }"
+                >Import</button>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <!-- Empty state across all providers — surface the legacy paste flow
+             as a small affordance instead of the primary action. -->
+        <div
+          v-if="!remoteLoading && !remoteError && remoteResults.every((g) => !g.hits.length && !g.error) && enabledProviders.length"
+          class="cv-remote-paste"
+        >
+          <span>No matches in connected CRMs.</span>
+          <button type="button" class="cv-remote-paste-link" @click="openAdvancedPaste">
+            Have a {{ enabledProviders[0].name }} URL or ID? Paste it →
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="isAdmin" class="cv-add-wrapper">
@@ -218,6 +448,99 @@ function fmtRate(v: number | null | undefined): string {
   padding: 0; font-size: 13px;
 }
 .cv-search input:focus { box-shadow: none; }
+.cv-search-clear {
+  background: none; border: none; padding: 2px; cursor: pointer;
+  color: var(--text-muted); display: inline-flex; align-items: center;
+  border-radius: 3px;
+}
+.cv-search-clear:hover { color: var(--text); background: var(--bg); }
+
+/* PAI-266: search-wrap is the positioning context for the remote dropdown.
+   The wrap takes the same flex slot the bare .cv-search used to occupy. */
+.cv-search-wrap { position: relative; flex: 1; max-width: 480px; }
+.cv-search-wrap > .cv-search { max-width: none; width: 100%; }
+
+.cv-remote {
+  position: absolute; top: calc(100% + .35rem); left: 0; right: 0;
+  z-index: 30;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: .35rem;
+  display: flex; flex-direction: column; gap: .25rem;
+  max-height: 60vh; overflow-y: auto;
+}
+.cv-remote-status {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .55rem .65rem; font-size: 12.5px; color: var(--text-muted);
+}
+.cv-remote-status--error { color: #b91c1c; }
+.spinning { animation: cv-spin 1s linear infinite; }
+@keyframes cv-spin { to { transform: rotate(360deg); } }
+
+.cv-remote-group { display: flex; flex-direction: column; gap: .15rem; }
+.cv-remote-group + .cv-remote-group {
+  border-top: 1px solid var(--border);
+  padding-top: .35rem;
+  margin-top: .15rem;
+}
+.cv-remote-group-head {
+  display: flex; align-items: center; gap: .45rem;
+  padding: .35rem .55rem .15rem;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.cv-remote-logo { width: 14px; height: 14px; object-fit: contain; }
+.cv-remote-group-loading { margin-left: auto; color: var(--text-muted); }
+.cv-remote-group-error {
+  display: flex; align-items: center; gap: .4rem;
+  padding: .35rem .65rem; font-size: 12px; color: #b91c1c;
+}
+.cv-remote-group-empty {
+  padding: .35rem .65rem; font-size: 12.5px; color: var(--text-muted);
+  font-style: italic;
+}
+
+.cv-remote-hits { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1px; }
+.cv-remote-hit {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .65rem; border-radius: var(--radius);
+}
+.cv-remote-hit:hover { background: var(--bp-blue-pale); }
+.cv-remote-hit--imported { opacity: .75; }
+.cv-remote-hit--imported:hover { background: var(--bg); opacity: 1; }
+.cv-remote-hit-main { flex: 1; min-width: 0; }
+.cv-remote-hit-name {
+  font-size: 13px; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cv-remote-hit-meta {
+  font-size: 11.5px; color: var(--text-muted);
+  display: flex; gap: .35rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cv-remote-hit-sep { color: var(--border); }
+.cv-remote-hit-actions {
+  flex-shrink: 0; display: flex; align-items: center; gap: .35rem;
+}
+.cv-remote-confirm {
+  font-size: 12px; color: var(--text); margin-right: .25rem;
+}
+.btn-sm { padding: .25rem .55rem; font-size: 12px; }
+
+.cv-remote-paste {
+  border-top: 1px solid var(--border);
+  margin-top: .15rem; padding: .55rem .65rem;
+  display: flex; flex-direction: column; gap: .25rem;
+  font-size: 12px; color: var(--text-muted);
+}
+.cv-remote-paste-link {
+  background: none; border: none; padding: 0;
+  font: inherit; color: var(--bp-blue);
+  cursor: pointer; text-align: left;
+}
+.cv-remote-paste-link:hover { color: var(--bp-blue-dark); text-decoration: underline; }
 
 .cv-add-wrapper { position: relative; display: flex; }
 .cv-add { border-top-right-radius: 0; border-bottom-right-radius: 0; }

@@ -106,6 +106,42 @@ type TestResult struct {
 	Lines   []string `json:"lines,omitempty"`
 }
 
+// Searcher is an OPTIONAL provider hook used by the customer-search field
+// (PAI-266). Providers that implement it expose a name-based company
+// search so the customer dropdown can fan out to configured CRMs when
+// the local DB returns zero hits.
+//
+// Same opt-in side-interface pattern as ConnectionTester: type-assertion
+// in the search handler, so providers without a clean search endpoint
+// (or with prohibitive scope requirements) can opt out without breaking
+// the Provider contract.
+//
+// Implementations MUST use the same scope already required for ImportRef
+// — adding a new scope here would force every operator to re-grant
+// permission. For HubSpot that is `crm.objects.companies.read`, which
+// already covers the search endpoint.
+type Searcher interface {
+	Search(ctx context.Context, query string, limit int, cfg ProviderConfig) ([]SearchHit, error)
+}
+
+// SearchHit is one row in a provider search response. The same field set
+// the customer dropdown needs to render a row + import on click. Mirrors
+// the subset of CustomerImport fields that are useful pre-import; the
+// full record is fetched via ImportRef on accept.
+type SearchHit struct {
+	ExternalID  string `json:"external_id"`
+	Name        string `json:"name"`
+	Industry    string `json:"industry,omitempty"`
+	Address     string `json:"address,omitempty"`
+	ExternalURL string `json:"external_url,omitempty"`
+	// AlreadyImported + LocalCustomerID are filled in by the search
+	// handler after the fan-out, by joining hits against the local
+	// `customers` table on (provider_id, external_id). The provider
+	// itself never sets these — leave them zero-valued.
+	AlreadyImported bool  `json:"already_imported,omitempty"`
+	LocalCustomerID int64 `json:"local_customer_id,omitempty"`
+}
+
 // ConfigSchema is the set of fields a provider needs from the admin to
 // function. Rendered by the admin Integrations UI (PAI-105).
 type ConfigSchema struct {

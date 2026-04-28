@@ -22,6 +22,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -278,6 +280,190 @@ func PutProviderEnabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]bool{"enabled": rec.Enabled})
+}
+
+// ── Customer: search across enabled providers (PAI-266) ─────────────
+
+// searchProviderResult is one provider's slot in the fan-out response.
+// Either Hits is populated (success — possibly empty) or Error is a
+// short user-facing string. Per-provider isolation: one broken
+// integration does not kill the whole dropdown.
+type searchProviderResult struct {
+	ID      string          `json:"id"`
+	Name    string          `json:"name"`
+	LogoURL string          `json:"logo_url"`
+	Hits    []SearchHit     `json:"hits"`
+	Error   string          `json:"error,omitempty"`
+}
+
+type searchResponse struct {
+	Providers []searchProviderResult `json:"providers"`
+}
+
+// SearchProviders handles GET /api/integrations/crm/search?q=&limit=. Fans
+// out to every enabled+configured provider that implements Searcher in
+// parallel; per-provider errors land in that provider's slot rather
+// than aborting the response. After the fan-out, hits are joined
+// against the local customers table on (provider_id, external_id) so
+// rows that already exist locally are flagged AlreadyImported with
+// their LocalCustomerID, letting the dropdown render an "Open in
+// PAIMOS" link instead of an Import action.
+func SearchProviders(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		jsonOK(w, searchResponse{Providers: []searchProviderResult{}})
+		return
+	}
+	limit := 10
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 && n <= 50 {
+			limit = n
+		}
+	}
+
+	// Collect the set of enabled+configured Searcher providers.
+	type targetProvider struct {
+		p      Provider
+		s      Searcher
+		merged map[string]string
+	}
+	var targets []targetProvider
+	for _, p := range List() {
+		s, ok := p.(Searcher)
+		if !ok {
+			continue
+		}
+		rec, err := LoadConfig(p.ID())
+		if err != nil {
+			log.Printf("crm/search: LoadConfig %s: %v", p.ID(), err)
+			continue
+		}
+		if !rec.Enabled {
+			continue
+		}
+		merged := rec.MergedValues()
+		if !schemaSatisfied(p.ConfigSchema(), merged) {
+			continue
+		}
+		targets = append(targets, targetProvider{p: p, s: s, merged: merged})
+	}
+
+	// Bound the whole fan-out — a stuck upstream must not pin the
+	// dropdown. Per-provider HTTP clients have their own tighter
+	// timeout (HubSpot uses 10s), this is the outer ceiling.
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+
+	results := make([]searchProviderResult, len(targets))
+	var wg sync.WaitGroup
+	for i, t := range targets {
+		results[i] = searchProviderResult{
+			ID:      t.p.ID(),
+			Name:    t.p.Name(),
+			LogoURL: t.p.LogoURL(),
+			Hits:    []SearchHit{},
+		}
+		wg.Add(1)
+		go func(idx int, t targetProvider) {
+			defer wg.Done()
+			hits, err := t.s.Search(ctx, q, limit, ProviderConfig{Values: t.merged})
+			if err != nil {
+				results[idx].Error = providerSearchErrorString(t.p.ID(), err)
+				return
+			}
+			if hits != nil {
+				results[idx].Hits = hits
+			}
+		}(i, t)
+	}
+	wg.Wait()
+
+	// Mark already-imported hits via a single grouped query keyed on
+	// (provider_id, external_id). Cheaper than N round-trips per hit.
+	annotateAlreadyImported(results)
+
+	jsonOK(w, searchResponse{Providers: results})
+}
+
+// providerSearchErrorString maps a Provider.Search error into the short
+// user-facing string the dropdown renders inline next to that provider's
+// group. Auth failures get a stable label so the UI can surface a "fix
+// integration settings" link without parsing the provider's prose.
+func providerSearchErrorString(providerID string, err error) string {
+	var pe *ProviderError
+	if errors.As(err, &pe) {
+		switch pe.Kind {
+		case ErrProviderAuth:
+			return providerID + ": authentication failed (check token / scope)"
+		case ErrProviderUnreachable:
+			return providerID + ": upstream unreachable"
+		case ErrProviderBadRequest:
+			return providerID + ": " + pe.Msg
+		default:
+			return providerID + ": " + pe.Msg
+		}
+	}
+	return providerID + ": " + err.Error()
+}
+
+// annotateAlreadyImported flags hits that match an existing customer row
+// on (provider_id, external_id) and populates LocalCustomerID so the UI
+// can deep-link into the existing detail page.
+func annotateAlreadyImported(groups []searchProviderResult) {
+	// Build (provider_id, external_id) → []*SearchHit so we can stamp the
+	// match back onto the originating hit cheaply after the query.
+	type key struct{ providerID, externalID string }
+	idx := map[key][]*SearchHit{}
+	for gi := range groups {
+		for hi := range groups[gi].Hits {
+			h := &groups[gi].Hits[hi]
+			if h.ExternalID == "" {
+				continue
+			}
+			k := key{groups[gi].ID, h.ExternalID}
+			idx[k] = append(idx[k], h)
+		}
+	}
+	if len(idx) == 0 {
+		return
+	}
+	// Per-provider OR-of-IN clauses: one query per provider that has
+	// hits. Avoids building a giant cross-provider IN clause + lets
+	// SQLite use the (external_provider, external_id) index if present.
+	provHits := map[string][]string{}
+	for k := range idx {
+		provHits[k.providerID] = append(provHits[k.providerID], k.externalID)
+	}
+	for prov, ids := range provHits {
+		if len(ids) == 0 {
+			continue
+		}
+		args := make([]any, 0, len(ids)+1)
+		args = append(args, prov)
+		ph := make([]string, len(ids))
+		for i, id := range ids {
+			ph[i] = "?"
+			args = append(args, id)
+		}
+		query := "SELECT id, external_id FROM customers WHERE external_provider = ? AND external_id IN (" + strings.Join(ph, ",") + ")"
+		rows, err := db.DB.Query(query, args...)
+		if err != nil {
+			log.Printf("crm/search: dedup query %s: %v", prov, err)
+			continue
+		}
+		for rows.Next() {
+			var id int64
+			var extID string
+			if err := rows.Scan(&id, &extID); err != nil {
+				continue
+			}
+			for _, h := range idx[key{prov, extID}] {
+				h.AlreadyImported = true
+				h.LocalCustomerID = id
+			}
+		}
+		rows.Close()
+	}
 }
 
 // ── Customer: import via provider ───────────────────────────────────

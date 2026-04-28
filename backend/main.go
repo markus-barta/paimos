@@ -424,6 +424,8 @@ func main() {
 			r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/config", crm.PutProviderConfig)
 			r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/enabled", crm.PutProviderEnabled)
 			r.With(auth.RequireAdmin).Post("/integrations/crm/{id}/test", crm.TestProviderConnection)
+			// PAI-266: name-based company search across enabled providers.
+			r.With(auth.RequireAdmin).Get("/integrations/crm/search", crm.SearchProviders)
 
 			// Customers (PAI-53). CRM-agnostic CRUD; manual customers
 			// fully supported (no provider required).
