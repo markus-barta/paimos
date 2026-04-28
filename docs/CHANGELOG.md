@@ -5,6 +5,13 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.19] — 2026-04-28
+
+### Fixed
+
+- [PAI-255](https://pm.barta.cm/projects/6/issues/PAI-255) — Hovering a row in the global-search dropdown no longer scrolls the page and hides `AppHeader`. Root cause: the `activeIndex` watcher in `SearchPalette.vue` called `el.scrollIntoView({ block: 'nearest' })`, which walks the DOM looking for any scrollable ancestor; when the active row was already mostly visible the browser scrolled the page (not the palette), pushing the docked header off-screen. Replaced with a manual `palette.scrollTop` adjustment scoped strictly to the palette's own scroll container, so hover/keyboard navigation can never affect the page scroll.
+- [PAI-256](https://pm.barta.cm/projects/6/issues/PAI-256) — `AppHeader` "updated N ago" prefix no longer butts against the issue-key chip on the right. Vue's default template-whitespace rule strips the source-level space between `<span class="ah-meta-prefix">` and `<RouterLink class="ah-meta-link">` when they're on different lines, so a `margin-right` on `.ah-meta-prefix` (0.35rem) restores the visual gap without breaking the Tier 2 `display: none` rule that hides the prefix entirely on narrow `.main` widths.
+
 ## [2.1.18] — 2026-04-28
 
 ### Added

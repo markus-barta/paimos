@@ -389,6 +389,15 @@ textarea:focus {
   white-space: nowrap;
   font-weight: 500;
 }
+/* PAI-256: Vue's default template-whitespace rule strips the space between
+   `<span class="ah-meta-prefix">` and `<RouterLink class="ah-meta-link">`
+   when they sit on different lines, so the prefix runs straight into the
+   issue-key chip. Give the prefix a small right-margin so the two read
+   as separate elements. (Tier 2 hides the prefix entirely; the margin
+   collapses with display:none, no extra padding leaks through.) */
+.ah-meta-prefix {
+  margin-right: 0.35rem;
+}
 .ah-meta-link {
   color: var(--text);
   text-decoration: none;

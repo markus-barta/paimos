@@ -131,11 +131,27 @@ function onKeydown(e: KeyboardEvent) {
 // Exposed so AppHeader can call directly from its keydown handler
 defineExpose({ handleKeydown: onKeydown })
 
-// Scroll active item into view
+// Keep the active item in view inside the palette's own scroll container.
+// PAI-255: we used to call `el.scrollIntoView({ block: 'nearest' })`, which
+// walks the DOM looking for any scrollable ancestor. When the active row
+// was already mostly visible, the browser would scroll the *page* (not
+// the palette), pushing the AppHeader off-screen on hover. Scoping the
+// scroll to `paletteRef` itself guarantees we never affect the page.
 watch(activeIndex, () => {
   nextTick(() => {
-    const el = paletteRef.value?.querySelector('.sp-item--active')
-    el?.scrollIntoView({ block: 'nearest' })
+    const palette = paletteRef.value
+    if (!palette) return
+    const el = palette.querySelector<HTMLElement>('.sp-item--active')
+    if (!el) return
+    const elTop = el.offsetTop
+    const elBottom = elTop + el.offsetHeight
+    const viewTop = palette.scrollTop
+    const viewBottom = viewTop + palette.clientHeight
+    if (elTop < viewTop) {
+      palette.scrollTop = elTop
+    } else if (elBottom > viewBottom) {
+      palette.scrollTop = elBottom - palette.clientHeight
+    }
   })
 })
 </script>
