@@ -116,7 +116,12 @@ deploy::run() {
   deploy::ssh "mkdir -p $backup && cp $COMPOSE_DIR/docker-compose.yml $backup/docker-compose.yml.pre"
   case "$STORAGE" in
     bind)
-      deploy::ssh "tar -czf $backup/data.tar.gz -C $(dirname "$DATA_PATH") $(basename "$DATA_PATH")"
+      # Use the same alpine-in-docker trick the volume path uses, so the
+      # tar runs as root inside the container regardless of host UIDs.
+      # Plain `tar` on the host fails on files the container writes with
+      # restrictive perms (e.g. data/.secret-key mode 0600 owned by the
+      # container UID), and we don't want to require sudo on the host.
+      deploy::ssh "docker run --rm -v $(dirname "$DATA_PATH"):/src:ro -v $backup:/dst alpine sh -c 'cd /src && tar -czf /dst/data.tar.gz $(basename "$DATA_PATH")'"
       ;;
     volume)
       # Throwaway alpine tar against a read-only volume mount — avoids sudo
