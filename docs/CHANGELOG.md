@@ -5,6 +5,13 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-04-29
+
+### Added — TODO fill in before committing
+
+- feat(customer): Contact entity + metadata expansion + HubSpot extras (PAI-273)
+- feat(customer-detail): identity slab + sticky side rail (PAI-272)
+
 ## [2.3.0] — 2026-04-28
 
 ### Added
