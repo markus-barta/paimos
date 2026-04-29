@@ -7,10 +7,16 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [2.4.0] — 2026-04-29
 
-### Added — TODO fill in before committing
+### Added
 
-- feat(customer): Contact entity + metadata expansion + HubSpot extras (PAI-273)
-- feat(customer-detail): identity slab + sticky side rail (PAI-272)
+- [PAI-272](https://pm.barta.cm/projects/6/issues/PAI-272) — **CustomerDetailView redesign.** Identity slab on the left of the hero (monogram tile with `--bp-blue` corner-mark accent + name + industry chip + provider link) and a stat / sync rail on the right (€/h + €/LP cards over a ghost Sync row + ⋯ overflow menu collapsing Edit / Delete). Asymmetric body grid splits primary content (Contacts → Projects → Documents) from a sticky About / Notes / Sync provenance side rail (8/4 ≥1024px, 7/5 768–1023px, single-column <768px). Empty states share a dashed-box vocabulary with centered Lucide icon + one-line copy + CTA link. The ⋯ menu teleports to `<body>` to escape the existing `overflow:hidden` clipping pattern (mirrors PAI-246/265). `dev_viewer` correctly hides Sync, Edit/Delete, the "New project" CTA, and the contact-row hover pencil.
+- [PAI-273](https://pm.barta.cm/projects/6/issues/PAI-273) — **Contact (Ansprechpartner) entity + customer metadata expansion.** New `contacts` table holds many contacts per customer (one `is_primary` at a time, enforced in transactional code); CRUD endpoints — `GET|POST /customers/:id/contacts`, `GET|PUT|DELETE /contacts/:id`, atomic `POST /contacts/:id/promote-primary`. `customers` extends with `website` / `domain` / `vat_id` / `employee_count` / `annual_revenue_cents` / `description` / `phone` / billing_address quartet / visit_address pair — all nullable, no destructive migration. M87 backfills a primary contact for every customer with non-empty legacy `contact_name` / `contact_email`. Read-compat: `GET /customers/:id` continues to expose `contact_name` / `contact_email`, populated from the primary contact when present. Write-compat: `PUT /customers/:id` carrying legacy fields routes the writes back into the primary contact (creating one when missing) — v1 callers keep working unmodified for one release.
+- [PAI-273](https://pm.barta.cm/projects/6/issues/PAI-273) — **HubSpot extended sync.** Companies fetch now requests the full property set (`domain, website, numberofemployees, annualrevenue, description, phone, address, address2, city, state, zip, country`) and maps onto the new customer columns during Import + Sync. Associated contacts are pulled via `/crm/v3/objects/companies/{id}/associations/contacts` followed by `/crm/v3/objects/contacts/batch/read` (paginated in 100-id chunks) and upserted into the `contacts` table keyed on `(external_provider, external_id)` — re-syncs are idempotent. The contacts call soft-fails: a slow or rate-limited contacts endpoint never fails the whole company fetch. The first associated contact takes the primary slot only when the customer has no primary on the PAIMOS side (admins set primaries; we only fill the slot when empty).
+- **CustomerDetailView wires the slots PAI-272 left open.** The Contacts card renders a real multi-contact list with the primary-contact pill badge, Ansprechpartner-Funktion (role) label per row, hover-revealed promote-primary (★) / edit / delete actions, and an Add-contact modal. The About card surfaces the new metadata as icon-led data-driven rows (`link` website, `phone`, `hash` VAT, `users` employees, `trending-up` revenue) — each row hides when empty, so sparsely-populated customers stay clean and additive fields don't re-flow the layout. Description renders as a paragraph below the row list with a separator.
+
+### Changed
+
+- DocumentsSection's empty state restyled to the dashed-box pattern (centered icon, one-line copy, "click to upload" CTA when writable) so all three customer-detail empty states share a vocabulary.
 
 ## [2.3.0] — 2026-04-28
 
