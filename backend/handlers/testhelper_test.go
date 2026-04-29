@@ -340,6 +340,21 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Patch("/incidents/{id}", handlers.UpdateIncident)
 			r.With(auth.RequireAdmin).Delete("/incidents/{id}", handlers.DeleteIncident)
 
+			// Customers + contacts (PAI-53 / PAI-273). buildRouter is
+			// intentionally lighter than main.go but anything a handler
+			// test needs to drive end-to-end has to be wired here.
+			r.Get("/customers", handlers.ListCustomers)
+			r.Get("/customers/{id}", handlers.GetCustomer)
+			r.With(auth.RequireAdmin).Post("/customers", handlers.CreateCustomer)
+			r.With(auth.RequireAdmin).Put("/customers/{id}", handlers.UpdateCustomer)
+			r.With(auth.RequireAdmin).Delete("/customers/{id}", handlers.DeleteCustomer)
+			r.Get("/customers/{id}/contacts", handlers.ListCustomerContacts)
+			r.With(auth.RequireAdmin).Post("/customers/{id}/contacts", handlers.CreateCustomerContact)
+			r.Get("/contacts/{id}", handlers.GetContact)
+			r.With(auth.RequireAdmin).Put("/contacts/{id}", handlers.UpdateContact)
+			r.With(auth.RequireAdmin).Delete("/contacts/{id}", handlers.DeleteContact)
+			r.With(auth.RequireAdmin).Post("/contacts/{id}/promote-primary", handlers.PromoteContactPrimary)
+
 			// OpenAPI
 			r.Get("/openapi.json", handlers.GetOpenAPI)
 

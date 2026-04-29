@@ -3751,6 +3751,75 @@ func migrate(db *sql.DB) error {
 		{86, []string{
 			`ALTER TABLE ai_settings ADD COLUMN api_key_encrypted BLOB`,
 		}},
+
+		// M87: PAI-273 — Customer model expansion. Three things happen
+		// in one migration to keep the schema atomic:
+		//
+		//   A. New `contacts` table (Ansprechpartner entity). One customer
+		//      can hold multiple contacts; exactly one is_primary at a
+		//      time, enforced at the application layer (the existing
+		//      partial-unique-index pattern doesn't cover SQLite cleanly).
+		//      external_* columns let HubSpot Contact sync upsert by
+		//      (provider, external_id).
+		//
+		//   B. New customer metadata columns (website / vat / employees /
+		//      revenue / phone / billing & visit address quartets). All
+		//      nullable / empty-default — no destructive change, no
+		//      backfill needed.
+		//
+		//   C. Data backfill: every customer with non-empty contact_name
+		//      OR contact_email gets a contacts row with is_primary=1.
+		//      The legacy columns stay populated for one release as a
+		//      read-fallback; removal lands in a follow-up after prod
+		//      logs show zero fallback hits.
+		{87, []string{
+			`CREATE TABLE contacts (
+				id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+				customer_id         INTEGER NOT NULL,
+				name                TEXT NOT NULL DEFAULT '',
+				email               TEXT NOT NULL DEFAULT '',
+				phone               TEXT NOT NULL DEFAULT '',
+				role                TEXT NOT NULL DEFAULT '',
+				is_primary          INTEGER NOT NULL DEFAULT 0,
+				notes               TEXT NOT NULL DEFAULT '',
+				external_id         TEXT,
+				external_provider   TEXT,
+				external_url        TEXT,
+				synced_at           TEXT,
+				created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+				updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')),
+				FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+			)`,
+			`CREATE INDEX idx_contacts_customer ON contacts(customer_id)`,
+			`CREATE UNIQUE INDEX idx_contacts_external ON contacts(external_provider, external_id)
+				WHERE external_provider IS NOT NULL AND external_id IS NOT NULL`,
+
+			`ALTER TABLE customers ADD COLUMN website                  TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN domain                   TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN vat_id                   TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN employee_count           INTEGER`,
+			`ALTER TABLE customers ADD COLUMN annual_revenue_cents     INTEGER`,
+			`ALTER TABLE customers ADD COLUMN description              TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN phone                    TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN billing_address_street   TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN billing_address_city     TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN billing_address_zip      TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN billing_address_country  TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN visit_address_street     TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN visit_address_zip        TEXT NOT NULL DEFAULT ''`,
+
+			// Backfill: every customer that has at least one inline
+			// contact field gets a primary Contact row mirroring those
+			// fields. We deliberately don't NULL the legacy columns —
+			// the read-fallback in GetCustomer relies on them.
+			`INSERT INTO contacts (customer_id, name, email, is_primary, created_at, updated_at)
+			   SELECT c.id, c.contact_name, c.contact_email, 1,
+			          COALESCE(c.created_at, strftime('%Y-%m-%d %H:%M:%S','now')),
+			          COALESCE(c.updated_at, strftime('%Y-%m-%d %H:%M:%S','now'))
+			   FROM customers c
+			  WHERE (c.contact_name IS NOT NULL AND c.contact_name <> '')
+			     OR (c.contact_email IS NOT NULL AND c.contact_email <> '')`,
+		}},
 	}
 
 	for _, m := range migrations {

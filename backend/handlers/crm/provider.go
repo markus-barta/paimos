@@ -186,6 +186,12 @@ func (c ProviderConfig) Get(key string) string {
 // CustomerImport is the field set a provider can populate when
 // importing a customer for the first time. Maps 1:1 to the PAIMOS
 // customer create payload — empty strings = leave unset.
+//
+// PAI-273: extended with website / VAT / employee / revenue /
+// description / phone + the visit-address quartet. Providers fill in
+// only the fields their CRM exposes; the rest stay zero-valued and the
+// import handler treats them as "unset". The contacts slice carries
+// per-customer contact records to upsert on import.
 type CustomerImport struct {
 	Name         string
 	ContactName  string
@@ -193,9 +199,38 @@ type CustomerImport struct {
 	Address      string
 	Country      string
 	Industry     string
+	// PAI-273 metadata expansion.
+	Website              string
+	Domain               string
+	VATID                string
+	EmployeeCount        *int64
+	AnnualRevenueCents   *int64
+	Description          string
+	Phone                string
+	VisitAddressStreet   string
+	VisitAddressZip      string
 	// ExternalID + ExternalURL are filled in by the provider; the
 	// generic import handler combines them with the provider's ID()
 	// before calling the customer-create flow.
+	ExternalID  string
+	ExternalURL string
+	// Contacts is the set of Ansprechpartner the provider pulled from
+	// the upstream record. The first entry (or the one with
+	// IsPrimary=true) becomes the customer's primary contact. Empty
+	// slice = no contacts pulled, leaving the customer contact-less
+	// until the user adds one manually.
+	Contacts []ContactImport
+}
+
+// ContactImport mirrors the subset of `models.Contact` a provider can
+// populate during import / sync. ExternalID + the provider id (set by
+// the handler from p.ID()) make subsequent re-syncs idempotent.
+type ContactImport struct {
+	Name        string
+	Email       string
+	Phone       string
+	Role        string
+	IsPrimary   bool
 	ExternalID  string
 	ExternalURL string
 }
@@ -204,6 +239,12 @@ type CustomerImport struct {
 // in pointer form so an unset (nil) field is left untouched on the
 // existing customer row. PAIMOS-only fields like rate_hourly never
 // appear here — the sync handler structurally cannot overwrite them.
+//
+// PAI-273: same metadata expansion as CustomerImport. Contacts is a
+// slice (not a pointer) — empty means "the provider didn't pull
+// contacts this time, leave them alone"; non-nil means "here is the
+// authoritative current set, upsert by external_id and let the handler
+// reconcile the primary flag".
 type PartialUpdate struct {
 	Name         *string
 	ContactName  *string
@@ -211,5 +252,15 @@ type PartialUpdate struct {
 	Address      *string
 	Country      *string
 	Industry     *string
-	ExternalURL  *string // deep-link can change if the external system migrates IDs
+	Website              *string
+	Domain               *string
+	VATID                *string
+	EmployeeCount        *int64
+	AnnualRevenueCents   *int64
+	Description          *string
+	Phone                *string
+	VisitAddressStreet   *string
+	VisitAddressZip      *string
+	ExternalURL          *string // deep-link can change if the external system migrates IDs
+	Contacts             []ContactImport
 }

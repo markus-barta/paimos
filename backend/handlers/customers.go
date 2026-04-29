@@ -16,9 +16,11 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -35,19 +37,22 @@ import (
 // Provider-driven import / sync endpoints live in handlers/crm (PAI-103);
 // this file is the manual-customer path that the no-CRM audience uses
 // directly and that the plugin layer also calls into after `ImportRef`.
+//
+// PAI-273 expansion:
+//   - Customer carries new metadata fields (website / VAT / employees /
+//     revenue / phone / billing & visit address quartets); CRUD handles
+//     them in the same shape as the existing fields.
+//   - The legacy ContactName / ContactEmail / Address / Country columns
+//     stay alive for one release as a read-compat shim. GetCustomer /
+//     ListCustomers populate them from the primary `contacts` row when
+//     one exists, falling through to the legacy column otherwise. The
+//     write path on PUT mirrors any legacy-field change back into the
+//     primary contact (creating one when missing) so callers stuck on
+//     the v1 shape keep working.
+//   - Contact CRUD lives in handlers/contacts.go.
 
 func ListCustomers(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.DB.Query(`
-		SELECT c.id, c.name, c.external_id, c.external_url, c.external_provider,
-		       c.synced_at, c.contact_name, c.contact_email, c.address, c.country,
-		       c.industry, c.rate_hourly, c.rate_lp, c.notes,
-		       c.created_at, c.updated_at,
-		       COUNT(p.id)
-		FROM customers c
-		LEFT JOIN projects p ON p.customer_id = c.id AND p.status != 'deleted'
-		GROUP BY c.id
-		ORDER BY c.name COLLATE NOCASE
-	`)
+	rows, err := db.DB.Query(customerListSelect())
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -61,6 +66,7 @@ func ListCustomers(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "scan failed", http.StatusInternalServerError)
 			return
 		}
+		applyPrimaryContactCompat(c)
 		out = append(out, *c)
 	}
 	jsonOK(w, out)
@@ -87,14 +93,31 @@ type customerCreateBody struct {
 	ExternalID       *string  `json:"external_id"`
 	ExternalURL      *string  `json:"external_url"`
 	ExternalProvider *string  `json:"external_provider"`
-	ContactName      string   `json:"contact_name"`
-	ContactEmail     string   `json:"contact_email"`
-	Address          string   `json:"address"`
-	Country          string   `json:"country"`
-	Industry         string   `json:"industry"`
-	RateHourly       *float64 `json:"rate_hourly"`
-	RateLp           *float64 `json:"rate_lp"`
-	Notes            string   `json:"notes"`
+	// PAI-273 read-compat: a v1 caller can still send these; we pass
+	// them through to the customers row AND seed a primary contact
+	// downstream of the insert so future GETs read from the new model.
+	ContactName  string `json:"contact_name"`
+	ContactEmail string `json:"contact_email"`
+	Address      string `json:"address"`
+	Country      string `json:"country"`
+	Industry     string `json:"industry"`
+	// PAI-273 metadata expansion.
+	Website                string   `json:"website"`
+	Domain                 string   `json:"domain"`
+	VATID                  string   `json:"vat_id"`
+	EmployeeCount          *int64   `json:"employee_count"`
+	AnnualRevenueCents     *int64   `json:"annual_revenue_cents"`
+	Description            string   `json:"description"`
+	Phone                  string   `json:"phone"`
+	BillingAddressStreet   string   `json:"billing_address_street"`
+	BillingAddressCity     string   `json:"billing_address_city"`
+	BillingAddressZip      string   `json:"billing_address_zip"`
+	BillingAddressCountry  string   `json:"billing_address_country"`
+	VisitAddressStreet     string   `json:"visit_address_street"`
+	VisitAddressZip        string   `json:"visit_address_zip"`
+	RateHourly             *float64 `json:"rate_hourly"`
+	RateLp                 *float64 `json:"rate_lp"`
+	Notes                  string   `json:"notes"`
 }
 
 func CreateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -112,17 +135,41 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO customers(
 			name, external_id, external_url, external_provider, synced_at,
 			contact_name, contact_email, address, country, industry,
+			website, domain, vat_id, employee_count, annual_revenue_cents,
+			description, phone,
+			billing_address_street, billing_address_city, billing_address_zip, billing_address_country,
+			visit_address_street, visit_address_zip,
 			rate_hourly, rate_lp, notes
-		) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?,
+		          ?, ?, ?, ?, ?,
+		          ?, ?,
+		          ?, ?, ?, ?,
+		          ?, ?,
+		          ?, ?, ?)
 	`,
 		body.Name, body.ExternalID, body.ExternalURL, body.ExternalProvider,
 		body.ContactName, body.ContactEmail, body.Address, body.Country, body.Industry,
+		body.Website, body.Domain, body.VATID, body.EmployeeCount, body.AnnualRevenueCents,
+		body.Description, body.Phone,
+		body.BillingAddressStreet, body.BillingAddressCity, body.BillingAddressZip, body.BillingAddressCountry,
+		body.VisitAddressStreet, body.VisitAddressZip,
 		body.RateHourly, body.RateLp, body.Notes,
 	)
 	if handleDBError(w, err, "customer") {
 		return
 	}
 	id, _ := res.LastInsertId()
+
+	// PAI-273 write-compat: if the v1 caller seeded inline contact
+	// fields, mirror them into a primary `contacts` row so future GETs
+	// read from the new model.
+	if strings.TrimSpace(body.ContactName) != "" || strings.TrimSpace(body.ContactEmail) != "" {
+		_, _ = db.DB.Exec(`
+			INSERT INTO contacts(customer_id, name, email, is_primary)
+			VALUES (?, ?, ?, 1)
+		`, id, body.ContactName, body.ContactEmail)
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, getCustomerByID(id))
 }
@@ -140,9 +187,22 @@ type customerUpdateBody struct {
 	Address          *string  `json:"address"`
 	Country          *string  `json:"country"`
 	Industry         *string  `json:"industry"`
-	RateHourly       *float64 `json:"rate_hourly"`
-	RateLp           *float64 `json:"rate_lp"`
-	Notes            *string  `json:"notes"`
+	Website                *string  `json:"website"`
+	Domain                 *string  `json:"domain"`
+	VATID                  *string  `json:"vat_id"`
+	EmployeeCount          *int64   `json:"employee_count"`
+	AnnualRevenueCents     *int64   `json:"annual_revenue_cents"`
+	Description            *string  `json:"description"`
+	Phone                  *string  `json:"phone"`
+	BillingAddressStreet   *string  `json:"billing_address_street"`
+	BillingAddressCity     *string  `json:"billing_address_city"`
+	BillingAddressZip      *string  `json:"billing_address_zip"`
+	BillingAddressCountry  *string  `json:"billing_address_country"`
+	VisitAddressStreet     *string  `json:"visit_address_street"`
+	VisitAddressZip        *string  `json:"visit_address_zip"`
+	RateHourly             *float64 `json:"rate_hourly"`
+	RateLp                 *float64 `json:"rate_lp"`
+	Notes                  *string  `json:"notes"`
 }
 
 func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -185,6 +245,19 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 			address           = COALESCE(?, address),
 			country           = COALESCE(?, country),
 			industry          = COALESCE(?, industry),
+			website                 = COALESCE(?, website),
+			domain                  = COALESCE(?, domain),
+			vat_id                  = COALESCE(?, vat_id),
+			employee_count          = CASE WHEN ? IS NOT NULL THEN ? ELSE employee_count END,
+			annual_revenue_cents    = CASE WHEN ? IS NOT NULL THEN ? ELSE annual_revenue_cents END,
+			description             = COALESCE(?, description),
+			phone                   = COALESCE(?, phone),
+			billing_address_street  = COALESCE(?, billing_address_street),
+			billing_address_city    = COALESCE(?, billing_address_city),
+			billing_address_zip     = COALESCE(?, billing_address_zip),
+			billing_address_country = COALESCE(?, billing_address_country),
+			visit_address_street    = COALESCE(?, visit_address_street),
+			visit_address_zip       = COALESCE(?, visit_address_zip),
 			rate_hourly       = CASE WHEN ? IS NOT NULL THEN ? ELSE rate_hourly END,
 			rate_lp           = CASE WHEN ? IS NOT NULL THEN ? ELSE rate_lp END,
 			notes             = COALESCE(?, notes),
@@ -196,6 +269,12 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 		body.ExternalURL, body.ExternalURL,
 		body.ExternalProvider, body.ExternalProvider,
 		body.ContactName, body.ContactEmail, body.Address, body.Country, body.Industry,
+		body.Website, body.Domain, body.VATID,
+		body.EmployeeCount, body.EmployeeCount,
+		body.AnnualRevenueCents, body.AnnualRevenueCents,
+		body.Description, body.Phone,
+		body.BillingAddressStreet, body.BillingAddressCity, body.BillingAddressZip, body.BillingAddressCountry,
+		body.VisitAddressStreet, body.VisitAddressZip,
 		body.RateHourly, body.RateHourly,
 		body.RateLp, body.RateLp,
 		body.Notes, now, id,
@@ -203,6 +282,16 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 	if handleDBError(w, err, "customer") {
 		return
 	}
+
+	// PAI-273 write-compat: any v1 caller writing contact_name /
+	// contact_email / address (the city portion) routes to the primary
+	// contact. Address & country don't map cleanly to the new
+	// (street/city/zip/country) shape, so we leave them on the customer
+	// row only — those callers are pre-PAI-273 and won't break.
+	if body.ContactName != nil || body.ContactEmail != nil {
+		mirrorLegacyContactToPrimary(id, body.ContactName, body.ContactEmail)
+	}
+
 	c := getCustomerByID(id)
 	if c == nil {
 		jsonError(w, "not found", http.StatusNotFound)
@@ -251,12 +340,48 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// customerListSelect / customerSelectByID: kept as functions so the column
+// list lives in one place. The trailing aggregate column is `project_count`
+// in both.
+func customerListSelect() string {
+	return `
+		SELECT ` + customerSelectColumns() + `,
+		       COUNT(p.id)
+		FROM customers c
+		LEFT JOIN projects p ON p.customer_id = c.id AND p.status != 'deleted'
+		GROUP BY c.id
+		ORDER BY c.name COLLATE NOCASE
+	`
+}
+
+// customerSelectColumns is the canonical column list for the customers
+// SELECT shape — kept in one place so adding a column doesn't require
+// hunting through three queries.
+func customerSelectColumns() string {
+	return `c.id, c.name, c.external_id, c.external_url, c.external_provider,
+		c.synced_at, c.contact_name, c.contact_email, c.address, c.country,
+		c.industry,
+		c.website, c.domain, c.vat_id, c.employee_count, c.annual_revenue_cents,
+		c.description, c.phone,
+		c.billing_address_street, c.billing_address_city,
+		c.billing_address_zip, c.billing_address_country,
+		c.visit_address_street, c.visit_address_zip,
+		c.rate_hourly, c.rate_lp, c.notes,
+		c.created_at, c.updated_at`
+}
+
 func scanCustomer(s rowScanner) *models.Customer {
 	var c models.Customer
 	err := s.Scan(
 		&c.ID, &c.Name, &c.ExternalID, &c.ExternalURL, &c.ExternalProvider,
 		&c.SyncedAt, &c.ContactName, &c.ContactEmail, &c.Address, &c.Country,
-		&c.Industry, &c.RateHourly, &c.RateLp, &c.Notes,
+		&c.Industry,
+		&c.Website, &c.Domain, &c.VATID, &c.EmployeeCount, &c.AnnualRevenueCents,
+		&c.Description, &c.Phone,
+		&c.BillingAddressStreet, &c.BillingAddressCity,
+		&c.BillingAddressZip, &c.BillingAddressCountry,
+		&c.VisitAddressStreet, &c.VisitAddressZip,
+		&c.RateHourly, &c.RateLp, &c.Notes,
 		&c.CreatedAt, &c.UpdatedAt,
 		&c.ProjectCount,
 	)
@@ -268,15 +393,89 @@ func scanCustomer(s rowScanner) *models.Customer {
 
 func getCustomerByID(id int64) *models.Customer {
 	row := db.DB.QueryRow(`
-		SELECT c.id, c.name, c.external_id, c.external_url, c.external_provider,
-		       c.synced_at, c.contact_name, c.contact_email, c.address, c.country,
-		       c.industry, c.rate_hourly, c.rate_lp, c.notes,
-		       c.created_at, c.updated_at,
+		SELECT `+customerSelectColumns()+`,
 		       (SELECT COUNT(*) FROM projects p
 		         WHERE p.customer_id = c.id AND p.status != 'deleted')
 		FROM customers c WHERE c.id=?
 	`, id)
-	return scanCustomer(row)
+	c := scanCustomer(row)
+	if c == nil {
+		return nil
+	}
+	applyPrimaryContactCompat(c)
+	return c
+}
+
+// applyPrimaryContactCompat: PAI-273 read-fallback. When a primary
+// contact exists, surface its name/email through the legacy
+// ContactName/ContactEmail fields so v1 API consumers keep working
+// while the frontend transitions to fetching /customers/:id/contacts.
+//
+// We deliberately do NOT touch Address / Country here — those are
+// distinct concepts from the contact's own address (which doesn't even
+// exist as a single field on the Contact entity). The customer's
+// visit-address quartet is the canonical answer; the legacy address
+// column is whatever the caller most recently wrote.
+func applyPrimaryContactCompat(c *models.Customer) {
+	if c == nil {
+		return
+	}
+	var name, email string
+	err := db.DB.QueryRow(`
+		SELECT name, email FROM contacts
+		WHERE customer_id = ? AND is_primary = 1
+		LIMIT 1
+	`, c.ID).Scan(&name, &email)
+	if err == sql.ErrNoRows {
+		return // fall through to legacy column values already on c
+	}
+	if err != nil {
+		return // soft fail — legacy values are still correct
+	}
+	if name != "" {
+		c.ContactName = name
+	}
+	if email != "" {
+		c.ContactEmail = email
+	}
+}
+
+// mirrorLegacyContactToPrimary: PAI-273 write-fallback. v1 callers
+// PUT-ing contact_name / contact_email get those values mirrored into
+// the primary contact (creating one if none exists). Idempotent.
+func mirrorLegacyContactToPrimary(customerID int64, name, email *string) {
+	var primaryID int64
+	err := db.DB.QueryRow(`
+		SELECT id FROM contacts WHERE customer_id=? AND is_primary=1 LIMIT 1
+	`, customerID).Scan(&primaryID)
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	if err == sql.ErrNoRows {
+		var n, e string
+		if name != nil {
+			n = *name
+		}
+		if email != nil {
+			e = *email
+		}
+		if strings.TrimSpace(n) == "" && strings.TrimSpace(e) == "" {
+			return
+		}
+		_, _ = db.DB.Exec(`
+			INSERT INTO contacts(customer_id, name, email, is_primary, created_at, updated_at)
+			VALUES (?, ?, ?, 1, ?, ?)
+		`, customerID, n, e, now, now)
+		return
+	}
+	if err != nil {
+		return
+	}
+	_, _ = db.DB.Exec(`
+		UPDATE contacts SET
+			name       = COALESCE(?, name),
+			email      = COALESCE(?, email),
+			updated_at = ?
+		WHERE id = ?
+	`, name, email, now, primaryID)
 }
 
 // externalPairValid: both must be set or both must be null.

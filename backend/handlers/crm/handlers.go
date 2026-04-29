@@ -505,11 +505,20 @@ func ImportCustomer(w http.ResponseWriter, r *http.Request) {
 	res, err := db.DB.Exec(`
 		INSERT INTO customers(
 			name, external_id, external_url, external_provider, synced_at,
-			contact_name, contact_email, address, country, industry
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			contact_name, contact_email, address, country, industry,
+			website, domain, description, phone,
+			employee_count, annual_revenue_cents,
+			visit_address_street, visit_address_zip
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+		          ?, ?, ?, ?,
+		          ?, ?,
+		          ?, ?)
 	`,
 		imp.Name, nullableStr(imp.ExternalID), nullableStr(imp.ExternalURL), nullableStr(p.ID()), now,
 		imp.ContactName, imp.ContactEmail, imp.Address, imp.Country, imp.Industry,
+		imp.Website, imp.Domain, imp.Description, imp.Phone,
+		imp.EmployeeCount, imp.AnnualRevenueCents,
+		imp.VisitAddressStreet, imp.VisitAddressZip,
 	)
 	if err != nil {
 		log.Printf("crm: insert imported customer (%s): %v", p.ID(), err)
@@ -517,6 +526,17 @@ func ImportCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+
+	// PAI-273: upsert any contacts the provider pulled. Errors here
+	// are logged but do not fail the import — the customer row is
+	// already in the DB and the user can re-sync to retry the
+	// contact pull.
+	if len(imp.Contacts) > 0 {
+		if err := upsertContacts(id, p.ID(), imp.Contacts); err != nil {
+			log.Printf("crm: contacts upsert (%s, customer %d): %v", p.ID(), id, err)
+		}
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]int64{"id": id})
 }
@@ -577,18 +597,110 @@ func SyncCustomer(w http.ResponseWriter, r *http.Request) {
 			address       = COALESCE(?, address),
 			country       = COALESCE(?, country),
 			industry      = COALESCE(?, industry),
+			website                = COALESCE(?, website),
+			domain                 = COALESCE(?, domain),
+			description            = COALESCE(?, description),
+			phone                  = COALESCE(?, phone),
+			employee_count         = CASE WHEN ? IS NOT NULL THEN ? ELSE employee_count END,
+			annual_revenue_cents   = CASE WHEN ? IS NOT NULL THEN ? ELSE annual_revenue_cents END,
+			visit_address_street   = COALESCE(?, visit_address_street),
+			visit_address_zip      = COALESCE(?, visit_address_zip),
 			external_url  = CASE WHEN ? IS NOT NULL THEN ? ELSE external_url END,
 			synced_at     = ?,
 			updated_at    = ?
 		WHERE id=?
 	`, upd.Name, upd.ContactName, upd.ContactEmail, upd.Address, upd.Country, upd.Industry,
+		upd.Website, upd.Domain, upd.Description, upd.Phone,
+		upd.EmployeeCount, upd.EmployeeCount,
+		upd.AnnualRevenueCents, upd.AnnualRevenueCents,
+		upd.VisitAddressStreet, upd.VisitAddressZip,
 		upd.ExternalURL, upd.ExternalURL, now, now, id)
 	if err != nil {
 		log.Printf("crm: sync update %d (%s): %v", id, p.ID(), err)
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
+
+	// PAI-273: re-sync contacts when the provider pulled them. nil =
+	// "leave alone", non-nil = "this is the authoritative current set,
+	// upsert by external_id". A primary still on the PAIMOS side wins
+	// over what HubSpot says — admins set primaries here.
+	if upd.Contacts != nil {
+		if err := upsertContacts(id, p.ID(), upd.Contacts); err != nil {
+			log.Printf("crm: contacts upsert on sync (%s, customer %d): %v", p.ID(), id, err)
+		}
+	}
+
 	jsonOK(w, map[string]int64{"id": id})
+}
+
+// upsertContacts inserts new + updates existing contacts for a customer
+// keyed on (external_provider, external_id). Idempotent — re-syncing a
+// HubSpot company with the same contact list produces no spurious
+// updates. The first contact whose IsPrimary=true becomes the primary
+// IFF the customer doesn't already have one (admins decide who's
+// primary; we only set it when the slot is empty).
+func upsertContacts(customerID int64, providerID string, contacts []ContactImport) error {
+	tx, err := db.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var hadPrimary int
+	_ = tx.QueryRow(
+		`SELECT COUNT(*) FROM contacts WHERE customer_id=? AND is_primary=1`, customerID,
+	).Scan(&hadPrimary)
+
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	for _, c := range contacts {
+		// Look up by external pair (provider + external_id).
+		var existingID int64
+		err := tx.QueryRow(`
+			SELECT id FROM contacts
+			WHERE customer_id=? AND external_provider=? AND external_id=?
+		`, customerID, providerID, c.ExternalID).Scan(&existingID)
+		switch err {
+		case nil:
+			if _, err := tx.Exec(`
+				UPDATE contacts SET
+					name       = ?,
+					email      = ?,
+					phone      = ?,
+					role       = ?,
+					external_url = ?,
+					synced_at  = ?,
+					updated_at = ?
+				WHERE id = ?
+			`, c.Name, c.Email, c.Phone, c.Role, nullableStr(c.ExternalURL), now, now, existingID); err != nil {
+				return err
+			}
+		default:
+			// Treat any error (including ErrNoRows) as "no existing
+			// match" and INSERT. We can't import "database/sql" cleanly
+			// in this file without a wider edit, so the explicit branch
+			// keeps things small.
+			isPrimary := 0
+			if hadPrimary == 0 && c.IsPrimary {
+				isPrimary = 1
+				hadPrimary = 1
+			}
+			if _, err := tx.Exec(`
+				INSERT INTO contacts(
+					customer_id, name, email, phone, role, is_primary,
+					external_id, external_provider, external_url, synced_at,
+					created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+				customerID, c.Name, c.Email, c.Phone, c.Role, isPrimary,
+				nullableStr(c.ExternalID), nullableStr(providerID), nullableStr(c.ExternalURL), now,
+				now, now,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 // ── Provider error handling ─────────────────────────────────────────

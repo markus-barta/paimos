@@ -11,10 +11,11 @@
  below it an asymmetric 12-col grid splits primary content (Contacts →
  Projects → Documents) from a sticky About / Notes / Sync provenance rail.
 
- Contacts is intentionally rendered as a v-for over a synthetic 1-element
- list so PAI-273 (Contact entity + multi-contact) drops in without a
- second redesign — the "Add contact" button is wired but disabled until
- the API exists.
+ PAI-273 wired in: Contacts now reads from /api/customers/:id/contacts;
+ Add / Edit / Delete / Promote-primary all live. About card surfaces the
+ new metadata fields (website / VAT / employees / revenue / phone)
+ row-by-row; rows hide when empty so callers stuck on the v1 schema get
+ the same layout as today.
 -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
@@ -25,7 +26,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import { useExternalProvider } from '@/composables/useExternalProvider'
-import type { Customer, Project } from '@/types'
+import type { Customer, Contact, Project } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes (CRM context).
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
@@ -38,6 +39,7 @@ const isAdmin = computed(() => auth.user?.role === 'admin')
 const customerId = computed(() => Number(route.params.id))
 
 const customer = ref<Customer | null>(null)
+const contacts = ref<Contact[]>([])
 const projects = ref<Project[]>([])
 const loading = ref(true)
 const loadError = ref('')
@@ -46,14 +48,23 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    customer.value = await api.get<Customer>(`/customers/${customerId.value}`)
-    const all = await api.get<Project[]>('/projects')
+    const [c, list, all] = await Promise.all([
+      api.get<Customer>(`/customers/${customerId.value}`),
+      api.get<Contact[]>(`/customers/${customerId.value}/contacts`),
+      api.get<Project[]>('/projects'),
+    ])
+    customer.value = c
+    contacts.value = list
     projects.value = all.filter((p) => p.customer_id === customerId.value)
   } catch (e: unknown) {
     loadError.value = errMsg(e, 'Failed to load customer.')
   } finally {
     loading.value = false
   }
+}
+
+async function reloadContacts() {
+  contacts.value = await api.get<Contact[]>(`/customers/${customerId.value}/contacts`)
 }
 
 onMounted(load)
@@ -82,21 +93,30 @@ function initialsOf(s: string | null | undefined, fallback = '··'): string {
   return (head + tail).toUpperCase() || fallback
 }
 const customerInitials = computed(() => initialsOf(customer.value?.name, '··'))
-const contactInitials  = computed(() => initialsOf(customer.value?.contact_name, '—'))
 
-// Single contact today; v-for over [customer] keeps the structure
-// future-compatible without a re-design when PAI-273 ships the
-// Contact entity.
-const contacts = computed(() => {
-  if (!customer.value) return []
-  if (!customer.value.contact_name && !customer.value.contact_email) return []
-  return [{
-    id: 0,
-    name: customer.value.contact_name,
-    email: customer.value.contact_email,
-    location: [customer.value.address, customer.value.country].filter(Boolean).join(', '),
-  }]
+// PAI-273: contacts come from a real endpoint now. Keep the v-for in
+// the template and let the empty state cover the "no contacts yet"
+// case.
+
+// Helpers for surfacing the visit address on contact rows: HubSpot
+// gives us city/country at the customer level, which is more useful as
+// "where to reach the company" than per-contact unless the user added
+// a per-contact address (out of scope for PAI-273).
+const customerLocation = computed(() => {
+  const c = customer.value
+  if (!c) return ''
+  return [c.address, c.country].filter(Boolean).join(', ')
 })
+
+// PAI-273: format a EUR-cents value as a human-readable revenue band
+// for the About card. Locked to EUR (multi-currency is out of scope).
+function fmtRevenue(cents: number | null | undefined): string {
+  if (cents == null) return ''
+  const v = cents / 100
+  if (v >= 1_000_000) return `€${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000)     return `€${(v / 1_000).toFixed(0)}k`
+  return `€${v.toFixed(0)}`
+}
 
 // ── Sync state machine ──────────────────────────────────────────────
 type SyncState = 'idle' | 'loading' | 'success' | 'error'
@@ -261,6 +281,81 @@ async function doDelete() {
   }
 }
 
+// ── Contact CRUD (PAI-273) ─────────────────────────────────────────
+// One modal handles both "add" and "edit"; the editing ref tells the
+// rest of the page which mode the modal is in. The is_primary checkbox
+// only appears in add mode — promote/demote uses the dedicated atomic
+// endpoint after creation so the wire never sees two primaries.
+const showContactModal = ref(false)
+const editingContact = ref<Contact | null>(null)
+const contactForm = ref({
+  name: '', email: '', phone: '', role: '', is_primary: false, notes: '',
+})
+const contactError = ref('')
+const contactSaving = ref(false)
+
+function openAddContact() {
+  if (!isAdmin.value) return
+  editingContact.value = null
+  contactForm.value = { name: '', email: '', phone: '', role: '', is_primary: contacts.value.length === 0, notes: '' }
+  contactError.value = ''
+  showContactModal.value = true
+}
+function openEditContact(c: Contact) {
+  if (!isAdmin.value) return
+  editingContact.value = c
+  contactForm.value = {
+    name: c.name, email: c.email, phone: c.phone, role: c.role,
+    is_primary: c.is_primary, notes: c.notes,
+  }
+  contactError.value = ''
+  showContactModal.value = true
+}
+async function saveContact() {
+  if (!customer.value) return
+  contactError.value = ''
+  if (!contactForm.value.name.trim()) { contactError.value = 'Name required.'; return }
+  contactSaving.value = true
+  try {
+    if (editingContact.value) {
+      await api.put(`/contacts/${editingContact.value.id}`, {
+        name: contactForm.value.name,
+        email: contactForm.value.email,
+        phone: contactForm.value.phone,
+        role: contactForm.value.role,
+        notes: contactForm.value.notes,
+      })
+    } else {
+      await api.post(`/customers/${customer.value.id}/contacts`, contactForm.value)
+    }
+    await reloadContacts()
+    showContactModal.value = false
+  } catch (e: unknown) {
+    contactError.value = errMsg(e, 'Save failed.')
+  } finally {
+    contactSaving.value = false
+  }
+}
+async function deleteContact(c: Contact) {
+  if (!isAdmin.value) return
+  if (!confirm(`Delete contact "${c.name || c.email}"?`)) return
+  try {
+    await api.delete(`/contacts/${c.id}`)
+    await reloadContacts()
+  } catch (e: unknown) {
+    alert(errMsg(e, 'Delete failed.'))
+  }
+}
+async function promoteContact(c: Contact) {
+  if (!isAdmin.value || c.is_primary) return
+  try {
+    await api.post(`/contacts/${c.id}/promote-primary`, {})
+    await reloadContacts()
+  } catch (e: unknown) {
+    alert(errMsg(e, 'Promote failed.'))
+  }
+}
+
 // ── Helpers ────────────────────────────────────────────────────────
 function fmtRate(v: number | null | undefined): string {
   if (v == null) return '—'
@@ -410,7 +505,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
     <div class="cd-body">
       <!-- Primary column ─────────────────────────────────────────── -->
       <div class="cd-primary">
-        <!-- Contacts -->
+        <!-- Contacts (PAI-273: real multi-contact list) -->
         <section class="cd-card">
           <header class="cd-card-header">
             <h3 class="cd-card-title">
@@ -418,9 +513,9 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
               <span class="cd-card-count">{{ contacts.length }}</span>
             </h3>
             <button
+              v-if="isAdmin"
               class="btn btn-ghost btn-sm"
-              disabled
-              title="Coming soon — multi-contact in PAI-273"
+              @click="openAddContact"
             >
               <AppIcon name="plus" :size="14" /> Add contact
             </button>
@@ -428,33 +523,59 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 
           <ul v-if="contacts.length > 0" class="cd-contact-list">
             <li v-for="c in contacts" :key="c.id" class="cd-contact-row">
-              <div class="cd-contact-avatar">{{ initialsOf(c.name, '?') }}</div>
+              <div class="cd-contact-avatar">{{ initialsOf(c.name || c.email, '?') }}</div>
               <div class="cd-contact-body">
-                <div class="cd-contact-name">{{ c.name || 'Unnamed contact' }}</div>
+                <div class="cd-contact-name-row">
+                  <span class="cd-contact-name">{{ c.name || 'Unnamed contact' }}</span>
+                  <span v-if="c.is_primary" class="cd-contact-primary-badge" title="Primary contact">
+                    <AppIcon name="star" :size="11" /> Primary
+                  </span>
+                </div>
+                <div v-if="c.role" class="cd-contact-role">{{ c.role }}</div>
                 <div v-if="c.email" class="cd-contact-line">
                   <AppIcon name="mail" :size="13" />
                   <a :href="`mailto:${c.email}`">{{ c.email }}</a>
                 </div>
-                <div v-if="c.location" class="cd-contact-line">
+                <div v-if="c.phone" class="cd-contact-line">
+                  <AppIcon name="phone" :size="13" />
+                  <a :href="`tel:${c.phone}`">{{ c.phone }}</a>
+                </div>
+                <div v-if="customerLocation" class="cd-contact-line">
                   <AppIcon name="map-pin" :size="13" />
-                  <span>{{ c.location }}</span>
+                  <span>{{ customerLocation }}</span>
                 </div>
               </div>
-              <button
-                v-if="isAdmin"
-                class="btn btn-ghost btn-sm icon-only cd-contact-edit"
-                title="Edit contact"
-                @click="openEdit"
-              >
-                <AppIcon name="pencil" :size="13" />
-              </button>
+              <div v-if="isAdmin" class="cd-contact-actions">
+                <button
+                  v-if="!c.is_primary"
+                  class="btn btn-ghost btn-sm icon-only"
+                  title="Promote to primary contact"
+                  @click="promoteContact(c)"
+                >
+                  <AppIcon name="star" :size="13" />
+                </button>
+                <button
+                  class="btn btn-ghost btn-sm icon-only"
+                  title="Edit contact"
+                  @click="openEditContact(c)"
+                >
+                  <AppIcon name="pencil" :size="13" />
+                </button>
+                <button
+                  class="btn btn-ghost btn-sm icon-only cd-contact-delete"
+                  title="Delete contact"
+                  @click="deleteContact(c)"
+                >
+                  <AppIcon name="trash-2" :size="13" />
+                </button>
+              </div>
             </li>
           </ul>
 
           <div v-else class="cd-empty">
             <AppIcon name="user-plus" :size="24" />
-            <p class="cd-empty-text">No contact details yet.</p>
-            <button v-if="isAdmin" class="cd-empty-cta" @click="openEdit">Add contact info</button>
+            <p class="cd-empty-text">No contacts yet.</p>
+            <button v-if="isAdmin" class="cd-empty-cta" @click="openAddContact">Add the first contact</button>
           </div>
         </section>
 
@@ -514,8 +635,10 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 
       <!-- Side rail ──────────────────────────────────────────────── -->
       <aside class="cd-side">
-        <!-- About: data-driven row stack. Adding website / VAT / employees /
-             revenue (PAI-273) is one row each, no layout regression. -->
+        <!-- About: data-driven row stack. PAI-273 added website / VAT /
+             employees / revenue / phone — each row hides when empty so
+             a sparsely-populated customer reads cleanly and a
+             fully-populated one fills in without re-layout. -->
         <section class="cd-card cd-side-card">
           <header class="cd-card-header">
             <h3 class="cd-card-title">About</h3>
@@ -524,6 +647,30 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
             <template v-if="customer.industry">
               <dt><AppIcon name="tag" :size="13" /> Industry</dt>
               <dd>{{ customer.industry }}</dd>
+            </template>
+            <template v-if="customer.website">
+              <dt><AppIcon name="link" :size="13" /> Website</dt>
+              <dd>
+                <a :href="customer.website" target="_blank" rel="noopener noreferrer" class="cd-info-link">
+                  {{ customer.domain || customer.website }}
+                </a>
+              </dd>
+            </template>
+            <template v-if="customer.phone">
+              <dt><AppIcon name="phone" :size="13" /> Phone</dt>
+              <dd><a :href="`tel:${customer.phone}`" class="cd-info-link">{{ customer.phone }}</a></dd>
+            </template>
+            <template v-if="customer.vat_id">
+              <dt><AppIcon name="hash" :size="13" /> VAT</dt>
+              <dd>{{ customer.vat_id }}</dd>
+            </template>
+            <template v-if="customer.employee_count != null">
+              <dt><AppIcon name="users" :size="13" /> Employees</dt>
+              <dd>{{ customer.employee_count.toLocaleString() }}</dd>
+            </template>
+            <template v-if="customer.annual_revenue_cents != null">
+              <dt><AppIcon name="trending-up" :size="13" /> Revenue</dt>
+              <dd>{{ fmtRevenue(customer.annual_revenue_cents) }}</dd>
             </template>
             <template v-if="customer.country">
               <dt><AppIcon name="globe" :size="13" /> Country</dt>
@@ -535,10 +682,18 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
             </template>
           </dl>
           <p
-            v-if="!customer.industry && !customer.country && !customer.address"
+            v-if="!customer.industry && !customer.country && !customer.address
+                  && !customer.website && !customer.phone && !customer.vat_id
+                  && customer.employee_count == null && customer.annual_revenue_cents == null"
             class="cd-info-empty"
           >
             No customer details yet.
+          </p>
+
+          <!-- Description: paragraph-length copy lives below the row
+               list to avoid breaking the dl's tabular alignment. -->
+          <p v-if="customer.description" class="cd-info-description">
+            {{ customer.description }}
           </p>
         </section>
 
@@ -624,6 +779,48 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
         <button type="button" class="btn btn-ghost" @click="showEdit = false"><u>C</u>ancel</button>
         <button type="submit" class="btn btn-primary" :disabled="editSaving">
           {{ editSaving ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
+    </form>
+  </AppModal>
+
+  <!-- ── Contact add/edit modal (PAI-273) ───────────────────────── -->
+  <AppModal
+    :title="editingContact ? 'Edit contact' : 'Add contact'"
+    :open="showContactModal"
+    @close="showContactModal = false"
+    confirm-key="s"
+    @confirm="saveContact"
+  >
+    <form @submit.prevent="saveContact" class="cd-form">
+      <div class="cd-form-field">
+        <label>Name</label>
+        <input v-model="contactForm.name" type="text" required autofocus />
+      </div>
+      <div class="cd-form-field">
+        <label>Role (Ansprechpartner-Funktion)</label>
+        <input v-model="contactForm.role" type="text" placeholder="e.g. Geschäftsführung, Buchhaltung, Tech" />
+      </div>
+      <div class="cd-form-grid">
+        <div class="cd-form-field"><label>Email</label><input v-model="contactForm.email" type="email" /></div>
+        <div class="cd-form-field"><label>Phone</label><input v-model="contactForm.phone" type="tel" /></div>
+      </div>
+      <div class="cd-form-field">
+        <label>Notes</label>
+        <textarea v-model="contactForm.notes" rows="2" />
+      </div>
+      <div v-if="!editingContact" class="cd-form-field cd-form-checkbox">
+        <label>
+          <input v-model="contactForm.is_primary" type="checkbox" />
+          Primary contact
+          <span class="cd-form-hint">Demotes the existing primary, if any.</span>
+        </label>
+      </div>
+      <p v-if="contactError" class="cd-form-error">{{ contactError }}</p>
+      <div class="cd-form-actions">
+        <button type="button" class="btn btn-ghost" @click="showContactModal = false"><u>C</u>ancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="contactSaving">
+          {{ contactSaving ? 'Saving…' : (editingContact ? 'Save changes' : 'Add contact') }}
         </button>
       </div>
     </form>
@@ -898,7 +1095,23 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
   user-select: none;
 }
 .cd-contact-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.cd-contact-name-row {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+}
 .cd-contact-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.cd-contact-primary-badge {
+  display: inline-flex; align-items: center; gap: .2rem;
+  font-size: 10px; font-weight: 600;
+  padding: .1rem .4rem; border-radius: 999px;
+  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  letter-spacing: .03em; text-transform: uppercase;
+}
+.cd-contact-primary-badge :deep(svg) { color: var(--bp-blue); }
+.cd-contact-role {
+  font-size: 11.5px; color: var(--text-muted);
+  font-style: italic;
+  letter-spacing: .01em;
+}
 .cd-contact-line {
   display: inline-flex; align-items: center; gap: .35rem;
   font-size: 12.5px; color: var(--text-muted);
@@ -906,8 +1119,12 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-contact-line :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
 .cd-contact-line a { color: var(--text-muted); text-decoration: none; }
 .cd-contact-line a:hover { color: var(--bp-blue-dark); text-decoration: underline; }
-.cd-contact-edit { opacity: 0; transition: opacity .15s; align-self: center; }
-.cd-contact-row:hover .cd-contact-edit { opacity: 1; }
+.cd-contact-actions {
+  display: flex; gap: .15rem; align-items: center;
+  opacity: 0; transition: opacity .15s;
+}
+.cd-contact-row:hover .cd-contact-actions { opacity: 1; }
+.cd-contact-delete:hover { color: #b91c1c; }
 
 /* ── Projects list ──────────────────────────────────────────────── */
 .cd-project-list {
@@ -975,6 +1192,13 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-info-list dt :deep(svg) { color: var(--text-muted); }
 .cd-info-list dd { margin: 0; color: var(--text); word-break: break-word; }
 .cd-info-empty { font-size: 13px; color: var(--text-muted); margin: 0; font-style: italic; }
+.cd-info-link { color: var(--bp-blue); text-decoration: none; }
+.cd-info-link:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.cd-info-description {
+  font-size: 13px; line-height: 1.55; color: var(--text-muted);
+  white-space: pre-wrap; margin: .5rem 0 0;
+  padding-top: .65rem; border-top: 1px solid var(--border);
+}
 .cd-notes-body { font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-wrap; margin: 0; }
 
 .cd-sync-card { display: flex; flex-direction: column; gap: .5rem; font-size: 13px; }
@@ -1018,6 +1242,13 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-form-error { color: #b91c1c; font-size: 13px; margin: 0; }
 .cd-form-actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .25rem; }
 .cd-delete-warn { display: block; margin-top: .5rem; color: #b45309; font-size: 12px; }
+.cd-form-checkbox label {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: 13px; font-weight: 500; color: var(--text);
+  text-transform: none; letter-spacing: 0;
+  cursor: pointer;
+}
+.cd-form-hint { font-size: 11.5px; color: var(--text-muted); font-weight: 400; margin-left: .25rem; }
 
 /* ── Header crumb ───────────────────────────────────────────────── */
 .ah-crumb { color: var(--text-muted); font-weight: 500; }

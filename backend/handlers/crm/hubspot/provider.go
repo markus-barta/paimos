@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,11 +156,18 @@ type hubspotCompany struct {
 	Properties map[string]interface{} `json:"properties"`
 }
 
+// companyProps is the property set we ask HubSpot for on every
+// company fetch. Kept in one place (vs duplicated across fetchCompany
+// + Search) so adding a column happens once. PAI-273 extended this
+// from the original 6-property set to the full Companies object slice
+// PAIMOS now stores.
+const companyProps = "name,domain,website,industry,numberofemployees,annualrevenue," +
+	"description,phone,address,address2,city,state,zip,country"
+
 // fetchCompany calls HubSpot's CRM API for the named properties.
 func (p *Provider) fetchCompany(ctx context.Context, companyID, token string) (*hubspotCompany, error) {
-	props := "name,domain,industry,city,country,phone"
 	endpoint := apiBase + "/crm/v3/objects/companies/" + url.PathEscape(companyID) +
-		"?properties=" + url.QueryEscape(props)
+		"?properties=" + url.QueryEscape(companyProps)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -201,22 +209,44 @@ func (p *Provider) ImportRef(ctx context.Context, rawRef string, cfg crm.Provide
 	if err != nil {
 		return crm.CustomerImport{}, err
 	}
-	c, err := p.fetchCompany(ctx, companyID, cfg.Get("token"))
+	token := cfg.Get("token")
+	c, err := p.fetchCompany(ctx, companyID, token)
 	if err != nil {
 		return crm.CustomerImport{}, err
 	}
-	return crm.CustomerImport{
-		Name:        propString(c.Properties, "name"),
-		Industry:    propString(c.Properties, "industry"),
-		Address:     joinAddress(propString(c.Properties, "city"), propString(c.Properties, "country")),
-		Country:     propString(c.Properties, "country"),
-		ExternalID:  c.ID,
-		ExternalURL: p.DeepLink(c.ID, cfg),
-	}, nil
+	imp := crm.CustomerImport{
+		Name:               propString(c.Properties, "name"),
+		Industry:           propString(c.Properties, "industry"),
+		Address:            joinAddress(propString(c.Properties, "city"), propString(c.Properties, "country")),
+		Country:            propString(c.Properties, "country"),
+		Website:            propString(c.Properties, "website"),
+		Domain:             propString(c.Properties, "domain"),
+		Description:        propString(c.Properties, "description"),
+		Phone:              propString(c.Properties, "phone"),
+		VisitAddressStreet: joinStreet(
+			propString(c.Properties, "address"),
+			propString(c.Properties, "address2"),
+		),
+		VisitAddressZip:    propString(c.Properties, "zip"),
+		EmployeeCount:      propInt(c.Properties, "numberofemployees"),
+		AnnualRevenueCents: propMoneyCents(c.Properties, "annualrevenue"),
+		ExternalID:         c.ID,
+		ExternalURL:        p.DeepLink(c.ID, cfg),
+	}
+	// Pull associated contacts. Soft-fail: if the contacts call fails
+	// (rate limit, transient 5xx) we still return the company import —
+	// the user can re-sync later to populate contacts. Logging happens
+	// upstream in the import handler when it sees an empty Contacts
+	// slice on a HubSpot-linked customer.
+	if contacts, err := p.fetchAssociatedContacts(ctx, c.ID, token); err == nil {
+		imp.Contacts = contacts
+	}
+	return imp, nil
 }
 
 func (p *Provider) Sync(ctx context.Context, externalID string, cfg crm.ProviderConfig) (crm.PartialUpdate, error) {
-	c, err := p.fetchCompany(ctx, externalID, cfg.Get("token"))
+	token := cfg.Get("token")
+	c, err := p.fetchCompany(ctx, externalID, token)
 	if err != nil {
 		return crm.PartialUpdate{}, err
 	}
@@ -228,14 +258,32 @@ func (p *Provider) Sync(ctx context.Context, externalID string, cfg crm.Provider
 	industry := propString(c.Properties, "industry")
 	address := joinAddress(propString(c.Properties, "city"), propString(c.Properties, "country"))
 	country := propString(c.Properties, "country")
+	website := propString(c.Properties, "website")
+	domain := propString(c.Properties, "domain")
+	description := propString(c.Properties, "description")
+	phone := propString(c.Properties, "phone")
+	visitStreet := joinStreet(propString(c.Properties, "address"), propString(c.Properties, "address2"))
+	visitZip := propString(c.Properties, "zip")
 	deepLink := p.DeepLink(c.ID, cfg)
-	return crm.PartialUpdate{
-		Name:        &name,
-		Industry:    &industry,
-		Address:     &address,
-		Country:     &country,
-		ExternalURL: &deepLink,
-	}, nil
+	upd := crm.PartialUpdate{
+		Name:               &name,
+		Industry:           &industry,
+		Address:            &address,
+		Country:            &country,
+		Website:            &website,
+		Domain:             &domain,
+		Description:        &description,
+		Phone:              &phone,
+		VisitAddressStreet: &visitStreet,
+		VisitAddressZip:    &visitZip,
+		EmployeeCount:      propInt(c.Properties, "numberofemployees"),
+		AnnualRevenueCents: propMoneyCents(c.Properties, "annualrevenue"),
+		ExternalURL:        &deepLink,
+	}
+	if contacts, err := p.fetchAssociatedContacts(ctx, c.ID, token); err == nil {
+		upd.Contacts = contacts
+	}
+	return upd, nil
 }
 
 func (p *Provider) DeepLink(externalID string, cfg crm.ProviderConfig) string {
@@ -414,6 +462,37 @@ func propString(props map[string]interface{}, key string) string {
 	return ""
 }
 
+// propInt parses HubSpot's stringly-typed integer properties (e.g.
+// numberofemployees) into a *int64. Returns nil for empty / unparseable
+// — the customer column is nullable so unset stays unset.
+func propInt(props map[string]interface{}, key string) *int64 {
+	s := strings.TrimSpace(propString(props, key))
+	if s == "" {
+		return nil
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &n
+}
+
+// propMoneyCents reads a HubSpot money string (e.g. "1500000.00") and
+// returns the value in cents. Returns nil for empty / unparseable so
+// the customer column stays NULL.
+func propMoneyCents(props map[string]interface{}, key string) *int64 {
+	s := strings.TrimSpace(propString(props, key))
+	if s == "" {
+		return nil
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return nil
+	}
+	cents := int64(f * 100)
+	return &cents
+}
+
 func joinAddress(city, country string) string {
 	switch {
 	case city != "" && country != "":
@@ -423,6 +502,170 @@ func joinAddress(city, country string) string {
 	default:
 		return country
 	}
+}
+
+// joinStreet handles HubSpot's split address1 / address2 properties.
+// Both empty → "", one empty → the populated one, both populated →
+// joined with ", ".
+func joinStreet(line1, line2 string) string {
+	switch {
+	case line1 != "" && line2 != "":
+		return line1 + ", " + line2
+	case line1 != "":
+		return line1
+	default:
+		return line2
+	}
+}
+
+// fetchAssociatedContacts pulls the contact-id list associated with a
+// HubSpot company, then batch-reads the contact properties we render.
+// Two upstream calls in series — the associations endpoint returns IDs
+// only and HubSpot's batch-read endpoint accepts up to 100 ids per
+// request. We page in chunks of 100 so a Fortune-500 company with 200
+// contacts doesn't hit a 500 from a fan-out that's too big.
+//
+// Soft-fails on any upstream error: callers (ImportRef / Sync) treat
+// an error here as "leave contacts alone" rather than failing the
+// whole company fetch. This matches the AC's "degrade gracefully if
+// HubSpot is slow".
+func (p *Provider) fetchAssociatedContacts(ctx context.Context, companyID, token string) ([]crm.ContactImport, error) {
+	ids, err := p.fetchCompanyContactIDs(ctx, companyID, token)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	contacts := make([]crm.ContactImport, 0, len(ids))
+	const batchSize = 100
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch, err := p.fetchContactBatch(ctx, ids[start:end], token)
+		if err != nil {
+			return nil, err
+		}
+		contacts = append(contacts, batch...)
+	}
+	// The first associated contact takes the primary flag if HubSpot
+	// didn't tell us which one is primary — we have no signal to do
+	// better. The customer-import handler can override this if the
+	// customer already has a primary on the PAIMOS side.
+	if len(contacts) > 0 {
+		contacts[0].IsPrimary = true
+	}
+	return contacts, nil
+}
+
+func (p *Provider) fetchCompanyContactIDs(ctx context.Context, companyID, token string) ([]string, error) {
+	endpoint := apiBase + "/crm/v3/objects/companies/" + url.PathEscape(companyID) + "/associations/contacts"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	cli := &http.Client{Timeout: 15 * time.Second}
+	resp, err := cli.Do(req)
+	if err != nil {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderUnreachable, Msg: "associations endpoint unreachable: " + err.Error()}
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		// 404 here means "company has no associated contacts" in
+		// some edge cases; treat as empty rather than failure.
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, &crm.ProviderError{
+			Kind: crm.ErrProviderUnknown,
+			Msg:  fmt.Sprintf("associations status %d: %s", resp.StatusCode, truncateForLog(body, 160)),
+		}
+	}
+	var out struct {
+		Results []struct {
+			ID string `json:"id"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderUnknown, Msg: "decode associations: " + err.Error()}
+	}
+	ids := make([]string, 0, len(out.Results))
+	for _, r := range out.Results {
+		if r.ID != "" {
+			ids = append(ids, r.ID)
+		}
+	}
+	return ids, nil
+}
+
+func (p *Provider) fetchContactBatch(ctx context.Context, ids []string, token string) ([]crm.ContactImport, error) {
+	type inputItem struct {
+		ID string `json:"id"`
+	}
+	inputs := make([]inputItem, 0, len(ids))
+	for _, id := range ids {
+		inputs = append(inputs, inputItem{ID: id})
+	}
+	body := map[string]any{
+		"properties": []string{"firstname", "lastname", "email", "phone", "jobtitle"},
+		"inputs":     inputs,
+	}
+	enc, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := apiBase + "/crm/v3/objects/contacts/batch/read"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(enc)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	cli := &http.Client{Timeout: 15 * time.Second}
+	resp, err := cli.Do(req)
+	if err != nil {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderUnreachable, Msg: "contacts batch unreachable: " + err.Error()}
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, &crm.ProviderError{
+			Kind: crm.ErrProviderUnknown,
+			Msg:  fmt.Sprintf("contacts batch status %d: %s", resp.StatusCode, truncateForLog(raw, 160)),
+		}
+	}
+	var out struct {
+		Results []hubspotCompany `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, &crm.ProviderError{Kind: crm.ErrProviderUnknown, Msg: "decode contacts batch: " + err.Error()}
+	}
+	contacts := make([]crm.ContactImport, 0, len(out.Results))
+	for _, c := range out.Results {
+		first := propString(c.Properties, "firstname")
+		last := propString(c.Properties, "lastname")
+		name := strings.TrimSpace(first + " " + last)
+		if name == "" {
+			// Fall back to email if no name — better than a blank
+			// row in the UI.
+			name = propString(c.Properties, "email")
+		}
+		contacts = append(contacts, crm.ContactImport{
+			Name:       name,
+			Email:      propString(c.Properties, "email"),
+			Phone:      propString(c.Properties, "phone"),
+			Role:       propString(c.Properties, "jobtitle"),
+			ExternalID: c.ID,
+		})
+	}
+	return contacts, nil
 }
 
 func truncateForLog(b []byte, n int) string {

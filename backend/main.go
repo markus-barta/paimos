@@ -482,6 +482,16 @@ func main() {
 			r.With(auth.RequireAdmin).Post("/customers/import", crm.ImportCustomer)
 			r.With(auth.RequireAdmin).Post("/customers/{id}/sync", crm.SyncCustomer)
 
+			// Contacts (PAI-273). One customer holds many Ansprechpartner;
+			// list is open to anyone with customer-read, mutations are
+			// admin-only. promote-primary is the dedicated atomic flip.
+			r.Get("/customers/{id}/contacts", handlers.ListCustomerContacts)
+			r.With(auth.RequireAdmin).Post("/customers/{id}/contacts", handlers.CreateCustomerContact)
+			r.Get("/contacts/{id}", handlers.GetContact)
+			r.With(auth.RequireAdmin).Put("/contacts/{id}", handlers.UpdateContact)
+			r.With(auth.RequireAdmin).Delete("/contacts/{id}", handlers.DeleteContact)
+			r.With(auth.RequireAdmin).Post("/contacts/{id}/promote-primary", handlers.PromoteContactPrimary)
+
 			// Documents (PAI-55). Scoped under customer / project for
 			// list + upload; unscoped paths for read / mutate / delete
 			// since documents are uniquely id-addressable.

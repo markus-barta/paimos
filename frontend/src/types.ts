@@ -19,6 +19,13 @@
 // synced_at are all nullable; NULL across all three = a manually-managed
 // customer. The provider plugin layer (PAI-101) populates the externals
 // when an admin imports from a CRM.
+//
+// PAI-273: contact_name / contact_email / address / country are kept
+// here for one release as a read-compat shim — the canonical contact
+// lives in the `contacts` table now (Contact entity, fetched from
+// /api/customers/:id/contacts). New metadata fields (website / vat_id /
+// employee_count / annual_revenue_cents / description / phone / billing
+// & visit address quartets) are first-class.
 export interface Customer {
   id: number
   name: string
@@ -26,17 +33,53 @@ export interface Customer {
   external_url: string | null
   external_provider: string | null
   synced_at: string | null
+  // Legacy (kept for one release; populated from the primary Contact
+  // when one exists, otherwise from the legacy column).
   contact_name: string
   contact_email: string
   address: string
   country: string
   industry: string
+  // PAI-273 metadata expansion. All optional / empty-default.
+  website: string
+  domain: string
+  vat_id: string
+  employee_count: number | null
+  annual_revenue_cents: number | null
+  description: string
+  phone: string
+  billing_address_street: string
+  billing_address_city: string
+  billing_address_zip: string
+  billing_address_country: string
+  visit_address_street: string
+  visit_address_zip: string
   rate_hourly: number | null
   rate_lp: number | null
   notes: string
   created_at: string
   updated_at: string
   project_count?: number
+}
+
+// PAI-273. One customer holds many Ansprechpartner. Exactly one is
+// is_primary at a time. external_* lets HubSpot Contact sync upsert by
+// (provider, external_id) idempotently.
+export interface Contact {
+  id: number
+  customer_id: number
+  name: string
+  email: string
+  phone: string
+  role: string
+  is_primary: boolean
+  notes: string
+  external_id: string | null
+  external_provider: string | null
+  external_url: string | null
+  synced_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 // PAI-55. Document metadata; the file bytes live in MinIO.
