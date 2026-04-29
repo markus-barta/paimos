@@ -201,12 +201,18 @@ function fmtDate(s: string | null | undefined): string {
     <div v-if="loading" class="docs-loading">Loading documents…</div>
     <div v-else-if="loadError" class="docs-error">{{ loadError }}</div>
 
+    <!-- PAI-272: dashed-box centered empty state to match the rest of the
+         redesigned customer detail view. canWrite gets a CTA link;
+         viewers see informational copy only. -->
     <div v-else-if="docs.length === 0" class="docs-empty">
-      <AppIcon name="file-stack" :size="22" />
-      <div>
-        <strong>No documents yet.</strong>
-        <span v-if="canWrite"> Drop PDFs, contracts or images here to get started.</span>
-      </div>
+      <AppIcon name="file-stack" :size="24" />
+      <p class="docs-empty-text">
+        <template v-if="canWrite">No documents yet — drop PDFs, contracts or images here, or</template>
+        <template v-else>No documents yet.</template>
+      </p>
+      <button v-if="canWrite" class="docs-empty-cta" :disabled="uploading" @click="onPickFile">
+        {{ uploading ? 'Uploading…' : 'click to upload' }}
+      </button>
     </div>
 
     <ul v-else class="docs-list">
@@ -290,12 +296,30 @@ function fmtDate(s: string | null | undefined): string {
   background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
   padding: .5rem .75rem; border-radius: var(--radius); font-size: 13px;
 }
-.docs-loading, .docs-empty {
+.docs-loading {
   display: flex; align-items: center; gap: .75rem;
   padding: 1.25rem; color: var(--text-muted); font-size: 13px;
   border: 1px dashed var(--border); border-radius: 8px;
 }
-.docs-empty strong { color: var(--text); font-weight: 600; display: block; }
+/* PAI-272: dashed-box centered empty state. */
+.docs-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: .55rem;
+  padding: 1.5rem 1rem;
+  color: var(--text-muted); font-size: 13px;
+  border: 1px dashed var(--border); border-radius: 8px;
+  text-align: center;
+}
+.docs-empty :deep(svg) { color: var(--text-muted); }
+.docs-empty-text { margin: 0; max-width: 36ch; line-height: 1.45; }
+.docs-empty-cta {
+  font-size: 13px; font-weight: 500;
+  color: var(--bp-blue); text-decoration: none;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit;
+}
+.docs-empty-cta:hover:not(:disabled) { color: var(--bp-blue-dark); text-decoration: underline; }
+.docs-empty-cta:disabled { color: var(--text-muted); cursor: not-allowed; }
 
 .docs-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
 .docs-row {

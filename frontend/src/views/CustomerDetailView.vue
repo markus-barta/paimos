@@ -6,21 +6,25 @@
  it under the terms of the GNU Affero General Public License as
  published by the Free Software Foundation, version 3.
 
- PAI-58. Customer detail page. Manual customers and CRM-linked customers
- render through the same component — provider affordances are conditional,
- not a missing-state stub. Layout: sticky identity header → contact + rates
- (two-col on wide) → projects → documents.
+ PAI-272 redesign. Identity slab + side rail. The hero is a left-anchored
+ masthead (monogram + name + meta) with a stat / sync rail on the right;
+ below it an asymmetric 12-col grid splits primary content (Contacts →
+ Projects → Documents) from a sticky About / Notes / Sync provenance rail.
+
+ Contacts is intentionally rendered as a v-for over a synthetic 1-element
+ list so PAI-273 (Contact entity + multi-contact) drops in without a
+ second redesign — the "Add contact" button is wired but disabled until
+ the API exists.
 -->
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
-import ProviderBadge from '@/components/customer/ProviderBadge.vue'
-import SyncButton from '@/components/customer/SyncButton.vue'
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
+import { useExternalProvider } from '@/composables/useExternalProvider'
 import type { Customer, Project } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes (CRM context).
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
@@ -43,10 +47,6 @@ async function load() {
   loadError.value = ''
   try {
     customer.value = await api.get<Customer>(`/customers/${customerId.value}`)
-    // List the customer's projects via the existing /projects endpoint
-    // and filter client-side. For 99% of installs this is fine; if a
-    // tenant ever has thousands of projects we'll add a server-side
-    // ?customer_id=… filter.
     const all = await api.get<Project[]>('/projects')
     projects.value = all.filter((p) => p.customer_id === customerId.value)
   } catch (e: unknown) {
@@ -59,13 +59,134 @@ async function load() {
 onMounted(load)
 watch(customerId, load)
 
-// ── Sync ───────────────────────────────────────────────────────────
-async function doSync() {
-  if (!customer.value) return
-  await api.post(`/customers/${customer.value.id}/sync`, {})
-  // Re-fetch so synced_at + provider-sourced fields refresh.
-  customer.value = await api.get<Customer>(`/customers/${customer.value.id}`)
+// ── Provider lookup (for the sync rail + sync provenance card) ──────
+// useExternalProvider takes a static id; we want the lookup to track
+// `customer.value` as it loads asynchronously, so we just grab the
+// providers list and resolve reactively.
+const { providers: providerList } = useExternalProvider()
+const provider = computed(() => {
+  const id = customer.value?.external_provider
+  if (!id) return null
+  return providerList.value.find((p) => p.id === id) ?? null
+})
+const providerName = computed(() => provider.value?.name ?? customer.value?.external_provider ?? '')
+const providerLogo  = computed(() => provider.value?.logo_url ?? '')
+
+// ── Identity helpers ────────────────────────────────────────────────
+function initialsOf(s: string | null | undefined, fallback = '··'): string {
+  if (!s) return fallback
+  const parts = s.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return fallback
+  const head = parts[0]?.[0] ?? ''
+  const tail = parts.length > 1 ? (parts[parts.length - 1][0] ?? '') : (parts[0][1] ?? '')
+  return (head + tail).toUpperCase() || fallback
 }
+const customerInitials = computed(() => initialsOf(customer.value?.name, '··'))
+const contactInitials  = computed(() => initialsOf(customer.value?.contact_name, '—'))
+
+// Single contact today; v-for over [customer] keeps the structure
+// future-compatible without a re-design when PAI-273 ships the
+// Contact entity.
+const contacts = computed(() => {
+  if (!customer.value) return []
+  if (!customer.value.contact_name && !customer.value.contact_email) return []
+  return [{
+    id: 0,
+    name: customer.value.contact_name,
+    email: customer.value.contact_email,
+    location: [customer.value.address, customer.value.country].filter(Boolean).join(', '),
+  }]
+})
+
+// ── Sync state machine ──────────────────────────────────────────────
+type SyncState = 'idle' | 'loading' | 'success' | 'error'
+const syncState = ref<SyncState>('idle')
+const syncError = ref('')
+
+const syncRelative = computed(() => {
+  const at = customer.value?.synced_at
+  if (!at) return 'Never synced'
+  const ms = Date.now() - new Date(at.replace(' ', 'T') + 'Z').getTime()
+  const sec = Math.floor(ms / 1000)
+  if (sec < 30) return 'Synced just now'
+  if (sec < 60) return `Synced ${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `Synced ${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `Synced ${hr}h ago`
+  const d = Math.floor(hr / 24)
+  if (d < 30) return `Synced ${d}d ago`
+  return `Synced ${new Date(at).toLocaleDateString()}`
+})
+
+const syncIcon = computed<'refresh-cw' | 'check' | 'triangle-alert'>(() => {
+  if (syncState.value === 'success') return 'check'
+  if (syncState.value === 'error') return 'triangle-alert'
+  return 'refresh-cw'
+})
+
+const syncStatusLine = computed(() => {
+  if (syncState.value === 'loading') return 'Syncing…'
+  if (syncState.value === 'success') return 'Sync complete'
+  if (syncState.value === 'error')   return 'Sync failed'
+  return syncRelative.value
+})
+
+async function doSync() {
+  if (!customer.value || syncState.value === 'loading') return
+  syncState.value = 'loading'
+  syncError.value = ''
+  try {
+    await api.post(`/customers/${customer.value.id}/sync`, {})
+    customer.value = await api.get<Customer>(`/customers/${customer.value.id}`)
+    syncState.value = 'success'
+    setTimeout(() => { if (syncState.value === 'success') syncState.value = 'idle' }, 1500)
+  } catch (e: unknown) {
+    syncState.value = 'error'
+    syncError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// ── Overflow menu (Edit / Delete) ───────────────────────────────────
+// Mirrors the PAI-246 / PAI-265 pattern from ProjectDetailView: panel is
+// teleported to <body> with position:fixed so it can't be clipped by an
+// ancestor overflow:hidden. Trigger lives in the hero rail.
+const overflowOpen = ref(false)
+const overflowTriggerRef = ref<HTMLElement | null>(null)
+const overflowPanelRef = ref<HTMLElement | null>(null)
+const overflowPanelStyle = ref<{ top: string; right: string }>({ top: '0px', right: '0px' })
+function recomputeOverflowPosition() {
+  const el = overflowTriggerRef.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  overflowPanelStyle.value = {
+    top: `${r.bottom + 6}px`,
+    right: `${window.innerWidth - r.right}px`,
+  }
+}
+function closeOverflow() { overflowOpen.value = false }
+function toggleOverflow() {
+  overflowOpen.value = !overflowOpen.value
+  if (overflowOpen.value) void nextTick(recomputeOverflowPosition)
+}
+function onOverflowOutsideClick(e: MouseEvent) {
+  if (!overflowOpen.value) return
+  const target = e.target as Node
+  const inTrigger = overflowTriggerRef.value?.contains(target) ?? false
+  const inPanel = overflowPanelRef.value?.contains(target) ?? false
+  if (!inTrigger && !inPanel) closeOverflow()
+}
+function onOverflowKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && overflowOpen.value) closeOverflow()
+}
+onMounted(() => {
+  document.addEventListener('mousedown', onOverflowOutsideClick)
+  document.addEventListener('keydown', onOverflowKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onOverflowOutsideClick)
+  document.removeEventListener('keydown', onOverflowKey)
+})
 
 // ── Edit modal ─────────────────────────────────────────────────────
 const showEdit = ref(false)
@@ -78,8 +199,6 @@ const editForm = ref({
 const editError = ref('')
 const editSaving = ref(false)
 
-// PAI-146 expansion: AI optimize on customer notes. CRM-tone reminder
-// in the prompt enforces PII discipline and non-fabrication.
 function onCustomerNotesAccept(text: string) {
   editForm.value.notes = text
 }
@@ -92,6 +211,7 @@ async function applyCustomerAiResult(info: { action: string; intent?: string; va
 
 function openEdit() {
   if (!customer.value) return
+  closeOverflow()
   editForm.value = {
     name: customer.value.name,
     industry: customer.value.industry,
@@ -126,6 +246,7 @@ async function saveEdit() {
 const showDelete = ref(false)
 const deleting = ref(false)
 const deleteError = ref('')
+function openDelete() { closeOverflow(); showDelete.value = true }
 async function doDelete() {
   if (!customer.value) return
   deleting.value = true
@@ -173,122 +294,293 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
   <div v-else-if="!customer" class="cd-error">Customer not found.</div>
 
   <template v-else>
-    <!-- ── Sticky identity header ───────────────────────────────── -->
+    <!-- ── Hero: identity slab + stat/sync rail ──────────────────── -->
     <header class="cd-hero">
       <div class="cd-hero-id">
-        <h1 class="cd-name">{{ customer.name }}</h1>
-        <div class="cd-meta">
-          <span v-if="customer.industry" class="cd-industry">{{ customer.industry }}</span>
-          <ProviderBadge
-            :provider-id="customer.external_provider"
-            :external-url="customer.external_url"
-            variant="full"
-          />
+        <div class="cd-monogram" :title="customer.name">
+          <!-- 24×24 corner-mark accent — the page's signature flourish.
+               Only raw SVG anywhere; everything else flows through AppIcon. -->
+          <svg class="cd-corner-mark" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M0 0 L14 0 L0 14 Z" fill="currentColor" />
+          </svg>
+          <span class="cd-monogram-text">{{ customerInitials }}</span>
+        </div>
+        <div class="cd-hero-text">
+          <h1 class="cd-name">{{ customer.name }}</h1>
+          <div class="cd-meta">
+            <span v-if="customer.industry" class="badge cd-industry">{{ customer.industry }}</span>
+            <a
+              v-if="customer.external_provider && customer.external_url"
+              :href="customer.external_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="cd-provider-link"
+              :title="`Open in ${providerName}`"
+            >
+              <img v-if="providerLogo" :src="providerLogo" :alt="providerName" class="cd-provider-logo" />
+              <AppIcon v-else name="external-link" :size="13" />
+              <span>{{ providerName }}<span v-if="customer.external_id"> · #{{ customer.external_id }}</span></span>
+              <AppIcon name="external-link" :size="11" class="cd-provider-arrow" />
+            </a>
+            <span
+              v-else-if="customer.external_provider"
+              class="cd-provider-link cd-provider-link--static"
+            >
+              <AppIcon name="globe" :size="13" />
+              <span>{{ providerName || customer.external_provider }}</span>
+            </span>
+          </div>
         </div>
       </div>
 
-      <div class="cd-hero-rates">
-        <div class="cd-rate">
-          <span class="cd-rate-value">{{ fmtRate(customer.rate_hourly) }}</span>
-          <span class="cd-rate-unit">/h</span>
+      <div class="cd-hero-rail">
+        <div class="cd-stat-row">
+          <div class="cd-stat-card">
+            <span class="cd-stat-value">{{ fmtRate(customer.rate_hourly) }}</span>
+            <span class="cd-stat-label">per hour</span>
+          </div>
+          <div class="cd-stat-card">
+            <span class="cd-stat-value">{{ fmtRate(customer.rate_lp) }}</span>
+            <span class="cd-stat-label">per LP</span>
+          </div>
         </div>
-        <span class="cd-rate-sep">·</span>
-        <div class="cd-rate">
-          <span class="cd-rate-value">{{ fmtRate(customer.rate_lp) }}</span>
-          <span class="cd-rate-unit">/LP</span>
-        </div>
-      </div>
 
-      <div class="cd-hero-actions">
-        <SyncButton
-          v-if="customer.external_provider"
-          :provider-id="customer.external_provider"
-          :synced-at="customer.synced_at"
-          :on-sync="doSync"
-        />
-        <button v-if="isAdmin" class="btn btn-ghost btn-sm" @click="openEdit">
-          <AppIcon name="pencil" :size="14" /> Edit
-        </button>
-        <button v-if="isAdmin" class="btn btn-ghost btn-sm cd-delete-btn" @click="showDelete = true">
-          <AppIcon name="trash-2" :size="14" />
-        </button>
+        <div class="cd-sync-row">
+          <template v-if="customer.external_provider">
+            <span :class="['cd-sync-icon', `cd-sync-icon--${syncState}`]">
+              <AppIcon
+                :name="syncIcon"
+                :size="14"
+                :class="{ 'cd-spin': syncState === 'loading' }"
+              />
+            </span>
+            <span class="cd-sync-text" :title="syncState === 'error' ? syncError : ''">
+              {{ syncStatusLine }}
+            </span>
+            <button
+              v-if="isAdmin"
+              type="button"
+              class="btn btn-ghost btn-sm cd-sync-btn"
+              :disabled="syncState === 'loading'"
+              :title="syncState === 'error' ? syncError : `Re-sync from ${providerName}`"
+              @click="doSync"
+            >
+              {{ syncState === 'error' ? 'Retry' : 'Sync' }}
+            </button>
+          </template>
+          <span v-else class="cd-sync-text cd-sync-text--manual">
+            Manually managed customer — no CRM link.
+          </span>
+
+          <button
+            v-if="isAdmin"
+            ref="overflowTriggerRef"
+            class="btn btn-ghost btn-sm icon-only cd-overflow-trigger"
+            :class="{ active: overflowOpen }"
+            :title="overflowOpen ? 'Close menu' : 'More customer actions'"
+            @click="toggleOverflow"
+          >
+            <AppIcon name="more-horizontal" :size="14" />
+          </button>
+        </div>
       </div>
     </header>
 
-    <!-- ── Contact + Address (two-col on wide) ─────────────────── -->
-    <div class="cd-grid">
-      <section class="cd-card">
-        <h3 class="cd-card-title">Contact</h3>
-        <dl class="cd-dl">
-          <dt>Name</dt><dd>{{ customer.contact_name || '—' }}</dd>
-          <dt>Email</dt><dd>
-            <a v-if="customer.contact_email" :href="`mailto:${customer.contact_email}`">{{ customer.contact_email }}</a>
-            <span v-else>—</span>
-          </dd>
-          <dt>Address</dt><dd>{{ customer.address || '—' }}</dd>
-          <dt>Country</dt><dd>{{ customer.country || '—' }}</dd>
-        </dl>
-      </section>
-
-      <section v-if="customer.notes" class="cd-card cd-notes">
-        <h3 class="cd-card-title">Notes</h3>
-        <p class="cd-notes-body">{{ customer.notes }}</p>
-      </section>
-    </div>
-
-    <!-- ── Projects ─────────────────────────────────────────────── -->
-    <section class="cd-section">
-      <header class="cd-section-header">
-        <h3 class="cd-section-title">
-          Projects
-          <span class="cd-section-count">{{ projects.length }}</span>
-        </h3>
-        <p class="cd-section-hint">
-          Rates inherit from this customer unless overridden at the project level.
-        </p>
-      </header>
-
-      <div v-if="projects.length === 0" class="cd-empty-row">
-        No projects assigned to {{ customer.name }} yet.
+    <!-- Overflow panel — teleported so it can't be clipped. -->
+    <Teleport to="body">
+      <div
+        v-if="overflowOpen"
+        ref="overflowPanelRef"
+        class="cd-overflow-menu"
+        role="menu"
+        :style="overflowPanelStyle"
+      >
+        <button class="cd-overflow-item" @click="openEdit">
+          <AppIcon name="pencil" :size="14" />
+          <span>Edit customer</span>
+        </button>
+        <button class="cd-overflow-item cd-overflow-item--danger" @click="openDelete">
+          <AppIcon name="trash-2" :size="14" />
+          <span>Delete customer</span>
+        </button>
       </div>
+    </Teleport>
 
-      <div v-else class="cd-projects">
-        <RouterLink
-          v-for="p in projects"
-          :key="p.id"
-          :to="`/projects/${p.id}`"
-          class="cd-proj-card"
-        >
-          <div class="cd-proj-top">
-            <span class="cd-proj-key">{{ p.key }}</span>
-            <span :class="['badge', `badge-${p.status}`]">{{ p.status }}</span>
-          </div>
-          <div class="cd-proj-name">{{ p.name }}</div>
-          <div class="cd-proj-rates">
-            <template v-for="kind in (['hourly','lp'] as const)" :key="kind">
-              <span
-                :class="['cd-proj-rate', { 'cd-proj-rate--inherited': effectiveRate(p, kind).inherited }]"
-                :title="effectiveRate(p, kind).inherited ? `Inherited from ${customer.name}` : 'Project override'"
+    <!-- ── Body: 8/4 grid → 7/5 → stacked ────────────────────────── -->
+    <div class="cd-body">
+      <!-- Primary column ─────────────────────────────────────────── -->
+      <div class="cd-primary">
+        <!-- Contacts -->
+        <section class="cd-card">
+          <header class="cd-card-header">
+            <h3 class="cd-card-title">
+              Contacts
+              <span class="cd-card-count">{{ contacts.length }}</span>
+            </h3>
+            <button
+              class="btn btn-ghost btn-sm"
+              disabled
+              title="Coming soon — multi-contact in PAI-273"
+            >
+              <AppIcon name="plus" :size="14" /> Add contact
+            </button>
+          </header>
+
+          <ul v-if="contacts.length > 0" class="cd-contact-list">
+            <li v-for="c in contacts" :key="c.id" class="cd-contact-row">
+              <div class="cd-contact-avatar">{{ initialsOf(c.name, '?') }}</div>
+              <div class="cd-contact-body">
+                <div class="cd-contact-name">{{ c.name || 'Unnamed contact' }}</div>
+                <div v-if="c.email" class="cd-contact-line">
+                  <AppIcon name="mail" :size="13" />
+                  <a :href="`mailto:${c.email}`">{{ c.email }}</a>
+                </div>
+                <div v-if="c.location" class="cd-contact-line">
+                  <AppIcon name="map-pin" :size="13" />
+                  <span>{{ c.location }}</span>
+                </div>
+              </div>
+              <button
+                v-if="isAdmin"
+                class="btn btn-ghost btn-sm icon-only cd-contact-edit"
+                title="Edit contact"
+                @click="openEdit"
               >
-                {{ fmtRate(effectiveRate(p, kind).value) }}<span class="cd-proj-rate-unit">/{{ kind === 'hourly' ? 'h' : 'LP' }}</span>
-                <AppIcon v-if="effectiveRate(p, kind).inherited" name="link" :size="10" class="cd-proj-rate-icon" />
-              </span>
-            </template>
-          </div>
-          <div class="cd-proj-footer">
-            <span>{{ p.open_issue_count }} open</span>
-            <span class="cd-proj-issues">{{ p.issue_count }} total</span>
-          </div>
-        </RouterLink>
-      </div>
-    </section>
+                <AppIcon name="pencil" :size="13" />
+              </button>
+            </li>
+          </ul>
 
-    <!-- ── Documents ────────────────────────────────────────────── -->
-    <DocumentsSection
-      scope="customer"
-      :scope-id="customer.id"
-      :can-write="isAdmin"
-    />
+          <div v-else class="cd-empty">
+            <AppIcon name="user-plus" :size="24" />
+            <p class="cd-empty-text">No contact details yet.</p>
+            <button v-if="isAdmin" class="cd-empty-cta" @click="openEdit">Add contact info</button>
+          </div>
+        </section>
+
+        <!-- Projects -->
+        <section class="cd-card">
+          <header class="cd-card-header">
+            <h3 class="cd-card-title">
+              Projects
+              <span class="cd-card-count">{{ projects.length }}</span>
+            </h3>
+            <span class="cd-card-hint">Rates inherit unless overridden</span>
+          </header>
+
+          <div v-if="projects.length === 0" class="cd-empty">
+            <AppIcon name="folder-plus" :size="24" />
+            <p class="cd-empty-text">No projects yet — issues you create will inherit this customer's rates.</p>
+            <RouterLink v-if="isAdmin" to="/projects?new=1" class="cd-empty-cta">New project</RouterLink>
+          </div>
+
+          <ul v-else class="cd-project-list">
+            <li v-for="p in projects" :key="p.id">
+              <RouterLink :to="`/projects/${p.id}`" class="cd-project-row">
+                <div class="cd-project-top">
+                  <span class="cd-project-key">{{ p.key }}</span>
+                  <span class="cd-project-name">{{ p.name }}</span>
+                  <span :class="['badge', `badge-${p.status}`]">{{ p.status }}</span>
+                </div>
+                <div class="cd-project-sub">
+                  <span class="cd-project-meta">
+                    <AppIcon name="briefcase" :size="12" />
+                    {{ p.open_issue_count }} open · {{ p.issue_count }} total
+                  </span>
+                  <span class="cd-project-meta">
+                    <AppIcon name="euro" :size="12" />
+                    <template v-for="kind in (['hourly','lp'] as const)" :key="kind">
+                      <span
+                        :class="['cd-project-rate', { 'cd-project-rate--inherited': effectiveRate(p, kind).inherited }]"
+                        :title="effectiveRate(p, kind).inherited ? `Inherited from ${customer.name}` : 'Project override'"
+                      >
+                        {{ fmtRate(effectiveRate(p, kind).value) }}<span class="cd-project-rate-unit">/{{ kind === 'hourly' ? 'h' : 'LP' }}</span>
+                      </span>
+                    </template>
+                  </span>
+                </div>
+              </RouterLink>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Documents (existing component) -->
+        <DocumentsSection
+          scope="customer"
+          :scope-id="customer.id"
+          :can-write="isAdmin"
+        />
+      </div>
+
+      <!-- Side rail ──────────────────────────────────────────────── -->
+      <aside class="cd-side">
+        <!-- About: data-driven row stack. Adding website / VAT / employees /
+             revenue (PAI-273) is one row each, no layout regression. -->
+        <section class="cd-card cd-side-card">
+          <header class="cd-card-header">
+            <h3 class="cd-card-title">About</h3>
+          </header>
+          <dl class="cd-info-list">
+            <template v-if="customer.industry">
+              <dt><AppIcon name="tag" :size="13" /> Industry</dt>
+              <dd>{{ customer.industry }}</dd>
+            </template>
+            <template v-if="customer.country">
+              <dt><AppIcon name="globe" :size="13" /> Country</dt>
+              <dd>{{ customer.country }}</dd>
+            </template>
+            <template v-if="customer.address">
+              <dt><AppIcon name="map-pin" :size="13" /> Address</dt>
+              <dd>{{ customer.address }}</dd>
+            </template>
+          </dl>
+          <p
+            v-if="!customer.industry && !customer.country && !customer.address"
+            class="cd-info-empty"
+          >
+            No customer details yet.
+          </p>
+        </section>
+
+        <!-- Notes: only when present. -->
+        <section v-if="customer.notes" class="cd-card cd-side-card">
+          <header class="cd-card-header">
+            <h3 class="cd-card-title">Notes</h3>
+          </header>
+          <p class="cd-notes-body">{{ customer.notes }}</p>
+        </section>
+
+        <!-- Sync provenance: only for CRM-linked customers. -->
+        <section v-if="customer.external_provider" class="cd-card cd-side-card">
+          <header class="cd-card-header">
+            <h3 class="cd-card-title">Sync</h3>
+          </header>
+          <div class="cd-sync-card">
+            <div class="cd-sync-card-row">
+              <img v-if="providerLogo" :src="providerLogo" :alt="providerName" class="cd-sync-card-logo" />
+              <AppIcon v-else name="globe" :size="14" />
+              <span class="cd-sync-card-name">
+                {{ providerName }}<span v-if="customer.external_id"> · #{{ customer.external_id }}</span>
+              </span>
+            </div>
+            <div class="cd-sync-card-row cd-sync-card-meta">
+              <AppIcon name="refresh-cw" :size="13" />
+              <span>{{ syncRelative }}</span>
+            </div>
+            <a
+              v-if="customer.external_url"
+              :href="customer.external_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="cd-sync-card-link"
+            >
+              <AppIcon name="external-link" :size="13" />
+              Open in {{ providerName }}
+            </a>
+          </div>
+        </section>
+      </aside>
+    </div>
   </template>
 
   <!-- ── Edit modal ─────────────────────────────────────────────── -->
@@ -360,159 +652,364 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 </template>
 
 <style scoped>
-/* PAI-146: per-field label row holds the label + the AI optimize
-   button on the right. Namespaced to .cd-field-label-row to avoid
-   colliding with the project-detail-view rule of the same purpose. */
-.cd-field-label-row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: .5rem;
-  margin-bottom: .25rem;
-}
-.cd-field-label-row > label { margin-bottom: 0; }
-
+/* ── Loading / error states ─────────────────────────────────────── */
 .cd-loading { padding: 2rem; color: var(--text-muted); text-align: center; }
 .cd-error {
   background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
   padding: .75rem 1rem; border-radius: var(--radius); font-size: 13px;
 }
 
-/* ── Hero ───────────────────────────────────────────────────────── */
+/* ── Hero (identity slab + stat/sync rail) ──────────────────────── */
 .cd-hero {
-  position: sticky; top: 0; z-index: 5;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 1.5rem;
-  align-items: center;
-  padding: 1.1rem 1.4rem;
+  align-items: stretch;
+  padding: 1.25rem 1.4rem;
   margin-bottom: 1.25rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.cd-hero-id { min-width: 0; }
+.cd-hero-id {
+  display: flex; align-items: center; gap: 1rem;
+  min-width: 0;
+}
+
+/* Monogram tile + corner-mark accent — the page's signature visual. */
+.cd-monogram {
+  position: relative;
+  width: 56px; height: 56px;
+  flex-shrink: 0;
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue);
+  border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 24px;
+  letter-spacing: .02em;
+  user-select: none;
+  overflow: hidden;
+}
+.cd-corner-mark {
+  position: absolute; top: 0; left: 0;
+  color: var(--bp-blue);
+  pointer-events: none;
+}
+.cd-monogram-text { position: relative; z-index: 1; }
+
+.cd-hero-text { min-width: 0; display: flex; flex-direction: column; gap: .35rem; }
 .cd-name {
-  font-size: 22px; font-weight: 700; color: var(--text);
-  margin: 0 0 .35rem; letter-spacing: -.02em;
+  font-size: 1.5rem; font-weight: 600; color: var(--text);
+  margin: 0; letter-spacing: -.02em; line-height: 1.15;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cd-meta { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.cd-meta {
+  display: flex; align-items: center; gap: .65rem; flex-wrap: wrap;
+  font-size: 12px;
+}
 .cd-industry {
-  font-size: 11px; font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .07em;
+  max-width: 14rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.cd-provider-link {
+  display: inline-flex; align-items: center; gap: .35rem;
+  color: var(--text-muted); text-decoration: none;
+  font-weight: 500;
+  transition: color .15s;
+}
+.cd-provider-link:hover { color: var(--bp-blue-dark); }
+.cd-provider-link--static { cursor: default; }
+.cd-provider-link--static:hover { color: var(--text-muted); }
+.cd-provider-logo {
+  width: 14px; height: 14px;
+  object-fit: contain;
+  filter: grayscale(1) opacity(.7);
+}
+.cd-provider-link:hover .cd-provider-logo { filter: none; }
+.cd-provider-arrow { opacity: .55; }
+.cd-provider-link:hover .cd-provider-arrow { opacity: 1; }
 
-.cd-hero-rates {
-  display: flex; align-items: baseline; gap: .35rem;
-  font-variant-numeric: tabular-nums;
+/* Stat / sync rail (right side of hero). */
+.cd-hero-rail {
+  display: flex; flex-direction: column; gap: .65rem;
+  align-items: flex-end;
 }
-.cd-rate { display: flex; align-items: baseline; gap: .15rem; }
-.cd-rate-value {
-  font-size: 18px; font-weight: 700; color: var(--text);
-  font-family: 'DM Mono', monospace;
-}
-.cd-rate-unit { font-size: 11px; color: var(--text-muted); font-weight: 600; }
-.cd-rate-sep { color: var(--text-muted); margin: 0 .35rem; }
-
-.cd-hero-actions { display: flex; align-items: center; gap: .5rem; }
-.cd-delete-btn { color: var(--text-muted); }
-.cd-delete-btn:hover { color: #b91c1c; border-color: #fecaca; }
-
-/* ── Two-col contact/notes ─────────────────────────────────────── */
-.cd-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-@media (min-width: 880px) {
-  .cd-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-}
-
-.cd-card {
+.cd-stat-row { display: flex; gap: .5rem; }
+.cd-stat-card {
+  display: flex; flex-direction: column;
+  padding: .55rem .9rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.1rem 1.3rem;
-  display: flex; flex-direction: column; gap: .75rem;
+  border-radius: var(--radius);
+  min-width: 100px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
-.cd-card-title {
-  font-size: 11px; font-weight: 700; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .08em; margin: 0;
+.cd-stat-value {
+  font-size: 1.5rem; font-weight: 600; color: var(--text);
+  font-family: 'DM Mono', monospace;
+  line-height: 1.1;
 }
-.cd-dl {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: .5rem 1rem;
-  font-size: 13px;
-  margin: 0;
-}
-.cd-dl dt { color: var(--text-muted); font-weight: 500; }
-.cd-dl dd { margin: 0; color: var(--text); }
-.cd-notes-body { font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-wrap; margin: 0; }
-
-/* ── Projects section ──────────────────────────────────────────── */
-.cd-section { margin-bottom: 1.25rem; }
-.cd-section-header { margin-bottom: .65rem; }
-.cd-section-title {
-  font-size: 14px; font-weight: 700; color: var(--text);
-  margin: 0; letter-spacing: -.01em;
-  display: inline-flex; align-items: baseline; gap: .5rem;
-}
-.cd-section-count {
-  font-size: 11px; font-weight: 600; color: var(--text-muted);
-  background: var(--bg); border: 1px solid var(--border);
-  padding: .05rem .45rem; border-radius: 999px;
-}
-.cd-section-hint { font-size: 12px; color: var(--text-muted); margin: .15rem 0 0; }
-
-.cd-empty-row {
-  background: var(--bg-card); border: 1px dashed var(--border);
-  padding: 1rem; border-radius: 8px;
-  font-size: 13px; color: var(--text-muted); text-align: center;
+.cd-stat-label {
+  font-size: 0.75rem; color: var(--text-muted);
+  letter-spacing: .03em;
+  margin-top: .1rem;
 }
 
-.cd-projects {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: .75rem;
+.cd-sync-row {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: 12px;
 }
-.cd-proj-card {
-  display: flex; flex-direction: column; gap: .4rem;
-  padding: .85rem 1rem;
+.cd-sync-icon {
+  display: inline-flex; align-items: center;
+  color: var(--text-muted);
+  transition: color .2s;
+}
+.cd-sync-icon--success { color: #15803d; }
+.cd-sync-icon--error   { color: #b91c1c; }
+.cd-sync-text {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.cd-sync-text--manual { font-style: italic; }
+.cd-sync-btn { padding-left: .55rem; padding-right: .55rem; }
+.cd-overflow-trigger { margin-left: .35rem; }
+.cd-overflow-trigger.active { background: var(--bg); color: var(--text); }
+.cd-spin { animation: cd-spin 1s linear infinite; }
+@keyframes cd-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Overflow menu (teleported to body) ─────────────────────────── */
+.cd-overflow-menu {
+  position: fixed; z-index: 60;
+  min-width: 180px;
+  padding: .25rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  text-decoration: none; color: var(--text);
-  transition: border-color .15s, background .15s;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, .08);
+  display: flex; flex-direction: column; gap: 1px;
 }
-.cd-proj-card:hover { border-color: var(--bp-blue-light); background: #f4f7ff; }
-.cd-proj-top { display: flex; align-items: center; gap: .35rem; }
-.cd-proj-key {
+.cd-overflow-item {
+  display: flex; align-items: center; gap: .55rem;
+  padding: .45rem .6rem;
+  font-size: 12.5px; color: var(--text);
+  background: transparent; border: none; border-radius: 6px;
+  cursor: pointer; text-align: left; font-family: inherit;
+  white-space: nowrap;
+}
+.cd-overflow-item:hover:not(:disabled) { background: var(--bg); }
+.cd-overflow-item :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
+.cd-overflow-item--danger:hover { background: #fef2f2; color: #b91c1c; }
+.cd-overflow-item--danger:hover :deep(svg) { color: #b91c1c; }
+
+/* ── Body grid: 8/4 → 7/5 → stacked ─────────────────────────────── */
+.cd-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .cd-body { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+}
+@media (min-width: 1024px) {
+  .cd-body { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+}
+.cd-primary { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+.cd-side    { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+@media (min-width: 1024px) {
+  .cd-side { position: sticky; top: 1rem; }
+}
+
+/* ── Card baseline ──────────────────────────────────────────────── */
+.cd-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.3rem;
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: .85rem;
+}
+.cd-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem;
+}
+.cd-card-title {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .04em; margin: 0;
+  display: inline-flex; align-items: center; gap: .5rem;
+}
+.cd-card-count {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  background: var(--bg); border: 1px solid var(--border);
+  padding: .05rem .45rem; border-radius: 999px;
+  letter-spacing: 0;
+}
+.cd-card-hint {
+  font-size: 11.5px; color: var(--text-muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+}
+
+/* ── Empty states (dashed box, centered icon + copy + CTA) ──────── */
+.cd-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: .55rem;
+  padding: 1.5rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.cd-empty :deep(svg) { color: var(--text-muted); }
+.cd-empty-text { font-size: 13px; margin: 0; max-width: 32ch; line-height: 1.45; }
+.cd-empty-cta {
+  font-size: 13px; font-weight: 500;
+  color: var(--bp-blue); text-decoration: none;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit;
+}
+.cd-empty-cta:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+
+/* ── Contacts list ──────────────────────────────────────────────── */
+.cd-contact-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .65rem; }
+.cd-contact-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: .85rem;
+  align-items: start;
+  padding: .15rem 0;
+}
+.cd-contact-row + .cd-contact-row { border-top: 1px solid var(--border); padding-top: .85rem; }
+.cd-contact-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--bp-blue-pale); color: var(--bp-blue);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  user-select: none;
+}
+.cd-contact-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.cd-contact-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.cd-contact-line {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: 12.5px; color: var(--text-muted);
+}
+.cd-contact-line :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
+.cd-contact-line a { color: var(--text-muted); text-decoration: none; }
+.cd-contact-line a:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.cd-contact-edit { opacity: 0; transition: opacity .15s; align-self: center; }
+.cd-contact-row:hover .cd-contact-edit { opacity: 1; }
+
+/* ── Projects list ──────────────────────────────────────────────── */
+.cd-project-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: .55rem;
+}
+.cd-project-row {
+  display: flex; flex-direction: column; gap: .35rem;
+  padding: .75rem .9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  background: var(--bg-card);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.cd-project-row:hover {
+  border-color: var(--bp-blue-light);
+  background: #f4f7ff;
+  box-shadow: var(--shadow-md);
+}
+.cd-project-top {
+  display: flex; align-items: center; gap: .55rem; min-width: 0;
+}
+.cd-project-key {
   font-size: 10px; font-weight: 700; letter-spacing: .07em;
   font-family: 'DM Mono', monospace;
   background: var(--bp-blue); color: #fff;
   padding: .15rem .45rem; border-radius: 4px;
+  flex-shrink: 0;
 }
-.cd-proj-name { font-size: 13px; font-weight: 600; color: var(--text); }
-.cd-proj-rates { display: flex; gap: .65rem; font-variant-numeric: tabular-nums; }
-.cd-proj-rate {
-  display: inline-flex; align-items: center; gap: .15rem;
-  font-size: 12px; color: var(--text);
+.cd-project-name {
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-project-sub {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-muted);
+}
+.cd-project-meta { display: inline-flex; align-items: center; gap: .35rem; }
+.cd-project-meta :deep(svg) { color: var(--text-muted); }
+.cd-project-rate {
+  display: inline-flex; align-items: baseline; gap: .1rem;
   font-family: 'DM Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
-.cd-proj-rate-unit { color: var(--text-muted); font-size: 10px; margin-left: 1px; }
-.cd-proj-rate-icon { color: var(--text-muted); margin-left: 2px; }
-.cd-proj-rate--inherited { color: var(--text-muted); }
-.cd-proj-rate--inherited .cd-proj-rate-icon { color: var(--bp-blue); }
-.cd-proj-footer {
-  display: flex; justify-content: space-between;
-  font-size: 11px; color: var(--text-muted);
-  padding-top: .35rem; border-top: 1px dashed var(--border);
-  margin-top: auto;
+.cd-project-rate + .cd-project-rate { margin-left: .55rem; }
+.cd-project-rate-unit { font-size: 10px; color: var(--text-muted); margin-left: 1px; }
+.cd-project-rate--inherited { color: var(--text-muted); }
+
+/* ── Side rail cards ────────────────────────────────────────────── */
+.cd-side-card { padding: 1rem 1.15rem; }
+.cd-info-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .55rem .85rem;
+  margin: 0;
+  font-size: 13px;
+}
+.cd-info-list dt {
+  display: inline-flex; align-items: center; gap: .4rem;
+  color: var(--text-muted); font-weight: 500;
+}
+.cd-info-list dt :deep(svg) { color: var(--text-muted); }
+.cd-info-list dd { margin: 0; color: var(--text); word-break: break-word; }
+.cd-info-empty { font-size: 13px; color: var(--text-muted); margin: 0; font-style: italic; }
+.cd-notes-body { font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-wrap; margin: 0; }
+
+.cd-sync-card { display: flex; flex-direction: column; gap: .5rem; font-size: 13px; }
+.cd-sync-card-row { display: flex; align-items: center; gap: .45rem; color: var(--text); }
+.cd-sync-card-meta { color: var(--text-muted); }
+.cd-sync-card-row :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
+.cd-sync-card-logo { width: 14px; height: 14px; object-fit: contain; }
+.cd-sync-card-name { font-weight: 500; }
+.cd-sync-card-link {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: 12.5px;
+  color: var(--bp-blue); text-decoration: none;
+  margin-top: .1rem;
+}
+.cd-sync-card-link:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+
+/* ── Mobile (<768): hero collapses ──────────────────────────────── */
+@media (max-width: 767px) {
+  .cd-hero {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .cd-hero-rail { align-items: stretch; }
+  .cd-stat-row { width: 100%; }
+  .cd-stat-card { flex: 1; min-width: 0; }
+  .cd-sync-row { flex-wrap: wrap; }
 }
 
-/* ── Form ──────────────────────────────────────────────────────── */
+/* ── Form (modal) ───────────────────────────────────────────────── */
+.cd-field-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .25rem;
+}
+.cd-field-label-row > label { margin-bottom: 0; }
 .cd-form { display: flex; flex-direction: column; gap: .85rem; }
 .cd-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
 @media (max-width: 480px) { .cd-form-grid { grid-template-columns: 1fr; } }
@@ -522,7 +1019,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-form-actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .25rem; }
 .cd-delete-warn { display: block; margin-top: .5rem; color: #b45309; font-size: 12px; }
 
-/* ── Header crumb ──────────────────────────────────────────────── */
+/* ── Header crumb ───────────────────────────────────────────────── */
 .ah-crumb { color: var(--text-muted); font-weight: 500; }
 .ah-crumb:hover { color: var(--text); }
 .ah-sep { color: var(--text-muted); margin: 0 .35rem; }
