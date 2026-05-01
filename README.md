@@ -443,7 +443,7 @@ obligation.
 - Optional SMTP for password reset (dev mode = log to stdout)
 - SQLite with WAL + 5-second busy timeout + connection pool
 - 68 additive migrations run on startup
-- Health endpoint: `GET /api/health`
+- Health endpoint: `GET /api/health` → `{ "status": "ok", "service": "...", "version": "2.4.2" }` (`version` is stamped from `VERSION` at build time; local non-Docker builds report `"dev"`)
 - Instance endpoint: `GET /api/instance` (label, hostname,
   attachments-enabled flag)
 - Rate-limited auth endpoints (shared 5/10min window across login,
