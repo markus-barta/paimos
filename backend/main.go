@@ -600,9 +600,18 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }
 
+// appVersion is stamped by Dockerfile/-ldflags for releases; "dev" for
+// local builds. Surfaced via /api/health so operators can confirm the
+// running image without SSHing to the host.
+var appVersion = "dev"
+
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": brand.Default.HealthServiceName})
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"service": brand.Default.HealthServiceName,
+		"version": appVersion,
+	})
 }
 
 func instanceHandler(w http.ResponseWriter, r *http.Request) {

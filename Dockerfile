@@ -5,10 +5,11 @@ WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
+COPY VERSION /VERSION
 RUN CGO_ENABLED=0 GOOS=linux go build \
   -trimpath \
   -buildvcs=false \
-  -ldflags="-s -w -buildid=" \
+  -ldflags="-s -w -buildid= -X main.appVersion=$(tr -d ' \t\r\n' < /VERSION)" \
   -o /paimos . \
   && touch -d "@${SOURCE_DATE_EPOCH}" /paimos
 

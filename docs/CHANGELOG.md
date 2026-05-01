@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- [PAI-276](https://pm.barta.cm/projects/6/issues/PAI-276) — **`/api/health` exposes the running app version.** `Dockerfile` now copies `VERSION` into the go-build stage and stamps it into the binary via `-ldflags "-X main.appVersion=$(cat VERSION)"` (whitespace stripped); the existing reproducibility flags (`-trimpath -buildvcs=false -buildid=`) are preserved, so the same source tree + same `VERSION` still produces identical bytes. The handler returns `{status, service, version}` instead of `{status, service}` — local non-Docker builds report `"dev"` so checkouts can't masquerade as a release. OpenAPI schema documents the new field. Operator workflow: `curl https://host/api/health | jq .version` answers "what's actually running?" without SSH or `docker inspect`.
+
 ## [2.4.0] — 2026-04-29
 
 ### Added

@@ -217,7 +217,7 @@
         "responses": {
           "200": {
             "description": "OK",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "service": { "type": "string" } } } } }
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "service": { "type": "string" }, "version": { "type": "string", "description": "App version (semver) stamped at build time, or 'dev' for local builds." } } } } }
           }
         }
       }
