@@ -221,7 +221,7 @@ function onDeleted(id: number) {
 </script>
 
 <template>
-  <div>
+  <div class="issues-view-root">
     <Teleport defer to="#app-header-left">
       <span class="ah-title">Issues</span>
       <span v-if="!loading && isSearchMode" class="ah-subtitle">{{ issues.length.toLocaleString() }} matching "{{ search.query }}"</span>
@@ -278,6 +278,19 @@ function onDeleted(id: number) {
 </template>
 
 <style scoped>
+/* PAI-274: participate in AppLayout's `.view-body--self-scroll` flex chain
+   so IssueList's table-wrap (flex:1; min-height:0; overflow:auto) actually
+   has a bounded scrolling viewport — restoring sticky thead + frozen
+   columns. The `<template v-else>` fragment below collapses two flex
+   children (.view-tabs + IssueList) into the column; that's intentional. */
+.issues-view-root {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .loading, .load-error, .no-results {
   color: var(--text-muted); padding: 2rem 0; font-size: 13px;
 }

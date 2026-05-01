@@ -28,6 +28,14 @@ declare module "vue-router" {
     adminOnly?: boolean;
     portal?: boolean;
     projectIdParam?: string;
+    // PAI-274: views that own their internal scroll container (e.g. lists
+    // with sticky headers and frozen columns) opt into a flex-bounded
+    // .view-body so position: sticky has a stable scrolling ancestor.
+    // Default 'page' lets .view-body grow with content and .main-content
+    // own the scroll — correct for tall, page-scroll views like Settings
+    // and IssueDetail. See AppLayout.vue.
+    scrollMode?: "page" | "self";
+    hideAppFooter?: boolean;
   }
 }
 
@@ -74,7 +82,11 @@ const router = createRouter({
       path: "/customers/:id",
       component: () => import("@/views/CustomerDetailView.vue"),
     },
-    { path: "/issues", component: () => import("@/views/IssuesView.vue") },
+    {
+      path: "/issues",
+      component: () => import("@/views/IssuesView.vue"),
+      meta: { scrollMode: "self" },
+    },
     { path: "/sprints", redirect: "/sprint-board" },
     {
       path: "/sprint-board",

@@ -230,7 +230,7 @@ onMounted(() => {
              which previously had none). Routes that render their own
              footer/colophon (e.g. AccrualsPrintView) opt out via
              route.meta.hideAppFooter. -->
-        <div class="view-body">
+        <div :class="['view-body', { 'view-body--self-scroll': route.meta.scrollMode === 'self' }]">
           <slot />
         </div>
         <AppFooter v-if="!route.meta.hideAppFooter" />
@@ -470,18 +470,28 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-/* PAI-262: do NOT add `flex: 1` here. It was tried in PAI-263 but it
-   caused tall-content views (Settings, IssueDetail, …) to overflow
-   past `.view-body`'s flex-allocated box while AppFooter stayed pinned
-   to that box's bottom — so the footer painted on top of the
-   overflowing content. The footer's own `margin-top: auto` (set in
-   AppFooter.vue) consumes leftover space inside `.main-content` for
-   short views, which is what pins it to the bottom; tall views get
-   their natural height and the footer follows in flow. */
+/* PAI-262: by default, do NOT add `flex: 1` / `min-height: 0` here.
+   Tall page-scroll views (Settings, IssueDetail, …) need .view-body
+   to size to their natural content height so .main-content owns the
+   scroll and AppFooter sits at the bottom of natural flow.
+
+   PAI-274: views that own their internal scroll (IssueList table with
+   sticky thead + frozen columns) opt into the .view-body--self-scroll
+   variant via route.meta.scrollMode === 'self'. That re-establishes a
+   flex-bounded box with overflow: hidden — bounded so children that
+   declare `flex: 1; min-height: 0; overflow: auto` (e.g. .issue-table-wrap)
+   actually have a viewport to be the scrolling ancestor of, and
+   overflow: hidden so PAI-262's bleed-into-AppFooter problem stays
+   fixed for self-scroll views too. */
 .view-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+.view-body--self-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ── 2FA warning ─────────────────────────────────────────────────────────── */
