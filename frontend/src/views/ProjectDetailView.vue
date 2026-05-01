@@ -1316,7 +1316,14 @@ textarea { resize: vertical; min-height: 80px; }
 .pd-page {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* PAI-274: participate in AppLayout's `.view-body--self-scroll` flex chain
+     so IssueList's table-wrap (flex:1; min-height:0; overflow:auto) actually
+     has a bounded scrolling viewport — restoring sticky thead + frozen
+     columns inside this view. `min-height:100%` was the old page-scroll
+     contract; `flex:1; min-height:0` is the bounded-flex contract. */
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 
 .pd-workspaces {

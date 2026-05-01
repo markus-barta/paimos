@@ -67,7 +67,7 @@ const router = createRouter({
     {
       path: "/projects/:id",
       component: () => import("@/views/ProjectDetailView.vue"),
-      meta: { projectIdParam: "id" },
+      meta: { projectIdParam: "id", scrollMode: "self" },
     },
     {
       path: "/projects/:id/issues/:issueId",

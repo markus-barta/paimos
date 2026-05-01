@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- [PAI-274](https://pm.barta.cm/projects/6/issues/PAI-274) phase 2 — **Sticky thead + frozen columns now also survive scroll on `/projects/:id`.** The v2.4.1 fix opted only `/issues` into `RouteMeta.scrollMode: 'self'`, but PAI-274's stated scope was every IssueList consumer (Issues view, Project Issues, …). Extending the meta to `/projects/:id` and giving `.pd-page` the same flex-bounded participation (`flex: 1; min-height: 0`) as `.issues-view-root` re-establishes the bounded scrolling viewport for IssueList's `.issue-table-wrap` inside ProjectDetailView. Verified at 1440×900 against `/projects/4` (LOGS): with table inflated to 20577px, `firstTh.top` stayed at 318px after scrolling the wrap by 800px (header pinned), AppFooter remained at viewport bottom, `.pd-workspaces` still rendered at the end of `.pd-page` (workspace-dock UX untouched). `IssueDetailView` (`/projects/:id/issues/:issueId`) intentionally stays page-scroll — it uses IssueList in `compact` mode (`overflow:hidden`, no internal scroll), so its sticky thead inherits `.main-content`'s scroll context. Router test extended to assert `scrollMode: 'self'` on every embed-IssueList route, parametrised so adding the next one is a one-line change.
+
 ## [2.4.1] — 2026-05-01
 
 ### Added
