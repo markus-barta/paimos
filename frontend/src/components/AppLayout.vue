@@ -462,6 +462,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
+/* PAI-281: self-scroll views are bounded by the flex viewport — anything
+   below their bottom-anchored element (workspace rail, table-wrap) is
+   dead space. Trim main-content's bottom padding so the rail anchors
+   visually to the viewport edge. Page-scroll views (Settings, IssueDetail,
+   Customers, Dashboard) keep the generous 2rem bottom for content-end
+   breathing room. */
+.main-content:has(.view-body--self-scroll) {
+  padding-bottom: .5rem;
+}
 /* PAI-274: by default, .view-body sizes to its natural content height
    so tall page-scroll views (Settings, IssueDetail, …) let
    .main-content own the scroll. Views that own their internal scroll
