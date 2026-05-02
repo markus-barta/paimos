@@ -21,7 +21,6 @@ import SidebarTimerPanel from '@/components/SidebarTimerPanel.vue'
 import SidebarSprintTargets from '@/components/SidebarSprintTargets.vue'
 import SidebarRecentProjects from '@/components/SidebarRecentProjects.vue'
 import SidebarFooter from '@/components/SidebarFooter.vue'
-import AppFooter from '@/components/AppFooter.vue'
 import GlobalNewIssueModal from '@/components/GlobalNewIssueModal.vue'
 import AttachmentLightbox from '@/components/issue/AttachmentLightbox.vue'
 import SessionExpiredBanner from '@/components/SessionExpiredBanner.vue'
@@ -224,16 +223,9 @@ onMounted(() => {
           <span class="totp-warning-pulse" aria-hidden="true"></span>
           <span class="totp-warning-label">Two-factor authentication is not enabled. <button class="totp-warning-link" type="button" @click="goTo2FASetup">Set it up now</button> to secure your account.</span>
         </div>
-        <!-- PAI-263: views were each rendering <AppFooter /> as their own
-             last child. Hoisted here so it's a single source of truth and
-             every authenticated route gets a footer (incl. ProjectDetailView,
-             which previously had none). Routes that render their own
-             footer/colophon (e.g. AccrualsPrintView) opt out via
-             route.meta.hideAppFooter. -->
         <div :class="['view-body', { 'view-body--self-scroll': route.meta.scrollMode === 'self' }]">
           <slot />
         </div>
-        <AppFooter v-if="!route.meta.hideAppFooter" />
       </div>
     </main>
     </div>
@@ -470,19 +462,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-/* PAI-262: by default, do NOT add `flex: 1` / `min-height: 0` here.
-   Tall page-scroll views (Settings, IssueDetail, …) need .view-body
-   to size to their natural content height so .main-content owns the
-   scroll and AppFooter sits at the bottom of natural flow.
-
-   PAI-274: views that own their internal scroll (IssueList table with
-   sticky thead + frozen columns) opt into the .view-body--self-scroll
-   variant via route.meta.scrollMode === 'self'. That re-establishes a
-   flex-bounded box with overflow: hidden — bounded so children that
-   declare `flex: 1; min-height: 0; overflow: auto` (e.g. .issue-table-wrap)
-   actually have a viewport to be the scrolling ancestor of, and
-   overflow: hidden so PAI-262's bleed-into-AppFooter problem stays
-   fixed for self-scroll views too. */
+/* PAI-274: by default, .view-body sizes to its natural content height
+   so tall page-scroll views (Settings, IssueDetail, …) let
+   .main-content own the scroll. Views that own their internal scroll
+   (IssueList table with sticky thead + frozen columns) opt into the
+   .view-body--self-scroll variant via route.meta.scrollMode === 'self'.
+   That re-establishes a flex-bounded box with overflow: hidden so
+   children that declare `flex: 1; min-height: 0; overflow: auto`
+   (e.g. .issue-table-wrap) actually have a viewport to be the
+   scrolling ancestor of. */
 .view-body {
   display: flex;
   flex-direction: column;

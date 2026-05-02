@@ -35,7 +35,6 @@ declare module "vue-router" {
     // own the scroll — correct for tall, page-scroll views like Settings
     // and IssueDetail. See AppLayout.vue.
     scrollMode?: "page" | "self";
-    hideAppFooter?: boolean;
   }
 }
 
@@ -62,7 +61,7 @@ const router = createRouter({
     {
       path: "/projects/accruals/print",
       component: () => import("@/views/AccrualsPrintView.vue"),
-      meta: { adminOnly: true, hideAppFooter: true },
+      meta: { adminOnly: true },
     },
     {
       path: "/projects/:id",

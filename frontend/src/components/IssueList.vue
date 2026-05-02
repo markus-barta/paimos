@@ -1100,10 +1100,9 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       <div v-if="hasMore" ref="scrollSentinel" class="scroll-sentinel">Loading more...</div>
     </div>
 
-    <!-- TREE VIEW (full mode only) — wrapped in a scrollable flex child so
-         the tree owns its own overflow, keeping AppFooter in flow beneath the
-         list instead of being pushed below the viewport. Mirrors the flat
-         .issue-table-wrap pattern. -->
+    <!-- TREE VIEW (full mode only) — wrapped in a scrollable flex child
+         so the tree owns its own overflow, mirroring the flat
+         .issue-table-wrap pattern (PAI-274 self-scroll model). -->
     <div v-else class="issue-tree-wrap">
       <IssueTreeView
         :issue-tree="issueTree"
@@ -1292,9 +1291,9 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .issue-table-wrap.compact { box-shadow: none; margin-top: 0; overflow: hidden; max-height: none; }
 
 /* Tree-view scroll container — mirrors .issue-table-wrap's flex-child scroll
-   pattern so tree rows stay contained within the issue-list area and AppFooter
-   is never overlapped. Without this wrapper, .tree-wrap had no scroll and rows
-   overflowed .main-content. */
+   pattern so tree rows stay contained within the issue-list area and the
+   sticky thead survives scroll (PAI-274 self-scroll model). Without this
+   wrapper, .tree-wrap had no scroll and rows overflowed .main-content. */
 .issue-tree-wrap { overflow: auto; flex: 1; min-height: 0; margin-top: 1.25rem; }
 
 .table-borders :deep(.issue-table tbody tr.issue-row td) { border-bottom: 1px solid var(--table-row-border); }

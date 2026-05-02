@@ -59,6 +59,13 @@ function isActive(path: string) {
       <AppIcon name="shield" :size="9" />
       <span class="sl">AGPL-3.0</span>
     </a>
+    <!-- PAI-280: upstream attribution. Was AppFooter's only unique
+         payload; merged here so we don't lose the outbound link when
+         AppFooter is dropped. Stays paimos.com regardless of brand. -->
+    <a href="https://paimos.com" target="_blank" rel="noopener" class="meta-badge" title="paimos.com">
+      <AppIcon name="globe" :size="9" />
+      <span class="sl">paimos.com</span>
+    </a>
     <a v-if="gitHash" href="https://github.com/PAIMOS/paimos" target="_blank" rel="noopener" class="meta-badge" :title="`Build ${gitHash}`">
       <AppIcon name="github" :size="9" />
       <span class="sl">{{ gitHash }}</span>
