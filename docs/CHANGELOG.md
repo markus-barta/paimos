@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.4] — 2026-05-02
+
+### Fixed
+
+- [PAI-281](https://pm.barta.cm/projects/6/issues/PAI-281) — **Workspace rail anchors to viewport bottom on self-scroll views.** `.main-content`'s symmetric `padding: 2rem 2.5rem` left ~32 px of dead space below bottom-anchored elements on `scrollMode: 'self'` views (after PAI-274) — the rail floated visibly above the viewport bottom instead of reading as anchored. Used `.main-content:has(.view-body--self-scroll) { padding-bottom: .5rem }` to scope the trim to the existing self-scroll opt-in: `/projects/:id`'s rail now sits ~14 px above the viewport edge (was ~38 px), `/issues`'s table-wrap gains +24 px of visible rows, while page-scroll views (Settings / IssueDetail / Customers / Dashboard) keep the generous 2 rem bottom for content-end breathing room.
+
 ## [2.4.3] — 2026-05-02
 
 ### Changed
