@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -14,6 +15,11 @@ func computeIssueListETag(whereSQL string, args []any) (string, error) {
 	var maxUpdated string
 	var total int
 	if err := db.DB.QueryRow(query, args...).Scan(&maxUpdated, &total); err != nil {
+		// PAI-283: surface the underlying SQL error so operators can diagnose
+		// "etag computation failed" 500s instead of guessing at the cause.
+		// whereSQL + args length are diagnostic but bounded (no PII leaks
+		// beyond what's already in the request).
+		log.Printf("computeIssueListETag: %v (whereSQL=%q args=%d)", err, whereSQL, len(args))
 		return "", err
 	}
 	h := sha256.New()
