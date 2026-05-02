@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.5] — 2026-05-02
+
+### Fixed
+
+- [PAI-282](https://pm.barta.cm/projects/6/issues/PAI-282) — **Search palette no longer clipped by AppHeader's `overflow: hidden`.** Found in QA: typing into the global header search showed the result palette starting under the header but only ~4 px of border peeked through before the rest was hidden by page content. The cause wasn't z-index (palette already had `z-index: 9999`) but `.app-header { overflow: hidden }` (load-bearing for the structural 52 px chrome) clipping any absolutely-positioned descendant. Same pattern as PAI-265: `SearchPalette` now `<Teleport to="body">` and positions `fixed` against the search-wrap's `getBoundingClientRect()`, recomputed on visible-change, resize, and capture-phase scroll. Click-through, keyboard nav (`ArrowUp/Down/Enter/Escape`), and the focused-search width transition all survive the teleport.
+
 ## [2.4.4] — 2026-05-02
 
 ### Fixed
