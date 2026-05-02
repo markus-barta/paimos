@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.6] — 2026-05-02
+
+### Fixed
+
+- [PAI-283](https://pm.barta.cm/projects/6/issues/PAI-283) — **`/api/issues` 500 "etag computation failed" now logs the underlying SQL error.** Found during QA on `pm.barta.cm`: the issues list endpoint returned a 500 with this generic message after a global search, with no log line to triage. Four call sites of `applyIssueListConditionalGET` (in `backend/handlers/issues.go`) mapped any `computeIssueListETag` error to the same client-facing string, swallowing the SQLite/FTS5 detail. Added `log.Printf("computeIssueListETag: %v (whereSQL=%q args=%d)", …)` in the helper itself so every call site benefits without behaviour change. Phase 2 root-cause fix follows once we capture the actual error from prod.
+
 ## [2.4.5] — 2026-05-02
 
 ### Fixed
