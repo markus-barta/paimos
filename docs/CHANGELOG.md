@@ -5,6 +5,13 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.3] — 2026-05-02
+
+### Changed
+
+- [PAI-279](https://pm.barta.cm/projects/6/issues/PAI-279) — **Project workspace rail aligned to global toggle vocabulary.** The Docs / Coop / Context buttons at the bottom of `/projects/:id` had their own custom pill style (`.pd-workspace-rail__btn`, `border-radius: 999px`, custom hover/active rules) that didn't match the rest of the app. Replaced with the global `btn btn-ghost btn-sm` + `:class="{ active: ... }"` pattern — same vocabulary as IssueList's `⌥ Tree`, the Filter / Views / Columns toggles, and every other secondary toggle in the app. Added a local `.btn-sm.active` rule mirroring `IssueList.vue`'s so the active workspace toggle paints with the same brand-blue-pale fill, preserving the visual pairing with the workspace dock above. Tightened the rail's outer padding so the strip lands at ~33 px (was ~42–48 px), giving the issue table back ~10–15 px of vertical real estate. ~25 lines of custom CSS deleted; future button-style refresh in `App.vue`'s `.btn` system propagates here automatically.
+- [PAI-280](https://pm.barta.cm/projects/6/issues/PAI-280) — **AppFooter dropped; colophon consolidated into SidebarFooter.** `AppFooter` had been a duplicate strip ever since `SidebarFooter` matured (brand link + version + AGPL + GitHub/git-hash). It carried only `branding.company` (already in the sidebar's brand row) and a hardcoded paimos.com logo link, while costing ~30–48 px of vertical space on every authenticated route. Migrated the only thing it owned uniquely — the upstream paimos.com outbound link — to a meta-badge in `SidebarFooter.vue`'s `.sidebar-meta-row`, alongside AGPL-3.0 and the git-hash badge. Removed `<AppFooter />` from `AppLayout.vue`, deleted `AppFooter.vue`, dropped `RouteMeta.hideAppFooter` from the router, and removed the matching opt-out on `AccrualsPrintView`. Trimmed the long PAI-262/PAI-274 CSS comment block in `AppLayout.vue` since the AppFooter-bleed concern is now moot. Net diff: −58 lines (one component file deleted), every authenticated route gains ~30–48 px of bottom space, sidebar is now the single source of truth for chrome.
+
 ## [2.4.2] — 2026-05-01
 
 ### Fixed
