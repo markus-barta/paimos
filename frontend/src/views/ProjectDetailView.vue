@@ -818,7 +818,7 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
           <div class="pd-workspace-rail">
             <button
               type="button"
-              :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'docs' }]"
+              :class="['btn', 'btn-ghost', 'btn-sm', { active: workspacePanel === 'docs' }]"
               :title="workspaceSummary.docs"
               @click="toggleWorkspace('docs')"
             >
@@ -828,7 +828,7 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
             </button>
             <button
               type="button"
-              :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'cooperation' }]"
+              :class="['btn', 'btn-ghost', 'btn-sm', { active: workspacePanel === 'cooperation' }]"
               :title="workspaceSummary.cooperation"
               @click="toggleWorkspace('cooperation')"
             >
@@ -838,7 +838,7 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
             </button>
             <button
               type="button"
-              :class="['pd-workspace-rail__btn', { 'pd-workspace-rail__btn--active': workspacePanel === 'context' }]"
+              :class="['btn', 'btn-ghost', 'btn-sm', { active: workspacePanel === 'context' }]"
               :title="workspaceSummary.context"
               @click="toggleWorkspace('context')"
             >
@@ -1327,8 +1327,11 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 .pd-workspaces {
+  /* PAI-279: tighter padding around the rail strip — was .6rem; the
+     rail itself uses btn-sm vocabulary now and doesn't need much
+     breathing room. */
   margin-top: auto;
-  padding-top: .6rem;
+  padding-top: .35rem;
 }
 
 .pd-workspace-dock {
@@ -1423,46 +1426,34 @@ textarea { resize: vertical; min-height: 80px; }
 .pd-workspace-footer {
   display: flex;
   flex-direction: column;
-  gap: .1rem;
 }
 
+/* PAI-279: rail uses the global `.btn .btn-ghost .btn-sm` vocabulary
+   for consistency with every other toggle in the app (e.g. IssueList's
+   `⌥ Tree`, the filter / views buttons). The container only owns
+   spacing between buttons + bottom breathing room above AppFooter. */
 .pd-workspace-rail {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.1rem 0 0;
+  gap: 0.4rem;
+  padding: 0.1rem 0 0.4rem;
 }
 
-.pd-workspace-rail__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.42rem;
-  padding: 0.4rem 0.7rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  transition: color .15s, background .15s, border-color .15s;
-}
-
-.pd-workspace-rail__btn:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--bp-blue-pale) 34%, white);
-}
-
-.pd-workspace-rail__btn--active {
+/* `.btn-sm.active` matches `IssueList.vue:1264` — keeping the active
+   workspace toggle tied to the dock above with the same brand-blue
+   pale fill the rest of the app uses for active toggles. */
+.btn-sm.active {
+  background: var(--bp-blue-pale);
   color: var(--bp-blue-dark);
-  background: color-mix(in srgb, var(--bp-blue-pale) 72%, white);
-  border-color: color-mix(in srgb, var(--bp-blue) 18%, var(--border));
+  border-color: var(--bp-blue-pale);
 }
 
 .pd-workspace-rail__meta {
   color: inherit;
-  opacity: .82;
-  font-size: 11px;
+  opacity: .65;
+  font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .pd-workspace-dock-enter-active,
