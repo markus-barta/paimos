@@ -14,6 +14,7 @@ const undo = useUndoStore();
 
 const searchFocused = ref(false);
 const topbarInput = ref<HTMLInputElement | null>(null);
+const searchWrap = ref<HTMLElement | null>(null);
 const paletteRef = ref<InstanceType<typeof SearchPalette> | null>(null);
 const paletteVisible = ref(false);
 
@@ -102,6 +103,7 @@ defineExpose({
     <div class="ah-center">
       <div class="ah-center-row">
         <div
+          ref="searchWrap"
           :class="[
             'ah-search-wrap',
             { focused: searchFocused, active: hasQuery },
@@ -132,6 +134,7 @@ defineExpose({
           <SearchPalette
             ref="paletteRef"
             :visible="paletteVisible"
+            :anchor="searchWrap"
             @navigate="onPaletteNavigate"
             @close="onPaletteClose"
           />

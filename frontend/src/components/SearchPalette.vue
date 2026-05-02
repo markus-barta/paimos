@@ -6,6 +6,13 @@ import { useSearchStore } from '@/stores/search'
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 
+// PAI-282: AppHeader has `overflow: hidden` to keep the structural 52px
+// chrome from being stretched by overflowing children, which clips any
+// absolutely-positioned descendant — including this palette. Teleport to
+// body and position `fixed` against the search-wrap's bounding rect so
+// the dropdown escapes the header's clip box. Same pattern PAI-265 used
+// for the project-detail ⋯ menu.
+
 interface SearchIssue {
   id: number
   issue_key: string
@@ -26,6 +33,7 @@ interface SearchResults {
 
 const props = defineProps<{
   visible: boolean
+  anchor?: HTMLElement | null
 }>()
 
 const emit = defineEmits<{
@@ -131,6 +139,35 @@ function onKeydown(e: KeyboardEvent) {
 // Exposed so AppHeader can call directly from its keydown handler
 defineExpose({ handleKeydown: onKeydown })
 
+// PAI-282: track the anchor's bounding rect so the teleported palette
+// stays glued to the search input on resize. The header doesn't move
+// during page scroll (it sits outside the scrolling .main-content), but
+// a window scroll can still happen at the document level on narrow
+// viewports, so we re-measure on `scroll` capture too.
+const anchorRect = ref({ top: 0, left: 0, width: 0 })
+
+function recomputeAnchor() {
+  const el = props.anchor
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  anchorRect.value = { top: r.bottom + 4, left: r.left, width: r.width }
+}
+
+watch(() => props.visible, (v) => {
+  if (v) {
+    nextTick(recomputeAnchor)
+  }
+})
+
+onMounted(() => {
+  window.addEventListener('resize', recomputeAnchor)
+  window.addEventListener('scroll', recomputeAnchor, true)
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', recomputeAnchor)
+  window.removeEventListener('scroll', recomputeAnchor, true)
+})
+
 // Keep the active item in view inside the palette's own scroll container.
 // PAI-255: we used to call `el.scrollIntoView({ block: 'nearest' })`, which
 // walks the DOM looking for any scrollable ancestor. When the active row
@@ -157,7 +194,13 @@ watch(activeIndex, () => {
 </script>
 
 <template>
-  <div v-if="visible && (loading || (results && items.length > 0))" ref="paletteRef" class="search-palette">
+  <Teleport to="body">
+    <div
+      v-if="visible && (loading || (results && items.length > 0))"
+      ref="paletteRef"
+      class="search-palette"
+      :style="{ top: anchorRect.top + 'px', left: anchorRect.left + 'px', width: anchorRect.width + 'px' }"
+    >
     <div v-if="loading && !results" class="sp-loading">Searching…</div>
     <template v-else-if="results">
       <!-- Direct match — rich row -->
@@ -189,17 +232,17 @@ watch(activeIndex, () => {
         <span class="sp-more-text">More results — press Enter for full search</span>
       </div>
     </template>
-  </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+/* PAI-282: position is `fixed` (viewport-relative) and supplied via inline
+   styles from the anchor's bounding rect — the palette is teleported to
+   <body> so it escapes AppHeader's `overflow: hidden` clip. */
 .search-palette {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  position: fixed;
   z-index: 9999;
-  margin-top: 4px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
