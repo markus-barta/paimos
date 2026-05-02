@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.7] — 2026-05-02
+
+### Fixed
+
+- [PAI-283](https://pm.barta.cm/projects/6/issues/PAI-283) phase 2 — **Search no longer 500s on FTS5 special characters.** The Phase 1 logging deployed in v2.4.6 caught the actual error: `fts5: syntax error near "/"` — typing `doc/` (or anything with FTS5 operator chars: `/`, `"`, `(`, `)`, `:`, `*`, `^`, `-`) crashed the parser inside `WHERE search_index MATCH ?`. Not a SQL-injection vector (params still flow through `?` placeholders / prepared statements), but a reliability + DoS bug — any user could 500 the issues endpoint with one keystroke. Added `sanitizeFTS5Token` in `backend/handlers/search_util.go` that strips non-alphanumeric characters, collapses whitespace, and appends `*` for prefix matching. When the cleaned input is empty (input was purely symbolic), callers drop the FTS5 branch and rely on the LIKE fallback alone. Applied at all 5 FTS5 query sites: `/api/projects/{id}/issues`, `/api/issues` (data + count), `/api/portal/timesheets`, and `/api/search` (the SearchPalette feeder). Bonus: the count query in `ListAllIssues` was previously FTS5-only — under-counted LIKE-only matches — now mirrors the data query's FTS+LIKE union so the rendered list and the "N matching" header agree.
+
 ## [2.4.6] — 2026-05-02
 
 ### Fixed
