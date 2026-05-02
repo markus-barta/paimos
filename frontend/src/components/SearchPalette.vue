@@ -54,7 +54,6 @@ const cache = new Map<string, SearchResults>()
 
 watch(() => search.query, (q) => {
   if (debounceTimer) clearTimeout(debounceTimer)
-  activeIndex.value = -1
   const trimmed = q.trim()
   if (trimmed.length < 2) {
     results.value = null
@@ -65,6 +64,20 @@ watch(() => search.query, (q) => {
     results.value = cache.get(trimmed)!
   }
   debounceTimer = setTimeout(() => fetchResults(trimmed), 150)
+})
+
+// PAI-284: auto-highlight the first visible row whenever results change.
+// If a directMatch row exists (user typed an exact issue key), highlight
+// that — it's rendered first visually. Otherwise fall back to items[0].
+// Means Enter without ArrowDown is predictable and lands on the row the
+// user already sees as "selected".
+watch(results, () => {
+  if (!results.value || items.value.length === 0) {
+    activeIndex.value = -1
+    return
+  }
+  const dm = directMatch.value
+  activeIndex.value = dm ? items.value.indexOf(dm) : 0
 })
 
 async function fetchResults(q: string) {
@@ -118,18 +131,22 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault()
     activeIndex.value = Math.min(activeIndex.value + 1, total - 1)
   } else if (e.key === 'ArrowUp') {
+    // PAI-284: clamp at 0 — first row is always selected, no deselect.
     e.preventDefault()
-    activeIndex.value = Math.max(activeIndex.value - 1, -1)
+    activeIndex.value = Math.max(activeIndex.value - 1, 0)
   } else if (e.key === 'Enter') {
     e.preventDefault()
-    if (activeIndex.value >= 0 && activeIndex.value < total) {
-      navigateToIssue(items.value[activeIndex.value])
-    } else if (directMatch.value) {
-      navigateToIssue(directMatch.value)
-    } else {
-      // Navigate to full results
+    // PAI-284: ⌘↵ / Ctrl↵ = "see all results" (full search page).
+    // Plain ↵ = open the highlighted row (always set when items > 0).
+    if (e.metaKey || e.ctrlKey) {
       emit('navigate', `/issues`)
       emit('close')
+    } else if (activeIndex.value >= 0 && activeIndex.value < total) {
+      navigateToIssue(items.value[activeIndex.value])
+    } else {
+      // Defensive fallback — shouldn't fire since results watcher pins
+      // activeIndex >= 0 whenever items > 0.
+      navigateToIssue(items.value[0])
     }
   } else if (e.key === 'Escape') {
     emit('close')
@@ -228,8 +245,16 @@ watch(activeIndex, () => {
         <span class="sp-title-compact">{{ item.title }}</span>
       </div>
 
-      <div v-if="results.has_more" class="sp-more">
-        <span class="sp-more-text">More results — press Enter for full search</span>
+      <!-- PAI-284: footer always shows the modifier-Enter affordance when
+           the palette has items. Click also navigates, so the row reads as
+           the "see all" action. -->
+      <div v-if="items.length > 0" class="sp-more" @mousedown.prevent="$emit('navigate', '/issues'); $emit('close')">
+        <span class="sp-more-text">
+          <kbd class="sp-kbd">↵</kbd> open
+          <span class="sp-more-sep">·</span>
+          <kbd class="sp-kbd">⌘</kbd><kbd class="sp-kbd">↵</kbd>
+          {{ results.has_more ? 'see all results' : 'open full search' }}
+        </span>
       </div>
     </template>
     </div>
@@ -317,9 +342,29 @@ watch(activeIndex, () => {
 .sp-more {
   padding: .4rem .75rem;
   text-align: center;
+  cursor: pointer;
+  border-top: 1px solid var(--border);
 }
+.sp-more:hover { background: var(--surface-2); }
 .sp-more-text {
   font-size: 11px;
   color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+}
+.sp-kbd {
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.2;
+}
+.sp-more-sep {
+  margin: 0 .25rem;
+  opacity: .5;
 }
 </style>
