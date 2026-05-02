@@ -23,10 +23,16 @@ type Config struct {
 	Instances       map[string]InstanceConfig `yaml:"instances"`
 }
 
-// InstanceConfig is one named target: a URL and an API key.
+// InstanceConfig is one named target. The URL is persisted to disk;
+// APIKey is a runtime-only field — it is never serialised back to
+// config.yaml (saveConfig strips it defensively) and is hydrated from
+// the OS keyring (or PAIMOS_API_KEY) when a command needs to make a
+// request. The yaml tag is kept so legacy config files written by
+// pre-keyring versions still parse cleanly during the one-time
+// migration in loadConfig.
 type InstanceConfig struct {
 	URL    string `yaml:"url"`
-	APIKey string `yaml:"api_key"`
+	APIKey string `yaml:"api_key,omitempty"`
 }
 
 // defaultConfigPath returns ~/.paimos/config.yaml (cross-platform via
@@ -51,6 +57,12 @@ func configPath() (string, error) {
 
 // loadConfig reads the YAML config file. Returns an empty Config when
 // the file doesn't exist (first run).
+//
+// On first read after upgrading from a pre-keyring CLI, any inline
+// api_key fields in the YAML are migrated into the OS keyring and
+// removed from disk. The config is then re-saved without the field. A
+// one-time notice is printed to stderr so users understand where their
+// credential moved.
 func loadConfig() (Config, error) {
 	var cfg Config
 	path, err := configPath()
@@ -67,11 +79,46 @@ func loadConfig() (Config, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	if err := migrateAPIKeysToKeyring(&cfg, path); err != nil {
+		return cfg, err
+	}
 	return cfg, nil
+}
+
+// migrateAPIKeysToKeyring moves any api_key found in the parsed config
+// into the OS keyring and rewrites the config file without the field.
+// Called once per loadConfig; a no-op when the keys are already gone
+// (the common steady-state case after the first migration).
+func migrateAPIKeysToKeyring(cfg *Config, path string) error {
+	migrated := make([]string, 0)
+	for name, inst := range cfg.Instances {
+		if inst.APIKey == "" {
+			continue
+		}
+		if err := keyringSet(name, inst.APIKey); err != nil {
+			return fmt.Errorf("migrate api_key for instance %q to keyring: %w (set %s to bypass)", name, err, envAPIKey)
+		}
+		inst.APIKey = ""
+		cfg.Instances[name] = inst
+		migrated = append(migrated, name)
+	}
+	if len(migrated) == 0 {
+		return nil
+	}
+	if err := saveConfig(*cfg); err != nil {
+		return fmt.Errorf("rewrite %s after keyring migration: %w", path, err)
+	}
+	fmt.Fprintf(stderr, "paimos: migrated API key(s) for %v from %s into the OS keyring (service %q)\n", migrated, path, keyringServiceName)
+	return nil
 }
 
 // saveConfig writes the config atomically with mode 0600. Creates the
 // parent directory if missing.
+//
+// API keys are stripped before serialisation — they live in the OS
+// keyring, not on disk. Mode 0600 stays as defence-in-depth: the URL +
+// instance-name list are not secrets, but treating the whole file as
+// sensitive is cheap.
 func saveConfig(cfg Config) error {
 	path, err := configPath()
 	if err != nil {
@@ -80,6 +127,15 @@ func saveConfig(cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
+	scrubbed := Config{DefaultInstance: cfg.DefaultInstance}
+	if len(cfg.Instances) > 0 {
+		scrubbed.Instances = make(map[string]InstanceConfig, len(cfg.Instances))
+		for name, inst := range cfg.Instances {
+			inst.APIKey = ""
+			scrubbed.Instances[name] = inst
+		}
+	}
+	cfg = scrubbed
 	b, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
@@ -112,13 +168,18 @@ func saveConfig(cfg Config) error {
 	return nil
 }
 
-// resolveInstance picks the instance to use for a command. Precedence:
+// pickInstance picks the instance to use for a command without loading
+// its API key. Precedence:
 //
 //  1. --instance flag (hard override; error if named instance missing)
 //  2. config.default_instance (the value set during `paimos auth login`)
 //  3. sole instance if there's only one configured
 //  4. error — user must run `paimos auth login` or specify --instance
-func resolveInstance(cfg Config) (string, InstanceConfig, error) {
+//
+// Use this when you need the instance metadata (URL, name) but not the
+// credential, e.g. `paimos auth logout` should still work after the
+// keyring entry has already been deleted.
+func pickInstance(cfg Config) (string, InstanceConfig, error) {
 	if len(cfg.Instances) == 0 {
 		return "", InstanceConfig{}, &usageError{
 			msg: "no instance configured — run `paimos auth login` first",
@@ -145,6 +206,29 @@ func resolveInstance(cfg Config) (string, InstanceConfig, error) {
 		}
 	}
 	return pick, inst, nil
+}
+
+// resolveInstance picks the instance and hydrates its API key from
+// PAIMOS_API_KEY or the OS keyring. Used by every authenticated
+// command. Returns a usage error when the instance is configured but
+// no credential is available, so the caller can map it to exit code 2
+// and a "run paimos auth login" hint.
+func resolveInstance(cfg Config) (string, InstanceConfig, error) {
+	name, inst, err := pickInstance(cfg)
+	if err != nil {
+		return name, inst, err
+	}
+	key, err := resolveAPIKey(name)
+	if err != nil {
+		return name, inst, err
+	}
+	if key == "" {
+		return name, inst, &usageError{
+			msg: fmt.Sprintf("no API key for instance %q — run `paimos auth login --name %s` (or set %s)", name, name, envAPIKey),
+		}
+	}
+	inst.APIKey = key
+	return name, inst, nil
 }
 
 // listInstances returns a comma-separated list of configured instance

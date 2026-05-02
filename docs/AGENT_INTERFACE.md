@@ -35,10 +35,13 @@ paimos auth login
 # API key (input hidden): <paste>
 # ✓ logged in as mba at https://pm.barta.cm
 #   saved to /Users/you/.paimos/config.yaml as instance "default"
+#   api key stored in OS keyring (service "paimos-cli", account "default")
 #   default_instance = "default"
 ```
 
-Config file is `~/.paimos/config.yaml`, mode `0600`. Multi-instance is supported:
+The instance URL goes to `~/.paimos/config.yaml` (mode `0600`). The API key goes to the **OS keyring** — Keychain on macOS, Secret Service / KWallet on Linux, Credential Manager on Windows — under service `paimos-cli`, account `<instance-name>`. It is never written to disk in plaintext.
+
+Multi-instance is supported:
 
 ```sh
 paimos auth login --name ppm       --url https://pm.barta.cm
@@ -46,6 +49,29 @@ paimos auth login --name bytepoets --url https://pm.bytepoets.com
 ```
 
 Use `--instance <name>` on any command to switch, or rely on `default_instance`.
+
+#### Headless / CI
+
+If there's no session keyring available (CI runners, containers, headless Linux without `gnome-keyring` / `kwalletd`), set `PAIMOS_API_KEY` in the environment. It overrides the keyring lookup for the lifetime of the process — no `paimos auth login` needed:
+
+```sh
+export PAIMOS_API_KEY="paimos_…"
+paimos issue list --project PAI
+```
+
+#### Log out
+
+```sh
+paimos auth logout                       # remove keyring entry for the resolved instance
+paimos auth logout --name ppm            # explicit
+paimos auth logout --remove-instance     # also drop the URL from config.yaml
+```
+
+Idempotent: a missing entry is not an error.
+
+#### Migration from pre-keyring CLIs
+
+If you upgrade from an older `paimos` that stored `api_key:` inline in `config.yaml`, the first invocation moves the key into the OS keyring, rewrites the config without the field, and prints a one-line notice. No manual steps required.
 
 ### Verify with `doctor`
 
