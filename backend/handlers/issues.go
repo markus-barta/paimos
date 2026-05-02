@@ -568,16 +568,30 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 
 	if fts := strings.TrimSpace(r.URL.Query().Get("q")); len(fts) >= 2 {
 		likePattern := "%" + fts + "%"
-		whereSQL += ` AND i.id IN (
-			SELECT CAST(entity_id AS INTEGER) FROM search_index
-			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-			UNION
-			SELECT id FROM issues WHERE project_id = ? AND deleted_at IS NULL AND (
-				title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
-				OR (SELECT key FROM projects WHERE id = issues.project_id) || '-' || issue_number LIKE ?
-			)
-		)`
-		args = append(args, fts+"*", projectID, likePattern, likePattern, likePattern, likePattern, likePattern)
+		// PAI-283 phase 2: sanitize FTS5 input to avoid parser crashes
+		// from special characters (e.g. `doc/` → `fts5: syntax error
+		// near "/"`). When the input has no tokenizable content, drop
+		// the FTS5 branch and rely on the LIKE fallback alone.
+		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
+			whereSQL += ` AND i.id IN (
+				SELECT CAST(entity_id AS INTEGER) FROM search_index
+				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
+				UNION
+				SELECT id FROM issues WHERE project_id = ? AND deleted_at IS NULL AND (
+					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+					OR (SELECT key FROM projects WHERE id = issues.project_id) || '-' || issue_number LIKE ?
+				)
+			)`
+			args = append(args, ftsToken, projectID, likePattern, likePattern, likePattern, likePattern, likePattern)
+		} else {
+			whereSQL += ` AND i.id IN (
+				SELECT id FROM issues WHERE project_id = ? AND deleted_at IS NULL AND (
+					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+					OR (SELECT key FROM projects WHERE id = issues.project_id) || '-' || issue_number LIKE ?
+				)
+			)`
+			args = append(args, projectID, likePattern, likePattern, likePattern, likePattern, likePattern)
+		}
 	}
 
 	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
@@ -1489,16 +1503,27 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 
 	if fts := strings.TrimSpace(q.Get("q")); len(fts) >= 2 {
 		likePattern := "%" + fts + "%"
-		ftsClause := ` AND i.id IN (
-			SELECT CAST(entity_id AS INTEGER) FROM search_index
-			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-			UNION
-			SELECT id FROM issues WHERE deleted_at IS NULL AND (
-				title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
-			)
-		)`
-		whereSQL += ftsClause
-		args = append(args, fts+"*", likePattern, likePattern, likePattern, likePattern)
+		// PAI-283 phase 2: sanitize FTS5 input — see sanitizeFTS5Token
+		// for the rationale. When input has no tokenizable content,
+		// drop the FTS5 branch and rely on the LIKE fallback alone.
+		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
+			whereSQL += ` AND i.id IN (
+				SELECT CAST(entity_id AS INTEGER) FROM search_index
+				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
+				UNION
+				SELECT id FROM issues WHERE deleted_at IS NULL AND (
+					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+				)
+			)`
+			args = append(args, ftsToken, likePattern, likePattern, likePattern, likePattern)
+		} else {
+			whereSQL += ` AND i.id IN (
+				SELECT id FROM issues WHERE deleted_at IS NULL AND (
+					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+				)
+			)`
+			args = append(args, likePattern, likePattern, likePattern, likePattern)
+		}
 	}
 
 	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
@@ -1573,11 +1598,30 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if fts := strings.TrimSpace(q.Get("q")); len(fts) >= 2 {
-		countQuery += ` AND i.id IN (
-			SELECT CAST(entity_id AS INTEGER) FROM search_index
-			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-		)`
-		countArgs = append(countArgs, fts+"*")
+		// PAI-283 phase 2: mirror the data-query's FTS+LIKE union here
+		// so the count agrees with the rendered list. The pre-existing
+		// version applied only the FTS branch, which under-counted
+		// LIKE-only matches — masked previously, surfaced now that
+		// FTS-incompatible queries fall through to the LIKE branch.
+		likePattern := "%" + fts + "%"
+		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
+			countQuery += ` AND i.id IN (
+				SELECT CAST(entity_id AS INTEGER) FROM search_index
+				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
+				UNION
+				SELECT id FROM issues WHERE deleted_at IS NULL AND (
+					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+				)
+			)`
+			countArgs = append(countArgs, ftsToken, likePattern, likePattern, likePattern, likePattern)
+		} else {
+			countQuery += ` AND i.id IN (
+				SELECT id FROM issues WHERE deleted_at IS NULL AND (
+					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+				)
+			)`
+			countArgs = append(countArgs, likePattern, likePattern, likePattern, likePattern)
+		}
 	}
 	var total int
 	if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {

@@ -230,11 +230,15 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		args = append(args, v)
 	}
 	if fts := strings.TrimSpace(q.Get("q")); len(fts) >= 2 {
-		where += ` AND i.id IN (
-			SELECT CAST(entity_id AS INTEGER) FROM search_index
-			WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-		)`
-		args = append(args, fts+"*")
+		// PAI-283 phase 2: sanitize FTS5 input — skip the filter
+		// entirely if no tokenizable content remains.
+		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
+			where += ` AND i.id IN (
+				SELECT CAST(entity_id AS INTEGER) FROM search_index
+				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
+			)`
+			args = append(args, ftsToken)
+		}
 	}
 
 	rows, err := db.DB.Query(fmt.Sprintf(`

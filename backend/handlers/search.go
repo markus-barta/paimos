@@ -315,8 +315,20 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// FTS5 prefix query
-	ftsQuery := q + "*"
+	// FTS5 prefix query — sanitize to prevent parser crashes from
+	// special characters (e.g. `doc/` → `fts5: syntax error near "/"`).
+	// PAI-283 phase 2.
+	ftsQuery, useFTS := sanitizeFTS5Token(q)
+	if !useFTS {
+		// Input had no tokenizable content (only special characters).
+		// All FTS5 paths below would either crash the parser or match
+		// nothing; the LIKE-based key path (line ~484) needs a token
+		// too. Return what we have so far (issue/proj-key lookups
+		// already ran above) without running the FTS5 fan-out.
+		results.Issues, results.HasMore = dedup.result(offset, limit)
+		jsonOK(w, results)
+		return
+	}
 
 	// Per-user access filter applied to project- and issue-returning
 	// queries below. For admins `accessFilter` is empty and no args
