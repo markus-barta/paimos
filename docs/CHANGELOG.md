@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.8] — 2026-05-02
+
+### Changed
+
+- [PAI-284](https://pm.barta.cm/projects/6/issues/PAI-284) — **Search palette: first row auto-highlighted; Enter opens it; Cmd-Enter for full results.** Reported in QA: *"after a search and 'enter' (whatever this really does, could not figure it out)…"*. The palette previously used `activeIndex = -1` (no selection) until the user manually pressed ArrowDown — Enter then jumped to `/issues?q=…` (the full-results page) with the only hint buried at the bottom of the palette. Now matches the convention of every modern command palette: results watcher pins `activeIndex` to the first visible row (direct match if present, else `items[0]`), `↵` opens the highlighted row, `⌘↵` / `Ctrl↵` navigates to `/issues` for the full-results view. Footer hint shows the affordance with proper `<kbd>` glyphs and is itself clickable. ArrowUp now clamps at index 0 (no deselect-to-fallback path). Verified via Playwright on `/projects/4`: typing "log" auto-selects LOGS-1, plain `↵` opens it, `⌘↵` goes to `/issues`, `LOGS-3` exact-key search highlights the direct match.
+
 ## [2.4.7] — 2026-05-02
 
 ### Fixed
