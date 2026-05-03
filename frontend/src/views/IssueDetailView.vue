@@ -14,7 +14,7 @@ import { useDirtyGuard } from "@/composables/useDirtyGuard";
 import { useConfirm } from "@/composables/useConfirm";
 import { useMarkdown } from "@/composables/useMarkdown";
 import { useTimeUnit } from "@/composables/useTimeUnit";
-import { api, errMsg } from "@/api/client";
+import { ApiError, api, errMsg } from "@/api/client";
 import { isDevFixtureUser } from "@/utils/devUsers";
 import { attachmentsEnabled } from "@/api/instance";
 import { useNewIssueStore } from "@/stores/newIssue";
@@ -78,8 +78,39 @@ const router = useRouter();
 const undoStore = useUndoStore();
 const { confirm } = useConfirm();
 
-const issueId = ref(Number(route.params.issueId));
-const projectId = ref(Number(route.params.id));
+const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]{0,15}-\d+$/;
+
+type IssueRouteRef =
+  | { ok: true; ref: string }
+  | { ok: false; message: string };
+
+function firstRouteParam(value: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return String(raw ?? "").trim();
+}
+
+function parseProjectId(value: unknown): number | null {
+  const raw = firstRouteParam(value);
+  if (!raw) return null;
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function parseIssueRef(value: unknown): IssueRouteRef {
+  const raw = firstRouteParam(value);
+  if (!raw) {
+    return { ok: false, message: "Issue link is missing an issue ID." };
+  }
+  if (/^\d+$/.test(raw) && Number(raw) > 0) return { ok: true, ref: raw };
+  if (ISSUE_KEY_PATTERN.test(raw)) return { ok: true, ref: raw };
+  return {
+    ok: false,
+    message: `Issue links must use a positive numeric ID or an uppercase issue key like PAI-265. "${raw}" is not valid.`,
+  };
+}
+
+const issueId = ref(0);
+const projectId = ref<number | null>(parseProjectId(route.params.id));
 
 const issue = ref<Issue | null>(null);
 const project = ref<Project | null>(null);
@@ -102,6 +133,9 @@ provideIssueContext({
 });
 
 const loading = ref(true);
+const loadError = ref("");
+const loadErrorTitle = ref("");
+const loadErrorRetryable = ref(false);
 const editing = ref(false);
 const saving = ref(false);
 const saveError = ref("");
@@ -120,49 +154,132 @@ const groupMembersRef = ref<InstanceType<typeof IssueGroupMembers> | null>(
   null,
 );
 
-// Reload when route issueId changes
+function clearIssueState() {
+  issue.value = null;
+  project.value = null;
+  parentIssue.value = null;
+  children.value = [];
+  projectIssues.value = [];
+  costUnits.value = [];
+  releases.value = [];
+  aggregation.value = null;
+}
+
+function setLoadError(title: string, message: string, retryable: boolean) {
+  loadErrorTitle.value = title;
+  loadError.value = message;
+  loadErrorRetryable.value = retryable;
+  clearIssueState();
+  issueId.value = 0;
+}
+
+function setLoadErrorFromUnknown(e: unknown) {
+  if (e instanceof ApiError) {
+    if (e.status === 400) {
+      setLoadError(
+        "Invalid issue link",
+        errMsg(e, "Invalid issue ID."),
+        false,
+      );
+      return;
+    }
+    if (e.status === 404) {
+      setLoadError(
+        "Issue not found",
+        "This issue does not exist, was deleted, or is not visible to your account.",
+        true,
+      );
+      return;
+    }
+    if (e.status === 401) {
+      setLoadError(
+        "Sign in required",
+        "Your session is no longer active. Sign in again to open this issue.",
+        true,
+      );
+      return;
+    }
+    if (e.status === 0) {
+      setLoadError("Issue did not load", errMsg(e, "Network error."), true);
+      return;
+    }
+  }
+  setLoadError(
+    "Issue did not load",
+    errMsg(e, "Issue could not be loaded."),
+    true,
+  );
+}
+
+// Reload when the route target changes.
 watch(
-  () => route.params.issueId,
-  (newId) => {
-    issueId.value = Number(newId);
-    projectId.value = Number(route.params.id);
-    load();
-  },
+  () => [route.params.issueId, route.params.id],
+  () => load(),
 );
 
+let loadSeq = 0;
 async function load() {
+  const seq = ++loadSeq;
+  const parsed = parseIssueRef(route.params.issueId);
+  projectId.value = parseProjectId(route.params.id);
   loading.value = true;
   editing.value = false;
   saveError.value = "";
-  const data = await loadIssueDetailData(issueId.value, projectId.value);
-  issue.value = data.issue;
-  project.value = data.project;
-  parentIssue.value = data.parentIssue;
-  children.value = data.children;
-  projectIssues.value = data.projectIssues;
-  // PAI-267: filter dev_* fixture users out of the assignee picker.
-  users.value = data.users.filter((u) => !isDevFixtureUser(u.username));
-  allTags.value = data.allTags;
-  allSprints.value = data.allSprints;
-  costUnits.value = data.costUnits;
-  releases.value = data.releases;
-  resetForm();
-  loading.value = false;
-  // Sub-components load their own data
-  nextTick(() => {
-    commentsRef.value?.load();
-    relationsRef.value?.load();
-    timeEntriesRef.value?.load();
-    groupMembersRef.value?.load();
-    attachmentsRef.value?.load();
-    loadAggregation();
-  });
+  loadError.value = "";
+  loadErrorTitle.value = "";
+  loadErrorRetryable.value = false;
+
+  if (!parsed.ok) {
+    setLoadError("Invalid issue link", parsed.message, false);
+    loading.value = false;
+    return;
+  }
+
+  let loaded = false;
+  try {
+    const data = await loadIssueDetailData(parsed.ref, projectId.value);
+    if (seq !== loadSeq) return;
+    issueId.value = data.issue.id;
+    projectId.value = data.issue.project_id ?? projectId.value;
+    issue.value = data.issue;
+    project.value = data.project;
+    parentIssue.value = data.parentIssue;
+    children.value = data.children;
+    projectIssues.value = data.projectIssues;
+    // PAI-267: filter dev_* fixture users out of the assignee picker.
+    users.value = data.users.filter((u) => !isDevFixtureUser(u.username));
+    allTags.value = data.allTags;
+    allSprints.value = data.allSprints;
+    costUnits.value = data.costUnits;
+    releases.value = data.releases;
+    aggregation.value = null;
+    resetForm();
+    loaded = true;
+  } catch (e: unknown) {
+    if (seq !== loadSeq) return;
+    setLoadErrorFromUnknown(e);
+  } finally {
+    if (seq === loadSeq) loading.value = false;
+  }
+
+  if (loaded && seq === loadSeq) {
+    // Sub-components load their own data once the canonical numeric issue id is known.
+    nextTick(() => {
+      if (seq !== loadSeq) return;
+      commentsRef.value?.load();
+      relationsRef.value?.load();
+      timeEntriesRef.value?.load();
+      groupMembersRef.value?.load();
+      attachmentsRef.value?.load();
+      loadAggregation();
+    });
+  }
 }
 
 onMounted(async () => {
   await load();
   initMdModes();
-  if (route.query.edit === "1") {
+  if (route.query.edit === "1" && issue.value) {
     editing.value = true;
     router.replace({ query: { ...route.query, edit: undefined } });
   }
@@ -252,7 +369,7 @@ async function deleteIssue() {
   saving.value = true;
   try {
     await deleteIssueDetail(issueId.value);
-    router.push(`/projects/${projectId.value}`);
+    router.push(projectRoute.value);
   } finally {
     saving.value = false;
   }
@@ -265,7 +382,12 @@ async function cloneIssue() {
   cloning.value = true;
   try {
     const clone = await cloneIssueDetail(issueId.value);
-    router.push(`/projects/${projectId.value}/issues/${clone.id}?edit=1`);
+    const pid = clone.project_id ?? effectiveProjectId.value;
+    router.push(
+      pid
+        ? `/projects/${pid}/issues/${clone.id}?edit=1`
+        : `/issues/${clone.id}?edit=1`,
+    );
   } catch (e: unknown) {
     alert(errMsg(e, "Clone failed."));
   } finally {
@@ -497,7 +619,10 @@ watch(
   () => newIssueStore.trigger,
   () => {
     const ctx = newIssueStore.context;
-    if (ctx.projectId !== undefined && ctx.projectId !== projectId.value)
+    if (
+      ctx.projectId !== undefined &&
+      ctx.projectId !== effectiveProjectId.value
+    )
       return;
     if (ctx.parentId !== undefined && ctx.parentId !== issueId.value) return;
     if (
@@ -524,11 +649,21 @@ function onChildDeleted(id: number) {
 
 const { showTypeIcon, showTypeText } = useIssueDisplay();
 const authStore = useAuthStore();
+const effectiveProjectId = computed(
+  () => project.value?.id ?? issue.value?.project_id ?? projectId.value,
+);
+const projectRoute = computed(() =>
+  effectiveProjectId.value
+    ? `/projects/${effectiveProjectId.value}`
+    : "/issues",
+);
+const projectIssuesLabel = computed(() =>
+  project.value?.key ? `${project.value.key} Issues` : "Issues",
+);
 // Per-project edit flag for the current user. Consumed by templates to
 // hide edit affordances when the caller only has viewer access.
 const canEditThisProject = computed(() => {
-  const pid = issue.value?.project_id ?? projectId.value;
-  return authStore.canEdit(pid);
+  return authStore.canEdit(effectiveProjectId.value);
 });
 const validParents = computed(() => {
   const currentId = issue.value?.id;
@@ -726,6 +861,7 @@ async function applyAiResult(info: AiApplyInfo) {
       : undefined;
   }
   if (info.action === "generate_subtasks") {
+    if (!effectiveProjectId.value) return;
     const suggestions = (info.body as any)?.suggestions ?? [];
     const selected = info.selection?.length
       ? info.selection
@@ -737,7 +873,7 @@ async function applyAiResult(info: AiApplyInfo) {
     for (const idx of selected) {
       const item = suggestions[idx];
       if (!item) continue;
-      await api.post(`/projects/${projectId.value}/issues`, {
+      await api.post(`/projects/${effectiveProjectId.value}/issues`, {
         parent_id: issueId.value,
         title: overrides[idx] || item.title,
         description: item.description || "",
@@ -846,17 +982,49 @@ async function cancelEdit() {
 
 <template>
   <div v-if="loading" class="loading">Loading…</div>
+  <div v-else-if="loadError" class="issue-load-state" role="alert">
+    <Teleport defer to="#app-header-left">
+      <RouterLink :to="projectRoute" class="ah-back">
+        <AppIcon name="arrow-left" :size="13" />
+        {{ projectIssuesLabel }}
+      </RouterLink>
+    </Teleport>
+    <div class="issue-load-icon" aria-hidden="true">
+      <AppIcon name="alert-circle" :size="20" />
+    </div>
+    <div class="issue-load-copy">
+      <h1>{{ loadErrorTitle || "Issue did not load" }}</h1>
+      <p>{{ loadError }}</p>
+    </div>
+    <div class="issue-load-actions">
+      <button
+        v-if="loadErrorRetryable"
+        class="btn btn-primary"
+        type="button"
+        @click="load"
+      >
+        Retry
+      </button>
+      <RouterLink class="btn btn-ghost" :to="projectRoute">
+        Back to issues
+      </RouterLink>
+    </div>
+  </div>
   <template v-else-if="issue">
     <!-- Breadcrumb -->
     <Teleport defer to="#app-header-left">
-      <RouterLink :to="`/projects/${projectId}`" class="ah-back">
+      <RouterLink :to="projectRoute" class="ah-back">
         <AppIcon name="arrow-left" :size="13" />
-        {{ project?.key ?? "…" }} Issues
+        {{ projectIssuesLabel }}
       </RouterLink>
       <template v-if="parentIssue">
         <span class="ah-sep">/</span>
         <RouterLink
-          :to="`/projects/${projectId}/issues/${parentIssue.id}`"
+          :to="
+            effectiveProjectId
+              ? `/projects/${effectiveProjectId}/issues/${parentIssue.id}`
+              : `/issues/${parentIssue.id}`
+          "
           class="ah-crumb"
         >
           {{ parentIssue.issue_key }}
@@ -956,7 +1124,7 @@ async function cancelEdit() {
             <button class="btn btn-ghost" @click="enterEditMode">Edit</button>
             <button
               class="btn btn-ghost"
-              @click="router.push(`/projects/${projectId}`)"
+              @click="router.push(projectRoute)"
             >
               <AppIcon name="x" :size="13" /> Close
             </button>
@@ -1025,7 +1193,7 @@ async function cancelEdit() {
           v-if="!editing"
           :issue="issue"
           :parent-issue="parentIssue"
-          :project-id="projectId"
+          :project-id="effectiveProjectId"
           :assigned-sprints="assignedSprints"
           :all-sprints="allSprints"
           :billing-label="BILLING_LABEL"
@@ -1251,7 +1419,7 @@ async function cancelEdit() {
     <div v-if="childLabel(issue.type)" class="children-section">
       <IssueList
         ref="childIssueListRef"
-        :project-id="projectId"
+        :project-id="effectiveProjectId ?? undefined"
         :issues="children"
         :project-all-issues="projectIssues"
         :initial-type="issue.type === 'epic' ? 'ticket' : 'task'"
@@ -1281,7 +1449,7 @@ async function cancelEdit() {
       ref="groupMembersRef"
       :issue-id="issueId"
       :issue-type="issue.type"
-      :project-id="projectId"
+      :project-id="effectiveProjectId"
     />
 
     <!-- Issue Relations -->
@@ -1293,7 +1461,7 @@ async function cancelEdit() {
       "
       ref="relationsRef"
       :issue-id="issueId"
-      :project-id="projectId"
+      :project-id="effectiveProjectId"
       :project-issues="projectIssues"
     />
 
@@ -1346,6 +1514,50 @@ async function cancelEdit() {
 .loading {
   color: var(--text-muted);
   padding: 2rem 0;
+}
+
+.issue-load-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.issue-load-icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 8px;
+  color: var(--danger, #b91c1c);
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+.issue-load-copy {
+  min-width: 0;
+}
+.issue-load-copy h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.issue-load-copy p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.issue-load-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .issue-card {
@@ -1542,5 +1754,15 @@ async function cancelEdit() {
   background: rgba(255, 255, 255, 0.85);
   transition: width 140ms linear;
   border-radius: 0 0 var(--radius) var(--radius);
+}
+
+@media (max-width: 640px) {
+  .issue-load-state {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .issue-load-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
 }
 </style>

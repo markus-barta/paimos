@@ -18,6 +18,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useUndoStore } from "@/stores/undo";
+import { safePostLoginRedirect } from "@/router/redirects";
 
 // Route meta shape. `projectIdParam` names the URL param that holds the
 // project ID — the beforeEach guard uses it to enforce per-project view
@@ -86,6 +87,10 @@ const router = createRouter({
       component: () => import("@/views/IssuesView.vue"),
       meta: { scrollMode: "self" },
     },
+    {
+      path: "/issues/:issueId",
+      component: () => import("@/views/IssueDetailView.vue"),
+    },
     { path: "/sprints", redirect: "/sprint-board" },
     {
       path: "/sprint-board",
@@ -145,9 +150,12 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const undo = useUndoStore();
   if (!auth.checked) await auth.fetchMe();
-  if (!to.meta.public && !auth.user) return "/login";
+  if (!to.meta.public && !auth.user) {
+    return { path: "/login", query: { redirect: to.fullPath } };
+  }
   if (to.path === "/login" && auth.user) {
-    return auth.user.role === "external" ? "/portal" : "/";
+    const redirect = safePostLoginRedirect(to.query.redirect);
+    return redirect || (auth.user.role === "external" ? "/portal" : "/");
   }
   // PAI-179: legacy /settings?tab=crm deep links redirect to the new
   // location under Integrations. Keep this redirect indefinitely —

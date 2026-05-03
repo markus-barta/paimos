@@ -2,6 +2,8 @@ import { api } from '@/api/client'
 import type { IssueDetailForm } from '@/config/issueDetailForm'
 import type { Issue, Project, Sprint, Tag, User } from '@/types'
 
+export type IssueRef = number | string
+
 export interface IssueAggregation {
   member_count: number
   estimate_hours: number | null
@@ -28,16 +30,52 @@ export interface IssueDetailData {
   releases: string[]
 }
 
-export async function loadIssueDetailData(issueId: number, projectId: number): Promise<IssueDetailData> {
-  const [issue, users, costUnits, releases, children, allTags, projectIssues, project, allSprints] = await Promise.all([
-    api.get<Issue>(`/issues/${issueId}`),
+function issuePath(issueRef: IssueRef): string {
+  return `/issues/${encodeURIComponent(String(issueRef))}`
+}
+
+function effectiveProjectId(
+  issue: Issue,
+  projectId?: number | null,
+): number | null {
+  return projectId && Number.isFinite(projectId) && projectId > 0
+    ? projectId
+    : issue.project_id
+}
+
+export async function loadIssueDetailData(
+  issueRef: IssueRef,
+  projectId?: number | null,
+): Promise<IssueDetailData> {
+  const issue = await api.get<Issue>(issuePath(issueRef))
+  const issueId = issue.id
+  const pid = effectiveProjectId(issue, projectId)
+
+  const [
+    users,
+    costUnits,
+    releases,
+    children,
+    allTags,
+    projectIssues,
+    project,
+    allSprints,
+  ] = await Promise.all([
     api.get<User[]>('/users'),
-    api.get<string[]>(`/projects/${projectId}/cost-units`).catch(() => []),
-    api.get<string[]>(`/projects/${projectId}/releases`).catch(() => []),
+    pid
+      ? api.get<string[]>(`/projects/${pid}/cost-units`).catch(() => [])
+      : Promise.resolve([]),
+    pid
+      ? api.get<string[]>(`/projects/${pid}/releases`).catch(() => [])
+      : Promise.resolve([]),
     api.get<Issue[]>(`/issues/${issueId}/children`).catch(() => []),
     api.get<Tag[]>('/tags'),
-    api.get<Issue[]>(`/projects/${projectId}/issues?fields=list`).catch(() => []),
-    api.get<Project>(`/projects/${projectId}`).catch(() => null),
+    pid
+      ? api.get<Issue[]>(`/projects/${pid}/issues?fields=list`).catch(() => [])
+      : Promise.resolve([]),
+    pid
+      ? api.get<Project>(`/projects/${pid}`).catch(() => null)
+      : Promise.resolve(null),
     api.get<Sprint[]>('/sprints').catch(() => []),
   ])
 

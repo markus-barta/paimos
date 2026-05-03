@@ -28,9 +28,15 @@ describe('router meta', () => {
       '/settings',
       '/customers',
       '/projects/:id/issues/:issueId',
+      '/issues/:issueId',
     ]) {
       const r = router.getRoutes().find((rt) => rt.path === path)
       expect(r?.meta.scrollMode, `${path} should be page-scroll`).toBeUndefined()
     }
+  })
+
+  it('registers direct issue detail deeplinks', () => {
+    const r = router.getRoutes().find((rt) => rt.path === '/issues/:issueId')
+    expect(r, 'expected /issues/:issueId route to be registered').toBeDefined()
   })
 })

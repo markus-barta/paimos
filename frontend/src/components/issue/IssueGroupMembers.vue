@@ -9,7 +9,7 @@ import type { Issue } from '@/types'
 const props = defineProps<{
   issueId: number
   issueType: string
-  projectId: number
+  projectId: number | null
 }>()
 
 const isGroup  = computed(() => props.issueType === 'epic' || props.issueType === 'cost_unit' || props.issueType === 'release')
@@ -33,6 +33,10 @@ async function load() {
 defineExpose({ load })
 
 watch(() => props.issueId, () => load())
+
+function issueRoute(issueId: number): string {
+  return props.projectId ? `/projects/${props.projectId}/issues/${issueId}` : `/issues/${issueId}`
+}
 </script>
 
 <template>
@@ -54,12 +58,12 @@ watch(() => props.issueId, () => load())
         <tbody>
           <tr v-for="m in groupMembers" :key="m.id" class="gm-row">
             <td class="gm-key">
-              <RouterLink :to="`/projects/${projectId}/issues/${m.id}`" class="gm-link">
+              <RouterLink :to="issueRoute(m.id)" class="gm-link">
                 {{ m.issue_key }}
               </RouterLink>
             </td>
             <td class="gm-title">
-              <RouterLink :to="`/projects/${projectId}/issues/${m.id}`" class="gm-link">
+              <RouterLink :to="issueRoute(m.id)" class="gm-link">
                 {{ m.title }}
               </RouterLink>
             </td>

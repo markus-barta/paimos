@@ -10,7 +10,7 @@ import { addIssueRelation, loadIssueRelations, removeIssueRelation } from '@/ser
 
 const props = defineProps<{
   issueId: number
-  projectId: number
+  projectId: number | null
   projectIssues: Issue[]
 }>()
 
@@ -101,6 +101,10 @@ function relGroupLabel(type: string, direction?: string): string {
   }
 }
 
+function issueRoute(issueId: number): string {
+  return props.projectId ? `/projects/${props.projectId}/issues/${issueId}` : `/issues/${issueId}`
+}
+
 // Split directional relations so each sub-section can get the correct
 // label. For non-directional types (related, depends_on, impacts) all
 // rows go to the same bucket.
@@ -152,7 +156,7 @@ function splitByDirection(rels: IssueRelation[]) {
       <span class="rel-group-label">Depends On</span>
       <div class="rel-chips">
         <div v-for="r in relsByType.depends_on" :key="r.target_id" class="rel-chip">
-          <RouterLink :to="`/projects/${projectId}/issues/${r.target_id}`" class="rel-chip-key">
+          <RouterLink :to="issueRoute(r.target_id)" class="rel-chip-key">
             {{ r.target_key || r.target_id }}
           </RouterLink>
           <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
@@ -164,7 +168,7 @@ function splitByDirection(rels: IssueRelation[]) {
       <span class="rel-group-label">Impacts</span>
       <div class="rel-chips">
         <div v-for="r in relsByType.impacts" :key="r.target_id" class="rel-chip">
-          <RouterLink :to="`/projects/${projectId}/issues/${r.target_id}`" class="rel-chip-key">
+          <RouterLink :to="issueRoute(r.target_id)" class="rel-chip-key">
             {{ r.target_key || r.target_id }}
           </RouterLink>
           <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
@@ -178,7 +182,7 @@ function splitByDirection(rels: IssueRelation[]) {
           <span class="rel-group-label">{{ relGroupLabel(t, direction) }}</span>
           <div class="rel-chips">
             <div v-for="r in dirRels" :key="`${r.source_id}-${r.target_id}`" class="rel-chip">
-              <RouterLink :to="`/projects/${projectId}/issues/${r.target_id}`" class="rel-chip-key">
+              <RouterLink :to="issueRoute(r.target_id)" class="rel-chip-key">
                 {{ r.target_key || r.target_id }}
               </RouterLink>
               <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>

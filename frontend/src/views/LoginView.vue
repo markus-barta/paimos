@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ApiError, api } from '@/api/client'
 import { useBranding } from '@/composables/useBranding'
 import { useSidebarColors } from '@/composables/useSidebarColors'
+import { postLoginRedirectOrFallback } from '@/router/redirects'
 import AppIcon from '@/components/AppIcon.vue'
 
 const { branding } = useBranding()
@@ -63,6 +64,12 @@ const totpRequired = ref(false)
 const totpToken    = ref('')
 const otpCode      = ref('')
 
+const postLoginPath = computed(() => postLoginRedirectOrFallback(route.query.redirect))
+
+function finishLogin() {
+  router.push(postLoginPath.value)
+}
+
 async function submit() {
   error.value = ''
   loading.value = true
@@ -78,7 +85,7 @@ async function submit() {
       // Successful login envelope: { user, access }.
       auth.setUser(result.user)
       auth.hydrateAccess(result.access)
-      router.push('/')
+      finishLogin()
     }
   } catch (e) {
     error.value = e instanceof ApiError ? 'Invalid username or password.' : 'Login failed.'
@@ -98,7 +105,7 @@ async function submitOTP() {
     })
     auth.setUser(result.user)
     auth.hydrateAccess(result.access)
-    router.push('/')
+    finishLogin()
   } catch (e) {
     error.value = 'Invalid code. Please try again.'
     otpCode.value = ''

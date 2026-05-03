@@ -16,7 +16,7 @@ import type { Issue, Sprint } from '@/types'
 const props = defineProps<{
   issue: Issue
   parentIssue: Issue | null
-  projectId: number
+  projectId: number | null
   assignedSprints: Sprint[]
   allSprints: Sprint[]
   billingLabel: Record<string, string>
@@ -65,6 +65,9 @@ function fmtDateTime(s: string): string {
   const d = new Date(s.endsWith('Z') ? s : s + 'Z')
   return isNaN(d.getTime()) ? s : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
+function issueRoute(issueId: number): string {
+  return props.projectId ? `/projects/${props.projectId}/issues/${issueId}` : `/issues/${issueId}`
+}
 </script>
 
 <template>
@@ -90,7 +93,7 @@ function fmtDateTime(s: string): string {
       </div>
       <div class="meta-item" v-if="parentIssue">
         <span class="meta-label">Parent</span>
-        <RouterLink :to="`/projects/${projectId}/issues/${parentIssue.id}`" class="meta-link">
+        <RouterLink :to="issueRoute(parentIssue.id)" class="meta-link">
           {{ parentIssue.issue_key }} {{ parentIssue.title }}
         </RouterLink>
       </div>
