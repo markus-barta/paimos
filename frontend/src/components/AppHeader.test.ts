@@ -79,6 +79,12 @@ async function flushDomUpdate() {
   await nextTick();
 }
 
+async function flushCenterSwapTransition() {
+  await flushDomUpdate();
+  await new Promise((resolve) => window.setTimeout(resolve, 180));
+  await flushDomUpdate();
+}
+
 describe("AppHeader issue refresh prompt", () => {
   afterEach(() => {
     document.body.innerHTML = "";
@@ -106,7 +112,7 @@ describe("AppHeader issue refresh prompt", () => {
     const refresh = vi.fn();
 
     mounted.store.show(3, refresh);
-    await flushDomUpdate();
+    await flushCenterSwapTransition();
 
     expect(mounted.el.querySelector('input[type="search"]')).toBeFalsy();
     expect(mounted.el.querySelector(".ah-refresh-prompt")?.textContent).toContain(
