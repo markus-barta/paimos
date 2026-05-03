@@ -12,6 +12,7 @@
  the .ape-* classes for the design notes.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, reactive, nextTick } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
@@ -356,7 +357,7 @@ function clearDryRun() {
       <p v-else class="ap-empty">No custom actions yet — click "+ New custom action" to add one.</p>
     </section>
 
-    <div v-if="loading" class="ap-loading">Loading prompts…</div>
+    <LoadingText v-if="loading" class="ap-loading" label="Loading prompts…" />
 
     <!-- ──────────────────────────────────────────────────────────────
          PAI-180: Edit modal — full UX rewrite.

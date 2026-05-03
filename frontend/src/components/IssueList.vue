@@ -5,6 +5,7 @@ import type { ColDefs } from '@/composables/useSort'
 import { useRouter, useRoute } from 'vue-router'
 import AppModal from '@/components/AppModal.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import LoadingText from '@/components/LoadingText.vue'
 import IssueSidePanel from '@/components/IssueSidePanel.vue'
 import { api } from '@/api/client'
 import { useConfirm } from '@/composables/useConfirm'
@@ -1085,7 +1086,9 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         @update:cell-edit-value="v => cellEditValue = v"
         @update:sprint-picker-search="v => sprintPickerSearch = v"
       />
-      <div v-if="hasMore" ref="scrollSentinel" class="scroll-sentinel">Loading more...</div>
+      <div v-if="hasMore" ref="scrollSentinel" class="scroll-sentinel">
+        <LoadingText size="sm" label="Loading more…" />
+      </div>
     </div>
 
     <!-- TREE VIEW (full mode only) — wrapped in a scrollable flex child

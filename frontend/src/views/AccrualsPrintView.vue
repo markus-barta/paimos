@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 // ACME-1 — Project Accruals editorial print view.
 // Standalone, decoupled from app shell. Designed for ⌘P → Save as PDF.
 // Aesthetic: warm broadsheet, ledger margins, hairline rules, tabular figures.
@@ -136,7 +137,7 @@ function closeWindow() {
       <div class="rule rule--double"></div>
 
       <!-- Body -->
-      <section v-if="loading" class="state">Wird geladen …</section>
+      <LoadingText v-if="loading" as="section" class="state" label="Wird geladen …" />
       <section v-else-if="error" class="state state--err">{{ error }}</section>
 
       <section v-else>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { computed, onMounted, ref, watch } from 'vue'
 import { errMsg } from '@/api/client'
 import type { ProjectRepo } from '@/types'
@@ -110,7 +111,7 @@ onMounted(load)
           </div>
         </div>
 
-        <div v-if="loading" class="context-empty">Loading repos…</div>
+        <LoadingText v-if="loading" class="context-empty" label="Loading repos…" />
         <div v-else-if="!repos.length" class="context-empty">No repos linked yet.</div>
         <div v-else class="repo-list">
           <div v-for="repo in repos" :key="repo.id" class="repo-row">

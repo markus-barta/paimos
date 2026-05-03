@@ -14,6 +14,7 @@
  overwrite them.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
@@ -249,7 +250,7 @@ const hasProviders = computed(() => providers.value.length > 0)
       </p>
     </div>
 
-    <div v-if="loading" class="crm-loading">Loading providers…</div>
+    <LoadingText v-if="loading" class="crm-loading" label="Loading providers…" />
     <div v-else-if="loadError" class="crm-banner-error">{{ loadError }}</div>
 
     <div v-else-if="!hasProviders" class="crm-empty">
@@ -297,7 +298,7 @@ const hasProviders = computed(() => providers.value.length > 0)
         </header>
 
         <div v-if="expanded[p.id]" class="crm-body">
-          <div v-if="!configs[p.id]" class="crm-loading-inline">Loading config…</div>
+          <LoadingText v-if="!configs[p.id]" class="crm-loading-inline" label="Loading config…" />
 
           <form v-else class="crm-form" @submit.prevent="saveConfig(p)">
             <div v-for="f in configs[p.id]!.fields" :key="f.key" class="crm-field">

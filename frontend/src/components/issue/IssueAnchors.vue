@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { computed, onMounted, ref } from 'vue'
 import { errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
@@ -50,7 +51,7 @@ onMounted(load)
       <button class="btn btn-ghost btn-sm" @click="load" :disabled="loading">Refresh</button>
     </div>
 
-    <div v-if="loading" class="anchors-card anchors-empty">Loading anchors…</div>
+    <LoadingText v-if="loading" class="anchors-card anchors-empty" label="Loading anchors…" />
     <div v-else-if="error" class="anchors-card anchors-error">{{ error }}</div>
     <div v-else-if="!anchors.length" class="anchors-card anchors-empty">
       No anchors yet. They appear here after a repo uploads its `.pmo/anchors.json`.

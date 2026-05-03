@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { onMounted, ref, watch } from "vue";
 import AppIcon from "@/components/AppIcon.vue";
 import { fmtShortDateTime } from "@/utils/formatTime";
@@ -77,7 +78,7 @@ onMounted(() => {
     </summary>
 
     <div class="issue-ai__body">
-      <div v-if="loading" class="issue-ai__empty">Loading activity…</div>
+      <LoadingText v-if="loading" class="issue-ai__empty" label="Loading activity…" />
       <div v-else-if="error" class="issue-ai__empty">{{ error }}</div>
       <div
         v-else-if="

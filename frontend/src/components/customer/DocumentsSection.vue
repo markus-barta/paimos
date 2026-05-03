@@ -18,6 +18,7 @@
  lazy-loaded inline preview thumbnail.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, csrfHeaders, errMsg } from '@/api/client'
@@ -198,7 +199,7 @@ function fmtDate(s: string | null | undefined): string {
 
     <div v-if="uploadError" class="docs-error">{{ uploadError }}</div>
 
-    <div v-if="loading" class="docs-loading">Loading documents…</div>
+    <LoadingText v-if="loading" class="docs-loading" label="Loading documents…" />
     <div v-else-if="loadError" class="docs-error">{{ loadError }}</div>
 
     <!-- PAI-272: dashed-box centered empty state to match the rest of the

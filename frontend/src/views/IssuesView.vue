@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import IssueList from '@/components/IssueList.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -266,7 +267,7 @@ function onDeleted(id: number) {
       </span>
     </Teleport>
 
-    <div v-if="loading" class="loading">Loading…</div>
+    <LoadingText v-if="loading" class="loading" label="Loading…" />
     <div v-else-if="error" class="load-error">{{ error }}</div>
 
     <template v-else>
@@ -301,7 +302,7 @@ function onDeleted(id: number) {
 
       <!-- Infinite scroll sentinel -->
       <div ref="scrollSentinel" class="scroll-sentinel">
-        <span v-if="loadingMore" class="scroll-loading">Loading more…</span>
+        <LoadingText v-if="loadingMore" as="span" class="scroll-loading" label="Loading more…" />
       </div>
     </template>
   </div>

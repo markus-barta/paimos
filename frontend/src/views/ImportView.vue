@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -244,7 +245,7 @@ async function startImport() {
     <span class="ah-subtitle">Fetch issues from Jira Cloud and create them in PAIMOS.</span>
   </Teleport>
 
-  <div v-if="jiraLoading" class="loading">Checking Jira configuration…</div>
+  <LoadingText v-if="jiraLoading" class="loading" label="Checking Jira configuration…" />
 
   <template v-else>
     <!-- Not configured -->

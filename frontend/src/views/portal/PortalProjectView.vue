@@ -8,6 +8,7 @@ import { highlight } from '@/composables/useHighlight'
 import { useBranding } from '@/composables/useBranding'
 import StatusDot from '@/components/StatusDot.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import LoadingText from '@/components/LoadingText.vue'
 
 interface PortalProject {
   id: number; key: string; name: string; description: string; status: string
@@ -379,7 +380,7 @@ const acceptedCount = computed(() => issues.value.filter(i => i.status === 'acce
       </div>
     </Teleport>
   </div>
-  <div v-else-if="loading" class="loading">{{ $t('portal.loading') }}</div>
+  <LoadingText v-else-if="loading" class="loading" :label="$t('portal.loading')" />
 </template>
 
 <style scoped>

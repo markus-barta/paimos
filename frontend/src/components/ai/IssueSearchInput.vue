@@ -25,6 +25,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { api } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
+import LoadingText from '@/components/LoadingText.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { TYPE_SVGS } from '@/composables/useIssueDisplay'
 import type { Issue } from '@/types'
@@ -189,9 +190,7 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
           class="iss-popover"
           role="listbox"
         >
-          <div v-if="loading && !results.length" class="iss-empty">
-            Searching…
-          </div>
+          <LoadingText v-if="loading && !results.length" class="iss-empty" label="Searching…" />
           <div v-else-if="!results.length" class="iss-empty">
             No issues match <strong>{{ query }}</strong>.
           </div>

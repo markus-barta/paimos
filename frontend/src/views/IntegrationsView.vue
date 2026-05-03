@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { api, errMsg } from '@/api/client'
@@ -498,7 +499,7 @@ async function cancelMiteImport() {
     </div>
 
     <!-- Import section -->
-    <div v-if="jiraLoading" class="loading" style="margin-top:1.25rem">Loading…</div>
+    <LoadingText v-if="jiraLoading" class="loading" style="margin-top:1.25rem" label="Loading…" />
 
     <template v-else-if="jiraConfigured">
         <div class="import-grid">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
@@ -178,7 +179,7 @@ async function undoAccept() {
       <div class="section-body prose">{{ issue.acceptance_criteria }}</div>
     </section>
   </div>
-  <div v-else-if="loading" class="loading">Loading...</div>
+  <LoadingText v-else-if="loading" class="loading" label="Loading…" />
   <div v-else class="loading">Issue not found.</div>
 </template>
 

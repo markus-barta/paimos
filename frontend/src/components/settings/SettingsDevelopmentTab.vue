@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed } from 'vue'
 import { api } from '@/api/client'
 
@@ -137,7 +138,7 @@ loadDev()
       <p class="section-desc">CI test results from the latest and previous deployments.</p>
     </div>
 
-    <div v-if="devLoading" class="loading">Loading…</div>
+    <LoadingText v-if="devLoading" class="loading" label="Loading…" />
     <template v-else>
       <div v-if="devMissingReports" class="dev-state-banner dev-state-banner--warn">
         This deployment has no ingested test reports yet. GitHub CI can still be green; the app only shows reports that were uploaded or deployed into this instance.
@@ -223,7 +224,7 @@ loadDev()
         <!-- Detail: report viewer -->
         <div class="dev-detail">
           <div v-if="!devSelectedReport" class="dev-detail-empty">Select a report to view</div>
-          <div v-else-if="devReportLoading" class="dev-detail-empty">Loading…</div>
+          <LoadingText v-else-if="devReportLoading" class="dev-detail-empty" label="Loading…" />
           <iframe v-else :srcdoc="devReportHTML" class="dev-report-iframe" />
         </div>
       </div>

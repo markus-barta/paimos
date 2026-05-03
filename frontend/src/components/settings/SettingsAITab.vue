@@ -44,6 +44,7 @@
      constant on the frontend; out of scope for the visual redesign.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
@@ -454,7 +455,7 @@ function relTime(iso: string): string {
       </div>
     </header>
 
-    <div v-if="loading" class="ai-loading">Loading…</div>
+    <LoadingText v-if="loading" class="ai-loading" label="Loading…" />
     <div v-else-if="loadError" class="ai-banner ai-banner--error">{{ loadError }}</div>
 
     <template v-else>
@@ -736,7 +737,7 @@ function relTime(iso: string): string {
             </div>
           </section>
         </template>
-        <p v-else-if="modelsLoading" class="ai-help">Loading recommendations from OpenRouter…</p>
+        <LoadingText v-else-if="modelsLoading" as="p" class="ai-help" label="Loading recommendations from OpenRouter…" />
       </section>
 
       <!-- ── 6. OPTIMIZATION INSTRUCTION ─────────────────────────── -->

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed } from 'vue'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -432,7 +433,7 @@ loadUsers()
 
   <!-- Unified per-user project access (matrix + role-aware filter + add picker) -->
   <AppModal :title="`Access: ${membershipsTarget?.username}`" :open="!!membershipsTarget" max-width="680px" @close="membershipsTarget=null">
-    <div v-if="membershipsLoading" class="memb-loading">Loading…</div>
+    <LoadingText v-if="membershipsLoading" class="memb-loading" label="Loading…" />
 
     <div v-else class="memb-body">
       <p class="empty-hint memb-hint">{{ roleHint }}</p>

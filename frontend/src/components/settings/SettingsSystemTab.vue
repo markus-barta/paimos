@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { onMounted, ref } from "vue";
 import { api, errMsg } from "@/api/client";
 
@@ -62,7 +63,7 @@ onMounted(() => {
       </div>
     </header>
 
-    <div v-if="loading" class="system-tab__state">Loading…</div>
+    <LoadingText v-if="loading" class="system-tab__state" label="Loading…" />
     <div v-else class="system-tab__grid">
       <article class="system-card">
         <h3>Undo stack depth</h3>

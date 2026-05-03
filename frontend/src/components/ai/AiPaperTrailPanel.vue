@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { computed, onMounted, ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import {
@@ -106,7 +107,7 @@ function nextPage() {
     </div>
 
     <div v-if="error" class="aipt-error">{{ error }}</div>
-    <div v-else-if="loading" class="aipt-empty">Loading AI activity…</div>
+    <LoadingText v-else-if="loading" class="aipt-empty" label="Loading AI activity…" />
     <div v-else-if="!rows.length" class="aipt-empty">No AI calls recorded yet.</div>
     <div v-else class="aipt-table-wrap">
       <table class="aipt-table">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import LoadingText from '@/components/LoadingText.vue'
 import { fmtShortDateTime } from '@/utils/formatTime'
 import { loadIssueHistory, type IssueHistoryEntry as HistoryEntry } from '@/services/issueHistory'
 import { loadIssueAICalls, type AICallRow } from '@/services/aiPaperTrail'
@@ -94,7 +95,7 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
           </div>
 
           <div class="history-body" v-if="historyLoading">
-            <span class="history-loading">Loading history…</span>
+            <LoadingText class="history-loading" label="Loading history…" />
           </div>
           <div class="history-body" v-else-if="currentSnapshot">
             <div class="hist-row" :class="{ changed: isChanged('title') }">

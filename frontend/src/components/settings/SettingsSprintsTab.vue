@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref } from 'vue'
 import { api, errMsg } from '@/api/client'
 import type { Sprint } from '@/types'
@@ -169,7 +170,7 @@ loadSprintsForYear()
       <p class="section-desc">Active and archived sprints for the selected year.</p>
     </div>
 
-    <div v-if="sprintsLoading" class="empty-hint">Loading…</div>
+    <LoadingText v-if="sprintsLoading" class="empty-hint" label="Loading…" />
     <div v-else-if="sprintsList.length === 0" class="empty-hint">No sprints for {{ sprintYear }} yet. Use Sprint Setup above to generate them.</div>
     <div v-else class="card" style="padding:0;overflow:hidden">
       <table class="settings-table">

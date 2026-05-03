@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api } from '@/api/client'
+import LoadingText from '@/components/LoadingText.vue'
 
 interface PortalProject {
   id: number
@@ -47,7 +48,7 @@ function fmtEur(v: number | null | undefined): string {
   <div class="portal-dashboard">
     <h1 class="page-title">{{ $t('portal.yourProjects') }}</h1>
 
-    <div v-if="loading" class="loading">{{ $t('portal.loading') }}</div>
+    <LoadingText v-if="loading" class="loading" :label="$t('portal.loading')" />
 
     <div v-else-if="projects.length === 0" class="empty-state">
       {{ $t('portal.noProjects') }}

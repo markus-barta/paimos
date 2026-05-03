@@ -18,6 +18,7 @@
  the same layout as today.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { api, errMsg } from '@/api/client'
@@ -384,7 +385,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
     </span>
   </Teleport>
 
-  <div v-if="loading" class="cd-loading">Loading customer…</div>
+  <LoadingText v-if="loading" class="cd-loading" label="Loading customer…" />
   <div v-else-if="loadError" class="cd-error">{{ loadError }}</div>
   <div v-else-if="!customer" class="cd-error">Customer not found.</div>
 

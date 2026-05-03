@@ -5,6 +5,7 @@ import { api, ApiError } from '@/api/client'
 import { useBranding } from '@/composables/useBranding'
 import { useSidebarColors } from '@/composables/useSidebarColors'
 import AppIcon from '@/components/AppIcon.vue'
+import LoadingText from '@/components/LoadingText.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,8 +101,7 @@ const invalidMessage = computed(() => {
       </div>
 
       <div v-if="stage === 'validating'" class="loading-box">
-        <AppIcon name="loader" :size="24" class="spin" />
-        <p class="loading-text">Checking reset link…</p>
+        <LoadingText size="sm" label="Checking reset link…" />
       </div>
 
       <div v-else-if="stage === 'invalid'" class="submitted-box">
@@ -202,8 +202,6 @@ const invalidMessage = computed(() => {
 .login-forgot-link:hover { color: var(--bp-blue); text-decoration: underline; }
 
 .loading-box { display: flex; flex-direction: column; align-items: center; gap: .75rem; padding: 2rem 0; }
-.loading-text { font-size: 13px; color: var(--text-muted); }
-
 .submitted-box { text-align: center; padding: .5rem 0; }
 .submitted-icon { color: #2ecc71; margin-bottom: .75rem; }
 .invalid-icon   { color: #e74c3c; margin-bottom: .75rem; }
@@ -217,7 +215,4 @@ const invalidMessage = computed(() => {
 }
 .footer-logo { width: 16px; height: 16px; object-fit: contain; opacity: .35; }
 .footer-sep { opacity: .4; }
-
-@keyframes spin { to { transform: rotate(360deg); } }
-.spin { animation: spin .8s linear infinite; color: var(--text-muted); }
 </style>

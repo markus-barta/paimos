@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, watch, computed, nextTick, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import AppIcon from "@/components/AppIcon.vue";
@@ -837,7 +838,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
           :apply="applyAiPanelResult"
         />
 
-        <div v-if="loading" class="sp-loading">Loading…</div>
+        <LoadingText v-if="loading" class="sp-loading" label="Loading…" />
 
         <!-- View mode -->
         <template v-else-if="issue && !editing">

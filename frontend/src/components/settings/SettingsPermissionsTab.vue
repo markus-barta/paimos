@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted } from 'vue'
 import { api } from '@/api/client'
 
@@ -53,7 +54,7 @@ function allowed(cap: Capability, level: string): boolean {
       </div>
     </div>
 
-    <div v-if="loading" class="empty">Loading…</div>
+    <LoadingText v-if="loading" class="empty" label="Loading…" />
     <div v-else class="card" style="padding:0;overflow:hidden">
       <table class="settings-table perm-matrix">
         <thead>

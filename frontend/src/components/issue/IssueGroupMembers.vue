@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import StatusDot from '@/components/StatusDot.vue'
@@ -44,7 +45,7 @@ function issueRoute(issueId: number): string {
     <h3 class="section-title">{{ isSprint ? 'Sprint Tickets' : 'Linked Tickets' }}</h3>
 
     <div class="group-members">
-      <div v-if="groupMemLoading" class="rel-empty">Loading…</div>
+      <LoadingText v-if="groupMemLoading" class="rel-empty" label="Loading…" />
       <div v-else-if="!groupMembers.length" class="rel-empty">No tickets linked yet.</div>
       <table v-else class="gm-table">
         <thead>

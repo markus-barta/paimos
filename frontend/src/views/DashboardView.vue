@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -56,7 +57,7 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
       <span v-if="!loading" class="ah-subtitle">{{ projects.length }} active project{{ projects.length !== 1 ? 's' : '' }}</span>
     </Teleport>
 
-    <div v-if="loading" class="loading">Loading…</div>
+    <LoadingText v-if="loading" class="loading" label="Loading…" />
 
     <template v-else>
       <!-- Greeting -->

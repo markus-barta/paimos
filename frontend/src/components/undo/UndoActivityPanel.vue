@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import AppIcon from "@/components/AppIcon.vue";
+import LoadingText from "@/components/LoadingText.vue";
 import { fmtShortDateTime } from "@/utils/formatTime";
 import { useUndoStore } from "@/stores/undo";
 import { onOtherSidePanelOpened } from "@/composables/useSidePanelExclusion";
@@ -140,9 +141,11 @@ onUnmounted(() => {
         <div v-if="undo.error" class="undo-panel__notice undo-panel__notice--error">
           {{ undo.error }}
         </div>
-        <div v-else-if="undo.loading && !undo.payload" class="undo-panel__notice">
-          Loading recent activity…
-        </div>
+        <LoadingText
+          v-else-if="undo.loading && !undo.payload"
+          class="undo-panel__notice"
+          label="Loading recent activity…"
+        />
 
         <div class="undo-panel__body">
           <section class="undo-section">

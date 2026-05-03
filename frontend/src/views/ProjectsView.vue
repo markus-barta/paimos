@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
@@ -522,7 +523,7 @@ onMounted(() => {
       <button class="banner-dismiss" @click="globalImportError=''"><AppIcon name="x" :size="14" /></button>
     </div>
 
-    <div v-if="loading" class="loading">Loading…</div>
+    <LoadingText v-if="loading" class="loading" label="Loading…" />
 
     <div v-else-if="projects.length === 0" class="empty-state">
       <p>No {{ statusFilter }} projects.</p>

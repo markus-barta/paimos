@@ -16,6 +16,7 @@
  for admins so first-time use isn't a hidden form.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, watch, onMounted } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
@@ -174,7 +175,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
       </div>
     </header>
 
-    <div v-if="loading" class="coop-loading">Loading…</div>
+    <LoadingText v-if="loading" class="coop-loading" label="Loading…" />
     <div v-else-if="loadError" class="coop-error">{{ loadError }}</div>
 
     <!-- ── Empty state ────────────────────────────────────────── -->

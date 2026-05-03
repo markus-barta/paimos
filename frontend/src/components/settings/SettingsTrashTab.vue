@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useConfirm } from '@/composables/useConfirm'
@@ -73,7 +74,7 @@ loadTrash()
       <p class="section-desc">Soft-deleted users, projects and issues. Restore to bring them back, or delete forever to wipe them permanently.</p>
     </div>
 
-    <div v-if="trashLoading" class="empty-hint">Loading…</div>
+    <LoadingText v-if="trashLoading" class="empty-hint" label="Loading…" />
     <template v-else>
 
       <!-- Deleted users -->

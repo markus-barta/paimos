@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed } from 'vue'
 
 import AppModal from '@/components/AppModal.vue'
@@ -101,7 +102,7 @@ async function updateUser() {
       <button class="btn btn-primary btn-sm" @click="showCreate=true">+ New user</button>
     </Teleport>
 
-    <div v-if="loading" class="loading">Loading…</div>
+    <LoadingText v-if="loading" class="loading" label="Loading…" />
 
     <div v-else class="user-table-wrap">
       <table class="user-table">

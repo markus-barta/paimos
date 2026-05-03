@@ -22,6 +22,7 @@
   replaces the tab's draft (no auto-save — user still hits Save).
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { computed, onMounted, ref, watch } from 'vue'
 import { errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
@@ -308,7 +309,7 @@ onMounted(load)
 
     <AiSurfaceFeedback :host-key="activeDef.hostKey" />
 
-    <div v-if="loading" class="mt-empty">Loading…</div>
+    <LoadingText v-if="loading" class="mt-empty" label="Loading…" />
 
     <template v-else>
       <div v-if="tabError[activeTab]" class="mt-error">{{ tabError[activeTab] }}</div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, computed } from 'vue'
 import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -115,7 +116,7 @@ const missingReports = computed(() =>
     <div class="section">
       <h2 class="section-title">Test Reports</h2>
 
-      <div v-if="loading" class="empty">Loading…</div>
+      <LoadingText v-if="loading" class="empty" label="Loading…" />
       <div v-else-if="missingReports" class="empty">
         This deployment has no ingested test reports yet. GitHub CI may still be green, but this screen only shows reports uploaded into the running instance. Use Settings → Development to upload a report bundle for this environment.
       </div>
@@ -142,7 +143,7 @@ const missingReports = computed(() =>
 
           <!-- Embedded report HTML -->
           <div v-if="selectedReport === r.filename" class="report-embed">
-            <div v-if="reportLoading" class="embed-loading">Loading report…</div>
+            <LoadingText v-if="reportLoading" class="embed-loading" label="Loading report…" />
             <iframe
               v-else-if="reportHTML"
               :srcdoc="reportHTML"

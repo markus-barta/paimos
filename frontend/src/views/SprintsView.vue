@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted } from 'vue'
 import IssueList from '@/components/IssueList.vue'
 import { api, errMsg } from '@/api/client'
@@ -94,7 +95,7 @@ function onDeleted(id: number) {
        </span>
      </Teleport>
 
-    <div v-if="loading" class="loading">Loading…</div>
+    <LoadingText v-if="loading" class="loading" label="Loading…" />
     <div v-else-if="error" class="load-error">{{ error }}</div>
 
     <template v-else>

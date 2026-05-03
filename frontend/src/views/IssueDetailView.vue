@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, watch, nextTick } from "vue";
 import {
   useRoute,
@@ -981,7 +982,7 @@ async function cancelEdit() {
 </script>
 
 <template>
-  <div v-if="loading" class="loading">Loading…</div>
+  <LoadingText v-if="loading" class="loading" label="Loading…" />
   <div v-else-if="loadError" class="issue-load-state" role="alert">
     <Teleport defer to="#app-header-left">
       <RouterLink :to="projectRoute" class="ah-back">

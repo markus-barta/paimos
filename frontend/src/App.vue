@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { onMounted, onBeforeUnmount } from "vue";
 import { RouterView } from "vue-router";
 import AppLayout from "@/components/AppLayout.vue";
@@ -56,7 +57,7 @@ onBeforeUnmount(() => {
     @apply="undo.resolveConflict($event)"
   />
   <!-- Gate on auth.checked to prevent layout flash (sidebar visible before redirect) -->
-  <div v-if="!auth.checked" class="app-loading">Loading…</div>
+  <LoadingText v-if="!auth.checked" class="app-loading" label="Loading…" />
   <RouterView v-else v-slot="{ Component, route }">
     <PortalLayout v-if="route.meta.portal">
       <component :is="Component" />

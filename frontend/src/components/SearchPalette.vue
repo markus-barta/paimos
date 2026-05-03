@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, watch, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { api } from '@/api/client'
 import { useSearchStore } from '@/stores/search'
@@ -252,7 +253,7 @@ watch(activeIndex, () => {
       class="search-palette"
       :style="{ top: anchorRect.top + 'px', left: anchorRect.left + 'px', width: anchorRect.width + 'px' }"
     >
-    <div v-if="loading && !results" class="sp-loading">Searching…</div>
+    <LoadingText v-if="loading && !results" class="sp-loading" label="Searching…" />
     <template v-else-if="results">
       <!-- Direct match — rich row -->
       <div

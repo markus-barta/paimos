@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
@@ -541,7 +542,7 @@ function sprintLabel(s: Sprint): string {
       <span class="ah-title">Sprint Board</span>
     </Teleport>
 
-    <div v-if="loading" class="sb-loading">Loading…</div>
+    <LoadingText v-if="loading" class="sb-loading" label="Loading…" />
     <div v-else-if="error" class="sb-error">{{ error }}</div>
 
     <template v-else-if="!sortedSprints.length">
@@ -611,7 +612,7 @@ function sprintLabel(s: Sprint): string {
         </div>
       </div>
 
-      <div v-if="boardLoading" class="sb-loading">Loading board…</div>
+      <LoadingText v-if="boardLoading" class="sb-loading" label="Loading board…" />
 
       <!-- Reporting tab -->
       <template v-else-if="activeTab === 'reporting'">

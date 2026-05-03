@@ -13,6 +13,7 @@
  admin has at least one provider enabled + configured.
 -->
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { api, errMsg } from '@/api/client'
@@ -243,8 +244,7 @@ function fmtRate(v: number | null | undefined): string {
            input ONLY when local results are empty + query has 2+ chars. -->
       <div v-if="showRemoteDropdown" class="cv-remote">
         <div v-if="remoteLoading && !remoteResults.length" class="cv-remote-status">
-          <AppIcon name="refresh-cw" :size="13" class="spinning" />
-          <span>Searching CRM providers…</span>
+          <LoadingText label="Searching CRM providers…" />
         </div>
         <div v-if="remoteError" class="cv-remote-status cv-remote-status--error">
           <AppIcon name="alert-triangle" :size="13" />
@@ -357,7 +357,7 @@ function fmtRate(v: number | null | undefined): string {
     </div>
   </div>
 
-  <div v-if="loading" class="cv-loading">Loading customers…</div>
+  <LoadingText v-if="loading" class="cv-loading" label="Loading customers…" />
   <div v-else-if="loadError" class="cv-error">{{ loadError }}</div>
 
   <div v-else-if="customers.length === 0" class="cv-empty">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingText from "@/components/LoadingText.vue";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 
@@ -624,7 +625,7 @@ watch(
 
 <template>
   <div class="pd-page">
-    <div v-if="loading" class="loading">Loading…</div>
+    <LoadingText v-if="loading" class="loading" label="Loading…" />
     <template v-else-if="project">
       <Teleport defer to="#app-header-left">
         <RouterLink to="/projects" class="ah-back">
