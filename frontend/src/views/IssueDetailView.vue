@@ -47,7 +47,6 @@ import {
   PRIORITY_COLOR,
   PRIORITY_LABEL,
 } from "@/composables/useIssueDisplay";
-import { vAutoGrow } from "@/directives/autoGrow";
 import AiActionMenu from "@/components/ai/AiActionMenu.vue";
 import AiSurfaceFeedback from "@/components/ai/AiSurfaceFeedback.vue";
 import {
@@ -70,6 +69,9 @@ import IssueMetaGrid from "@/components/issue/IssueMetaGrid.vue";
 import IssueEditSidebar from "@/components/issue/IssueEditSidebar.vue";
 import IssueBillingSummary from "@/components/issue/IssueBillingSummary.vue";
 import IssueCompleteEpicModal from "@/components/issue/IssueCompleteEpicModal.vue";
+import IssueDetailBody from "@/components/issue/IssueDetailBody.vue";
+import IssueDetailFooter from "@/components/issue/IssueDetailFooter.vue";
+import IssueTextEditField from "@/components/issue/IssueTextEditField.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -283,14 +285,7 @@ function onEpicCompleted(updated: Issue, ch: Issue[]) {
 
 // ── Inline file paste/drop (ACME-1 / 581 / 583 / 584 / 585) ──────────────
 const pendingAttachmentIds = ref<number[]>([]);
-const descDragOver = ref(false);
-const acDragOver = ref(false);
 let pendingUploadSeq = 0;
-
-function clearAllDragOver() {
-  descDragOver.value = false;
-  acDragOver.value = false;
-}
 
 type InlineField = "description" | "acceptance_criteria";
 type UploadStatus = "pending" | "done" | "failed";
@@ -401,32 +396,6 @@ function retryUpload(job: UploadJob) {
 
 function dismissJob(job: UploadJob) {
   uploadJobs.value = uploadJobs.value.filter((j) => j !== job);
-}
-
-function onTextareaPaste(
-  e: ClipboardEvent,
-  textareaRef: HTMLTextAreaElement,
-  modelField: InlineField,
-) {
-  const files = e.clipboardData?.files;
-  if (!files || !files.length) return;
-  if (!attachmentsEnabled.value) return; // storage not configured — let paste fall through untouched
-  // Don't hijack text paste — only intercept when the clipboard actually carries files.
-  e.preventDefault();
-  const start = textareaRef.selectionStart;
-  uploadInlineFiles(files, modelField, start);
-}
-
-function onTextareaDrop(
-  e: DragEvent,
-  textareaRef: HTMLTextAreaElement,
-  modelField: InlineField,
-) {
-  if (!e.dataTransfer?.files?.length) return;
-  e.preventDefault();
-  if (!attachmentsEnabled.value) return; // storage not configured — drop is swallowed silently
-  const start = textareaRef.selectionStart ?? form.value[modelField].length;
-  uploadInlineFiles(e.dataTransfer.files, modelField, start);
 }
 
 async function addTag(tagId: number) {
@@ -1133,323 +1102,72 @@ async function cancelEdit() {
       <IssueTimeEntries ref="timeEntriesRef" :issue-id="issueId" />
 
       <!-- Body (view mode) -->
-      <div class="body-section" v-if="!editing">
-        <div class="body-block">
-          <p class="body-label">Description</p>
-          <div
-            v-if="issue.description"
-            :class="[
-              'body-text',
-              { 'body-text--mono': isMonospace, 'md-rendered': mdMode },
-            ]"
-            v-html="descHtml"
-          />
-          <span v-else class="body-empty">—</span>
-        </div>
-        <div
-          class="body-block"
-          v-if="['epic', 'cost_unit', 'ticket'].includes(issue.type)"
-        >
-          <p class="body-label">Acceptance Criteria</p>
-          <div
-            v-if="issue.acceptance_criteria"
-            :class="[
-              'body-text',
-              { 'body-text--mono': isMonospace, 'md-rendered': mdMode },
-            ]"
-            v-html="acHtml"
-          />
-          <span v-else class="body-empty">—</span>
-        </div>
-        <div class="body-block">
-          <p class="body-label">Notes</p>
-          <div
-            v-if="issue.notes"
-            :class="[
-              'body-text',
-              { 'body-text--mono': isMonospace, 'md-rendered': mdMode },
-            ]"
-            v-html="notesHtml"
-          />
-          <span v-else class="body-empty">—</span>
-        </div>
-        <div
-          v-if="
-            !issue.description &&
-            !issue.notes &&
-            !(
-              issue.acceptance_criteria &&
-              ['epic', 'cost_unit', 'ticket'].includes(issue.type)
-            )
-          "
-          class="body-empty"
-        >
-          No description or notes.
-        </div>
-      </div>
+      <IssueDetailBody
+        v-if="!editing"
+        :issue="issue"
+        :desc-html="descHtml"
+        :ac-html="acHtml"
+        :notes-html="notesHtml"
+        :is-monospace="isMonospace"
+        :md-mode="mdMode"
+      />
 
       <!-- Edit layout -->
       <div v-else class="edit-layout">
         <div class="edit-content">
-          <div class="field">
-            <div class="field-label-row">
-              <label>Description</label>
-              <AiActionMenu
-                :host-key="`issue-detail:${issueId}:description`"
-                field="description"
-                field-label="Description"
-                surface="issue"
-                :issue-id="issueId"
-                :text="() => form.description"
-                :on-accept="onOptimizeAccept('description')"
-              />
-            </div>
-            <div v-if="jobsFor('description').length" class="upload-chips">
-              <div
-                v-for="job in jobsFor('description')"
-                :key="job.seq"
-                class="upload-chip"
-                :class="[`upload-chip--${job.status}`]"
-              >
-                <AppIcon
-                  :name="
-                    job.status === 'failed'
-                      ? 'alert-circle'
-                      : job.status === 'done'
-                        ? 'check'
-                        : job.isImage
-                          ? 'image'
-                          : 'paperclip'
-                  "
-                  :size="13"
-                />
-                <span class="upload-chip__name" :title="job.filename">{{
-                  job.filename
-                }}</span>
-                <template v-if="job.status === 'pending'">
-                  <div class="upload-chip__bar">
-                    <div
-                      class="upload-chip__bar-fill"
-                      :style="{ width: job.progress + '%' }"
-                    ></div>
-                  </div>
-                  <span class="upload-chip__pct">{{ job.progress }}%</span>
-                </template>
-                <span
-                  v-else-if="job.status === 'failed'"
-                  class="upload-chip__error"
-                  :title="job.error"
-                  >{{ job.error }}</span
-                >
-                <button
-                  v-if="job.status === 'failed'"
-                  class="upload-chip__btn"
-                  @click="retryUpload(job)"
-                  title="Retry upload"
-                  type="button"
-                >
-                  <AppIcon name="refresh-cw" :size="12" />
-                </button>
-                <button
-                  v-if="job.status !== 'done'"
-                  class="upload-chip__btn"
-                  @click="dismissJob(job)"
-                  title="Dismiss"
-                  type="button"
-                >
-                  <AppIcon name="x" :size="12" />
-                </button>
-              </div>
-            </div>
-            <div
-              class="textarea-drop-wrap"
-              @dragenter.prevent="
-                attachmentsEnabled ? (descDragOver = true) : null
-              "
-              @dragleave.self="descDragOver = false"
-            >
-              <textarea
-                ref="descTextarea"
-                v-auto-grow
-                v-model="form.description"
-                rows="4"
-                :class="{ 'textarea--mono': isMonospace }"
-                placeholder="What needs to be done?"
-                @paste="
-                  (e: ClipboardEvent) =>
-                    onTextareaPaste(
-                      e,
-                      $refs.descTextarea as HTMLTextAreaElement,
-                      'description',
-                    )
-                "
-                @dragover.prevent
-                @drop.prevent="
-                  clearAllDragOver();
-                  onTextareaDrop(
-                    $event as DragEvent,
-                    $refs.descTextarea as HTMLTextAreaElement,
-                    'description',
-                  );
-                "
-              ></textarea>
-              <div
-                v-if="descDragOver && attachmentsEnabled"
-                class="textarea-drop-overlay"
-              >
-                <AppIcon name="upload" :size="20" /> Drop files here
-              </div>
-            </div>
-            <AiSurfaceFeedback
-              :host-key="`issue-detail:${issueId}:description`"
-              :apply="applyAiResult"
-            />
-          </div>
-          <div
-            class="field"
+          <IssueTextEditField
+            v-model="form.description"
+            label="Description"
+            field="description"
+            :host-key="`issue-detail:${issueId}:description`"
+            :issue-id="issueId"
+            placeholder="What needs to be done?"
+            :is-monospace="isMonospace"
+            :attachments-enabled="attachmentsEnabled"
+            enable-uploads
+            :jobs="jobsFor('description')"
+            :apply="applyAiResult"
+            :on-accept="onOptimizeAccept('description')"
+            @upload-files="
+              (files, insertAt) =>
+                uploadInlineFiles(files, 'description', insertAt)
+            "
+            @retry-job="retryUpload"
+            @dismiss-job="dismissJob"
+          />
+          <IssueTextEditField
             v-if="['epic', 'cost_unit', 'ticket'].includes(form.type)"
-          >
-            <div class="field-label-row">
-              <label>Acceptance Criteria</label>
-              <AiActionMenu
-                :host-key="`issue-detail:${issueId}:acceptance_criteria`"
-                field="acceptance_criteria"
-                field-label="Acceptance Criteria"
-                surface="issue"
-                :issue-id="issueId"
-                :text="() => form.acceptance_criteria"
-                :on-accept="onOptimizeAccept('acceptance_criteria')"
-              />
-            </div>
-            <div
-              v-if="jobsFor('acceptance_criteria').length"
-              class="upload-chips"
-            >
-              <div
-                v-for="job in jobsFor('acceptance_criteria')"
-                :key="job.seq"
-                class="upload-chip"
-                :class="[`upload-chip--${job.status}`]"
-              >
-                <AppIcon
-                  :name="
-                    job.status === 'failed'
-                      ? 'alert-circle'
-                      : job.status === 'done'
-                        ? 'check'
-                        : job.isImage
-                          ? 'image'
-                          : 'paperclip'
-                  "
-                  :size="13"
-                />
-                <span class="upload-chip__name" :title="job.filename">{{
-                  job.filename
-                }}</span>
-                <template v-if="job.status === 'pending'">
-                  <div class="upload-chip__bar">
-                    <div
-                      class="upload-chip__bar-fill"
-                      :style="{ width: job.progress + '%' }"
-                    ></div>
-                  </div>
-                  <span class="upload-chip__pct">{{ job.progress }}%</span>
-                </template>
-                <span
-                  v-else-if="job.status === 'failed'"
-                  class="upload-chip__error"
-                  :title="job.error"
-                  >{{ job.error }}</span
-                >
-                <button
-                  v-if="job.status === 'failed'"
-                  class="upload-chip__btn"
-                  @click="retryUpload(job)"
-                  title="Retry upload"
-                  type="button"
-                >
-                  <AppIcon name="refresh-cw" :size="12" />
-                </button>
-                <button
-                  v-if="job.status !== 'done'"
-                  class="upload-chip__btn"
-                  @click="dismissJob(job)"
-                  title="Dismiss"
-                  type="button"
-                >
-                  <AppIcon name="x" :size="12" />
-                </button>
-              </div>
-            </div>
-            <div
-              class="textarea-drop-wrap"
-              @dragenter.prevent="
-                attachmentsEnabled ? (acDragOver = true) : null
-              "
-              @dragleave.self="acDragOver = false"
-            >
-              <textarea
-                ref="acTextarea"
-                v-auto-grow
-                v-model="form.acceptance_criteria"
-                rows="4"
-                :class="{ 'textarea--mono': isMonospace }"
-                placeholder="When is this done?"
-                @paste="
-                  (e: ClipboardEvent) =>
-                    onTextareaPaste(
-                      e,
-                      $refs.acTextarea as HTMLTextAreaElement,
-                      'acceptance_criteria',
-                    )
-                "
-                @dragover.prevent
-                @drop.prevent="
-                  clearAllDragOver();
-                  onTextareaDrop(
-                    $event as DragEvent,
-                    $refs.acTextarea as HTMLTextAreaElement,
-                    'acceptance_criteria',
-                  );
-                "
-              ></textarea>
-              <div
-                v-if="acDragOver && attachmentsEnabled"
-                class="textarea-drop-overlay"
-              >
-                <AppIcon name="upload" :size="20" /> Drop files here
-              </div>
-            </div>
-            <AiSurfaceFeedback
-              :host-key="`issue-detail:${issueId}:acceptance_criteria`"
-              :apply="applyAiResult"
-            />
-          </div>
-          <div class="field">
-            <div class="field-label-row">
-              <label>Notes</label>
-              <AiActionMenu
-                :host-key="`issue-detail:${issueId}:notes`"
-                field="notes"
-                field-label="Notes"
-                surface="issue"
-                :issue-id="issueId"
-                :text="() => form.notes"
-                :on-accept="onOptimizeAccept('notes')"
-              />
-            </div>
-            <textarea
-              v-auto-grow
-              v-model="form.notes"
-              rows="3"
-              :class="{ 'textarea--mono': isMonospace }"
-              placeholder="Additional context, links, etc."
-            ></textarea>
-            <AiSurfaceFeedback
-              :host-key="`issue-detail:${issueId}:notes`"
-              :apply="applyAiResult"
-            />
-          </div>
+            v-model="form.acceptance_criteria"
+            label="Acceptance Criteria"
+            field="acceptance_criteria"
+            :host-key="`issue-detail:${issueId}:acceptance_criteria`"
+            :issue-id="issueId"
+            placeholder="When is this done?"
+            :is-monospace="isMonospace"
+            :attachments-enabled="attachmentsEnabled"
+            enable-uploads
+            :jobs="jobsFor('acceptance_criteria')"
+            :apply="applyAiResult"
+            :on-accept="onOptimizeAccept('acceptance_criteria')"
+            @upload-files="
+              (files, insertAt) =>
+                uploadInlineFiles(files, 'acceptance_criteria', insertAt)
+            "
+            @retry-job="retryUpload"
+            @dismiss-job="dismissJob"
+          />
+          <IssueTextEditField
+            v-model="form.notes"
+            label="Notes"
+            field="notes"
+            :host-key="`issue-detail:${issueId}:notes`"
+            :issue-id="issueId"
+            placeholder="Additional context, links, etc."
+            :rows="3"
+            :is-monospace="isMonospace"
+            :apply="applyAiResult"
+            :on-accept="onOptimizeAccept('notes')"
+          />
         </div>
 
         <IssueEditSidebar
@@ -1600,32 +1318,11 @@ async function cancelEdit() {
     />
 
     <!-- Footer -->
-    <footer class="issue-footer">
-      <span class="issue-footer-item">
-        Last edited <strong>{{ fmtDateTime(issue.updated_at) }}</strong>
-        <template v-if="issue.last_changed_by_name">
-          by {{ issue.last_changed_by_name }}</template
-        >
-      </span>
-      <span class="issue-footer-sep">·</span>
-      <span class="issue-footer-item">
-        Created <strong>{{ fmtDateTime(issue.created_at) }}</strong>
-        <template v-if="issue.created_by_name">
-          by {{ issue.created_by_name }}</template
-        >
-      </span>
-      <template v-if="issue.assignee?.username">
-        <span class="issue-footer-sep">·</span>
-        <span class="issue-footer-item"
-          >Assigned to <strong>{{ issue.assignee.username }}</strong></span
-        >
-      </template>
-      <span class="issue-footer-spacer"></span>
-      <button class="history-btn" @click="openHistory">
-        <AppIcon name="history" :size="13" />
-        History
-      </button>
-    </footer>
+    <IssueDetailFooter
+      :issue="issue"
+      :format-date-time="fmtDateTime"
+      @history="openHistory"
+    />
   </template>
 
   <!-- History overlay -->
@@ -1649,48 +1346,6 @@ async function cancelEdit() {
 .loading {
   color: var(--text-muted);
   padding: 2rem 0;
-}
-
-/* PAI-147: per-field label row holds the label + the AI optimize
-   button on the right. Existing field labels were a bare <label>; the
-   wrapper keeps that semantic but lets the button share the row. */
-.field-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-}
-.field-label-row > label {
-  margin-bottom: 0;
-}
-
-/* PAI-146: inline error banner for failed optimize calls. Sits at the
-   top of the edit pane so the user sees it whichever field they hit. */
-.ai-error-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
-  border-radius: var(--radius);
-  padding: 0.45rem 0.75rem;
-  font-size: 13px;
-  margin-bottom: 0.75rem;
-}
-.ai-error-banner-x {
-  background: none;
-  border: none;
-  color: #b91c1c;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 0 0.25rem;
-}
-.ai-error-banner-x:hover {
-  color: #7f1d1d;
 }
 
 .issue-card {
@@ -1853,37 +1508,6 @@ async function cancelEdit() {
   color: #6b7280;
 }
 
-/* Body (view mode) */
-.body-section {
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-.body-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-bottom: 0.4rem;
-}
-.body-text {
-  font-size: 14px;
-  color: var(--text);
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-.body-empty {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-.body-text--mono {
-  font-family: "DM Mono", "Menlo", monospace;
-  font-size: 13px;
-}
-
 /* Edit layout */
 .edit-layout {
   display: grid;
@@ -1901,264 +1525,6 @@ async function cancelEdit() {
 
 .children-section {
   margin-top: 1.5rem;
-}
-
-/* Issue footer */
-.issue-footer {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  padding: 1.25rem 0 0.5rem;
-  margin-top: 2rem;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.issue-footer strong {
-  color: var(--text);
-  font-weight: 600;
-}
-.issue-footer-sep {
-  color: var(--border);
-}
-.issue-footer-item {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.issue-footer-spacer {
-  flex: 1;
-}
-.history-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.25rem 0.6rem;
-  cursor: pointer;
-  font-family: inherit;
-  transition:
-    color 0.12s,
-    border-color 0.12s;
-}
-.history-btn:hover {
-  color: var(--bp-blue);
-  border-color: var(--bp-blue);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.field label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.form-error {
-  font-size: 13px;
-  color: #c0392b;
-  background: #fde8e8;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius);
-}
-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-.textarea--mono {
-  font-family: "DM Mono", "Menlo", monospace !important;
-  font-size: 13px;
-}
-
-/* Textarea drop overlay */
-.textarea-drop-wrap {
-  position: relative;
-}
-.textarea-drop-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background: rgba(46, 109, 164, 0.08);
-  border: 2px dashed var(--bp-blue);
-  border-radius: var(--radius);
-  color: var(--bp-blue);
-  font-size: 13px;
-  font-weight: 600;
-  pointer-events: none;
-  animation: drop-overlay-in 140ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-@keyframes drop-overlay-in {
-  from {
-    opacity: 0;
-    transform: scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* Inline upload chips */
-.upload-chips {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  margin-bottom: 0.15rem;
-}
-.upload-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.38rem 0.55rem;
-  background: var(--bg-card, #fff);
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 2px);
-  font-size: 12px;
-  color: var(--text);
-  font-weight: 500;
-  line-height: 1;
-  animation: upload-chip-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-@keyframes upload-chip-in {
-  from {
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.upload-chip--pending {
-  border-color: rgba(46, 109, 164, 0.28);
-  background: linear-gradient(
-    180deg,
-    rgba(46, 109, 164, 0.05),
-    rgba(46, 109, 164, 0.02)
-  );
-}
-.upload-chip--done {
-  border-color: rgba(30, 132, 73, 0.35);
-  background: rgba(30, 132, 73, 0.06);
-  color: #1e7a3a;
-  transition: opacity 0.5s ease;
-  animation: upload-chip-out-delayed 1.5s forwards;
-}
-@keyframes upload-chip-out-delayed {
-  0%,
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-}
-.upload-chip--failed {
-  border-color: rgba(192, 57, 43, 0.4);
-  background: #fdeeec;
-  color: #a02b1c;
-}
-.upload-chip__name {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 260px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums;
-}
-.upload-chip__bar {
-  flex: 1 1 auto;
-  min-width: 60px;
-  max-width: 220px;
-  height: 4px;
-  background: rgba(46, 109, 164, 0.12);
-  border-radius: 999px;
-  overflow: hidden;
-  position: relative;
-}
-.upload-chip__bar-fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  background: var(--bp-blue, #2e6da4);
-  border-radius: 999px;
-  width: 0;
-  transition: width 140ms linear;
-}
-.upload-chip__bar-fill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.6),
-    transparent
-  );
-  animation: upload-chip-shimmer 1.1s linear infinite;
-}
-@keyframes upload-chip-shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-.upload-chip__pct {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 32px;
-  text-align: right;
-}
-.upload-chip__error {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #a02b1c;
-}
-.upload-chip__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: inherit;
-  opacity: 0.6;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
-  transition:
-    opacity 0.12s,
-    background 0.12s;
-}
-.upload-chip__btn:hover {
-  opacity: 1;
-  background: rgba(0, 0, 0, 0.06);
-}
-.upload-chip--failed .upload-chip__btn:hover {
-  background: rgba(160, 43, 28, 0.1);
 }
 
 /* Primary save button — progress bar along bottom edge while uploading */
