@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Atomic release: bump VERSION + CHANGELOG + git tag in one commit, push,
-# and wait for CI to publish the Docker image.
+# Atomic release: bump VERSION + README badge + CHANGELOG + git tag in one
+# commit, push, and wait for CI to publish the Docker image.
 #
 # Usage:
 #   scripts/release.sh patch|minor|major|<x.y.z>   # cut a release
@@ -79,11 +79,12 @@ if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
 fi
 
 # PAI-264: detect resume from a prior half-applied run. If a previous run
-# already bumped VERSION and prepended the CHANGELOG entry but bailed
+# already bumped VERSION, refreshed the README badge, and prepended the
+# CHANGELOG entry but bailed
 # before committing (e.g., $EDITOR exited non-zero, the user Ctrl-C'd, or
 # the editor step refused to run on a non-TTY), pick up where it left off
 # instead of failing the working-tree-clean gate. Strictly bounded: only
-# the two expected files may differ, and they must already match the
+# the expected release files may differ, and they must already match the
 # targeted bump.
 RESUMING=0
 if [[ "$(cat VERSION 2>/dev/null)" == "$NEW" ]] && \
@@ -92,9 +93,9 @@ if [[ "$(cat VERSION 2>/dev/null)" == "$NEW" ]] && \
   # (default macOS collation is case-insensitive and put `docs/` before
   # `VERSION`, breaking a naive equality check).
   CHANGED=$( { git diff --name-only HEAD; git diff --cached --name-only; } | LC_ALL=C sort -u | grep -v '^$' || true )
-  EXPECTED=$'VERSION\ndocs/CHANGELOG.md'
+  EXPECTED=$'README.md\nVERSION\ndocs/CHANGELOG.md'
   if [[ "$CHANGED" == "$EXPECTED" ]]; then
-    echo "Resuming half-applied $NEW_TAG (VERSION + CHANGELOG already match)."
+    echo "Resuming half-applied $NEW_TAG (VERSION + README + CHANGELOG already match)."
     RESUMING=1
   fi
 fi
@@ -129,10 +130,23 @@ fi
 echo "Bumping $LAST_TAG → $NEW_TAG"
 TODAY=$(date -u +%Y-%m-%d)
 
+if [[ $NO_EDIT -eq 1 ]] && ! grep -qE "^## \[$NEW\] " docs/CHANGELOG.md; then
+  echo "error: refusing to create a release with an unreviewed CHANGELOG stub in no-edit mode" >&2
+  echo "       Add a docs/CHANGELOG.md entry for [$NEW] first, then rerun release." >&2
+  exit 1
+fi
+
 # 1. VERSION file — single source of truth for SPA-embedded version at `go run`.
 echo "$NEW" > VERSION
 
-# 2. CHANGELOG entry. If an entry for this version already exists (drift case),
+# 2. README badge. Keep the public-facing badge aligned with VERSION as part of
+#    the release commit so CI's release-hygiene gate remains compatible with
+#    normal release cuts.
+tmp=$(mktemp)
+sed -E "s|<code>v[0-9]+\.[0-9]+\.[0-9]+</code>|<code>v$NEW</code>|" README.md > "$tmp"
+mv "$tmp" README.md
+
+# 3. CHANGELOG entry. If an entry for this version already exists (drift case),
 #    just correct its date. Otherwise prepend a draft and open $EDITOR.
 if grep -qE "^## \[$NEW\] " docs/CHANGELOG.md; then
   echo "CHANGELOG: [$NEW] entry exists — updating date to $TODAY"
@@ -154,19 +168,14 @@ else
   mv "$tmp" docs/CHANGELOG.md
 
   echo
-  # PAI-264: skip $EDITOR step under --no-edit / RELEASE_NO_EDIT=1 / dummy
-  # $EDITOR ("" / true / : / cat / tee). Auto-generated draft is committed
-  # as-is. Operators can amend the CHANGELOG later if they want richer prose.
-  if [[ $NO_EDIT -eq 1 ]]; then
-    echo "CHANGELOG: NO_EDIT — committing auto-generated draft as-is. Amend later if needed."
-  else
-    echo "Opening CHANGELOG in \$EDITOR (${EDITOR:-vi}) for review…"
-    "${EDITOR:-vi}" docs/CHANGELOG.md
-  fi
+  echo "Opening CHANGELOG in \$EDITOR (${EDITOR:-vi}) for review…"
+  "${EDITOR:-vi}" docs/CHANGELOG.md
 fi
 
-# 3. Commit + tag + push
-git add VERSION docs/CHANGELOG.md
+"$ROOT/scripts/check-release-hygiene.sh"
+
+# 4. Commit + tag + push
+git add VERSION README.md docs/CHANGELOG.md
 git commit -m "release: $NEW_TAG"
 git tag -a "$NEW_TAG" -m "release $NEW"
 git push origin main

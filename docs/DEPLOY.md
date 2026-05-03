@@ -26,7 +26,7 @@ CI source of truth: `.github/workflows/ci.yml`.
 ## The four commands
 
 ```
-just release [patch|minor|major|x.y.z]   # cut a release (VERSION + CHANGELOG + tag + push)
+just release [patch|minor|major|x.y.z]   # cut a release (VERSION + README + CHANGELOG + tag + push)
 just deploy-ppm [tag]                    # deploy a tag to ppm (default: latest)
 just deploy-pmo [tag]                    # deploy a tag to pmo (default: latest)
 just doc-sync [tag]                      # file a "doc/site sync follow-up" ticket in PAIMOS
@@ -54,12 +54,16 @@ hard to miss.
    exits. Look at the output, decide patch/minor/major, re-run.
 3. Computes the new version from the last git tag (not from `VERSION` —
    that's why `VERSION` can never drift again).
-4. Updates `VERSION`, prepends a draft entry to `docs/CHANGELOG.md` pre-seeded
-   from commit subjects, opens `$EDITOR` so you can clean it up before
-   committing. If an entry for that version already exists, just its date
-   is refreshed (needed once, for the 1.2.2–1.5.1 drift catch-up).
-5. Commits (`release: vX.Y.Z`), tags `vX.Y.Z`, pushes both.
-6. Polls ghcr for up to 10 minutes until the new image tag is visible, then
+4. Updates `VERSION`, refreshes the README version badge, prepends a draft
+   entry to `docs/CHANGELOG.md` pre-seeded from commit subjects, opens
+   `$EDITOR` so you can clean it up before committing. If an entry for that
+   version already exists, just its date is refreshed (needed once, for the
+   1.2.2–1.5.1 drift catch-up).
+5. Runs `scripts/check-release-hygiene.sh`: README badge must match `VERSION`,
+   README's health example must stay generic (`<VERSION>`), and
+   `docs/CHANGELOG.md` must not contain the auto-generated TODO stub.
+6. Commits (`release: vX.Y.Z`), tags `vX.Y.Z`, pushes both.
+7. Polls ghcr for up to 10 minutes until the new image tag is visible, then
    prints the next-step deploy commands.
 
 **Picking the level (what the AI looks at):** if `git log vLAST..HEAD` contains
@@ -145,8 +149,8 @@ staring at a schema it doesn't understand. Always restore the DB too.
   `scripts/deploy.sh ppm`.
 - Ad-hoc `ssh csb1 'docker compose pull && up -d'`: replaced by the
   backup-first flow in `scripts/_deploy-lib.sh`.
-- Manual `VERSION` + `CHANGELOG` edits: replaced by `just release`, which
-  does them atomically with the tag.
+- Manual `VERSION` + README badge + `CHANGELOG` edits: replaced by
+  `just release`, which does them atomically with the tag.
 
 ## What this deliberately leaves out
 

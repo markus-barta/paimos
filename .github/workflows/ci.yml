@@ -50,6 +50,9 @@ jobs:
         working-directory: backend
         run: go test -count=1 -run '^TestRegression_|^TestAuthzFuzz_' ./handlers/...
 
+      - name: Release hygiene
+        run: ./scripts/check-release-hygiene.sh
+
       # PAI-270: prove the dev-login route does NOT ship in production
       # binaries. Build the production binary the same way the
       # Dockerfile does (no `-tags dev_login`, `-ldflags="-s -w"`)

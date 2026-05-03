@@ -85,14 +85,20 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [2.2.1] — 2026-04-28
 
-### Added — TODO fill in before committing
+### Added
 
-- chore(dev): self-bootstrap go via direnv when shell isn't hooked (PAI-267)
-- fix(layout): drop view-body flex:1 so tall views don't bleed into AppFooter (PAI-262)
-- feat(devseed): rich fixture data for ACME / BUGZ / LOGS (PAI-269)
-- docs: DEV_LOGIN.md — token, security model, user matrix (PAI-271)
-- feat(dev): build-tag-gated dev-login + minimal-fixture seed (PAI-267 phase 1)
-- fix(deploy): use containerized tar for bind storage backups
+- [PAI-267](https://pm.barta.cm/projects/6/issues/PAI-267) — **Build-tag-gated dev login and fixture seeding for local agent/UI work.** Development builds can expose the dev-login route and seed minimal fixtures without shipping those symbols in production binaries. The implementation keeps the route behind the `dev_login` build tag and pairs it with seed data so agents can get an authenticated local session without hand-building database state.
+- [PAI-269](https://pm.barta.cm/projects/6/issues/PAI-269) — **Richer devseed fixtures for ACME, BUGZ, and LOGS.** Local development data now better exercises real issue lists, customer/project surfaces, and search-heavy workflows.
+- [PAI-271](https://pm.barta.cm/projects/6/issues/PAI-271) — **DEV_LOGIN.md documents the dev-login security model.** The guide covers token requirements, the build-tag boundary, fixture users, and the intended local-only operator/agent workflow.
+
+### Changed
+
+- [PAI-267](https://pm.barta.cm/projects/6/issues/PAI-267) — **Development shells self-bootstrap Go through direnv when needed.** This makes local commands more reliable on machines where the interactive shell has not already loaded the expected toolchain.
+
+### Fixed
+
+- [PAI-262](https://pm.barta.cm/projects/6/issues/PAI-262) — **Tall views no longer bleed into AppFooter.** Dropping the problematic `view-body` flex behavior restored clean page layout for long content.
+- Deploy backups now use containerized `tar` for bind-mounted storage, avoiding host/container path and permission mismatches during backup creation.
 
 ## [2.2.0] — 2026-04-28
 
