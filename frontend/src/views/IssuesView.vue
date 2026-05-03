@@ -7,6 +7,7 @@ import { useSearchStore } from '@/stores/search'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
 import { useIssueRefreshPromptStore } from '@/stores/issueRefreshPrompt'
+import { issueSearchSummary } from '@/utils/issueSearchSummary'
 import type { Issue, Project, Tag, Sprint, User, SavedView } from '@/types'
 
 interface IssueEnvelope {
@@ -39,9 +40,10 @@ const sprints   = ref<Sprint[]>([])
 provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
+const trimmedSearchQuery = computed(() => search.query.trim())
 const issuesPath = computed(() => {
   let url = `/issues?fields=list&limit=${PAGE}&offset=0`
-  if (search.query.length >= 2) url += `&q=${encodeURIComponent(search.query)}`
+  if (trimmedSearchQuery.value.length >= 2) url += `&q=${encodeURIComponent(trimmedSearchQuery.value)}`
   return url
 })
 
@@ -86,16 +88,21 @@ async function selectTab(view: SavedView) {
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 
-const isSearchMode = computed(() => search.query.length >= 2)
+const isSearchMode = computed(() => trimmedSearchQuery.value.length >= 2)
 
 const remaining = computed(() => Math.max(0, total.value - issues.value.length))
-const hasMore   = computed(() => !isSearchMode.value && remaining.value > 0)
+const hasMore   = computed(() => remaining.value > 0)
+const canAutoLoadMore = computed(() => !isSearchMode.value && hasMore.value)
+const searchHasMore = computed(() => isSearchMode.value && hasMore.value)
+const searchSubtitle = computed(() =>
+  issueSearchSummary(issues.value.length, total.value, trimmedSearchQuery.value),
+)
 
 const showEmptyFilterBanner = computed(() => {
   if (!issueListRef.value) return false
   const fc = issueListRef.value.activeFilterCount
   const fl = issueListRef.value.filteredIssues?.length ?? 0
-  return fl === 0 && fc > 0 && hasMore.value
+  return fl === 0 && fc > 0 && !isSearchMode.value && hasMore.value
 })
 
 function currentMainScroll(): HTMLElement | null {
@@ -157,7 +164,7 @@ async function fetchIssues(limit: number, replace = false) {
   const offset = replace ? 0 : issues.value.length
   try {
     let url = `/issues?fields=list&limit=${limit}&offset=${offset}`
-    if (search.query.length >= 2) url += `&q=${encodeURIComponent(search.query)}`
+    if (trimmedSearchQuery.value.length >= 2) url += `&q=${encodeURIComponent(trimmedSearchQuery.value)}`
     const data = await api.get<IssueEnvelope>(url)
     if (replace) {
       issues.value = data.issues
@@ -209,7 +216,7 @@ onMounted(async () => {
   nextTick(() => {
     if (scrollSentinel.value) {
       scrollObserver = new IntersectionObserver((entries) => {
-        if (entries[0]?.isIntersecting && hasMore.value && !loadingMore.value) {
+        if (entries[0]?.isIntersecting && canAutoLoadMore.value && !loadingMore.value) {
           loadMore(PAGE)
         }
       }, { rootMargin: '200px' })
@@ -240,7 +247,17 @@ function onDeleted(id: number) {
   <div class="issues-view-root">
     <Teleport defer to="#app-header-left">
       <span class="ah-title">Issues</span>
-      <span v-if="!loading && isSearchMode" class="ah-subtitle">{{ issues.length.toLocaleString() }} matching "{{ search.query }}"</span>
+      <template v-if="!loading && isSearchMode">
+        <span class="ah-subtitle">{{ searchSubtitle }}</span>
+        <button
+          v-if="searchHasMore"
+          class="load-all-link"
+          :disabled="loadingMore"
+          @click="loadAll"
+        >
+          · Load all {{ total.toLocaleString() }}
+        </button>
+      </template>
       <span v-else-if="!loading" class="ah-subtitle">
         {{ issues.length.toLocaleString() }} issues
         <button v-if="hasMore" class="load-all-link" :disabled="loadingMore" @click="loadAll">
@@ -351,6 +368,7 @@ function onDeleted(id: number) {
 .load-all-link {
   background: none; border: none; padding: 0; cursor: pointer;
   font: inherit; font-size: 13px; color: var(--bp-blue); font-weight: 500;
+  white-space: nowrap; flex-shrink: 0;
 }
 .load-all-link:hover { text-decoration: underline; }
 .load-all-link:disabled { opacity: .5; cursor: not-allowed; }
