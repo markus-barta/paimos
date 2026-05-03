@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { api, ApiError } from '@/api/client'
 import { useBranding } from '@/composables/useBranding'
 import { useSidebarColors } from '@/composables/useSidebarColors'
+import { formatDisplayVersion } from '@/utils/version'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
 
@@ -11,7 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const { branding } = useBranding()
 const { bgColor, patternColor } = useSidebarColors()
-const version = __APP_VERSION__
+const version = formatDisplayVersion(__APP_VERSION__)
 
 const hexPatternSvg = computed(() => {
   const c = patternColor.value.replace(/#/g, '%23')

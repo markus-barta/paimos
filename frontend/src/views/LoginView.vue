@@ -6,13 +6,14 @@ import { ApiError, api } from '@/api/client'
 import { useBranding } from '@/composables/useBranding'
 import { useSidebarColors } from '@/composables/useSidebarColors'
 import { postLoginRedirectOrFallback } from '@/router/redirects'
+import { formatDisplayVersion } from '@/utils/version'
 import AppIcon from '@/components/AppIcon.vue'
 
 const { branding } = useBranding()
 const { bgColor, patternColor } = useSidebarColors()
 const route = useRoute()
 
-const version = __APP_VERSION__
+const version = formatDisplayVersion(__APP_VERSION__)
 
 // PAI-120: SSO probe. The button only appears once /api/auth/oidc/status
 // reports enabled=true, so an instance with no IdP configured looks

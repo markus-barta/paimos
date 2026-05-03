@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBranding } from '@/composables/useBranding'
+import { formatDisplayVersion } from '@/utils/version'
 import AppIcon from '@/components/AppIcon.vue'
 import AppChangelogModal from '@/components/AppChangelogModal.vue'
 
@@ -15,7 +16,7 @@ defineProps<{
 const route = useRoute()
 const auth = useAuthStore()
 const { branding } = useBranding()
-const version   = __APP_VERSION__
+const version   = formatDisplayVersion(__APP_VERSION__)
 const gitHash   = __GIT_HASH__
 const showChangelog = ref(false)
 
