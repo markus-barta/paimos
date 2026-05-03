@@ -94,6 +94,7 @@ deploy::ssh() {
 
 deploy::run() {
   local instance="$1" tag="$2" image="$3"
+  local preflight_only="${4:-0}"
   local stamp backup pre_image pre_digest
 
   stamp=$(date -u +%Y-%m-%dT%H-%M-%SZ)
@@ -106,6 +107,10 @@ deploy::run() {
   echo "    target:  $image"
   if [[ "$pre_image" == "$image" ]]; then
     echo "note: already on target image — nothing to do"
+    return 0
+  fi
+  if [[ "$preflight_only" == "1" ]]; then
+    echo "preflight-only: target differs; no service changes made"
     return 0
   fi
 

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Deploy a tag to one PAIMOS instance. Backup-first, never auto-rollback.
+# Deploy an image target to one PAIMOS instance. Backup-first, never auto-rollback.
 #
 # Usage:
-#   scripts/deploy.sh <instance> [tag]
+#   scripts/deploy.sh <instance> [tag|sha-abcdef0|current] [--preflight]
 #
-# Instance = ppm | pmo. Tag defaults to the latest tag on origin.
+# Instance = ppm | pmo. An omitted target defaults to the latest release
+# tag only when HEAD is not ahead of that tag. If HEAD contains untagged
+# commits, the script refuses to guess; pass a release tag, sha-* image tag,
+# or "current" explicitly.
 # The flow (all remote via SSH):
 #   1. verify tag exists on ghcr
 #   2. stop the service
@@ -23,11 +26,50 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
-INSTANCE="${1:-}"
-TAG="${2:-}"
+PREFLIGHT_ONLY=0
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: scripts/deploy.sh <ppm|pmo> [tag|sha-abcdef0|current] [--preflight]
+
+Targets:
+  v2.4.8 / 2.4.8    deploy a release image
+  sha-abcdef0        deploy a CI-published commit image
+  current            deploy sha-$(git rev-parse --short HEAD)
+  omitted            deploy latest release tag only when HEAD is not ahead of it
+
+Flags:
+  --preflight, --dry-run
+      Resolve target, verify the image exists, and inspect the remote
+      current image without stopping or restarting the service.
+USAGE
+}
+
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --preflight|--dry-run)
+      PREFLIGHT_ONLY=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      ARGS+=("$arg")
+      ;;
+  esac
+done
+
+INSTANCE="${ARGS[0]:-}"
+TAG="${ARGS[1]:-}"
+if [[ ${#ARGS[@]} -gt 2 ]]; then
+  usage
+  exit 1
+fi
 
 if [[ -z "$INSTANCE" ]]; then
-  echo "usage: $0 <ppm|pmo> [tag]" >&2
+  usage
   exit 1
 fi
 
@@ -40,24 +82,25 @@ fi
 # shellcheck disable=SC1090
 source "$CONF"
 
-if [[ -z "$TAG" ]]; then
-  git fetch --tags --quiet origin
-  TAG=$(git tag --sort=-creatordate | head -1 || true)
-  if [[ -z "$TAG" ]]; then
-    echo "error: no tags on origin — run \`just release …\` first" >&2
-    exit 1
-  fi
-fi
-TAG="${TAG#v}"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/deploy-target.sh"
+deploy_target::resolve "$TAG"
+TAG="$DEPLOY_TARGET_TAG"
 IMAGE="ghcr.io/markus-barta/paimos:$TAG"
 
 # shellcheck disable=SC1091
 source "$ROOT/scripts/_deploy-lib.sh"
+
+deploy_target::print_summary "$INSTANCE" "$IMAGE" "$PREFLIGHT_ONLY"
 
 if ! ghcr::image_exists "$IMAGE"; then
   echo "error: $IMAGE not found on ghcr — CI still running, or wrong tag" >&2
   exit 1
 fi
 
-echo "=== deploy $INSTANCE → $IMAGE ==="
-deploy::run "$INSTANCE" "$TAG" "$IMAGE"
+if [[ $PREFLIGHT_ONLY -eq 1 ]]; then
+  echo "=== preflight $INSTANCE → $IMAGE ==="
+else
+  echo "=== deploy $INSTANCE → $IMAGE ==="
+fi
+deploy::run "$INSTANCE" "$TAG" "$IMAGE" "$PREFLIGHT_ONLY"

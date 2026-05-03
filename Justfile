@@ -25,13 +25,29 @@ release mode="":
 sbom:
     @./scripts/sbom.sh
 
-# Deploy a tag to ppm (pm.barta.cm). Default tag = latest on origin.
-deploy-ppm tag="":
-    @./scripts/deploy.sh ppm {{tag}}
+# Deploy to ppm: release tag, sha-* image tag, or current HEAD.
+deploy-ppm target="":
+    @./scripts/deploy.sh ppm {{target}}
 
-# Deploy a tag to pmo (pm.bytepoets.com). Default tag = latest on origin.
-deploy-pmo tag="":
-    @./scripts/deploy.sh pmo {{tag}}
+# Preflight ppm deploy target without stopping/restarting the service.
+deploy-ppm-preflight target="current":
+    @./scripts/deploy.sh ppm {{target}} --preflight
+
+# Deploy local HEAD's CI image to ppm.
+deploy-ppm-current:
+    @./scripts/deploy.sh ppm current
+
+# Deploy to pmo: release tag, sha-* image tag, or current HEAD.
+deploy-pmo target="":
+    @./scripts/deploy.sh pmo {{target}}
+
+# Preflight pmo deploy target without stopping/restarting the service.
+deploy-pmo-preflight target="current":
+    @./scripts/deploy.sh pmo {{target}} --preflight
+
+# Deploy local HEAD's CI image to pmo.
+deploy-pmo-current:
+    @./scripts/deploy.sh pmo current
 
 # File a "doc/site sync follow-up" ticket in PAIMOS for a tag (default
 # = latest). Run after `just release` so README, docs/, paimos-site,

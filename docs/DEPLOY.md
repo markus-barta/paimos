@@ -27,8 +27,8 @@ CI source of truth: `.github/workflows/ci.yml`.
 
 ```
 just release [patch|minor|major|x.y.z]   # cut a release (VERSION + README + CHANGELOG + tag + push)
-just deploy-ppm [tag]                    # deploy a tag to ppm (default: latest)
-just deploy-pmo [tag]                    # deploy a tag to pmo (default: latest)
+just deploy-ppm <target>                 # deploy a release tag or sha-* image to ppm
+just deploy-pmo <target>                 # deploy a release tag or sha-* image to pmo
 just doc-sync [tag]                      # file a "doc/site sync follow-up" ticket in PAIMOS
 ```
 
@@ -45,6 +45,15 @@ the `../paimos-site` repo, brand/screenshots) so the user-facing surfaces
 don't drift out of sync with the code. `release.sh` prints the
 `just doc-sync` reminder as part of its "Next:" output to make the step
 hard to miss.
+
+For untagged main-commit canaries, wait for CI to publish the commit image,
+then deploy it explicitly:
+
+```
+just deploy-ppm sha-4808a9f
+# or, from a checkout at that commit:
+just deploy-ppm-current
+```
 
 ## `just release`
 
@@ -73,10 +82,24 @@ Breaking API or schema changes → **major**. Pure docs / brand / scripts →
 
 ## `just deploy-{ppm,pmo}`
 
+Deploy targets are explicit by default:
+
+| Target form | Meaning |
+| ----------- | ------- |
+| `v2.4.8` / `2.4.8` | Semver release image. Use after `just release`. |
+| `sha-4808a9f` | Immutable image for a pushed `main` commit. Use for untagged canaries. |
+| `current` | Resolves to `sha-$(git rev-parse --short HEAD)`. Convenience for local HEAD. |
+| omitted | Allowed only when local `HEAD` is not ahead of the latest release tag. If `HEAD` has untagged commits, deploy aborts before any remote change. |
+
+Use `just deploy-ppm-preflight <target>` or
+`scripts/deploy.sh ppm <target> --preflight` to resolve the target, verify
+the image exists, and inspect the remote current image without stopping the
+service.
+
 For each instance:
 
-1. Resolves the tag (arg or `git tag --sort=-creatordate | head -1`). Aborts
-   if that image isn't on ghcr yet.
+1. Resolves the target. Aborts if omitted target is ambiguous or if the image
+   isn't on ghcr yet.
 2. SSH pre-flight: reads current image + image digest from the running
    container, aborts if target == current.
 3. `docker compose stop <service>`.

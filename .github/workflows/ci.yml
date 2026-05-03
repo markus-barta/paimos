@@ -53,6 +53,9 @@ jobs:
       - name: Release hygiene
         run: ./scripts/check-release-hygiene.sh
 
+      - name: Deploy scripts — target resolution
+        run: ./scripts/test-deploy-target.sh
+
       # PAI-270: prove the dev-login route does NOT ship in production
       # binaries. Build the production binary the same way the
       # Dockerfile does (no `-tags dev_login`, `-ldflags="-s -w"`)
