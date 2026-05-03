@@ -96,9 +96,13 @@ scripts/               maintenance helpers
   compiled inline via `db.DB.Query(…)`. Makes it easy to read the exact
   query in context.
 - **Migrations** live in `backend/db/db.go` inside `migrate()`. Each
-  one is `db.Exec("CREATE TABLE IF NOT EXISTS …")` guarded by the
-  `schema_versions` table. Additive-only — never rewrite a past
-  migration.
+  migration is guarded by the `schema_versions` table and runs on one
+  pinned SQLite connection. Migrations are transactional by default:
+  all steps and the `schema_versions` insert commit together or roll
+  back together. The only exception is a table-rebuild migration that
+  toggles `PRAGMA foreign_keys`; SQLite ignores that pragma inside an
+  open transaction, so those migrations are explicitly connection-
+  pinned but non-atomic. Additive-only — never rewrite a past migration.
 - **Context propagation**: standard Go `context.Context`; auth loads
   the user into context via middleware in `backend/auth/`.
 - **Auth**: session cookies by default, `Authorization: Bearer

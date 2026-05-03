@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"modernc.org/sqlite"
 
@@ -47,6 +48,11 @@ func init() {
 }
 
 var DB *sql.DB
+
+type migration struct {
+	version int
+	steps   []string
+}
 
 func Open() error {
 	dataDir := os.Getenv("DATA_DIR")
@@ -93,11 +99,6 @@ func migrate(db *sql.DB) error {
 		applied_at TEXT NOT NULL DEFAULT (datetime('now'))
 	)`); err != nil {
 		return fmt.Errorf("create schema_versions: %w", err)
-	}
-
-	type migration struct {
-		version int
-		steps   []string
 	}
 
 	migrations := []migration{
@@ -3830,33 +3831,78 @@ func migrate(db *sql.DB) error {
 		if count > 0 {
 			continue
 		}
-		// Pin all steps to a single connection so PRAGMA foreign_keys=OFF/ON
-		// applies to every subsequent DDL step in the same migration.
 		conn, err := db.Conn(context.Background())
 		if err != nil {
 			return fmt.Errorf("migration %d: get conn: %w", m.version, err)
 		}
-		var migErr error
-		for _, step := range m.steps {
-			if _, err := conn.ExecContext(context.Background(), step); err != nil {
-				label := step
-				if len(label) > 60 {
-					label = label[:60]
-				}
-				migErr = fmt.Errorf("run migration %d step %q: %w", m.version, label, err)
-				break
-			}
-		}
+		migErr := applyMigration(context.Background(), conn, m)
 		conn.Close()
 		if migErr != nil {
 			return migErr
 		}
-		if _, err := db.Exec("INSERT INTO schema_versions(version) VALUES(?)", m.version); err != nil {
-			return fmt.Errorf("record migration %d: %w", m.version, err)
-		}
 		fmt.Printf("db: applied migration %d\n", m.version)
 	}
 	return nil
+}
+
+func applyMigration(ctx context.Context, conn *sql.Conn, m migration) error {
+	if migrationUsesForeignKeyPragma(m) {
+		return applyMigrationNonAtomic(ctx, conn, m)
+	}
+	return applyMigrationAtomic(ctx, conn, m)
+}
+
+func applyMigrationAtomic(ctx context.Context, conn *sql.Conn, m migration) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("migration %d: begin tx: %w", m.version, err)
+	}
+	for _, step := range m.steps {
+		if _, err := tx.ExecContext(ctx, step); err != nil {
+			_ = tx.Rollback()
+			return migrationStepError(m.version, step, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_versions(version) VALUES(?)", m.version); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("record migration %d: %w", m.version, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migration %d: commit: %w", m.version, err)
+	}
+	return nil
+}
+
+func applyMigrationNonAtomic(ctx context.Context, conn *sql.Conn, m migration) error {
+	// SQLite ignores PRAGMA foreign_keys=OFF/ON inside an open transaction, so
+	// table-rebuild migrations that toggle that pragma must stay connection-
+	// pinned but non-transactional. These are the explicit exception path.
+	for _, step := range m.steps {
+		if _, err := conn.ExecContext(ctx, step); err != nil {
+			return migrationStepError(m.version, step, err)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "INSERT INTO schema_versions(version) VALUES(?)", m.version); err != nil {
+		return fmt.Errorf("record migration %d: %w", m.version, err)
+	}
+	return nil
+}
+
+func migrationUsesForeignKeyPragma(m migration) bool {
+	for _, step := range m.steps {
+		if strings.Contains(strings.ToUpper(step), "PRAGMA FOREIGN_KEYS") {
+			return true
+		}
+	}
+	return false
+}
+
+func migrationStepError(version int, step string, err error) error {
+	label := step
+	if len(label) > 60 {
+		label = label[:60]
+	}
+	return fmt.Errorf("run migration %d step %q: %w", version, label, err)
 }
 
 func min(a, b int) int {
