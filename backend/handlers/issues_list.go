@@ -308,13 +308,15 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	query := issueSelectCore + ` WHERE ` + whereSQL
 	if len(searchTerm) >= 2 {
 		orderSQL, orderArgs := issueSearchRankOrder(searchTerm)
-		query += orderSQL
+		query += orderSQL // #nosec G202 -- issueSearchRankOrder returns a fixed SQL fragment plus placeholder args.
 		args = append(args, orderArgs...)
 	} else {
 		query += " ORDER BY i.updated_at DESC, i.id DESC"
 	}
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	query += " LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
 
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -377,6 +379,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	countQuery, countArgs = appendGlobalIssueSearchFilter(countQuery, countArgs, searchTerm)
 	var total int
+	// #nosec G701 -- countQuery mirrors the fixed-fragment list query; user values are placeholders.
 	if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
@@ -493,6 +496,7 @@ func RecentIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	query := issueSelectCore + ` WHERE ` + whereSQL
 	query += ` ORDER BY i.updated_at DESC LIMIT 20`
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -568,10 +572,11 @@ func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT DISTINCT cost_unit FROM issues i WHERE cost_unit != '' AND i.deleted_at IS NULL`
 	args := []any{}
 	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
-		query += f
+		query += f // #nosec G202 -- projectIDFilter returns a fixed SQL fragment plus placeholder args.
 		args = append(args, a...)
 	}
 	query += ` ORDER BY cost_unit`
+	// #nosec G701 -- query uses fixed fragments only; access values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -595,10 +600,11 @@ func ListAllReleases(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT DISTINCT release FROM issues i WHERE release != '' AND i.deleted_at IS NULL`
 	args := []any{}
 	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
-		query += f
+		query += f // #nosec G202 -- projectIDFilter returns a fixed SQL fragment plus placeholder args.
 		args = append(args, a...)
 	}
 	query += ` ORDER BY release`
+	// #nosec G701 -- query uses fixed fragments only; access values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
