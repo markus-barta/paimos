@@ -1,0 +1,127 @@
+G117	MEDIUM	MEDIUM	handlers/integrations.go	228	Marshaled struct field "APIKey" (JSON key "api_key") matches secret pattern
+G120	MEDIUM	HIGH	handlers/attachments.go	121	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/attachments.go	303	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/branding.go	277	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/csv.go	266	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/dev_testreports_service.go	105	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/documents.go	152	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/logo.go	43	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/profile.go	106	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G124	MEDIUM	HIGH	auth/auth.go	268	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	304	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/csrf.go	117	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/csrf.go	132	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/oidc.go	167	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/oidc.go	179	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/oidc.go	316	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/totp.go	277	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G202	MEDIUM	HIGH	handlers/ai_papertrail.go	341-366	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/ai_papertrail.go	533-556	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/ai_prompts.go	258	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/contacts.go	332	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/contacts.go	50-55	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/crm/handlers.go	448	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/csv.go	100	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/customers.go	395-400	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/incidents.go	94-101	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	1399	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	1423	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	1538	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	1803	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	1830	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	281-286	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	327-336	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	367-378	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	623	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	325	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/project_context.go	828	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/reports.go	117-133	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	341-348	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	363-373	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	425-431	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	456-464	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	481-489	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	499-507	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/search.go	517-528	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	276-282	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	314-320	SQL string concatenation
+G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	107	Subprocess launched with variable
+G301	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	280	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	86	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	db/db.go	57	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/branding.go	221	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/branding.go	325	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/dev_testreports_service.go	189	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/logo.go	77	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/profile.go	143	Expect directory permissions to be 0750 or less
+G304	MEDIUM	HIGH	cmd/paimos-mcp/mcpclient/client.go	61	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	232	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	292	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_apply.go	239	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_apply.go	62	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_issue_write.go	44	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	300	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_schema.go	98	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/config.go	72	Potential file inclusion via variable
+G304	MEDIUM	HIGH	handlers/branding.go	135	Potential file inclusion via variable
+G304	MEDIUM	HIGH	handlers/branding.go	94	Potential file inclusion via variable
+G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	49	Potential file inclusion via variable
+G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	77	Potential file inclusion via variable
+G304	MEDIUM	HIGH	secretvault/vault.go	142	Potential file inclusion via variable
+G306	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	288	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	154	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	317	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	93	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	96	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/branding.go	238	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/branding.go	341	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	192	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	196	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	203	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/logo.go	87	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/profile.go	149	Expect WriteFile permissions to be 0600 or less
+G701	HIGH	HIGH	handlers/ai_papertrail.go	337	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/ai_papertrail.go	367	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/ai_papertrail.go	557	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	1427	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	1540	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	1627	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	1728	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	1807	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	1834	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	2264	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	2316	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues.go	626	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_etag.go	17	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/search.go	341	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/search.go	363	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/search.go	456	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/search.go	481	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/search.go	499	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/search.go	517	SQL injection via taint analysis
+G703	HIGH	HIGH	cmd/paimos/cmd_manifest.go	317	Path traversal via taint analysis
+G703	HIGH	HIGH	db/db.go	57	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	243	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	400	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	415	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/profile.go	149	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	565	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	665	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	676	Path traversal via taint analysis
+G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
+G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
+G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis
+G704	HIGH	HIGH	auth/oidc.go	131	SSRF via taint analysis
+G704	HIGH	HIGH	auth/oidc.go	135	SSRF via taint analysis
+G704	HIGH	HIGH	handlers/jiraimport.go	944	SSRF via taint analysis
+G704	HIGH	HIGH	handlers/jiraimport.go	952	SSRF via taint analysis
+G705	MEDIUM	HIGH	handlers/branding.go	111	XSS via taint analysis

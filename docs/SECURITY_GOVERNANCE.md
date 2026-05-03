@@ -39,7 +39,7 @@ Each row is a thing the project commits to do on a cadence. The owner column nam
 | **Provider credential rotation** — rotate `OIDC_CLIENT_SECRET`, `MINIO_SECRET_KEY`, `SMTP_PASS`, OpenRouter API key | every 3 months | operator (per-deployment) | [`HARDENING.md`](HARDENING.md) §3.6 |
 | **Claim-matrix audit** — re-walk every public claim and verify shipped evidence still holds | at every release | release script ([`scripts/check-claims.sh`](../scripts/check-claims.sh) — automated) | [`docs/claim-matrix.md`](claim-matrix.md) |
 | **Doc-sync after release** — README / docs/ / paimos-site / brand assets reviewed for drift | at every release | maintainer | [`scripts/release-doc-sync.sh`](../scripts/release-doc-sync.sh) auto-files the follow-up ticket |
-| **gosec re-baseline** — once flipped to blocking (PAI-223), re-baseline to absorb intentional new findings | every 6 months after PAI-223 lands | maintainer | [`SECURITY_REVIEW.md`](SECURITY_REVIEW.md) §2.3 |
+| **gosec baseline review** — shrink `.gosec-baseline.txt` as findings are fixed/annotated; any addition requires explicit review | every 6 months | maintainer | [`SECURITY_REVIEW.md`](SECURITY_REVIEW.md) §2.3 |
 | **Reference-deployment register update** — append new findings; status of each reference deployment validated | every 6 months + per finding | maintainer + (per deployment) operator | [`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md) §3 |
 | **Brand framework review** — phase posture, claim matrix, public copy alignment | annually + per phase transition | maintainer | [`docs/brand/BRAND.md`](brand/BRAND.md) phasing plan |
 | **Trademark check** — TMview / DPMA / EUIPO search for PAIMOS or near-names | every 6 months | maintainer | [`docs/brand/BRAND.md`](brand/BRAND.md) §Re-run trademark checks |
@@ -61,8 +61,8 @@ Solo-FOSS metrics are not enterprise dashboards. The bar is **signals worth trac
 | **Days since last DR drill** | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) §5 last-run date | ≤ 180 d | drill staleness; if > 180 d, runbooks haven't been verified recently |
 | **Days since last incident-response tabletop** | [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) §4 last-run date | ≤ 180 d | same |
 | **Open Sev 0/1 disclosures** | `incident_log` table + `security@paimos.com` inbox | 0 (handle as they arrive per [`SECURITY.md`](../SECURITY.md)) | open high-severity incidents are the strongest negative signal a project can produce |
-| **gosec finding count** | clean-run output | trending down (currently 118; PAI-223 triages) | SAST regression direction |
-| **govulncheck finding count** | clean-run output | trending down (currently 8 stdlib reachable; PAI-224 clears) | dependency-vulnerability direction |
+| **gosec baseline count** | `.gosec-baseline.txt` line count | trending down (current residual set; PAI-223 triages) | SAST regression direction; new findings block CI |
+| **govulncheck finding count** | clean-run output | 0 reachable findings in CI | dependency-vulnerability direction |
 | **CI pass rate on `main`** | GitHub Actions UI / API | ≥ 95% | a noisy `main` masks real defects in the noise |
 | **Active reference deployments** | [`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md) §2 count | growing (currently 2) | adoption signal; structurally validates the runbook readability |
 | **Time-to-acknowledge on security disclosures** | `security@paimos.com` inbox audit | ≤ 72h per [`SECURITY.md`](../SECURITY.md) | the most important external-facing commitment |
@@ -214,14 +214,14 @@ The trust-doc set was assembled in this six-month window (PAI-125 / 132 / 133 / 
 - **Drills captured:** DR drill (synthetic 500-issue SQLite, 0.432 s wall-time, integrity_check ok, 5 gaps identified for next iteration) — see [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) §5; incident-response tabletop on §3.1 (compromised API key) — see [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) §4; continuity tabletop on §3.2 (long-term unavailability) — see [`CONTINUITY.md`](CONTINUITY.md) §7.
 - **Reference deployments:** 2 (ppm + pmo) — see [`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md) §2.
 - **Open Sev 0/1:** 0.
-- **gosec findings:** 118 (38 high + 80 medium); triage tracked in [`PAI-223`](https://github.com/markus-barta/paimos/issues/223).
-- **govulncheck findings:** 8 reachable stdlib; clears with go1.25.7 upgrade tracked in [`PAI-224`](https://github.com/markus-barta/paimos/issues/224).
+- **gosec findings:** residual set baselined in `.gosec-baseline.txt`; triage tracked in [`PAI-223`](https://github.com/markus-barta/paimos/issues/223).
+- **govulncheck findings:** now blocking in CI; keep the CI Go toolchain patched.
 - **Active reference deployments:** 2 (ppm + pmo).
 - **CHANGELOG quality:** v2.0.2 + v2.0.3 entries had to be filled in retroactively (see [`2.0_AUDIT.md`](2.0_AUDIT.md) D-004); subsequent entries (v2.0.0, v2.0.1, v2.0.4) were hand-written cleanly.
 
 **Open governance gaps named at initial entry:**
 
-- gosec + govulncheck non-blocking pending PAI-223 + PAI-224
+- gosec baseline burn-down pending PAI-223
 - External technical review programme not yet established (PAI-139)
 - Off-host backup destination for ppm not yet wired (REFERENCE_DEPLOYMENTS.md F-08)
 - Project Context bottom-docked workbench (PAI-184) — UX spec exists but not built

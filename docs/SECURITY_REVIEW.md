@@ -31,10 +31,15 @@ PAIMOS's CI runs four security scanners against every push and PR. Each tool has
 |---|---|---|---|---|
 | **gitleaks** | Secret scanning (history-aware) | `.gitleaks.toml` + `ci.yml` | **blocking** | any finding fails build; doc-example allowlist for `paimos_<≤16-hex>` in `*.md` |
 | **npm audit** | Frontend dependency vulnerability | `ci.yml` (`frontend/` step) | **blocking** | `--audit-level=high`; production deps only (`--omit=dev`) |
-| **gosec** | Go SAST (taint analysis, common patterns) | `ci.yml` (`backend/` step) | **advisory pending triage** | severity=medium / confidence=medium currently; 118 findings tracked under PAI-223 |
-| **govulncheck** | Go module + stdlib vulnerability | `ci.yml` (`backend/` step) | **advisory pending Go upgrade** | reports stdlib vulns fixed in go1.25.7; tracked under PAI-224 |
+| **gosec** | Go SAST (taint analysis, common patterns) | `ci.yml` + `.gosec-baseline.txt` | **blocking baseline gate** | severity=medium / confidence=medium; current findings are baselined, new findings fail CI |
+| **govulncheck** | Go module + stdlib vulnerability | `ci.yml` (`backend/` step) | **blocking** | any reachable vulnerability reported by the CI Go toolchain fails CI |
 
-The two blocking scanners (`gitleaks`, `npm audit`) cover the highest-impact, lowest-false-positive surfaces: **leaked secrets** are catastrophic on commit; **frontend prod-dep CVEs at audit-level=high** are tractable. The two advisory scanners (`gosec`, `govulncheck`) produce useful signal but have known finding piles that require deliberate triage before they can be flipped to blocking without breaking CI for everyone — that's tracked, not glossed over.
+All four scanners are release-blocking in CI. `gitleaks`, `npm audit`, and
+`govulncheck` fail directly on findings at their configured threshold.
+`gosec` fails through a committed baseline gate: the current residual set is
+tracked in `.gosec-baseline.txt`, and any new medium+ severity / medium+
+confidence finding is a CI failure. Shrinking that baseline remains PAI-223's
+job; growing it requires explicit review.
 
 ---
 
@@ -73,50 +78,44 @@ CI step uses `gitleaks/gitleaks-action@v2` with `fetch-depth: 0` so the scanner 
 
 ### 2.3 · gosec — Go SAST
 
-**Why advisory, not blocking.** A clean-room run on the v2.0 codebase produces **118 findings** at `severity=medium / confidence=medium`. Distribution:
+**Blocking shape.** A clean-room run on the v2.0 codebase produced **118 findings** at `severity=medium / confidence=medium`. Distribution:
 
 - **38 high-severity findings** — mostly G115 (uint→int overflow in tree-sitter integration), G704 (SSRF taint in `jiraimport.go` and `auth/oidc.go`, where the *feature* is making outbound HTTP to operator-configured URLs — gosec's taint analysis flags the design intent), G701 (SQL injection taint in FTS5 query construction in `search.go`, where the queries are parameterised but gosec doesn't recognise SQLite FTS5's MATCH syntax).
 - **80 medium-severity findings** — G306 (file-permissions 0o644 vs 0o600 expected), various G404 (insecure rand for non-crypto purposes), etc.
 
-Most are false positives; a non-trivial subset are real edge cases that warrant either a `// #nosec G104` annotation with a justification comment, or a small refactor. **Triaging 118 findings is multi-day work** that PAI-223 tracks. Until then, `gosec` runs with `continue-on-error: true` so the signal doesn't get drowned out by build failures.
+Most are false positives; a non-trivial subset are real edge cases that warrant either a `// #nosec G104` annotation with a justification comment, or a small refactor. **Triaging the residual set is multi-day work** that PAI-223 tracks. Until then, `scripts/check-gosec-baseline.sh` runs gosec and compares normalized findings against `.gosec-baseline.txt`; CI fails if the set grows.
 
 **Config**:
 
 ```yaml
-- name: gosec (Go SAST)
-  working-directory: backend
-  continue-on-error: true
+- name: gosec (Go SAST baseline gate)
   run: |
     go install github.com/securego/gosec/v2/cmd/gosec@latest
-    gosec -fmt=text -severity=medium -confidence=medium \
-      -exclude=G104 \
-      -exclude-dir=cmd/genreport \
-      ./...
+    ./scripts/check-gosec-baseline.sh
 ```
 
 **The triage plan (PAI-223):**
 
 1. Walk every finding; classify as false-positive (annotate), real-edge-case (fix or accept with comment), or out-of-scope (move out of `./...`).
-2. Generate a baseline file (`.gosec-baseline.json`) that grandfathers the post-triage residual set.
-3. Flip `continue-on-error: false`. Future PRs that add new findings beyond the baseline fail the build.
-4. Set a calendar reminder to re-baseline every six months.
+2. Remove resolved findings from `.gosec-baseline.txt`.
+3. Keep CI blocking on any new finding beyond the baseline.
+4. Review the baseline every six months.
 
 ### 2.4 · govulncheck — Go module + stdlib vulnerabilities
 
-**Why advisory, not blocking.** The current scan reports **8 vulnerabilities in the Go standard library** (all in `crypto/tls@go1.25.5`, fixed in `go1.25.7`), plus 2 in imported packages and 7 in modules where PAIMOS code doesn't actually call the vulnerable path. The fix for the stdlib vulns is to bump the Go runtime image used in CI and the Dockerfile from 1.25.5 to 1.25.7 — small, but blocking-on-this-today would break every CI run until the upgrade lands. PAI-224 tracks the upgrade.
+**Blocking shape.** CI runs `govulncheck ./...` with the configured Go toolchain and fails on reachable vulnerabilities. If a local developer runs with an older or unpatched Go patch release, their local scan may fail even when CI is green; upgrade the local Go toolchain rather than weakening the gate.
 
 **Config**:
 
 ```yaml
 - name: govulncheck (Go vulnerability scan)
   working-directory: backend
-  continue-on-error: true
   run: |
     go install golang.org/x/vuln/cmd/govulncheck@latest
     govulncheck ./...
 ```
 
-**The plan:** PAI-224 ships the Go upgrade in a focused PR; the same PR flips `continue-on-error: false`. From that point on, any newly-disclosed Go-runtime or module CVE that PAIMOS actually calls fails the build until the affected dependency is upgraded or the call path is removed.
+Any newly-disclosed Go-runtime or module CVE that PAIMOS actually calls fails the build until the affected dependency is upgraded or the call path is removed.
 
 ---
 
@@ -126,10 +125,10 @@ Most are false positives; a non-trivial subset are real edge cases that warrant 
 |---|---|---|---|
 | gitleaks | blocking · any finding | unchanged | — (this ticket) |
 | npm audit | blocking · `--audit-level=high` | unchanged for now; tighten to `moderate` only after a moderate-finding triage cycle | future |
-| gosec | advisory · severity=medium / confidence=medium | blocking via baseline once 118 findings are triaged | **PAI-223** (filed) |
-| govulncheck | advisory · all severities | blocking once Go runtime is bumped to 1.25.7 | **PAI-224** (filed) |
+| gosec | blocking baseline gate · severity=medium / confidence=medium | shrink baseline as findings are fixed/annotated | **PAI-223** (filed) |
+| govulncheck | blocking · reachable vulnerabilities | keep Go toolchain patched | **PAI-224** (historical upgrade) |
 
-**This is the agreed threshold per the PAI-128 AC.** "Blocking at the agreed severity threshold" = the table above. Two of four are blocking today; two of four are documented advisory with concrete tickets that move them to blocking once the triage / upgrade work lands. The advisory posture is not silent acceptance — it's named, ticketed, and time-bounded.
+**This is the agreed threshold per the PAI-128 / PAI-288 AC.** "Blocking at the agreed severity threshold" = the table above. Any future advisory-only scanner must be named advisory in CI and in this document; otherwise scanner steps are assumed to be release-blocking.
 
 ---
 
