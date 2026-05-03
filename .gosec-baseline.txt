@@ -24,15 +24,15 @@ G202	MEDIUM	HIGH	handlers/crm/handlers.go	448	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/csv.go	100	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/customers.go	395-400	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/incidents.go	94-101	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	1399	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	1423	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	1538	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	1803	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	1830	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	281-286	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	327-336	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	367-378	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues.go	623	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	257-262	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	303-312	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	343-354	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_list.go	217	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_list.go	332	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_list.go	525	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_list.go	552	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_list.go	97	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_write.go	694	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	325	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	828	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
@@ -50,7 +50,7 @@ G202	MEDIUM	HIGH	handlers/tags.go	314-320	SQL string concatenation
 G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	107	Subprocess launched with variable
 G301	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	280	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	86	Expect directory permissions to be 0750 or less
-G301	MEDIUM	HIGH	db/db.go	57	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	db/db.go	63	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	221	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	325	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/dev_testreports_service.go	189	Expect directory permissions to be 0750 or less
@@ -85,16 +85,16 @@ G306	MEDIUM	HIGH	handlers/profile.go	149	Expect WriteFile permissions to be 0600
 G701	HIGH	HIGH	handlers/ai_papertrail.go	337	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/ai_papertrail.go	367	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/ai_papertrail.go	557	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	1427	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	1540	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	1627	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	1728	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	1807	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	1834	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	2264	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	2316	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues.go	626	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_aggregation.go	121	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_aggregation.go	69	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_etag.go	17	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	100	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	221	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	334	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	421	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	450	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	529	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_list.go	556	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/search.go	341	SQL injection via taint analysis
@@ -104,7 +104,7 @@ G701	HIGH	HIGH	handlers/search.go	481	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/search.go	499	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/search.go	517	SQL injection via taint analysis
 G703	HIGH	HIGH	cmd/paimos/cmd_manifest.go	317	Path traversal via taint analysis
-G703	HIGH	HIGH	db/db.go	57	Path traversal via taint analysis
+G703	HIGH	HIGH	db/db.go	63	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	243	Path traversal via taint analysis
