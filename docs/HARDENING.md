@@ -114,6 +114,7 @@ The seven domains map roughly to [`THREAT_MODEL.md` §4](THREAT_MODEL.md) invari
 | HSTS header is set on responses | `curl -sI https://your.host/api/health \| grep -i strict-transport-security` | – |
 | Security headers present (`X-Frame-Options=SAMEORIGIN`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`) | `curl -sI https://your.host/api/health` | INV-NETWORK §2.1 (PAI-114) |
 | CSP-Report-Only sink is configured (or knowingly ignored) | `curl -sI https://your.host/api/health \| grep -i csp` shows the policy; report endpoint is reachable from your CSP `report-uri` if you provided one | – |
+| PAIMOS backend has explicit HTTP server timeouts (`ReadHeaderTimeout=5s`, `ReadTimeout=30s`, `WriteTimeout=2m`, `IdleTimeout=2m`) | startup uses the built-in `http.Server` timeout configuration; keep reverse-proxy timeouts compatible with these bounds | – |
 | Reverse proxy does not bypass PAIMOS's rate limits (i.e., login / forgot / reset / TOTP-verify still rate-limit at PAIMOS layer) | trigger 6 failed logins from a clean IP; confirm the 6th is rate-limited | INV-AUTH-04 |
 | Request body size limit at the reverse proxy (recommended: 32 MiB; PAIMOS attachment cap defaults to 25 MiB) | upload a 100 MiB file via the attachment endpoint; expect a `413` from the proxy before it reaches PAIMOS | – |
 | TLS protocol minimum is TLS 1.2 (TLS 1.3 preferred); SSL 3 / TLS 1.0 / 1.1 disabled | `nmap --script ssl-enum-ciphers -p 443 your.host` or `https://www.ssllabs.com/ssltest/` | – |

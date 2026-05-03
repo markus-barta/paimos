@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -597,8 +598,26 @@ func main() {
 
 	port := getPort()
 	fmt.Printf("%s server starting on :%s\n", brand.Default.ProductName, port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+		ReadTimeout:       serverReadTimeout,
+		WriteTimeout:      serverWriteTimeout,
+		IdleTimeout:       serverIdleTimeout,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
+
+// Server timeouts are intentionally conservative for a reverse-proxied
+// single-binary app: reject slow header/body clients, but leave enough
+// write time for AI calls, PDF generation, imports, and bounded downloads.
+const (
+	serverReadHeaderTimeout = 5 * time.Second
+	serverReadTimeout       = 30 * time.Second
+	serverWriteTimeout      = 2 * time.Minute
+	serverIdleTimeout       = 2 * time.Minute
+)
 
 // appVersion is stamped by Dockerfile/-ldflags for releases; "dev" for
 // local builds. Surfaced via /api/health so operators can confirm the
