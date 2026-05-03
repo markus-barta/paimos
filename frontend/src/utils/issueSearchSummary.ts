@@ -1,4 +1,4 @@
-const SEARCH_ORDER_LABEL = 'recently updated first'
+const SEARCH_ORDER_LABEL = 'best matches first'
 
 function fmt(n: number): string {
   return Math.max(0, n).toLocaleString()

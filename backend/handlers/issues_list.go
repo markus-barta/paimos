@@ -295,30 +295,8 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if fts := strings.TrimSpace(q.Get("q")); len(fts) >= 2 {
-		likePattern := "%" + fts + "%"
-		// PAI-283 phase 2: sanitize FTS5 input — see sanitizeFTS5Token
-		// for the rationale. When input has no tokenizable content,
-		// drop the FTS5 branch and rely on the LIKE fallback alone.
-		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
-			whereSQL += ` AND i.id IN (
-				SELECT CAST(entity_id AS INTEGER) FROM search_index
-				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-				UNION
-				SELECT id FROM issues WHERE deleted_at IS NULL AND (
-					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
-				)
-			)`
-			args = append(args, ftsToken, likePattern, likePattern, likePattern, likePattern)
-		} else {
-			whereSQL += ` AND i.id IN (
-				SELECT id FROM issues WHERE deleted_at IS NULL AND (
-					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
-				)
-			)`
-			args = append(args, likePattern, likePattern, likePattern, likePattern)
-		}
-	}
+	searchTerm := strings.TrimSpace(q.Get("q"))
+	whereSQL, args = appendGlobalIssueSearchFilter(whereSQL, args, searchTerm)
 
 	if handled, err := applyIssueListConditionalGET(w, r, whereSQL, args); err != nil {
 		jsonError(w, "etag computation failed", http.StatusInternalServerError)
@@ -328,7 +306,13 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := issueSelectCore + ` WHERE ` + whereSQL
-	query += " ORDER BY i.updated_at DESC, i.id DESC"
+	if len(searchTerm) >= 2 {
+		orderSQL, orderArgs := issueSearchRankOrder(searchTerm)
+		query += orderSQL
+		args = append(args, orderArgs...)
+	} else {
+		query += " ORDER BY i.updated_at DESC, i.id DESC"
+	}
 	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 
 	rows, err := db.DB.Query(query, args...)
@@ -391,32 +375,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 			countQuery += " AND i.project_id IS NULL"
 		}
 	}
-	if fts := strings.TrimSpace(q.Get("q")); len(fts) >= 2 {
-		// PAI-283 phase 2: mirror the data-query's FTS+LIKE union here
-		// so the count agrees with the rendered list. The pre-existing
-		// version applied only the FTS branch, which under-counted
-		// LIKE-only matches — masked previously, surfaced now that
-		// FTS-incompatible queries fall through to the LIKE branch.
-		likePattern := "%" + fts + "%"
-		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
-			countQuery += ` AND i.id IN (
-				SELECT CAST(entity_id AS INTEGER) FROM search_index
-				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-				UNION
-				SELECT id FROM issues WHERE deleted_at IS NULL AND (
-					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
-				)
-			)`
-			countArgs = append(countArgs, ftsToken, likePattern, likePattern, likePattern, likePattern)
-		} else {
-			countQuery += ` AND i.id IN (
-				SELECT id FROM issues WHERE deleted_at IS NULL AND (
-					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
-				)
-			)`
-			countArgs = append(countArgs, likePattern, likePattern, likePattern, likePattern)
-		}
-	}
+	countQuery, countArgs = appendGlobalIssueSearchFilter(countQuery, countArgs, searchTerm)
 	var total int
 	if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -430,6 +389,93 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		Limit  int            `json:"limit"`
 	}
 	jsonOK(w, response{Issues: issues, Total: total, Offset: offset, Limit: limit})
+}
+
+// appendGlobalIssueSearchFilter documents and applies the match set for
+// GET /api/issues?q=. The endpoint searches issue FTS rows, comment FTS rows,
+// LIKE fallbacks for issue body fields, and computed issue keys. The companion
+// issueSearchRankOrder below defines the visible order for the same result set.
+func appendGlobalIssueSearchFilter(whereSQL string, args []any, raw string) (string, []any) {
+	fts := strings.TrimSpace(raw)
+	if len(fts) < 2 {
+		return whereSQL, args
+	}
+
+	likePattern := "%" + fts + "%"
+	keyOrBodyMatchSQL := `
+				SELECT ii.id
+				FROM issues ii
+				LEFT JOIN projects pp ON pp.id = ii.project_id
+				WHERE ii.deleted_at IS NULL AND (
+					ii.title LIKE ? OR ii.description LIKE ? OR ii.acceptance_criteria LIKE ? OR ii.notes LIKE ?
+					OR (COALESCE(pp.key,'') || '-' || CAST(ii.issue_number AS TEXT)) LIKE ?
+				)`
+
+	// PAI-283 phase 2: sanitize FTS5 input — see sanitizeFTS5Token for the
+	// rationale. When input has no tokenizable content, drop the FTS5 branch
+	// and rely on the LIKE fallback alone.
+	if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
+		whereSQL += ` AND i.id IN (
+				SELECT CAST(entity_id AS INTEGER) FROM search_index
+				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
+				UNION` + keyOrBodyMatchSQL + `
+			)`
+		args = append(args, ftsToken, likePattern, likePattern, likePattern, likePattern, likePattern)
+		return whereSQL, args
+	}
+
+	whereSQL += ` AND i.id IN (` + keyOrBodyMatchSQL + `
+			)`
+	args = append(args, likePattern, likePattern, likePattern, likePattern, likePattern)
+	return whereSQL, args
+}
+
+// issueSearchRankOrder is the explicit "best matches first" contract for
+// GET /api/issues?q=. Match quality is primary; recency is only the tie-breaker
+// inside comparable buckets:
+//  1. exact issue key
+//  2. issue key prefix
+//  3. exact title
+//  4. title prefix
+//  5. title substring
+//  6. issue body fields: description, acceptance criteria, notes
+//  7. comment body
+//  8. other FTS-only issue fields
+func issueSearchRankOrder(raw string) (string, []any) {
+	q := strings.TrimSpace(raw)
+	contains := "%" + q + "%"
+	key := strings.ToUpper(q)
+	keyPrefix := key + "%"
+	titlePrefix := q + "%"
+
+	return ` ORDER BY
+		CASE
+			WHEN UPPER(COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) = ? THEN 0
+			WHEN UPPER(COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ? THEN 10
+			WHEN LOWER(COALESCE(i.title,'')) = LOWER(?) THEN 20
+			WHEN LOWER(COALESCE(i.title,'')) LIKE LOWER(?) THEN 30
+			WHEN LOWER(COALESCE(i.title,'')) LIKE LOWER(?) THEN 40
+			WHEN COALESCE(i.description,'') LIKE ?
+			  OR COALESCE(i.acceptance_criteria,'') LIKE ?
+			  OR COALESCE(i.notes,'') LIKE ? THEN 50
+			WHEN EXISTS (
+				SELECT 1 FROM comments c
+				WHERE c.issue_id = i.id AND c.body LIKE ?
+			) THEN 60
+			ELSE 70
+		END,
+		i.updated_at DESC,
+		i.id DESC`, []any{
+			key,
+			keyPrefix,
+			q,
+			titlePrefix,
+			contains,
+			contains,
+			contains,
+			contains,
+			contains,
+		}
 }
 
 func RecentIssues(w http.ResponseWriter, r *http.Request) {

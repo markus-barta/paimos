@@ -42,7 +42,7 @@ POST   /projects/:id/retrieve       {q, k}
 GET    /projects/:id/issues         ?status= &priority= &type= &assignee_id=
 POST   /projects/:id/issues         {title, type, status, priority, description, acceptance_criteria}
 GET    /projects/:id/issues/tree    epic → ticket → task hierarchy
-GET    /issues                      cross-project list (or pick-list when ?keys=PAI-1,PAI-2)
+GET    /issues                      cross-project list; ?q= ranks best match, then recency
 GET    /issues?keys=PAI-1,PAI-2     pick list, order preserved, missing → {ref, error} entries
 POST   /issues                      orphan (no project) issue
 POST   /projects/:key/issues/batch  admin — atomic create-many (parent_ref:"#N" cross-refs)

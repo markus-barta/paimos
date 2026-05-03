@@ -80,7 +80,9 @@ func Test_IssueHierarchy(t *testing.T) {
 	t.Run("children endpoint returns task under ticket", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/children", ticketID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var children []struct{ ID int64 `json:"id"` }
+		var children []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &children)
 		if len(children) == 0 {
 			t.Error("expected children, got none")
@@ -132,8 +134,10 @@ func Test_Search(t *testing.T) {
 		resp := ts.get(t, "/api/search?q=zeta", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
 		var result struct {
-			Issues   []struct{ ID int64 `json:"id"` } `json:"issues"`
-			Projects []interface{}                   `json:"projects"`
+			Issues []struct {
+				ID int64 `json:"id"`
+			} `json:"issues"`
+			Projects []interface{} `json:"projects"`
 		}
 		decode(t, resp, &result)
 		if len(result.Issues) == 0 && len(result.Projects) == 0 {
@@ -145,12 +149,16 @@ func Test_Search(t *testing.T) {
 		resp := ts.get(t, "/api/search?q=jiraxyz99999", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
 		var result struct {
-			Issues []struct{ ID int64 `json:"id"` } `json:"issues"`
+			Issues []struct {
+				ID int64 `json:"id"`
+			} `json:"issues"`
 		}
 		decode(t, resp, &result)
 		found := false
 		for _, iss := range result.Issues {
-			if iss.ID == issue3ID { found = true }
+			if iss.ID == issue3ID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("search for 'PROJ-99999' (jira_id field) did not return issue %d", issue3ID)
@@ -161,12 +169,16 @@ func Test_Search(t *testing.T) {
 		resp := ts.get(t, "/api/search?q=frobnicator", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
 		var result struct {
-			Issues []struct{ ID int64 `json:"id"` } `json:"issues"`
+			Issues []struct {
+				ID int64 `json:"id"`
+			} `json:"issues"`
 		}
 		decode(t, resp, &result)
 		found := false
 		for _, iss := range result.Issues {
-			if iss.ID == issueID { found = true }
+			if iss.ID == issueID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("search for 'frobnicator' (comment body) did not return parent issue %d", issueID)
@@ -271,7 +283,9 @@ func Test_Search(t *testing.T) {
 			resp := ts.get(t, "/api/search?q="+q, ts.memberCookie)
 			assertStatus(t, resp, http.StatusOK)
 			var result struct {
-				Issues []struct{ Title string `json:"title"` } `json:"issues"`
+				Issues []struct {
+					Title string `json:"title"`
+				} `json:"issues"`
 			}
 			decode(t, resp, &result)
 			found := false
@@ -367,11 +381,15 @@ func Test_TagCRUD(t *testing.T) {
 	t.Run("list tags includes created tag", func(t *testing.T) {
 		resp := ts.get(t, "/api/tags", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var tags []struct{ ID int64 `json:"id"` }
+		var tags []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &tags)
 		found := false
 		for _, tg := range tags {
-			if tg.ID == tagID { found = true }
+			if tg.ID == tagID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("created tag %d not found in list", tagID)
@@ -410,11 +428,15 @@ func Test_UserManagement(t *testing.T) {
 	t.Run("list users includes new user", func(t *testing.T) {
 		resp := ts.get(t, "/api/users", ts.adminCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var users []struct{ ID int64 `json:"id"` }
+		var users []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &users)
 		found := false
 		for _, u := range users {
-			if u.ID == userID { found = true }
+			if u.ID == userID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("created user %d not found in list", userID)
@@ -448,11 +470,15 @@ func Test_APIKeys(t *testing.T) {
 	t.Run("member lists own API keys", func(t *testing.T) {
 		resp := ts.get(t, "/api/auth/api-keys", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var keys []struct{ ID int64 `json:"id"` }
+		var keys []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &keys)
 		found := false
 		for _, k := range keys {
-			if k.ID == keyID { found = true }
+			if k.ID == keyID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("created key %d not in list", keyID)
@@ -587,7 +613,9 @@ func Test_IssueListFTSFilter(t *testing.T) {
 	t.Run("project issues filtered by q returns matching only", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/issues?q=zephyr", projectID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var issues []struct{ Title string `json:"title"` }
+		var issues []struct {
+			Title string `json:"title"`
+		}
 		decode(t, resp, &issues)
 		if len(issues) != 1 {
 			t.Fatalf("expected 1 issue, got %d", len(issues))
@@ -600,7 +628,9 @@ func Test_IssueListFTSFilter(t *testing.T) {
 	t.Run("project issues without q returns all", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var issues []struct{ ID int64 `json:"id"` }
+		var issues []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &issues)
 		if len(issues) != 2 {
 			t.Errorf("expected 2 issues, got %d", len(issues))
@@ -611,8 +641,10 @@ func Test_IssueListFTSFilter(t *testing.T) {
 		resp := ts.get(t, "/api/issues?q=zephyr", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
 		var env struct {
-			Issues []struct{ Title string `json:"title"` } `json:"issues"`
-			Total  int                                      `json:"total"`
+			Issues []struct {
+				Title string `json:"title"`
+			} `json:"issues"`
+			Total int `json:"total"`
 		}
 		decode(t, resp, &env)
 		if env.Total != 1 {
@@ -620,6 +652,127 @@ func Test_IssueListFTSFilter(t *testing.T) {
 		}
 		if len(env.Issues) != 1 || env.Issues[0].Title != "Alpha zephyr task" {
 			t.Errorf("unexpected issues: %+v", env.Issues)
+		}
+	})
+}
+
+func Test_GlobalIssueSearchBestMatchRanking(t *testing.T) {
+	ts := newTestServer(t)
+
+	pResp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Search Ranking Project", "key": "RSR",
+	})
+	assertStatus(t, pResp, http.StatusCreated)
+	projectID := responseID(t, pResp)
+
+	createIssue := func(payload map[string]interface{}) int64 {
+		t.Helper()
+		if _, ok := payload["type"]; !ok {
+			payload["type"] = "ticket"
+		}
+		if _, ok := payload["status"]; !ok {
+			payload["status"] = "backlog"
+		}
+		if _, ok := payload["priority"]; !ok {
+			payload["priority"] = "medium"
+		}
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.memberCookie, payload)
+		assertStatus(t, resp, http.StatusCreated)
+		return responseID(t, resp)
+	}
+
+	fetch := func(q string) []struct {
+		ID       int64  `json:"id"`
+		IssueKey string `json:"issue_key"`
+		Title    string `json:"title"`
+	} {
+		t.Helper()
+		resp := ts.get(t, "/api/issues?fields=list&limit=20&offset=0&q="+q, ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var env struct {
+			Issues []struct {
+				ID       int64  `json:"id"`
+				IssueKey string `json:"issue_key"`
+				Title    string `json:"title"`
+			} `json:"issues"`
+		}
+		decode(t, resp, &env)
+		return env.Issues
+	}
+
+	t.Run("exact issue key and key prefix outrank title matches", func(t *testing.T) {
+		createIssue(map[string]interface{}{"title": "Exact key target"})
+		titleOnlyID := createIssue(map[string]interface{}{"title": "RSR-1 appears only in title"})
+		prefixID := createIssue(map[string]interface{}{"title": "Prefix key target"})
+		if _, err := db.DB.Exec("UPDATE issues SET issue_number = 10 WHERE id = ?", prefixID); err != nil {
+			t.Fatalf("update issue number: %v", err)
+		}
+
+		issues := fetch("RSR-1")
+		if len(issues) < 3 {
+			t.Fatalf("got %d issues, want at least 3: %+v", len(issues), issues)
+		}
+		if issues[0].IssueKey != "RSR-1" {
+			t.Fatalf("first issue_key = %q, want exact RSR-1", issues[0].IssueKey)
+		}
+		if issues[1].IssueKey != "RSR-10" {
+			t.Fatalf("second issue_key = %q, want prefix RSR-10", issues[1].IssueKey)
+		}
+		if issues[2].ID != titleOnlyID {
+			t.Fatalf("third issue id = %d, want title-only issue %d; issues=%+v", issues[2].ID, titleOnlyID, issues[:3])
+		}
+	})
+
+	t.Run("title matches outrank issue body and comment matches", func(t *testing.T) {
+		titleID := createIssue(map[string]interface{}{"title": "compassneedle title match"})
+		bodyID := createIssue(map[string]interface{}{
+			"title":       "Body field candidate",
+			"description": "compassneedle appears in the description",
+		})
+		commentID := createIssue(map[string]interface{}{"title": "Comment field candidate"})
+		cResp := ts.post(t, fmt.Sprintf("/api/issues/%d/comments", commentID), ts.memberCookie, map[string]string{
+			"body": "compassneedle appears in the comment",
+		})
+		assertStatus(t, cResp, http.StatusCreated)
+
+		issues := fetch("compassneedle")
+		if len(issues) < 3 {
+			t.Fatalf("got %d issues, want at least 3: %+v", len(issues), issues)
+		}
+		if issues[0].ID != titleID {
+			t.Fatalf("first issue id = %d, want title match %d; issues=%+v", issues[0].ID, titleID, issues[:3])
+		}
+		positions := map[int64]int{}
+		for idx, iss := range issues {
+			positions[iss.ID] = idx
+		}
+		if _, ok := positions[bodyID]; !ok {
+			t.Fatalf("body match %d missing from search results: %+v", bodyID, issues)
+		}
+		if _, ok := positions[commentID]; !ok {
+			t.Fatalf("comment match %d missing from search results: %+v", commentID, issues)
+		}
+		if positions[titleID] > positions[bodyID] || positions[titleID] > positions[commentID] {
+			t.Fatalf("title match should rank above body/comment matches: positions=%+v", positions)
+		}
+	})
+
+	t.Run("recency breaks ties within the same match quality", func(t *testing.T) {
+		oldID := createIssue(map[string]interface{}{"title": "tiefruit old title"})
+		newID := createIssue(map[string]interface{}{"title": "tiefruit new title"})
+		if _, err := db.DB.Exec("UPDATE issues SET updated_at = ? WHERE id = ?", "2026-01-01 00:00:00", oldID); err != nil {
+			t.Fatalf("set old updated_at: %v", err)
+		}
+		if _, err := db.DB.Exec("UPDATE issues SET updated_at = ? WHERE id = ?", "2026-01-02 00:00:00", newID); err != nil {
+			t.Fatalf("set new updated_at: %v", err)
+		}
+
+		issues := fetch("tiefruit")
+		if len(issues) < 2 {
+			t.Fatalf("got %d issues, want at least 2: %+v", len(issues), issues)
+		}
+		if issues[0].ID != newID || issues[1].ID != oldID {
+			t.Fatalf("tie order = [%d, %d], want [%d, %d]; issues=%+v", issues[0].ID, issues[1].ID, newID, oldID, issues[:2])
 		}
 	})
 }
@@ -683,7 +836,9 @@ func Test_ViewManagement(t *testing.T) {
 			"hidden": true,
 		})
 		assertStatus(t, resp, http.StatusOK)
-		var v struct{ Hidden bool `json:"hidden"` }
+		var v struct {
+			Hidden bool `json:"hidden"`
+		}
 		decode(t, resp, &v)
 		if !v.Hidden {
 			t.Error("view should be hidden")
@@ -825,7 +980,9 @@ func Test_TimeEntries(t *testing.T) {
 	t.Run("list time entries", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/time-entries", issueID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var entries []struct{ ID int64 `json:"id"` }
+		var entries []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &entries)
 		if len(entries) != 1 {
 			t.Errorf("entries count: got %d, want 1", len(entries))
@@ -894,7 +1051,9 @@ func Test_TimeEntries(t *testing.T) {
 		// Both timers should be running
 		resp = ts.get(t, "/api/time-entries/running", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var running []struct{ ID int64 `json:"id"` }
+		var running []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &running)
 		if len(running) < 2 {
 			t.Errorf("expected at least 2 running timers, got %d", len(running))
@@ -905,7 +1064,9 @@ func Test_TimeEntries(t *testing.T) {
 		// Get running timers (array)
 		resp := ts.get(t, "/api/time-entries/running", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var runningList []struct{ ID int64 `json:"id"` }
+		var runningList []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &runningList)
 		if len(runningList) == 0 {
 			t.Fatal("no running timers")
@@ -951,7 +1112,9 @@ func Test_TimeEntries(t *testing.T) {
 			"clear_override": true,
 		})
 		assertStatus(t, resp, http.StatusOK)
-		var updated struct{ Override *float64 `json:"override"` }
+		var updated struct {
+			Override *float64 `json:"override"`
+		}
 		decode(t, resp, &updated)
 		if updated.Override != nil {
 			t.Errorf("override should be nil after clear, got %v", *updated.Override)
@@ -960,7 +1123,9 @@ func Test_TimeEntries(t *testing.T) {
 
 	t.Run("delete own entry", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/time-entries", issueID), ts.memberCookie)
-		var entries []struct{ ID int64 `json:"id"` }
+		var entries []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &entries)
 		if len(entries) == 0 {
 			t.Fatal("no entries to delete")
@@ -975,7 +1140,9 @@ func Test_TimeEntries(t *testing.T) {
 			"override": 2.0, "comment": "admin work",
 		})
 		assertStatus(t, resp, http.StatusCreated)
-		var entry struct{ ID int64 `json:"id"` }
+		var entry struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &entry)
 
 		// Member tries to delete it → forbidden
@@ -989,7 +1156,9 @@ func Test_TimeEntries(t *testing.T) {
 			"override": 3.0, "comment": "admin only",
 		})
 		assertStatus(t, resp, http.StatusCreated)
-		var entry struct{ ID int64 `json:"id"` }
+		var entry struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &entry)
 
 		// Member tries to update it → forbidden
@@ -1011,7 +1180,9 @@ func Test_TimeEntries(t *testing.T) {
 			"time_override": override,
 		})
 		assertStatus(t, resp, http.StatusOK)
-		var issue struct{ TimeOverride *float64 `json:"time_override"` }
+		var issue struct {
+			TimeOverride *float64 `json:"time_override"`
+		}
 		decode(t, resp, &issue)
 		if issue.TimeOverride == nil || *issue.TimeOverride != 8.0 {
 			t.Errorf("time_override: got %v, want 8.0", issue.TimeOverride)
@@ -1029,7 +1200,9 @@ func Test_TimeEntries(t *testing.T) {
 
 		resp := ts.get(t, "/api/time-entries/running", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var entries []struct{ ID int64 `json:"id"` }
+		var entries []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &entries)
 		if len(entries) != 0 {
 			t.Errorf("mite-imported entry should not appear as running, got %d running", len(entries))
@@ -1067,7 +1240,9 @@ func Test_TimeEntries(t *testing.T) {
 		db.DB.Exec("UPDATE time_entries SET stopped_at=datetime('now') WHERE stopped_at IS NULL")
 		resp := ts.get(t, "/api/time-entries/running", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var entries []struct{ ID int64 `json:"id"` }
+		var entries []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &entries)
 		if len(entries) != 0 {
 			t.Errorf("running entries: got %d, want 0", len(entries))
@@ -1185,7 +1360,9 @@ func Test_SystemTagAtRisk(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/time-entries", issueID), ts.memberCookie)
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		var entries []struct{ ID int64 `json:"id"` }
+		var entries []struct {
+			ID int64 `json:"id"`
+		}
 		json.Unmarshal(body, &entries)
 		// Delete all but one
 		for i := 1; i < len(entries); i++ {
@@ -1280,7 +1457,9 @@ func Test_PurgeTimeEntries(t *testing.T) {
 			"source": "all", "from_date": from, "to_date": to,
 		})
 		assertStatus(t, resp, http.StatusOK)
-		var res struct{ Count int `json:"count"` }
+		var res struct {
+			Count int `json:"count"`
+		}
 		decode(t, resp, &res)
 		if res.Count != 2 { // manual1 (Mar 1) + mite1 (Mar 5)
 			t.Errorf("count: got %d, want 2", res.Count)
@@ -1317,7 +1496,9 @@ func Test_PurgeTimeEntries(t *testing.T) {
 			"source": "all",
 		})
 		assertStatus(t, resp, http.StatusOK)
-		var res struct{ Count int `json:"count"` }
+		var res struct {
+			Count int `json:"count"`
+		}
 		decode(t, resp, &res)
 		if res.Count != 2 {
 			t.Errorf("remaining: got %d, want 2", res.Count)

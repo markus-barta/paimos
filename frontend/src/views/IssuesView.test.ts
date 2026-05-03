@@ -153,7 +153,7 @@ describe('IssuesView search summary', () => {
 
     const header = document.getElementById('app-header-left')!
     expect(header.textContent).toContain(
-      'Showing first 100 of 123 matches for "ma" · recently updated first',
+      'Showing first 100 of 123 matches for "ma" · best matches first',
     )
     expect(issueUrls).toEqual(['/issues?fields=list&limit=100&offset=0&q=ma'])
 
@@ -166,7 +166,7 @@ describe('IssuesView search summary', () => {
       '/issues?fields=list&limit=100&offset=0&q=ma',
       '/issues?fields=list&limit=23&offset=100&q=ma',
     ])
-    expect(header.textContent).toContain('123 matches for "ma" · recently updated first')
+    expect(header.textContent).toContain('123 matches for "ma" · best matches first')
 
     app.unmount()
   })
