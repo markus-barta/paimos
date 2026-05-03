@@ -33,12 +33,12 @@ export function highlight(text: string, query: string): string {
     .trim()
     .split(/\s+/)
     .filter(t => t.length >= 2)
-    .map(t => escapeRegex(t))
+    .map(t => escapeRegex(escapeHtml(t)))
 
   if (!tokens.length) return escapeHtml(text)
 
   return escapeHtml(text).replace(
-    new RegExp(`(${tokens.map(t => escapeRegex(escapeHtml(t))).join('|')})`, 'gi'),
+    new RegExp(`(${tokens.join('|')})`, 'gi'),
     '<mark class="search-highlight">$1</mark>'
   )
 }

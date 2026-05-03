@@ -249,10 +249,16 @@ function onRowClick(i: Issue) {
           <input type="checkbox" class="sel-cb" :checked="selectedIds.has(i.id)" @change="emit('toggle-select', i.id)" @click.stop />
         </td>
         <td v-if="!compact && isVisible('key')" class="key-cell col-key">
-          <span class="issue-key-copy" @click="emit('copy-key', i.issue_key, $event)" title="Copy issue key">{{ i.issue_key }}<AppIcon name="clipboard" :size="11" class="copy-ghost-icon" /></span>
+          <span class="issue-key-copy" @click="emit('copy-key', i.issue_key, $event)" title="Copy issue key">
+            <span v-html="highlight(i.issue_key, searchQuery)" />
+            <AppIcon name="clipboard" :size="11" class="copy-ghost-icon" />
+          </span>
         </td>
         <td v-if="compact" class="key-cell col-key">
-          <span class="issue-key-copy" @click="emit('copy-key', i.issue_key, $event)" title="Copy issue key">{{ i.issue_key }}<AppIcon name="clipboard" :size="11" class="copy-ghost-icon" /></span>
+          <span class="issue-key-copy" @click="emit('copy-key', i.issue_key, $event)" title="Copy issue key">
+            <span v-html="highlight(i.issue_key, searchQuery)" />
+            <AppIcon name="clipboard" :size="11" class="copy-ghost-icon" />
+          </span>
         </td>
         <td v-if="!compact && isVisible('type')">
           <span :class="`issue-type issue-type--${i.type}`">

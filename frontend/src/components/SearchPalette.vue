@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useSearchStore } from '@/stores/search'
 import AppIcon from '@/components/AppIcon.vue'
@@ -41,7 +40,6 @@ const emit = defineEmits<{
   navigate: [path: string]
 }>()
 
-const router = useRouter()
 const search = useSearchStore()
 const results = ref<SearchResults | null>(null)
 const loading = ref(false)
@@ -57,6 +55,7 @@ watch(() => search.query, (q) => {
   const trimmed = q.trim()
   if (trimmed.length < 2) {
     results.value = null
+    activeIndex.value = -1
     return
   }
   // Show cached result immediately
@@ -72,12 +71,11 @@ watch(() => search.query, (q) => {
 // Means Enter without ArrowDown is predictable and lands on the row the
 // user already sees as "selected".
 watch(results, () => {
-  if (!results.value || items.value.length === 0) {
+  if (!results.value || paletteOptions.value.length === 0) {
     activeIndex.value = -1
     return
   }
-  const dm = directMatch.value
-  activeIndex.value = dm ? items.value.indexOf(dm) : 0
+  activeIndex.value = 0
 })
 
 async function fetchResults(q: string) {
@@ -106,6 +104,38 @@ const otherItems = computed(() => {
   return items.value.filter(i => i.id !== dm.id)
 })
 
+type PaletteOption =
+  | { kind: 'issue'; issue: SearchIssue }
+  | { kind: 'all' }
+
+const visibleIssueItems = computed<SearchIssue[]>(() => {
+  const dm = directMatch.value
+  return dm ? [dm, ...otherItems.value] : items.value
+})
+
+const paletteOptions = computed<PaletteOption[]>(() => {
+  if (!items.value.length) return []
+  return [
+    ...visibleIssueItems.value.map(issue => ({ kind: 'issue' as const, issue })),
+    { kind: 'all' as const },
+  ]
+})
+
+const activeOption = computed(() => paletteOptions.value[activeIndex.value] ?? null)
+
+function isIssueActive(issue: SearchIssue) {
+  const active = activeOption.value
+  return active?.kind === 'issue' && active.issue.id === issue.id
+}
+
+function optionIndexForIssue(issue: SearchIssue) {
+  return paletteOptions.value.findIndex(
+    option => option.kind === 'issue' && option.issue.id === issue.id,
+  )
+}
+
+const isAllResultsActive = computed(() => activeOption.value?.kind === 'all')
+
 function navigateToIssue(issue: SearchIssue) {
   if (issue.project_id) {
     emit('navigate', `/projects/${issue.project_id}/issues/${issue.id}`)
@@ -113,15 +143,18 @@ function navigateToIssue(issue: SearchIssue) {
   emit('close')
 }
 
+function navigateToAllResults() {
+  emit('navigate', `/issues`)
+  emit('close')
+}
+
 function onKeydown(e: KeyboardEvent) {
   if (!props.visible || !results.value) return
 
-  const total = items.value.length
+  const total = paletteOptions.value.length
   if (!total) {
     if (e.key === 'Enter') {
-      // Navigate to search results page
-      emit('navigate', `/issues`)
-      emit('close')
+      navigateToAllResults()
       e.preventDefault()
     }
     return
@@ -139,14 +172,15 @@ function onKeydown(e: KeyboardEvent) {
     // PAI-284: ⌘↵ / Ctrl↵ = "see all results" (full search page).
     // Plain ↵ = open the highlighted row (always set when items > 0).
     if (e.metaKey || e.ctrlKey) {
-      emit('navigate', `/issues`)
-      emit('close')
-    } else if (activeIndex.value >= 0 && activeIndex.value < total) {
-      navigateToIssue(items.value[activeIndex.value])
+      navigateToAllResults()
+    } else if (activeOption.value?.kind === 'issue') {
+      navigateToIssue(activeOption.value.issue)
+    } else if (activeOption.value?.kind === 'all') {
+      navigateToAllResults()
     } else {
       // Defensive fallback — shouldn't fire since results watcher pins
       // activeIndex >= 0 whenever items > 0.
-      navigateToIssue(items.value[0])
+      navigateToIssue(visibleIssueItems.value[0])
     }
   } else if (e.key === 'Escape') {
     emit('close')
@@ -221,8 +255,13 @@ watch(activeIndex, () => {
     <div v-if="loading && !results" class="sp-loading">Searching…</div>
     <template v-else-if="results">
       <!-- Direct match — rich row -->
-      <div v-if="directMatch" class="sp-item sp-item--direct" :class="{ 'sp-item--active': activeIndex === items.indexOf(directMatch) }"
-        @mousedown.prevent="navigateToIssue(directMatch)" @mouseenter="activeIndex = items.indexOf(directMatch)">
+      <div
+        v-if="directMatch"
+        class="sp-item sp-item--direct"
+        :class="{ 'sp-item--active': isIssueActive(directMatch) }"
+        @mousedown.prevent="navigateToIssue(directMatch)"
+        @mouseenter="activeIndex = optionIndexForIssue(directMatch)"
+      >
         <div class="sp-item-top">
           <span class="sp-key">{{ directMatch.issue_key }}</span>
           <StatusDot :status="directMatch.status" />
@@ -236,10 +275,10 @@ watch(activeIndex, () => {
       <div v-if="directMatch && otherItems.length" class="sp-separator" />
 
       <!-- Other results -->
-      <div v-for="(item, idx) in otherItems" :key="item.id"
-        class="sp-item" :class="{ 'sp-item--active': activeIndex === items.indexOf(item) }"
+      <div v-for="item in otherItems" :key="item.id"
+        class="sp-item" :class="{ 'sp-item--active': isIssueActive(item) }"
         @mousedown.prevent="navigateToIssue(item)"
-        @mouseenter="activeIndex = items.indexOf(item)">
+        @mouseenter="activeIndex = optionIndexForIssue(item)">
         <span class="sp-key">{{ item.issue_key }}</span>
         <StatusDot :status="item.status" />
         <span class="sp-title-compact">{{ item.title }}</span>
@@ -248,7 +287,13 @@ watch(activeIndex, () => {
       <!-- PAI-284: footer always shows the modifier-Enter affordance when
            the palette has items. Click also navigates, so the row reads as
            the "see all" action. -->
-      <div v-if="items.length > 0" class="sp-more" @mousedown.prevent="$emit('navigate', '/issues'); $emit('close')">
+      <div
+        v-if="items.length > 0"
+        class="sp-more"
+        :class="{ 'sp-more--active': isAllResultsActive }"
+        @mousedown.prevent="navigateToAllResults"
+        @mouseenter="activeIndex = paletteOptions.length - 1"
+      >
         <span class="sp-more-text">
           <kbd class="sp-kbd">↵</kbd> open
           <span class="sp-more-sep">·</span>
@@ -290,7 +335,15 @@ watch(activeIndex, () => {
   font-size: 13px;
   transition: background .08s;
 }
-.sp-item:hover, .sp-item--active { background: var(--surface-2); }
+.sp-item:hover,
+.sp-item--active,
+.sp-more:hover,
+.sp-more--active {
+  background: color-mix(in srgb, var(--bp-blue) 9%, var(--bg-card));
+}
+.sp-item--active {
+  box-shadow: inset 3px 0 0 var(--bp-blue);
+}
 .sp-item--direct {
   flex-direction: column;
   align-items: stretch;
@@ -345,7 +398,9 @@ watch(activeIndex, () => {
   cursor: pointer;
   border-top: 1px solid var(--border);
 }
-.sp-more:hover { background: var(--surface-2); }
+.sp-more--active {
+  box-shadow: inset 3px 0 0 var(--bp-blue);
+}
 .sp-more-text {
   font-size: 11px;
   color: var(--text-muted);
