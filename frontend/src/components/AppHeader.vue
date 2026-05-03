@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useRouter } from "vue-router";
 import AppIcon from "@/components/AppIcon.vue";
 import SearchPalette from "@/components/SearchPalette.vue";
 import { useSearchStore } from "@/stores/search";
 import { useUndoStore } from "@/stores/undo";
+import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 
 const route = useRoute();
 const router = useRouter();
 const search = useSearchStore();
 const undo = useUndoStore();
+const issueRefresh = useIssueRefreshPromptStore();
 
 const searchFocused = ref(false);
 const topbarInput = ref<HTMLInputElement | null>(null);
@@ -81,13 +83,40 @@ function onPaletteClose() {
   paletteVisible.value = false;
 }
 
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (!issueRefresh.visible) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") {
+    if (issueRefresh.triggerRefresh()) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+}
+
 onMounted(() => {
   void undo.refresh();
+  window.addEventListener("keydown", onGlobalKeydown);
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onGlobalKeydown);
+});
+
+watch(
+  () => issueRefresh.visible,
+  (visible) => {
+    if (visible) paletteVisible.value = false;
+  },
+);
+
+const refreshPromptTitle = computed(
+  () => `${issueRefresh.label}. Refresh issue list (⌘R).`,
+);
 
 // Exposed so AppLayout can focus on / shortcut
 defineExpose({
   focus() {
+    if (issueRefresh.visible) return;
     topbarInput.value?.focus();
     topbarInput.value?.select();
   },
@@ -102,43 +131,60 @@ defineExpose({
     <!-- CENTER: persistent search -->
     <div class="ah-center">
       <div class="ah-center-row">
-        <div
-          ref="searchWrap"
-          :class="[
-            'ah-search-wrap',
-            { focused: searchFocused, active: hasQuery },
-          ]"
-        >
-          <AppIcon name="search" :size="13" class="ah-search-icon" />
-          <input
-            ref="topbarInput"
-            v-model="search.query"
-            type="search"
-            class="ah-search-input"
-            placeholder="Search issues… (/ or ⌘K)"
-            autocomplete="off"
-            spellcheck="false"
-            @focus="onFocus"
-            @blur="onBlur"
-            @input="onInput"
-            @keydown="onKeydown"
-          />
+        <Transition name="ah-center-swap" mode="out-in">
           <button
-            v-if="search.query"
-            class="ah-search-clear"
-            title="Clear search"
-            @mousedown.prevent="clear"
+            v-if="issueRefresh.visible"
+            key="refresh"
+            class="ah-refresh-prompt"
+            type="button"
+            :title="refreshPromptTitle"
+            @click="issueRefresh.triggerRefresh"
           >
-            <AppIcon name="x" :size="12" :stroke-width="2.5" />
+            <span class="ah-refresh-pulse" aria-hidden="true"></span>
+            <span class="ah-refresh-label">{{ issueRefresh.label }}</span>
+            <span class="ah-refresh-action">Refresh</span>
+            <kbd class="ah-refresh-shortcut">⌘R</kbd>
           </button>
-          <SearchPalette
-            ref="paletteRef"
-            :visible="paletteVisible"
-            :anchor="searchWrap"
-            @navigate="onPaletteNavigate"
-            @close="onPaletteClose"
-          />
-        </div>
+          <div
+            v-else
+            ref="searchWrap"
+            key="search"
+            :class="[
+              'ah-search-wrap',
+              { focused: searchFocused, active: hasQuery },
+            ]"
+          >
+            <AppIcon name="search" :size="13" class="ah-search-icon" />
+            <input
+              ref="topbarInput"
+              v-model="search.query"
+              type="search"
+              class="ah-search-input"
+              placeholder="Search issues… (/ or ⌘K)"
+              autocomplete="off"
+              spellcheck="false"
+              @focus="onFocus"
+              @blur="onBlur"
+              @input="onInput"
+              @keydown="onKeydown"
+            />
+            <button
+              v-if="search.query"
+              class="ah-search-clear"
+              title="Clear search"
+              @mousedown.prevent="clear"
+            >
+              <AppIcon name="x" :size="12" :stroke-width="2.5" />
+            </button>
+            <SearchPalette
+              ref="paletteRef"
+              :visible="paletteVisible"
+              :anchor="searchWrap"
+              @navigate="onPaletteNavigate"
+              @close="onPaletteClose"
+            />
+          </div>
+        </Transition>
       </div>
     </div>
 
@@ -225,12 +271,16 @@ defineExpose({
   width: 100%;
 }
 
+.ah-search-wrap,
+.ah-refresh-prompt {
+  width: 280px;
+  max-width: min(48vw, 420px);
+}
+
 .ah-search-wrap {
   position: relative;
   display: flex;
   align-items: center;
-  width: 280px;
-  max-width: min(48vw, 420px);
   transition: width 0.18s ease, max-width 0.18s ease;
 }
 .ah-search-wrap.focused {
@@ -291,6 +341,90 @@ defineExpose({
 .ah-search-clear:hover {
   color: var(--text);
   background: var(--bg);
+}
+
+.ah-refresh-prompt {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0 0.7rem;
+  border: 1px solid color-mix(in srgb, #2f9d58 28%, var(--border));
+  border-radius: 20px;
+  background: color-mix(in srgb, #dff7e6 72%, var(--bg-card));
+  color: #255f33;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 88, 37, 0.08);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.ah-refresh-prompt:hover {
+  background: color-mix(in srgb, #dff7e6 86%, var(--bg-card));
+  border-color: color-mix(in srgb, #2f9d58 44%, var(--border));
+  box-shadow: 0 2px 8px rgba(16, 88, 37, 0.12);
+}
+.ah-refresh-pulse {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #35a853;
+  animation: headerRefreshBreath 3s ease-in-out infinite;
+}
+.ah-refresh-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ah-refresh-action {
+  flex: 0 0 auto;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ah-refresh-shortcut {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  padding: 0.12rem 0.35rem;
+  border: 1px solid color-mix(in srgb, #2f9d58 20%, var(--border));
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.62);
+  color: color-mix(in srgb, #255f33 76%, var(--text-muted));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+@keyframes headerRefreshBreath {
+  0%,
+  100% {
+    background: #35a853;
+    box-shadow: 0 0 0 0 rgba(53, 168, 83, 0);
+  }
+  50% {
+    background: #6fc47a;
+    box-shadow: 0 0 0 5px rgba(53, 168, 83, 0);
+  }
+}
+.ah-center-swap-enter-active,
+.ah-center-swap-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+.ah-center-swap-enter-from,
+.ah-center-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
 }
 
 /* RIGHT */
@@ -367,7 +501,8 @@ defineExpose({
 @container appchrome (max-width: 1100px) {
   .ah-left :deep(.ah-subtitle) { display: none; }
   .ah-right-slot :deep(.tag-chip) { display: none; }
-  .ah-search-wrap { width: 220px; }
+  .ah-search-wrap,
+  .ah-refresh-prompt { width: 220px; }
   .ah-search-wrap.focused { width: 300px; }
 }
 
@@ -388,6 +523,8 @@ defineExpose({
   .ah-search-wrap .ah-search-input { padding-right: 0; }
   .ah-search-wrap.focused { width: 280px; max-width: 280px; }
   .ah-search-wrap.focused .ah-search-input { padding-right: 28px; }
+  .ah-refresh-prompt { width: 160px; max-width: 32vw; }
+  .ah-refresh-label { display: none; }
   .ah-undo-button > span:not(.ah-undo-count) { display: none; }
 }
 
@@ -440,10 +577,12 @@ defineExpose({
   }
 
   .ah-search-wrap,
-  .ah-search-wrap.focused {
+  .ah-search-wrap.focused,
+  .ah-refresh-prompt {
     width: 100%;
     max-width: none;
   }
+  .ah-refresh-label { display: inline; }
 }
 
 @media (max-width: 640px) {

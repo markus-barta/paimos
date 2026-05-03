@@ -6,6 +6,7 @@ import { api, errMsg } from '@/api/client'
 import { useSearchStore } from '@/stores/search'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
+import { useIssueRefreshPromptStore } from '@/stores/issueRefreshPrompt'
 import type { Issue, Project, Tag, Sprint, User, SavedView } from '@/types'
 
 interface IssueEnvelope {
@@ -16,6 +17,7 @@ interface IssueEnvelope {
 }
 
 const search = useSearchStore()
+const issueRefreshPrompt = useIssueRefreshPromptStore()
 
 const PAGE = 100
 
@@ -117,6 +119,19 @@ const freshness = useFreshness<IssueEnvelope>(issuesPath, {
 const freshnessStale = computed(() => freshness.stale.value)
 const freshnessCount = computed(() => freshness.newCount.value)
 
+function refreshIssueListFromHeader() {
+  freshness.refresh()
+}
+
+watch(
+  [freshnessStale, freshnessCount],
+  ([stale, count]) => {
+    if (stale) issueRefreshPrompt.show(count, refreshIssueListFromHeader)
+    else issueRefreshPrompt.clear(refreshIssueListFromHeader)
+  },
+  { immediate: true },
+)
+
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function fetchMeta() {
@@ -205,6 +220,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   scrollObserver?.disconnect()
+  issueRefreshPrompt.clear(refreshIssueListFromHeader)
 })
 
 // ── Issue list mutations (browse mode only) ───────────────────────────────────
@@ -255,12 +271,9 @@ function onDeleted(id: number) {
       <IssueList
         ref="issueListRef"
         :issues="issues"
-        :refresh-stale="freshnessStale"
-        :refresh-count="freshnessCount"
         @created="onCreated"
         @updated="onUpdated"
         @deleted="onDeleted"
-        @refresh-list="freshness.refresh"
       />
 
       <div v-if="!isSearchMode && showEmptyFilterBanner" class="empty-filter-banner">

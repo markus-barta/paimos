@@ -14,6 +14,7 @@ import { errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useSearchStore } from '@/stores/search'
+import { useIssueRefreshPromptStore } from '@/stores/issueRefreshPrompt'
 import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
@@ -70,6 +71,7 @@ const route     = useRoute()
 const router    = useRouter()
 const auth      = useAuthStore()
 const search    = useSearchStore()
+const issueRefreshPrompt = useIssueRefreshPromptStore()
 const isAdmin   = computed(() => auth.user?.role === 'admin')
 const projectId = computed(() => Number(route.params.id))
 // Whether the current user can edit inside this project — admins and
@@ -213,6 +215,7 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onOverflowKey)
   window.removeEventListener('resize', recomputeOverflowPosition)
   window.removeEventListener('scroll', recomputeOverflowPosition, true)
+  issueRefreshPrompt.clear(refreshProjectIssueListFromHeader)
 })
 
 function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
@@ -604,6 +607,19 @@ const issueFreshness = useFreshness<Issue[]>(issueListPath, {
 })
 const issueFreshnessStale = computed(() => issueFreshness.stale.value)
 const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
+
+function refreshProjectIssueListFromHeader() {
+  issueFreshness.refresh()
+}
+
+watch(
+  [issueFreshnessStale, issueFreshnessCount],
+  ([stale, count]) => {
+    if (stale) issueRefreshPrompt.show(count, refreshProjectIssueListFromHeader)
+    else issueRefreshPrompt.clear(refreshProjectIssueListFromHeader)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -720,14 +736,11 @@ const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
         :project-id="projectId"
         :issues="issues"
         :initial-panel-issue-id="initialPanelIssueId"
-        :refresh-stale="issueFreshnessStale"
-        :refresh-count="issueFreshnessCount"
         @created="onCreated"
         @updated="onUpdated"
         @deleted="onDeleted"
         @view-applied="onViewApplied"
         @views-changed="refreshViews"
-        @refresh-list="issueFreshness.refresh"
       />
 
       <section class="pd-workspaces">

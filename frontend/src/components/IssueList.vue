@@ -37,7 +37,6 @@ import BulkChangeModal from '@/components/BulkChangeModal.vue'
 import IssueFilterPanel from '@/components/IssueFilterPanel.vue'
 import IssueViewsPanel from '@/components/IssueViewsPanel.vue'
 import EpicCascadeDialog from '@/components/EpicCascadeDialog.vue'
-import IssueListRefreshBanner from '@/components/IssueListRefreshBanner.vue'
 import {
   LS_EPIC_DISPLAY_MODE as EPIC_MODE_KEY,
   lsFiltersKey,
@@ -63,8 +62,6 @@ const props = defineProps<{
   projectAllIssues?: Issue[]
   initialViewId?: number
   initialPanelIssueId?: number
-  refreshStale?: boolean
-  refreshCount?: number | null
 }>()
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
@@ -77,7 +74,6 @@ const emit = defineEmits<{
   'release-added':   [value: string]
   'view-applied':    [viewId: number]
   'views-changed':   []
-  'refresh-list':    []
 }>()
 
 const router = useRouter()
@@ -942,14 +938,6 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       </div>
     </div>
 
-    <Transition name="issue-refresh-banner">
-      <IssueListRefreshBanner
-        v-if="refreshStale"
-        :count="refreshCount"
-        @refresh="emit('refresh-list')"
-      />
-    </Transition>
-
     <!-- Views panel -->
     <IssueViewsPanel
       v-if="!compact && viewsPanelOpen"
@@ -1250,15 +1238,6 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .filters { display: flex; align-items: center; gap: .6rem; margin-bottom: 0; flex-wrap: wrap; }
 .filter-right { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
 .issue-count { font-size: 12px; color: var(--text-muted); }
-.issue-refresh-banner-enter-active,
-.issue-refresh-banner-leave-active {
-  transition: opacity .14s ease, transform .14s ease;
-}
-.issue-refresh-banner-enter-from,
-.issue-refresh-banner-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
 .btn-sm { padding: .3rem .65rem; font-size: 12px; }
 .btn-sm.active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); border-color: var(--bp-blue-pale); }
 
