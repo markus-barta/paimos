@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] — 2026-05-04
+
+### Changed
+
+- [PAI-313](https://pm.barta.cm/projects/6/issues/PAI-313) — **Issue search now has one consistent scoped model.** Project pages default the header search to the current project, global search remains an explicit toggle, palette results and “see all” navigation follow the selected scope, and issue-list counters distinguish server-loaded rows from progressively rendered rows so `100` no longer means three different things.
+
 ## [2.4.11] — 2026-05-04
 
 ### Added
