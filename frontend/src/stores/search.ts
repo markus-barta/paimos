@@ -16,21 +16,33 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { LS_SEARCH_LAST_QUERY as LS_KEY } from '@/constants/storage'
 
-// Search state is URL-driven (/issues?q=...).
-// This store tracks the input value so AppLayout can bind v-model,
-// and persists the last query to localStorage so it survives navigation.
-export const useSearchStore = defineStore('search', () => {
-  // Initialise from localStorage so the sidebar input is pre-populated on load.
-  const query = ref(localStorage.getItem(LS_KEY) ?? '')
+export type SearchScope = 'global' | 'project'
 
-  function setQuery(q: string) {
+// Active search is URL/context driven. localStorage is only a recent-query
+// memory now; it must not silently re-apply an old query as a live filter.
+export const useSearchStore = defineStore('search', () => {
+  const query = ref('')
+  const lastQuery = ref(localStorage.getItem(LS_KEY) ?? '')
+  const projectId = ref<number | null>(null)
+  const projectKey = ref('')
+  const scopeOverride = ref<SearchScope | null>(null)
+
+  const hasProjectContext = computed(() => projectId.value !== null)
+  const scope = computed<SearchScope>(() =>
+    projectId.value !== null && scopeOverride.value !== 'global'
+      ? 'project'
+      : 'global',
+  )
+
+  function setQuery(q: string, opts: { remember?: boolean } = {}) {
     query.value = q
-    if (q) localStorage.setItem(LS_KEY, q)
-    // deliberately do NOT removeItem on empty — only clear() does that.
-    // This prevents navigation away from /issues from wiping the last query.
+    if (opts.remember !== false && q) {
+      lastQuery.value = q
+      localStorage.setItem(LS_KEY, q)
+    }
   }
 
   function clear() {
@@ -38,5 +50,35 @@ export const useSearchStore = defineStore('search', () => {
     localStorage.removeItem(LS_KEY)
   }
 
-  return { query, clear, setQuery }
+  function setProjectContext(id: number | null, key = '') {
+    if (id !== projectId.value) scopeOverride.value = null
+    projectId.value = id
+    projectKey.value = key
+  }
+
+  function setProjectKey(key: string) {
+    projectKey.value = key
+  }
+
+  function toggleScope() {
+    if (projectId.value === null) {
+      scopeOverride.value = null
+      return
+    }
+    scopeOverride.value = scope.value === 'project' ? 'global' : null
+  }
+
+  return {
+    query,
+    lastQuery,
+    projectId,
+    projectKey,
+    hasProjectContext,
+    scope,
+    clear,
+    setProjectContext,
+    setProjectKey,
+    setQuery,
+    toggleScope,
+  }
 })

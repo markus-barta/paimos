@@ -108,6 +108,16 @@ func Test_Search(t *testing.T) {
 	assertStatus(t, iResp, http.StatusCreated)
 	issueID := responseID(t, iResp)
 
+	otherProjectResp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Other Search Project", "key": "OSP",
+	})
+	assertStatus(t, otherProjectResp, http.StatusCreated)
+	otherProjectID := responseID(t, otherProjectResp)
+	otherIssueResp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", otherProjectID), ts.memberCookie, map[string]interface{}{
+		"title": "Other zeta issue", "type": "ticket", "status": "backlog", "priority": "medium",
+	})
+	assertStatus(t, otherIssueResp, http.StatusCreated)
+
 	// Issue with unique jira_id term (avoid issue-key pattern like "PROJ-99999")
 	i3Resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.memberCookie, map[string]interface{}{
 		"title": "Jira imported issue", "type": "ticket", "status": "backlog", "priority": "medium",
@@ -142,6 +152,34 @@ func Test_Search(t *testing.T) {
 		decode(t, resp, &result)
 		if len(result.Issues) == 0 && len(result.Projects) == 0 {
 			t.Error("search for 'zeta' returned no issues or projects")
+		}
+	})
+
+	t.Run("project scope narrows search results", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/search?q=zeta&scope=project&project_id=%d", projectID), ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var result struct {
+			Issues []struct {
+				ID        int64  `json:"id"`
+				ProjectID *int64 `json:"project_id"`
+			} `json:"issues"`
+			Projects []struct {
+				ID int64 `json:"id"`
+			} `json:"projects"`
+		}
+		decode(t, resp, &result)
+		if len(result.Issues) == 0 {
+			t.Fatal("scoped search returned no issues")
+		}
+		for _, iss := range result.Issues {
+			if iss.ProjectID == nil || *iss.ProjectID != projectID {
+				t.Fatalf("scoped search returned issue %d from project %v, want %d", iss.ID, iss.ProjectID, projectID)
+			}
+		}
+		for _, p := range result.Projects {
+			if p.ID != projectID {
+				t.Fatalf("scoped search returned project %d, want %d", p.ID, projectID)
+			}
 		}
 	})
 

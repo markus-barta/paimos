@@ -4,10 +4,12 @@ import { useRoute } from "vue-router";
 import { useRouter } from "vue-router";
 import AppIcon from "@/components/AppIcon.vue";
 import SearchPalette from "@/components/SearchPalette.vue";
+import { api } from "@/api/client";
 import { useSearchStore } from "@/stores/search";
 import { useUndoStore } from "@/stores/undo";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 import { useAuthStore } from "@/stores/auth";
+import type { Project } from "@/types";
 
 const route = useRoute();
 const router = useRouter();
@@ -27,8 +29,30 @@ const paletteRef = ref<InstanceType<typeof SearchPalette> | null>(null);
 const paletteVisible = ref(false);
 const refreshCountdownSeconds = ref(ISSUE_AUTO_REFRESH_DEFAULT_SECONDS);
 let refreshCountdownTimer: number | null = null;
+let projectContextRequest = 0;
 
 const hasQuery = computed(() => search.query.length >= 2);
+const routeProjectId = computed(() => {
+  if (!route.path.startsWith("/projects/")) return null;
+  const raw = route.params.id;
+  const value = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+});
+const isSearchListRoute = computed(
+  () => route.path === "/issues" || /^\/projects\/\d+$/.test(route.path),
+);
+const searchScopeLabel = computed(() => {
+  if (search.scope === "global") return "Global";
+  return search.projectKey ? `Project: ${search.projectKey}` : "Project";
+});
+const searchScopeIcon = computed(() =>
+  search.scope === "project" ? "folder" : "globe",
+);
+const searchScopeTitle = computed(() =>
+  search.scope === "project"
+    ? "Searching this project. Press Tab to switch to Global."
+    : "Searching all projects. Press Tab to switch to this project.",
+);
 const undoStackCount = computed(
   () => undo.undoRows.length + undo.redoRows.length + undo.historyRows.length,
 );
@@ -60,10 +84,21 @@ function onBlur() {
 function onInput() {
   const q = search.query.trim();
   search.setQuery(q);
+  syncActiveRouteQuery(q);
   paletteVisible.value = q.length >= 2;
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (
+    e.key === "Tab" &&
+    !e.shiftKey &&
+    search.hasProjectContext &&
+    paletteVisible.value
+  ) {
+    e.preventDefault();
+    search.toggleScope();
+    return;
+  }
   // Forward arrow keys and enter to palette when visible
   if (
     paletteVisible.value &&
@@ -83,15 +118,45 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === "Enter" && !paletteVisible.value) {
     // Navigate to issues page with current search
     if (route.path !== "/issues" && !route.path.startsWith("/projects/")) {
-      router.push("/issues");
+      router.push(searchAllResultsLocation());
     }
   }
 }
 
 function clear() {
   search.clear();
+  syncActiveRouteQuery("");
   paletteVisible.value = false;
   topbarInput.value?.focus();
+}
+
+function searchAllResultsLocation() {
+  const q = search.query.trim();
+  const query = q.length >= 2 ? { q } : {};
+  if (search.scope === "project" && search.projectId) {
+    return { path: `/projects/${search.projectId}`, query };
+  }
+  return { path: "/issues", query };
+}
+
+function syncActiveRouteQuery(q: string) {
+  if (!isSearchListRoute.value) return;
+  const nextQuery = { ...route.query };
+  if (q.length >= 2) nextQuery.q = q;
+  else delete nextQuery.q;
+  void router.replace({ query: nextQuery });
+}
+
+function syncQueryFromRoute() {
+  if (!isSearchListRoute.value) return;
+  const raw = route.query.q;
+  const q = Array.isArray(raw) ? raw[0] ?? "" : raw ?? "";
+  search.setQuery(String(q).trim(), { remember: false });
+}
+
+function toggleSearchScope() {
+  search.toggleScope();
+  if (search.query.trim().length >= 2) paletteVisible.value = true;
 }
 
 function onPaletteNavigate(path: string) {
@@ -161,6 +226,35 @@ watch(
   (visible) => {
     if (visible) paletteVisible.value = false;
   },
+);
+
+watch(
+  routeProjectId,
+  async (id) => {
+    const request = ++projectContextRequest;
+    if (id === null) {
+      search.setProjectContext(null);
+      return;
+    }
+    search.setProjectContext(id);
+    try {
+      const project = await api.get<Project>(`/projects/${id}`);
+      if (request === projectContextRequest) {
+        search.setProjectKey(project.key);
+      }
+    } catch {
+      if (request === projectContextRequest) {
+        search.setProjectKey("");
+      }
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  [() => route.path, () => route.query.q],
+  syncQueryFromRoute,
+  { immediate: true },
 );
 
 watch(
@@ -235,7 +329,12 @@ defineExpose({
             key="search"
             :class="[
               'ah-search-wrap',
-              { focused: searchFocused, active: hasQuery },
+              {
+                focused: searchFocused,
+                active: hasQuery,
+                'has-scope': search.hasProjectContext,
+                'has-clear': !!search.query,
+              },
             ]"
           >
             <AppIcon name="search" :size="13" class="ah-search-icon" />
@@ -252,6 +351,24 @@ defineExpose({
               @input="onInput"
               @keydown="onKeydown"
             />
+            <button
+              v-if="search.hasProjectContext"
+              class="ah-search-scope"
+              type="button"
+              :title="searchScopeTitle"
+              :aria-label="searchScopeTitle"
+              @mousedown.prevent="toggleSearchScope"
+            >
+              <AppIcon :name="searchScopeIcon" :size="11" />
+              <span class="ah-search-scope-label">{{ searchScopeLabel }}</span>
+              <AppIcon
+                v-if="search.scope === 'project'"
+                name="x"
+                :size="10"
+                :stroke-width="2.4"
+                class="ah-search-scope-x"
+              />
+            </button>
             <button
               v-if="search.query"
               class="ah-search-clear"
@@ -409,11 +526,62 @@ defineExpose({
   border-color: var(--bp-blue);
   background: var(--bg-card);
 }
+.ah-search-wrap.has-scope .ah-search-input {
+  padding-right: 118px;
+}
+.ah-search-wrap.has-scope.has-clear .ah-search-input {
+  padding-right: 142px;
+}
 .ah-search-wrap.focused .ah-search-input {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 15%, transparent);
 }
 .ah-search-input::-webkit-search-cancel-button {
   display: none;
+}
+
+.ah-search-scope {
+  position: absolute;
+  right: 8px;
+  height: 22px;
+  max-width: 104px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--bp-blue) 18%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bp-blue) 7%, var(--bg-card));
+  color: color-mix(in srgb, var(--bp-blue-dark) 82%, var(--text));
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.ah-search-wrap.has-clear .ah-search-scope {
+  right: 30px;
+}
+.ah-search-scope:hover,
+.ah-search-scope:focus-visible {
+  background: color-mix(in srgb, var(--bp-blue) 12%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--bp-blue) 32%, var(--border));
+  color: var(--bp-blue-dark);
+  outline: none;
+}
+.ah-search-scope-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ah-search-scope-x {
+  flex: 0 0 auto;
+  opacity: 0.72;
 }
 
 .ah-search-clear {

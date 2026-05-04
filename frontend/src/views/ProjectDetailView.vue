@@ -117,7 +117,11 @@ provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sp
 const loading       = ref(true)
 const issueListRef  = ref<InstanceType<typeof IssueList> | null>(null)
 const exporting     = ref(false)
-const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, search.query))
+const projectIssueQuery = computed(() => search.scope === 'project' ? search.query : '')
+const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value))
+const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
+let projectIssueRequestSeq = 0
+let projectSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 // PAI-246: header ⋯ menu (Export / Import / Edit project).
 // PAI-265: panel is teleported to <body> with position:fixed because the
@@ -169,8 +173,9 @@ async function selectTab(view: SavedView) {
   const isReclick = activeTabId.value === view.id
   activeTabId.value = view.id
   // Re-fetch issues on tab switch or re-click
-  issues.value = await loadProjectIssues(projectId.value, search.query)
-  nextTick(() => issueListRef.value?.applyView(view))
+  if (await replaceProjectIssues(projectIssueQuery.value)) {
+    nextTick(() => issueListRef.value?.applyView(view))
+  }
 }
 
 function onViewApplied(viewId: number) {
@@ -216,6 +221,7 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onOverflowKey)
   window.removeEventListener('resize', recomputeOverflowPosition)
   window.removeEventListener('scroll', recomputeOverflowPosition, true)
+  if (projectSearchTimer) clearTimeout(projectSearchTimer)
   issueRefreshPrompt.clear(refreshProjectIssueListFromHeader)
 })
 
@@ -518,9 +524,15 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
 async function load() {
   loading.value = true
   resetWorkspaceState()
-  const data = await loadProjectDetailData(projectId.value, search.query)
+  const loadQuery = projectIssueQuery.value
+  const data = await loadProjectDetailData(projectId.value, loadQuery)
   project.value = data.project
-  issues.value = data.issues
+  if (loadQuery === projectIssueQuery.value) {
+    issues.value = data.issues
+    await issueFreshness.prime(data.issues)
+  } else {
+    await replaceProjectIssues(projectIssueQuery.value)
+  }
   users.value = data.users
   costUnits.value = data.costUnits
   releases.value = data.releases
@@ -529,7 +541,6 @@ async function load() {
   customers.value = data.customers
   // activeTabId is set by IssueList's view-applied emit (MRU-based)
   loading.value   = false
-  await issueFreshness.prime(data.issues)
 }
 
 onMounted(() => {
@@ -545,11 +556,21 @@ watch(() => route.params.id, (newId, oldId) => {
   }
 })
 
-// Re-fetch issues when search query changes (search-as-filter overlay)
-watch(() => search.query, async (q) => {
+async function replaceProjectIssues(q: string): Promise<boolean> {
+  const request = ++projectIssueRequestSeq
   const nextIssues = await loadProjectIssues(projectId.value, q)
+  if (request !== projectIssueRequestSeq) return false
   issues.value = nextIssues
   await issueFreshness.prime(nextIssues)
+  return true
+}
+
+// Re-fetch issues when search query changes (search-as-filter overlay).
+watch(trimmedProjectIssueQuery, (q) => {
+  if (projectSearchTimer) clearTimeout(projectSearchTimer)
+  projectSearchTimer = setTimeout(() => {
+    void replaceProjectIssues(q)
+  }, 150)
 })
 
 function onCreated(issue: Issue) {
@@ -737,6 +758,7 @@ watch(
         ref="issueListRef"
         :project-id="projectId"
         :issues="issues"
+        :search-query-override="projectIssueQuery"
         :initial-panel-issue-id="initialPanelIssueId"
         @created="onCreated"
         @updated="onUpdated"

@@ -63,6 +63,9 @@ const props = defineProps<{
   projectAllIssues?: Issue[]
   initialViewId?: number
   initialPanelIssueId?: number
+  resultTotal?: number
+  loadingMore?: boolean
+  searchQueryOverride?: string
 }>()
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
@@ -75,6 +78,7 @@ const emit = defineEmits<{
   'release-added':   [value: string]
   'view-applied':    [viewId: number]
   'views-changed':   []
+  'load-all':         []
 }>()
 
 const router = useRouter()
@@ -82,7 +86,7 @@ const route  = useRoute()
 const { confirm } = useConfirm()
 
 const searchStore = useSearchStore()
-const searchQuery = computed(() => searchStore.query.trim())
+const searchQuery = computed(() => (props.searchQueryOverride ?? searchStore.query).trim())
 
 const { formatHours, label: timeLabel, toggle: toggleTimeUnit } = useTimeUnit()
 const authStore = useAuthStore()
@@ -707,6 +711,23 @@ async function onSectionDrop(e: DragEvent, groupId: number | 'backlog') {
 
 const renderedIssues = computed(() => finalIssues.value.slice(0, renderLimit.value))
 const hasMore = computed(() => (props.compact || !treeView.value) && renderLimit.value < finalIssues.value.length)
+const serverHasMore = computed(() =>
+  props.resultTotal !== undefined && props.resultTotal > props.issues.length,
+)
+const primaryIssueCount = computed(() => {
+  if (
+    serverHasMore.value &&
+    activeFilterCount.value === 0 &&
+    filteredIssues.value.length === props.issues.length
+  ) {
+    return props.resultTotal ?? filteredIssues.value.length
+  }
+  return filteredIssues.value.length
+})
+const loadedCountLabel = computed(() => {
+  if (props.resultTotal === undefined) return `${props.issues.length.toLocaleString()} loaded`
+  return `${props.issues.length.toLocaleString()} loaded of ${props.resultTotal.toLocaleString()} total`
+})
 
 function showAllRenderedIssues() {
   renderLimit.value = finalIssues.value.length
@@ -896,7 +917,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
       <div class="filter-right">
         <span class="issue-count">
-          {{ filteredIssues.length.toLocaleString() }} issue{{ filteredIssues.length !== 1 ? 's' : '' }}<template v-if="hasMore">
+          {{ primaryIssueCount.toLocaleString() }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}<template v-if="hasMore">
             · showing {{ renderedIssues.length.toLocaleString() }}
             · <button
               type="button"
@@ -904,6 +925,15 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
               :aria-label="`Show all ${filteredIssues.length.toLocaleString()} issues`"
               @click="showAllRenderedIssues"
             >show all</button>
+          </template><template v-if="serverHasMore">
+            · {{ loadedCountLabel }}
+            · <button
+              type="button"
+              class="issue-count-link"
+              :disabled="loadingMore"
+              :aria-label="`Load all ${props.resultTotal?.toLocaleString() ?? ''} issues`"
+              @click="emit('load-all')"
+            >load all</button>
           </template>
         </span>
         <button

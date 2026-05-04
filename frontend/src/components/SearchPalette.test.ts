@@ -162,7 +162,7 @@ describe("SearchPalette keyboard selection", () => {
     const enter = keydown(mounted, "Enter");
 
     expect(enter.defaultPrevented).toBe(true);
-    expect(mounted.navigate).toHaveBeenCalledWith("/issues");
+    expect(mounted.navigate).toHaveBeenCalledWith("/issues?q=PAI-2");
     expect(mounted.close).toHaveBeenCalledTimes(1);
     expect(mounted.search.query).toBe("PAI-2");
 
@@ -187,8 +187,31 @@ describe("SearchPalette keyboard selection", () => {
     mounted.close.mockClear();
     keydown(mounted, "Enter", { metaKey: true });
 
-    expect(mounted.navigate).toHaveBeenCalledWith("/issues");
+    expect(mounted.navigate).toHaveBeenCalledWith("/issues?q=selected");
     expect(mounted.close).toHaveBeenCalledTimes(1);
+
+    await mounted.unmount();
+  });
+
+  it("scopes palette fetches and all-results navigation to the current project", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      issues: [issue(8, "PAI-8", "Project result")],
+      projects: [],
+      has_more: true,
+    });
+    const mounted = await mountPalette();
+
+    mounted.search.setProjectContext(6, "PAI");
+    mounted.search.setQuery("project");
+    await resolveSearch();
+
+    expect(api.get).toHaveBeenCalledWith(
+      "/search?q=project&limit=10&scope=project&project_id=6",
+    );
+
+    keydown(mounted, "Enter", { metaKey: true });
+
+    expect(mounted.navigate).toHaveBeenCalledWith("/projects/6?q=project");
 
     await mounted.unmount();
   });

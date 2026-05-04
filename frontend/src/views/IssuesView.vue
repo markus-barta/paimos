@@ -42,11 +42,14 @@ provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 const trimmedSearchQuery = computed(() => search.query.trim())
+const freshnessLimit = computed(() => Math.max(PAGE, issues.value.length || PAGE))
 const issuesPath = computed(() => {
-  let url = `/issues?fields=list&limit=${PAGE}&offset=0`
+  let url = `/issues?fields=list&limit=${freshnessLimit.value}&offset=0`
   if (trimmedSearchQuery.value.length >= 2) url += `&q=${encodeURIComponent(trimmedSearchQuery.value)}`
   return url
 })
+let issueRequestSeq = 0
+let searchReloadTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── Saved view tabs ──────────────────────────────────────────────────────────
 
@@ -97,6 +100,11 @@ const canAutoLoadMore = computed(() => !isSearchMode.value && hasMore.value)
 const searchHasMore = computed(() => isSearchMode.value && hasMore.value)
 const searchSubtitle = computed(() =>
   issueSearchSummary(issues.value.length, total.value, trimmedSearchQuery.value),
+)
+const browseSubtitle = computed(() =>
+  total.value > issues.value.length
+    ? `${total.value.toLocaleString()} issues · ${issues.value.length.toLocaleString()} loaded`
+    : `${total.value.toLocaleString()} issues`,
 )
 
 const showEmptyFilterBanner = computed(() => {
@@ -163,20 +171,26 @@ async function fetchMeta() {
 
 async function fetchIssues(limit: number, replace = false) {
   const offset = replace ? 0 : issues.value.length
+  const request = ++issueRequestSeq
   try {
     let url = `/issues?fields=list&limit=${limit}&offset=${offset}`
     if (trimmedSearchQuery.value.length >= 2) url += `&q=${encodeURIComponent(trimmedSearchQuery.value)}`
     const data = await api.get<IssueEnvelope>(url)
+    if (request !== issueRequestSeq) return
     if (replace) {
       issues.value = data.issues
     } else {
       issues.value = [...issues.value, ...data.issues]
     }
     total.value = data.total
-    if (replace && offset === 0) {
-      await freshness.prime(data)
-    }
+    await freshness.prime({
+      issues: issues.value,
+      total: data.total,
+      offset: 0,
+      limit: issues.value.length,
+    })
   } catch (e: unknown) {
+    if (request !== issueRequestSeq) return
     error.value = errMsg(e, 'Failed to load issues.')
   }
 }
@@ -205,8 +219,13 @@ async function loadAll() {
   loadingMore.value = false
 }
 
-// Re-fetch when search query changes (search-as-filter overlay)
-watch(() => search.query, () => { fetchIssues(PAGE, true) })
+// Re-fetch when search query changes (search-as-filter overlay).
+watch(trimmedSearchQuery, () => {
+  if (searchReloadTimer) clearTimeout(searchReloadTimer)
+  searchReloadTimer = setTimeout(() => {
+    void fetchIssues(PAGE, true)
+  }, 150)
+})
 
 // ── Infinite scroll sentinel ──────────────────────────────────────────────────
 const scrollSentinel = ref<HTMLElement | null>(null)
@@ -228,6 +247,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   scrollObserver?.disconnect()
+  if (searchReloadTimer) clearTimeout(searchReloadTimer)
   issueRefreshPrompt.clear(refreshIssueListFromHeader)
 })
 
@@ -260,7 +280,7 @@ function onDeleted(id: number) {
         </button>
       </template>
       <span v-else-if="!loading" class="ah-subtitle">
-        {{ issues.length.toLocaleString() }} issues
+        {{ browseSubtitle }}
         <button v-if="hasMore" class="load-all-link" :disabled="loadingMore" @click="loadAll">
           · Load all {{ total.toLocaleString() }}
         </button>
@@ -289,6 +309,9 @@ function onDeleted(id: number) {
       <IssueList
         ref="issueListRef"
         :issues="issues"
+        :result-total="total"
+        :loading-more="loadingMore"
+        @load-all="loadAll"
         @created="onCreated"
         @updated="onUpdated"
         @deleted="onDeleted"

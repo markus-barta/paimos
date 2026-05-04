@@ -31,7 +31,8 @@ export interface ProjectPurgeUser {
 }
 
 export function buildProjectIssuesUrl(projectId: number, query: string): string {
-  return `/projects/${projectId}/issues?fields=list${query.length >= 2 ? `&q=${encodeURIComponent(query)}` : ''}`
+  const q = query.trim()
+  return `/projects/${projectId}/issues?fields=list${q.length >= 2 ? `&q=${encodeURIComponent(q)}` : ''}`
 }
 
 export function buildProjectCsvExportUrl(projectId: number, selectedIds: number[]): string {

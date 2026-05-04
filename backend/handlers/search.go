@@ -214,14 +214,14 @@ func lookupIssuesByKeyPrefix(projKey string, numPrefix string) []SearchIssue {
 }
 
 const searchDefaultLimit = 100
-const searchMaxLimit     = 200
+const searchMaxLimit = 200
 
 func Search(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 
 	// Parse optional offset + limit
 	offset := 0
-	limit  := searchDefaultLimit
+	limit := searchDefaultLimit
 	if v := r.URL.Query().Get("offset"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			offset = n
@@ -241,6 +241,16 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		HasMore:  false,
 	}
 
+	scopedProjectID := int64(0)
+	if strings.EqualFold(r.URL.Query().Get("scope"), "project") {
+		id, err := strconv.ParseInt(r.URL.Query().Get("project_id"), 10, 64)
+		if err != nil || id <= 0 || !auth.CanViewProject(r, id) {
+			jsonOK(w, results)
+			return
+		}
+		scopedProjectID = id
+	}
+
 	if len(q) < 2 {
 		jsonOK(w, results)
 		return
@@ -255,16 +265,22 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// in the caller's accessible set; nil means "admin, no filter".
 	accessibleIDs := auth.AccessibleProjectIDs(r)
 	filterDedup := func() {
-		if accessibleIDs == nil || len(dedup.list) == 0 {
+		if len(dedup.list) == 0 {
 			return
 		}
-		allowed := make(map[int64]bool, len(accessibleIDs))
-		for _, pid := range accessibleIDs {
-			allowed[pid] = true
+		allowed := map[int64]bool(nil)
+		if accessibleIDs != nil {
+			allowed = make(map[int64]bool, len(accessibleIDs))
+			for _, pid := range accessibleIDs {
+				allowed[pid] = true
+			}
 		}
 		filtered := dedup.list[:0]
 		for _, iss := range dedup.list {
-			if iss.ProjectID != nil && !allowed[*iss.ProjectID] {
+			if allowed != nil && iss.ProjectID != nil && !allowed[*iss.ProjectID] {
+				continue
+			}
+			if scopedProjectID > 0 && (iss.ProjectID == nil || *iss.ProjectID != scopedProjectID) {
 				continue
 			}
 			filtered = append(filtered, iss)
@@ -335,15 +351,26 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// are added; for restricted users it narrows results.
 	accessProjectFilter, accessProjectArgs := projectIDFilter(r, "p.id", false)
 	accessIssueFilter, accessIssueArgs := projectIDFilter(r, "i.project_id", true)
+	scopeProjectFilter := ""
+	scopeProjectArgs := []any{}
+	scopeIssueFilter := ""
+	scopeIssueArgs := []any{}
+	if scopedProjectID > 0 {
+		scopeProjectFilter = " AND p.id = ?"
+		scopeProjectArgs = append(scopeProjectArgs, scopedProjectID)
+		scopeIssueFilter = " AND i.project_id = ?"
+		scopeIssueArgs = append(scopeIssueArgs, scopedProjectID)
+	}
 
 	// ── Projects ─────────────────────────────────────────────────────────────
 	projArgs := append([]any{ftsQuery}, accessProjectArgs...)
+	projArgs = append(projArgs, scopeProjectArgs...)
 	projRows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status
 		FROM search_index si
 		JOIN projects p ON p.id = si.entity_id
 		WHERE si.entity_type = 'project'
-		  AND search_index MATCH ?`+accessProjectFilter+`
+		  AND search_index MATCH ?`+accessProjectFilter+scopeProjectFilter+`
 		LIMIT 5
 	`, projArgs...)
 	if err == nil {
@@ -359,6 +386,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	// ── Issues (FTS content match) ────────────────────────────────────────────
 	issArgs := append([]any{ftsQuery}, accessIssueArgs...)
+	issArgs = append(issArgs, scopeIssueArgs...)
 	issArgs = append(issArgs, limit+1)
 	issRows, err := db.DB.Query(`
 		SELECT `+issueSelectCols+`
@@ -368,7 +396,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'issue'
 		  AND search_index MATCH ?
-		  AND i.deleted_at IS NULL`+accessIssueFilter+`
+		  AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
 		LIMIT ?
 	`, issArgs...)
 	if err == nil {
@@ -422,13 +450,16 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		ph := buildPlaceholders(len(tagIDs))
 
 		// Projects with matching tags
+		tpArgs := append([]any{}, tagIDs...)
+		tpArgs = append(tpArgs, accessProjectArgs...)
+		tpArgs = append(tpArgs, scopeProjectArgs...)
 		tpRows, err := db.DB.Query(`
 			SELECT DISTINCT p.id, p.name, p.key, p.description, p.status
 			FROM project_tags pt
 			JOIN projects p ON p.id = pt.project_id
-			WHERE pt.tag_id IN (`+ph+`)
+			WHERE pt.tag_id IN (`+ph+`)`+accessProjectFilter+scopeProjectFilter+`
 			LIMIT 5
-		`, tagIDs...)
+		`, tpArgs...)
 		if err == nil {
 			defer tpRows.Close()
 			for tpRows.Next() {
@@ -452,6 +483,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 		tiArgs := append([]any{}, tagIDs...)
 		tiArgs = append(tiArgs, accessIssueArgs...)
+		tiArgs = append(tiArgs, scopeIssueArgs...)
 		tiArgs = append(tiArgs, limit+1)
 		tiRows, err := db.DB.Query(`
 			SELECT DISTINCT `+issueSelectCols+`
@@ -459,7 +491,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			JOIN issues i ON i.id = it.issue_id
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE it.tag_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+`
+			WHERE it.tag_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
 			LIMIT ?
 		`, tiArgs...)
 		if err == nil {
@@ -477,13 +509,14 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 		aiArgs := append([]any{}, userIDs...)
 		aiArgs = append(aiArgs, accessIssueArgs...)
+		aiArgs = append(aiArgs, scopeIssueArgs...)
 		aiArgs = append(aiArgs, limit+1)
 		aiRows, err := db.DB.Query(`
 			SELECT `+issueSelectCols+`
 			FROM issues i
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE i.assignee_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+`
+			WHERE i.assignee_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
 			ORDER BY i.updated_at DESC
 			LIMIT ?
 		`, aiArgs...)
@@ -495,13 +528,14 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// ── Issues via issue_key LIKE match ──────────────────────────────────────
 	keyArgs := []any{"%" + q + "%"}
 	keyArgs = append(keyArgs, accessIssueArgs...)
+	keyArgs = append(keyArgs, scopeIssueArgs...)
 	keyArgs = append(keyArgs, limit+1)
 	keyLikeRows, err := db.DB.Query(`
 		SELECT `+issueSelectCols+`
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ? AND i.deleted_at IS NULL`+accessIssueFilter+`
+		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ? AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
 		ORDER BY i.updated_at DESC
 		LIMIT ?
 	`, keyArgs...)
@@ -513,6 +547,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// Comments are indexed as entity_type='comment'; we join back to the parent issue.
 	cmtArgs := []any{ftsQuery}
 	cmtArgs = append(cmtArgs, accessIssueArgs...)
+	cmtArgs = append(cmtArgs, scopeIssueArgs...)
 	cmtArgs = append(cmtArgs, limit+1)
 	commentIssRows, err := db.DB.Query(`
 		SELECT DISTINCT `+issueSelectCols+`
@@ -523,7 +558,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'comment'
 		  AND search_index MATCH ?
-		  AND i.deleted_at IS NULL`+accessIssueFilter+`
+		  AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
 		LIMIT ?
 	`, cmtArgs...)
 	if err == nil {
@@ -540,6 +575,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			if iss.ProjectID != nil && !auth.CanViewProject(r, *iss.ProjectID) {
 				continue
 			}
+			if scopedProjectID > 0 && (iss.ProjectID == nil || *iss.ProjectID != scopedProjectID) {
+				continue
+			}
 			filtered = append(filtered, iss)
 		}
 		dedup.list = filtered
@@ -548,6 +586,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		filtered := results.Projects[:0]
 		for _, p := range results.Projects {
 			if !auth.CanViewProject(r, p.ID) {
+				continue
+			}
+			if scopedProjectID > 0 && p.ID != scopedProjectID {
 				continue
 			}
 			filtered = append(filtered, p)

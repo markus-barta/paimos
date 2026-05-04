@@ -4,14 +4,27 @@ import { createPinia, setActivePinia } from "pinia";
 import AppHeader from "@/components/AppHeader.vue";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 
-const { routerPush, mockAuthStore, mockSearchStore } = vi.hoisted(() => ({
+const { routerPush, routerReplace, mockRoute, mockAuthStore, mockSearchStore } = vi.hoisted(() => ({
   routerPush: vi.fn(),
+  routerReplace: vi.fn(),
+  mockRoute: {
+    path: "/issues",
+    params: {} as Record<string, string>,
+    query: {} as Record<string, string>,
+  },
   mockAuthStore: { user: null as Record<string, unknown> | null },
   mockSearchStore: (() => {
     const store = {
       query: "",
+      projectId: null as number | null,
+      projectKey: "",
+      hasProjectContext: false,
+      scope: "global" as "global" | "project",
       setQuery: vi.fn(),
       clear: vi.fn(),
+      setProjectContext: vi.fn(),
+      setProjectKey: vi.fn(),
+      toggleScope: vi.fn(),
     };
     store.setQuery = vi.fn((q: string) => {
       store.query = q;
@@ -19,13 +32,31 @@ const { routerPush, mockAuthStore, mockSearchStore } = vi.hoisted(() => ({
     store.clear = vi.fn(() => {
       store.query = "";
     });
+    store.setProjectContext = vi.fn((id: number | null, key = "") => {
+      store.projectId = id;
+      store.projectKey = key;
+      store.hasProjectContext = id !== null;
+      store.scope = id === null ? "global" : store.scope;
+    });
+    store.setProjectKey = vi.fn((key: string) => {
+      store.projectKey = key;
+    });
+    store.toggleScope = vi.fn(() => {
+      store.scope = store.scope === "project" ? "global" : "project";
+    });
     return store;
   })(),
 }));
 
 vi.mock("vue-router", () => ({
-  useRoute: () => ({ path: "/issues" }),
-  useRouter: () => ({ push: routerPush }),
+  useRoute: () => mockRoute,
+  useRouter: () => ({ push: routerPush, replace: routerReplace }),
+}));
+
+vi.mock("@/api/client", () => ({
+  api: {
+    get: vi.fn(),
+  },
 }));
 
 vi.mock("@/stores/auth", () => ({
@@ -154,6 +185,13 @@ describe("AppHeader issue refresh prompt", () => {
     vi.useRealTimers();
     mockAuthStore.user = null;
     mockSearchStore.query = "";
+    mockSearchStore.projectId = null;
+    mockSearchStore.projectKey = "";
+    mockSearchStore.hasProjectContext = false;
+    mockSearchStore.scope = "global";
+    mockRoute.path = "/issues";
+    mockRoute.params = {};
+    mockRoute.query = {};
     document.body.innerHTML = "";
     vi.clearAllMocks();
   });

@@ -48,10 +48,37 @@ const activeIndex = ref(-1)
 const paletteRef = ref<HTMLElement | null>(null)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let lastFetchedQuery = ''
+let lastFetchedKey = ''
+let requestSeq = 0
 const cache = new Map<string, SearchResults>()
 
-watch(() => search.query, (q) => {
+const paletteScope = computed(() =>
+  search.scope === 'project' && search.projectId ? 'project' : 'global',
+)
+const paletteProjectId = computed(() =>
+  paletteScope.value === 'project' ? search.projectId : null,
+)
+const paletteScopeLabel = computed(() =>
+  paletteScope.value === 'project'
+    ? `Searching ${search.projectKey || 'this project'}`
+    : 'Searching all projects',
+)
+const paletteAllResultsLabel = computed(() =>
+  paletteScope.value === 'project'
+    ? `see all in ${search.projectKey || 'project'}`
+    : 'see all globally',
+)
+const paletteOpenFullLabel = computed(() =>
+  paletteScope.value === 'project'
+    ? `open ${search.projectKey || 'project'} search`
+    : 'open global search',
+)
+
+function cacheKey(q: string) {
+  return `${paletteScope.value}:${paletteProjectId.value ?? 'all'}:${q}`
+}
+
+watch([() => search.query, paletteScope, paletteProjectId], ([q]) => {
   if (debounceTimer) clearTimeout(debounceTimer)
   const trimmed = q.trim()
   if (trimmed.length < 2) {
@@ -59,9 +86,12 @@ watch(() => search.query, (q) => {
     activeIndex.value = -1
     return
   }
+  const key = cacheKey(trimmed)
   // Show cached result immediately
-  if (cache.has(trimmed)) {
-    results.value = cache.get(trimmed)!
+  if (cache.has(key)) {
+    results.value = cache.get(key)!
+  } else {
+    results.value = null
   }
   debounceTimer = setTimeout(() => fetchResults(trimmed), 150)
 })
@@ -80,15 +110,25 @@ watch(results, () => {
 })
 
 async function fetchResults(q: string) {
-  if (q === lastFetchedQuery && results.value) return
+  const key = cacheKey(q)
+  if (key === lastFetchedKey && results.value) return
+  const seq = ++requestSeq
   loading.value = true
   try {
-    const data = await api.get<SearchResults>(`/search?q=${encodeURIComponent(q)}&limit=10`)
+    const params = new URLSearchParams({ q, limit: '10' })
+    if (paletteScope.value === 'project' && paletteProjectId.value) {
+      params.set('scope', 'project')
+      params.set('project_id', String(paletteProjectId.value))
+    }
+    const data = await api.get<SearchResults>(`/search?${params.toString()}`)
+    if (seq !== requestSeq) return
     results.value = data
-    cache.set(q, data)
-    lastFetchedQuery = q
+    cache.set(key, data)
+    lastFetchedKey = key
   } catch { /* silent */ }
-  finally { loading.value = false }
+  finally {
+    if (seq === requestSeq) loading.value = false
+  }
 }
 
 const items = computed<SearchIssue[]>(() => results.value?.issues ?? [])
@@ -145,7 +185,13 @@ function navigateToIssue(issue: SearchIssue) {
 }
 
 function navigateToAllResults() {
-  emit('navigate', `/issues`)
+  const q = search.query.trim()
+  const suffix = q.length >= 2 ? `?q=${encodeURIComponent(q)}` : ''
+  if (paletteScope.value === 'project' && paletteProjectId.value) {
+    emit('navigate', `/projects/${paletteProjectId.value}${suffix}`)
+  } else {
+    emit('navigate', `/issues${suffix}`)
+  }
   emit('close')
 }
 
@@ -255,6 +301,10 @@ watch(activeIndex, () => {
     >
     <LoadingText v-if="loading && !results" class="sp-loading" label="Searching…" />
     <template v-else-if="results">
+      <div class="sp-scope">
+        <AppIcon :name="paletteScope === 'project' ? 'folder' : 'globe'" :size="12" />
+        <span>{{ paletteScopeLabel }}</span>
+      </div>
       <!-- Direct match — rich row -->
       <div
         v-if="directMatch"
@@ -299,7 +349,7 @@ watch(activeIndex, () => {
           <kbd class="sp-kbd">↵</kbd> open
           <span class="sp-more-sep">·</span>
           <kbd class="sp-kbd">⌘</kbd><kbd class="sp-kbd">↵</kbd>
-          {{ results.has_more ? 'see all results' : 'open full search' }}
+          {{ results.has_more ? paletteAllResultsLabel : paletteOpenFullLabel }}
         </span>
       </div>
     </template>
@@ -326,6 +376,17 @@ watch(activeIndex, () => {
   padding: .75rem 1rem;
   font-size: 12px;
   color: var(--text-muted);
+}
+.sp-scope {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .42rem .75rem .35rem;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+  margin-bottom: .15rem;
 }
 .sp-item {
   display: flex;
