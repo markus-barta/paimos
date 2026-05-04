@@ -96,9 +96,10 @@ export function useFreshness<T>(
   onBeforeUnmount(stopPolling);
 
   watch(path, (nextPath) => {
-    if (skipNextPathPrimeFor === nextPath) {
+    if (skipNextPathPrimeFor !== null) {
+      const shouldSkip = skipNextPathPrimeFor === nextPath;
       skipNextPathPrimeFor = null;
-      return;
+      if (shouldSkip) return;
     }
     void prime();
   });
