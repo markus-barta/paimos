@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.10] — 2026-05-04
+
+### Fixed
+
+- [PAI-311](https://pm.barta.cm/projects/6/issues/PAI-311) — **Release artifacts are now assignable anywhere an issue exposes Release.** Project release lookups now include both `type='release'` issue artifacts and legacy text values already assigned on issues, so newly created release artifacts appear immediately in bulk change, table inline edit, create/edit modals, and side-panel controls. Release editing now uses bounded selects instead of free text, and bulk change distinguishes the placeholder from the explicit `None` value.
+- [PAI-247](https://pm.barta.cm/projects/6/issues/PAI-247) — **Issue parent updates work through the public API and CLI.** `PUT /api/issues/{id}` accepts parent fields and the CLI can set or clear issue parents, matching the backend model and documented OpenAPI contract.
+
+### Changed
+
+- Security gate maintenance refreshed the gosec baseline after the parent-update API work so CI remains aligned with the audited findings.
+
 ## [2.4.9] — 2026-05-04
 
 ### Added
