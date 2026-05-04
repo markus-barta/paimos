@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] — 2026-05-04
+
+### Fixed
+
+- [PAI-313](https://pm.barta.cm/projects/6/issues/PAI-313) — **Issue-list freshness priming consumes its path-skip marker exactly once.** Returning to a previously primed issue-list URL after a different search path now primes correctly instead of accidentally suppressing the request.
+
 ## [2.5.1] — 2026-05-04
 
 ### Fixed
