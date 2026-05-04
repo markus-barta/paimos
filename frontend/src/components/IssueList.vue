@@ -706,7 +706,11 @@ async function onSectionDrop(e: DragEvent, groupId: number | 'backlog') {
 }
 
 const renderedIssues = computed(() => finalIssues.value.slice(0, renderLimit.value))
-const hasMore = computed(() => renderLimit.value < finalIssues.value.length)
+const hasMore = computed(() => (props.compact || !treeView.value) && renderLimit.value < finalIssues.value.length)
+
+function showAllRenderedIssues() {
+  renderLimit.value = finalIssues.value.length
+}
 
 watch(finalIssues, () => { renderLimit.value = RENDER_BATCH })
 
@@ -892,7 +896,15 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
       <div class="filter-right">
         <span class="issue-count">
-          {{ filteredIssues.length }} issue{{ filteredIssues.length !== 1 ? 's' : '' }}<template v-if="hasMore"> · showing {{ renderedIssues.length }}</template>
+          {{ filteredIssues.length.toLocaleString() }} issue{{ filteredIssues.length !== 1 ? 's' : '' }}<template v-if="hasMore">
+            · showing {{ renderedIssues.length.toLocaleString() }}
+            · <button
+              type="button"
+              class="issue-count-link"
+              :aria-label="`Show all ${filteredIssues.length.toLocaleString()} issues`"
+              @click="showAllRenderedIssues"
+            >show all</button>
+          </template>
         </span>
         <button
           v-if="selectionMode && selectedIds.size > 0"
@@ -1241,6 +1253,17 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .filters { display: flex; align-items: center; gap: .6rem; margin-bottom: 0; flex-wrap: wrap; }
 .filter-right { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
 .issue-count { font-size: 12px; color: var(--text-muted); }
+.issue-count-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--bp-blue);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.issue-count-link:hover { text-decoration: underline; }
+.issue-count-link:focus-visible { outline: 2px solid color-mix(in srgb, var(--bp-blue) 45%, transparent); outline-offset: 2px; border-radius: 3px; }
 .btn-sm { padding: .3rem .65rem; font-size: 12px; }
 .btn-sm.active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); border-color: var(--bp-blue-pale); }
 
