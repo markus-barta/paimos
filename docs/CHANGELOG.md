@@ -5,6 +5,24 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.9] — 2026-05-04
+
+### Added
+
+- [PAI-309](https://pm.barta.cm/projects/6/issues/PAI-309) — **Changed issue lists now auto-refresh with visible timing controls.** When a polling response detects that the current issue list changed, the header status pill is paired with muted countdown copy (`refreshing in 60s`) that ticks every 10 seconds. Hovering or focusing the copy reveals a settings icon and clicking it opens the account settings auto-refresh control, where users can disable the feature or set a minimum 10-second interval. Preferences persist per user and the default preserves the old 60-second behavior.
+- [PAI-285](https://pm.barta.cm/projects/6/issues/PAI-285) — **CLI authentication no longer depends on plaintext config files.** The `paimos` CLI can resolve instance API keys from the OS keyring or from environment variables, which lets operators and agents run against `ppm` / `pmo` without storing bearer tokens in `~/.paimos/config.yaml`.
+
+### Changed
+
+- [PAI-310](https://pm.barta.cm/projects/6/issues/PAI-310) — **Issue assignee pickers now offer only active internal users.** Table inline assignment, create/edit forms, the side panel, bulk assignment, sprint-board assignment, and assignee filter options share one active-internal user predicate. Disabled, deleted, and external accounts are no longer offered for new assignment, while existing assignee display still resolves against the full user list.
+- Issue search and routing internals were tightened: ranked issue search now has a safer SQL shape, deep links load by key more reliably, the result-count copy better reflects the active result set, and the search palette selection/refresh behavior was restored after the header refresh prompt move.
+
+### Fixed
+
+- `paimos issue update --assignee` now sends numeric `assignee_id` values instead of strings, matching the API behavior that raw `curl` already accepted.
+- Main-branch deploys now require explicit untagged targets when `HEAD` is ahead of the latest release tag, so deploy scripts no longer guess between a release image and a green `sha-*` image.
+- Backend and database hardening continued with atomic-by-default migrations, HTTP server timeouts, handler splitting, refreshed release-hygiene checks, and security gate maintenance.
+
 ## [2.4.8] — 2026-05-02
 
 ### Changed
