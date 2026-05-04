@@ -21,7 +21,7 @@ export function useFreshness<T>(
   let pendingData: T | null = null;
   let pendingEtag: string | null = null;
   let timer: number | null = null;
-  let skipNextPathPrime = false;
+  let skipNextPathPrimeFor: string | null = null;
 
   function setCurrent(data: T) {
     currentData = data;
@@ -34,7 +34,7 @@ export function useFreshness<T>(
   async function prime(data?: T) {
     if (data !== undefined) {
       setCurrent(data);
-      skipNextPathPrime = true;
+      skipNextPathPrimeFor = path.value;
       return;
     }
     const response = await api.getWithMeta<T>(path.value);
@@ -95,9 +95,9 @@ export function useFreshness<T>(
   onMounted(startPolling);
   onBeforeUnmount(stopPolling);
 
-  watch(path, () => {
-    if (skipNextPathPrime) {
-      skipNextPathPrime = false;
+  watch(path, (nextPath) => {
+    if (skipNextPathPrimeFor === nextPath) {
+      skipNextPathPrimeFor = null;
       return;
     }
     void prime();

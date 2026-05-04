@@ -87,4 +87,32 @@ describe("useFreshness", () => {
 
     await mounted.unmount();
   });
+
+  it("only skips the path prime caused by externally primed data", async () => {
+    const path = ref("/issues?limit=100");
+    let freshness!: ReturnType<typeof useFreshness<{ total: number }>>;
+
+    const TestHarness = defineComponent({
+      setup() {
+        freshness = useFreshness(path, { intervalMs: 1000 });
+        void freshness.prime({ total: 2 });
+        return () => null;
+      },
+    });
+
+    getWithMeta.mockResolvedValueOnce({
+      data: { total: 3 },
+      etag: 'W/"next"',
+      lastModified: null,
+      status: 200,
+    });
+
+    const mounted = await mountComponent(TestHarness);
+    path.value = "/issues?limit=100&q=search";
+    await Promise.resolve();
+
+    expect(getWithMeta).toHaveBeenCalledWith("/issues?limit=100&q=search");
+
+    await mounted.unmount();
+  });
 });

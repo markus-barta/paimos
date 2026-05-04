@@ -118,6 +118,14 @@ function keydown(mounted: MountedPalette, key: string, init: KeyboardEventInit =
   return event;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("SearchPalette keyboard selection", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -212,6 +220,52 @@ describe("SearchPalette keyboard selection", () => {
     keydown(mounted, "Enter", { metaKey: true });
 
     expect(mounted.navigate).toHaveBeenCalledWith("/projects/6?q=project");
+
+    await mounted.unmount();
+  });
+
+  it("does not apply stale results after the search scope changes", async () => {
+    const oldScope = deferred<{
+      issues: ReturnType<typeof issue>[];
+      projects: unknown[];
+      has_more: boolean;
+    }>();
+    const newScope = deferred<{
+      issues: ReturnType<typeof issue>[];
+      projects: unknown[];
+      has_more: boolean;
+    }>();
+    vi.mocked(api.get)
+      .mockReturnValueOnce(oldScope.promise)
+      .mockReturnValueOnce(newScope.promise);
+
+    const mounted = await mountPalette();
+    mounted.search.setProjectContext(6, "PAI");
+    mounted.search.setQuery("scope");
+    await resolveSearch();
+
+    mounted.search.toggleScope();
+    await nextTick();
+
+    oldScope.resolve({
+      issues: [issue(11, "PAI-11", "Old scoped result")],
+      projects: [],
+      has_more: false,
+    });
+    await nextTick();
+
+    expect(document.body.textContent).not.toContain("Old scoped result");
+
+    await vi.advanceTimersByTimeAsync(151);
+    newScope.resolve({
+      issues: [issue(12, "PAI-12", "New global result")],
+      projects: [],
+      has_more: false,
+    });
+    await Promise.resolve();
+    await nextTick();
+
+    expect(document.body.textContent).toContain("New global result");
 
     await mounted.unmount();
   });

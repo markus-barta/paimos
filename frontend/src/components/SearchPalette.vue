@@ -79,6 +79,7 @@ function cacheKey(q: string) {
 }
 
 watch([() => search.query, paletteScope, paletteProjectId], ([q]) => {
+  requestSeq += 1
   if (debounceTimer) clearTimeout(debounceTimer)
   const trimmed = q.trim()
   if (trimmed.length < 2) {

@@ -120,6 +120,7 @@ const exporting     = ref(false)
 const projectIssueQuery = computed(() => search.scope === 'project' ? search.query : '')
 const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value))
 const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
+let projectLoadRequestSeq = 0
 let projectIssueRequestSeq = 0
 let projectSearchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -522,10 +523,12 @@ async function doImport(strategy: CollisionStrategy, _projectName: string) {
 }
 
 async function load() {
+  const request = ++projectLoadRequestSeq
   loading.value = true
   resetWorkspaceState()
   const loadQuery = projectIssueQuery.value
   const data = await loadProjectDetailData(projectId.value, loadQuery)
+  if (request !== projectLoadRequestSeq) return
   project.value = data.project
   if (loadQuery === projectIssueQuery.value) {
     issues.value = data.issues
