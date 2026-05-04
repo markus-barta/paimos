@@ -365,6 +365,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// ── Projects ─────────────────────────────────────────────────────────────
 	projArgs := append([]any{ftsQuery}, accessProjectArgs...)
 	projArgs = append(projArgs, scopeProjectArgs...)
+	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	projRows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status
 		FROM search_index si
@@ -388,6 +389,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	issArgs := append([]any{ftsQuery}, accessIssueArgs...)
 	issArgs = append(issArgs, scopeIssueArgs...)
 	issArgs = append(issArgs, limit+1)
+	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	issRows, err := db.DB.Query(`
 		SELECT `+issueSelectCols+`
 		FROM search_index si
@@ -453,6 +455,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		tpArgs := append([]any{}, tagIDs...)
 		tpArgs = append(tpArgs, accessProjectArgs...)
 		tpArgs = append(tpArgs, scopeProjectArgs...)
+		// #nosec G202 G701 -- placeholders and filters are fixed-fragment assembly.
 		tpRows, err := db.DB.Query(`
 			SELECT DISTINCT p.id, p.name, p.key, p.description, p.status
 			FROM project_tags pt
@@ -485,6 +488,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		tiArgs = append(tiArgs, accessIssueArgs...)
 		tiArgs = append(tiArgs, scopeIssueArgs...)
 		tiArgs = append(tiArgs, limit+1)
+		// #nosec G202 G701 -- placeholders and filters are fixed-fragment assembly.
 		tiRows, err := db.DB.Query(`
 			SELECT DISTINCT `+issueSelectCols+`
 			FROM issue_tags it
@@ -511,6 +515,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		aiArgs = append(aiArgs, accessIssueArgs...)
 		aiArgs = append(aiArgs, scopeIssueArgs...)
 		aiArgs = append(aiArgs, limit+1)
+		// #nosec G202 G701 -- placeholders and filters are fixed-fragment assembly.
 		aiRows, err := db.DB.Query(`
 			SELECT `+issueSelectCols+`
 			FROM issues i
@@ -530,6 +535,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	keyArgs = append(keyArgs, accessIssueArgs...)
 	keyArgs = append(keyArgs, scopeIssueArgs...)
 	keyArgs = append(keyArgs, limit+1)
+	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	keyLikeRows, err := db.DB.Query(`
 		SELECT `+issueSelectCols+`
 		FROM issues i
@@ -549,6 +555,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	cmtArgs = append(cmtArgs, accessIssueArgs...)
 	cmtArgs = append(cmtArgs, scopeIssueArgs...)
 	cmtArgs = append(cmtArgs, limit+1)
+	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	commentIssRows, err := db.DB.Query(`
 		SELECT DISTINCT `+issueSelectCols+`
 		FROM search_index si
