@@ -285,6 +285,7 @@ func main() {
 			// Issues by ID
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
 			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
+			r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}", handlers.DeleteIssue)
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Post("/issues/{id}/restore", handlers.RestoreIssue)
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/purge", handlers.PurgeIssue)

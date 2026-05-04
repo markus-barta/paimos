@@ -403,6 +403,12 @@
         "summary": "Update issue",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "Updated" } }
+      },
+      "patch": {
+        "tags": ["issues"],
+        "summary": "Update issue",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Updated" } }
       }
     },
     "/api/issues/{id}/comments": {

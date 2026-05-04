@@ -232,6 +232,115 @@ func Test_IssueCRUD(t *testing.T) {
 	})
 }
 
+func TestIssueParentPublicAPI(t *testing.T) {
+	ts := newTestServer(t)
+
+	pResp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Parent API Project", "key": "PAP",
+	})
+	assertStatus(t, pResp, http.StatusCreated)
+	projectID := responseID(t, pResp)
+
+	epicResp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "Parent Epic", "type": "epic", "status": "backlog",
+	})
+	assertStatus(t, epicResp, http.StatusCreated)
+	var epic struct {
+		ID       int64  `json:"id"`
+		IssueKey string `json:"issue_key"`
+	}
+	decode(t, epicResp, &epic)
+	if epic.ID == 0 || epic.IssueKey == "" {
+		t.Fatalf("bad epic identity: %+v", epic)
+	}
+
+	t.Run("get issue by numeric id and key", func(t *testing.T) {
+		for _, ref := range []string{fmt.Sprintf("%d", epic.ID), epic.IssueKey} {
+			resp := ts.get(t, "/api/issues/"+ref, ts.memberCookie)
+			assertStatus(t, resp, http.StatusOK)
+			var got struct {
+				ID       int64  `json:"id"`
+				IssueKey string `json:"issue_key"`
+			}
+			decode(t, resp, &got)
+			if got.ID != epic.ID || got.IssueKey != epic.IssueKey {
+				t.Errorf("GET /issues/%s = %+v, want id=%d key=%s", ref, got, epic.ID, epic.IssueKey)
+			}
+		}
+	})
+
+	t.Run("create accepts numeric parent id", func(t *testing.T) {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": "Created Child", "type": "ticket", "parent_id": epic.ID, "status": "backlog",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		var child struct {
+			ParentID *int64 `json:"parent_id"`
+		}
+		decode(t, resp, &child)
+		if child.ParentID == nil || *child.ParentID != epic.ID {
+			t.Fatalf("created parent_id=%v, want %d", child.ParentID, epic.ID)
+		}
+	})
+
+	t.Run("patch parent id persists", func(t *testing.T) {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": "Patch Child", "type": "ticket", "status": "backlog",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		childID := responseID(t, resp)
+
+		resp = ts.patch(t, fmt.Sprintf("/api/issues/%d", childID), ts.adminCookie, map[string]any{
+			"parent_id": epic.ID,
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var patched struct {
+			ParentID *int64 `json:"parent_id"`
+		}
+		decode(t, resp, &patched)
+		if patched.ParentID == nil || *patched.ParentID != epic.ID {
+			t.Fatalf("patched parent_id=%v, want %d", patched.ParentID, epic.ID)
+		}
+
+		resp = ts.get(t, fmt.Sprintf("/api/issues/%d", childID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var persisted struct {
+			ParentID *int64 `json:"parent_id"`
+		}
+		decode(t, resp, &persisted)
+		if persisted.ParentID == nil || *persisted.ParentID != epic.ID {
+			t.Errorf("persisted parent_id=%v, want %d", persisted.ParentID, epic.ID)
+		}
+	})
+
+	t.Run("put child key with parent id persists", func(t *testing.T) {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": "Key Child", "type": "ticket", "status": "backlog",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		var child struct {
+			ID       int64  `json:"id"`
+			IssueKey string `json:"issue_key"`
+		}
+		decode(t, resp, &child)
+		if child.IssueKey == "" {
+			t.Fatalf("empty child key for id=%d", child.ID)
+		}
+
+		resp = ts.put(t, "/api/issues/"+child.IssueKey, ts.adminCookie, map[string]any{
+			"parent_id": epic.ID,
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var updated struct {
+			ParentID *int64 `json:"parent_id"`
+		}
+		decode(t, resp, &updated)
+		if updated.ParentID == nil || *updated.ParentID != epic.ID {
+			t.Errorf("updated parent_id=%v, want %d", updated.ParentID, epic.ID)
+		}
+	})
+}
+
 func Test_TagsOnIssues(t *testing.T) {
 	// Regression test for migration 23 FK bug — INSERT INTO issue_tags was
 	// failing with "no such table: main.issues_old23" for all users.

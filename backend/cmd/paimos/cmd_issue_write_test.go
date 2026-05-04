@@ -288,6 +288,97 @@ func TestIssueUpdateCombinedRequest_AssigneeIDIsNumeric(t *testing.T) {
 	}
 }
 
+func TestIssueCreateParentRefSendsNumericID(t *testing.T) {
+	for _, parentRef := range []string{"PAI-1", "101"} {
+		parentRef := parentRef
+		t.Run(parentRef, func(t *testing.T) {
+			var received map[string]any
+			var handlerErr string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+parentRef:
+					_, _ = w.Write([]byte(`{"id":101,"issue_key":"PAI-1"}`))
+				case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
+					_, _ = w.Write([]byte(`[{"id":6,"key":"PAI"}]`))
+				case r.Method == http.MethodPost && r.URL.Path == "/api/projects/6/issues":
+					if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+						handlerErr = fmt.Sprintf("decode request: %v", err)
+						http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+						return
+					}
+					_, _ = w.Write([]byte(`{"id":202,"issue_key":"PAI-2","title":"Child"}`))
+				default:
+					handlerErr = fmt.Sprintf("unexpected request %s %s", r.Method, r.URL.Path)
+					http.Error(w, `{"error":"unexpected request"}`, http.StatusNotFound)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			t.Setenv(envURL, srv.URL)
+			t.Setenv(envAPIKey, "test_key")
+
+			if _, _, err := executeCLIForTest(t,
+				"issue", "create",
+				"--project", "PAI",
+				"--title", "Child",
+				"--parent", parentRef,
+			); err != nil {
+				t.Fatalf("executeCLIForTest: %v", err)
+			}
+			if handlerErr != "" {
+				t.Fatal(handlerErr)
+			}
+			if _, ok := received["parent_id"].(float64); !ok {
+				t.Fatalf("parent_id type = %T, want JSON number (body=%v)", received["parent_id"], received)
+			}
+			if received["parent_id"].(float64) != 101 {
+				t.Errorf("parent_id=%v, want 101", received["parent_id"])
+			}
+		})
+	}
+}
+
+func TestIssueUpdateParentRefSendsNumericID(t *testing.T) {
+	var received map[string]any
+	var handlerErr string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/PAI-1":
+			_, _ = w.Write([]byte(`{"id":101,"issue_key":"PAI-1"}`))
+		case r.Method == http.MethodPut && r.URL.Path == "/api/issues/PAI-2":
+			if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+				handlerErr = fmt.Sprintf("decode request: %v", err)
+				http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":202,"issue_key":"PAI-2","title":"Child","parent_id":101}`))
+		default:
+			handlerErr = fmt.Sprintf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.Error(w, `{"error":"unexpected request"}`, http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	if _, _, err := executeCLIForTest(t,
+		"issue", "update", "PAI-2",
+		"--parent", "PAI-1",
+	); err != nil {
+		t.Fatalf("executeCLIForTest: %v", err)
+	}
+	if handlerErr != "" {
+		t.Fatal(handlerErr)
+	}
+	if _, ok := received["parent_id"].(float64); !ok {
+		t.Fatalf("parent_id type = %T, want JSON number (body=%v)", received["parent_id"], received)
+	}
+	if received["parent_id"].(float64) != 101 {
+		t.Errorf("parent_id=%v, want 101", received["parent_id"])
+	}
+}
+
 func TestIssueUpdateInvalidAssigneeFailsBeforeRequest(t *testing.T) {
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
