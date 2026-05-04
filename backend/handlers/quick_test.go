@@ -341,6 +341,45 @@ func TestIssueParentPublicAPI(t *testing.T) {
 	})
 }
 
+func TestIssueReleaseLookupsIncludeArtifactsAndLegacyValues(t *testing.T) {
+	ts := newTestServer(t)
+
+	pResp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Release Lookup Project", "key": "RLP",
+	})
+	assertStatus(t, pResp, http.StatusCreated)
+	projectID := responseID(t, pResp)
+
+	releaseResp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "2026.05 Customer Drop", "type": "release", "status": "backlog",
+	})
+	assertStatus(t, releaseResp, http.StatusCreated)
+
+	legacyResp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "Legacy-assigned ticket", "type": "ticket", "status": "backlog", "release": "Legacy 1.0",
+	})
+	assertStatus(t, legacyResp, http.StatusCreated)
+
+	for _, path := range []string{
+		fmt.Sprintf("/api/projects/%d/releases", projectID),
+		"/api/releases",
+	} {
+		resp := ts.get(t, path, ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var releases []string
+		decode(t, resp, &releases)
+		got := map[string]bool{}
+		for _, rel := range releases {
+			got[rel] = true
+		}
+		for _, want := range []string{"2026.05 Customer Drop", "Legacy 1.0"} {
+			if !got[want] {
+				t.Fatalf("%s releases=%v, missing %q", path, releases, want)
+			}
+		}
+	}
+}
+
 func Test_TagsOnIssues(t *testing.T) {
 	// Regression test for migration 23 FK bug — INSERT INTO issue_tags was
 	// failing with "no such table: main.issues_old23" for all users.

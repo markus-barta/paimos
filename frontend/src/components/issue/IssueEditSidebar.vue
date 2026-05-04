@@ -146,7 +146,10 @@ const showArLp          = computed(() => showEstimateLp.value)
     </div>
     <div class="field" v-if="['epic','ticket','task'].includes(form.type)">
       <label>Release</label>
-      <AutocompleteInput v-model="form.release" :suggestions="releases" placeholder="e.g. v1.2.0" />
+      <select v-model="form.release" class="v2-select">
+        <option value="">— None —</option>
+        <option v-for="r in releases" :key="r" :value="r">{{ r }}</option>
+      </select>
     </div>
     <div class="field" v-if="allTags.length">
       <label>Tags</label>

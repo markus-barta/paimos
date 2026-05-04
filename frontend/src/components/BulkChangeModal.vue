@@ -21,8 +21,10 @@ const emit = defineEmits<{
   done: []
 }>()
 
+const UNSET_VALUE = '__paimos_bulk_unset__'
+
 const bulkField          = ref<string>('')
-const bulkValue          = ref<string>('')
+const bulkValue          = ref<string>(UNSET_VALUE)
 const bulkSprintIds      = ref<number[]>([])
 const bulkSprintMode     = ref<'add' | 'set' | 'remove'>('add')
 const bulkSprintSearch   = ref('')
@@ -89,6 +91,7 @@ const bulkValueOptions = computed(() => {
 })
 
 const bulkFieldLabel  = computed(() => BULK_FIELDS.value.find(f => f.value === bulkField.value)?.label ?? '')
+const bulkValueSelected = computed(() => bulkField.value !== 'sprint' && bulkValue.value !== UNSET_VALUE)
 
 const bulkSprintOptions = computed(() => {
   const allSprints = props.loadedSprints.length ? props.loadedSprints : sprints.value
@@ -115,7 +118,7 @@ function wouldCreateCycle(issueId: number, parentId: number): boolean {
 
 function reset() {
   bulkField.value       = ''
-  bulkValue.value       = ''
+  bulkValue.value       = UNSET_VALUE
   bulkSprintIds.value   = []
   bulkSprintMode.value  = 'add'
   bulkSprintSearch.value = ''
@@ -124,6 +127,10 @@ function reset() {
 
 async function executeBulkChange() {
   if (!bulkField.value) { bulkChangeError.value = 'Select a field.'; return }
+  if (bulkField.value !== 'sprint' && bulkValue.value === UNSET_VALUE) {
+    bulkChangeError.value = 'Select a new value.'
+    return
+  }
   bulkChanging.value    = true
   bulkChangeError.value = ''
   const ids = [...props.selectedIds]
@@ -210,7 +217,7 @@ defineExpose({ reset })
       </p>
       <div class="field">
         <label>Field</label>
-        <select v-model="bulkField" class="v2-select" @change="bulkValue = ''; bulkSprintIds = []; bulkSprintMode = 'add'; bulkSprintSearch = ''">
+        <select v-model="bulkField" class="v2-select" @change="bulkValue = UNSET_VALUE; bulkSprintIds = []; bulkSprintMode = 'add'; bulkSprintSearch = ''">
           <option value="">— Select field —</option>
           <option v-for="f in BULK_FIELDS" :key="f.value" :value="f.value">{{ f.label }}</option>
         </select>
@@ -218,7 +225,7 @@ defineExpose({ reset })
       <div class="field" v-if="bulkField && bulkField !== 'sprint'">
         <label>New value for {{ bulkFieldLabel }}</label>
         <select v-if="bulkValueOptions.length" v-model="bulkValue" class="v2-select">
-          <option value="">— Select value —</option>
+          <option :value="UNSET_VALUE" disabled>— Select value —</option>
           <option v-for="o in bulkValueOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
       </div>
@@ -243,7 +250,7 @@ defineExpose({ reset })
       <div v-if="bulkChangeError" class="form-error">{{ bulkChangeError }}</div>
       <div class="form-actions">
         <button class="btn btn-ghost" @click="emit('close')" :disabled="bulkChanging">Cancel</button>
-        <button class="btn btn-primary" @click="executeBulkChange" :disabled="bulkChanging || !bulkField || (bulkField === 'sprint' && !bulkSprintIds.length)">
+        <button class="btn btn-primary" @click="executeBulkChange" :disabled="bulkChanging || !bulkField || (bulkField === 'sprint' ? !bulkSprintIds.length : !bulkValueSelected)">
           {{ bulkChanging ? 'Applying...' : `Apply to ${selectedIds.size} issue${selectedIds.size !== 1 ? 's' : ''}` }}
         </button>
       </div>

@@ -522,7 +522,17 @@ func ListCostUnits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := db.DB.Query(
-		`SELECT DISTINCT cost_unit FROM issues WHERE project_id=? AND cost_unit != '' AND deleted_at IS NULL ORDER BY cost_unit`, projectID,
+		`SELECT DISTINCT label
+		   FROM (
+		         SELECT title AS label
+		           FROM issues
+		          WHERE project_id=? AND type='cost_unit' AND title != '' AND deleted_at IS NULL
+		         UNION
+		         SELECT cost_unit AS label
+		           FROM issues
+		          WHERE project_id=? AND cost_unit != '' AND deleted_at IS NULL
+		        )
+		  ORDER BY label COLLATE NOCASE`, projectID, projectID,
 	)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -548,7 +558,17 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := db.DB.Query(
-		`SELECT DISTINCT release FROM issues WHERE project_id=? AND release != '' AND deleted_at IS NULL ORDER BY release`, projectID,
+		`SELECT DISTINCT label
+		   FROM (
+		         SELECT title AS label
+		           FROM issues
+		          WHERE project_id=? AND type='release' AND title != '' AND deleted_at IS NULL
+		         UNION
+		         SELECT release AS label
+		           FROM issues
+		          WHERE project_id=? AND release != '' AND deleted_at IS NULL
+		        )
+		  ORDER BY label COLLATE NOCASE`, projectID, projectID,
 	)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -569,13 +589,24 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 
 // ListAllCostUnits returns distinct cost_unit values across all projects.
 func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT DISTINCT cost_unit FROM issues i WHERE cost_unit != '' AND i.deleted_at IS NULL`
+	query := `WITH allowed_issues AS (
+		SELECT i.title, i.type, i.cost_unit
+		  FROM issues i
+		 WHERE i.deleted_at IS NULL`
 	args := []any{}
 	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
 		query += f // #nosec G202 -- projectIDFilter returns a fixed SQL fragment plus placeholder args.
 		args = append(args, a...)
 	}
-	query += ` ORDER BY cost_unit`
+	query += `
+	)
+	SELECT DISTINCT label
+	  FROM (
+	        SELECT title AS label FROM allowed_issues WHERE type='cost_unit' AND title != ''
+	        UNION
+	        SELECT cost_unit AS label FROM allowed_issues WHERE cost_unit != ''
+	       )
+	 ORDER BY label COLLATE NOCASE`
 	// #nosec G701 -- query uses fixed fragments only; access values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
@@ -597,13 +628,24 @@ func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
 
 // ListAllReleases returns distinct release values across all projects.
 func ListAllReleases(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT DISTINCT release FROM issues i WHERE release != '' AND i.deleted_at IS NULL`
+	query := `WITH allowed_issues AS (
+		SELECT i.title, i.type, i.release
+		  FROM issues i
+		 WHERE i.deleted_at IS NULL`
 	args := []any{}
 	if f, a := projectIDFilter(r, "i.project_id", true); f != "" {
 		query += f // #nosec G202 -- projectIDFilter returns a fixed SQL fragment plus placeholder args.
 		args = append(args, a...)
 	}
-	query += ` ORDER BY release`
+	query += `
+	)
+	SELECT DISTINCT label
+	  FROM (
+	        SELECT title AS label FROM allowed_issues WHERE type='release' AND title != ''
+	        UNION
+	        SELECT release AS label FROM allowed_issues WHERE release != ''
+	       )
+	 ORDER BY label COLLATE NOCASE`
 	// #nosec G701 -- query uses fixed fragments only; access values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {

@@ -343,15 +343,16 @@ function onRowClick(i: Issue) {
           <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'cost_unit', $event)">{{ i.cost_unit || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('release')" class="meta-cell inline-edit-cell">
-          <AutocompleteInput
+          <select
             v-if="editingCell?.issueId === i.id && editingCell?.field === 'release'"
-            :model-value="cellEditValue"
-            :suggestions="releases"
-            placeholder="Release..."
-            @update:model-value="v => emit('update:cell-edit-value', v)"
-            @keydown.enter.stop="emit('save-cell-edit', i, 'release', cellEditValue)"
+            class="meta-inline-select"
+            :value="cellEditValue"
+            @change="emit('save-cell-edit', i, 'release', ($event.target as HTMLSelectElement).value)"
             @keydown.escape.stop="emit('close-cell', false)"
-          />
+          >
+            <option value="">— None —</option>
+            <option v-for="r in releases" :key="r" :value="r">{{ r }}</option>
+          </select>
           <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('assignee')" class="meta-cell inline-edit-cell">
@@ -550,6 +551,18 @@ function onRowClick(i: Issue) {
   outline: none;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.meta-inline-select {
+  min-width: 140px;
+  max-width: 240px;
+  font: inherit;
+  font-size: 12px;
+  padding: .2rem .35rem;
+  border: 1px solid var(--bp-blue);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text);
+  outline: none;
 }
 .meta-cell { color: var(--text-muted); white-space: nowrap; font-size: 12px; }
 .booked-cell { color: var(--bp-green, #16a34a); font-weight: 600; }

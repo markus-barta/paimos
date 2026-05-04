@@ -1117,11 +1117,10 @@ async function deleteTimeEntry(entry: TimeEntry) {
               </div>
               <div class="field" style="flex: 1" v-if="releases">
                 <label>Release</label>
-                <AutocompleteInput
-                  v-model="form.release"
-                  :suggestions="releases"
-                  placeholder="e.g. v1.0"
-                />
+                <select v-model="form.release" class="v2-select">
+                  <option value="">— None —</option>
+                  <option v-for="r in releases" :key="r" :value="r">{{ r }}</option>
+                </select>
               </div>
             </div>
             <!-- Sprint assignment -->

@@ -278,7 +278,7 @@ async function saveIssue(andAnother = false) {
     emit('created', fresh)
     const cu = form.value.cost_unit?.trim()
     if (cu && !costUnits.value.includes(cu)) emit('cost-unit-added', cu)
-    const rel = form.value.release?.trim()
+    const rel = fresh.type === 'release' ? fresh.title.trim() : form.value.release?.trim()
     if (rel && !releases.value.includes(rel)) emit('release-added', rel)
     if (andAnother) {
       const savedForm = { ...form.value, title: '' }
@@ -407,7 +407,10 @@ defineExpose({ openCreate })
         </div>
         <div class="field">
           <label>Release</label>
-          <AutocompleteInput v-model="form.release" :suggestions="releases" placeholder="e.g. v1.2.0" />
+          <select v-model="form.release" class="v2-select">
+            <option value="">— None —</option>
+            <option v-for="r in releases" :key="r" :value="r">{{ r }}</option>
+          </select>
         </div>
       </div>
       <div class="field">

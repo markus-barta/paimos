@@ -556,8 +556,9 @@ function onCreated(issue: Issue) {
   issues.value.push(issue)
   if (issue.cost_unit && !costUnits.value.includes(issue.cost_unit))
     costUnits.value = [...costUnits.value, issue.cost_unit].sort()
-  if (issue.release && !releases.value.includes(issue.release))
-    releases.value = [...releases.value, issue.release].sort()
+  const releaseLabel = issue.type === 'release' ? issue.title : issue.release
+  if (releaseLabel && !releases.value.includes(releaseLabel))
+    releases.value = [...releases.value, releaseLabel].sort()
 }
 
 function onUpdated(issue: Issue) {

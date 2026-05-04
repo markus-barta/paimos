@@ -189,6 +189,8 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/issues", handlers.CreateIssue)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/cost-units", handlers.ListCostUnits)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/releases", handlers.ListReleases)
 
 			r.Get("/issues/recent", handlers.RecentIssues)
 			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
@@ -227,6 +229,8 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/tags", handlers.CreateTag)
 			r.With(auth.RequireAdmin).Put("/tags/{id}", handlers.UpdateTag)
 			r.With(auth.RequireAdmin).Delete("/tags/{id}", handlers.DeleteTag)
+			r.Get("/cost-units", handlers.ListAllCostUnits)
+			r.Get("/releases", handlers.ListAllReleases)
 
 			r.Get("/users", handlers.ListUsers)
 			r.With(auth.RequireAdmin).Post("/users", handlers.CreateUser)
