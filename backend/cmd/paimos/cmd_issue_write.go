@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -61,6 +62,15 @@ var terminalStatuses = map[string]bool{
 	"accepted":  true,
 	"invoiced":  true,
 	"cancelled": true,
+}
+
+func parsePositiveInt64Flag(flagName, raw string) (int64, error) {
+	trimmed := strings.TrimSpace(raw)
+	id, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, &usageError{msg: fmt.Sprintf("--%s must be a positive numeric id", flagName)}
+	}
+	return id, nil
 }
 
 // issueCreateCmd: paimos issue create --project PAI --type ticket --title "..." [flags]
@@ -150,7 +160,11 @@ Use --dry-run to print the request payload without hitting the API.`,
 				body["parent_id"] = pid
 			}
 			if assignee != "" {
-				body["assignee_id"] = assignee
+				aid, err := parsePositiveInt64Flag("assignee", assignee)
+				if err != nil {
+					return err
+				}
+				body["assignee_id"] = aid
 			}
 
 			if dryRun {
@@ -309,7 +323,11 @@ Use --dry-run to print the payload without sending.`,
 				body["parent_id"] = pid
 			}
 			if assignee != "" {
-				body["assignee_id"] = assignee
+				aid, err := parsePositiveInt64Flag("assignee", assignee)
+				if err != nil {
+					return err
+				}
+				body["assignee_id"] = aid
 			}
 			if len(body) == 0 && closeNoteVal == "" {
 				return &usageError{msg: "nothing to update — pass at least one field"}

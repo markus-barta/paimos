@@ -8,6 +8,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,6 +156,162 @@ func TestReadMultilineInput_Stdin(t *testing.T) {
 // needs a fuzzy compare.
 func containsFold(haystack, needle string) bool {
 	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
+}
+
+func executeCLIForTest(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+
+	oldStdout, oldStderr := stdout, stderr
+	oldInstance, oldJSON, oldConfigPath := flagInstance, flagJSON, flagConfigPath
+	stdout, stderr = &out, &errOut
+	flagInstance, flagJSON, flagConfigPath = "", false, ""
+	t.Cleanup(func() {
+		stdout, stderr = oldStdout, oldStderr
+		flagInstance, flagJSON, flagConfigPath = oldInstance, oldJSON, oldConfigPath
+	})
+
+	cmd := rootCmd()
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), errOut.String(), err
+}
+
+func TestParsePositiveInt64Flag(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    int64
+		wantErr bool
+	}{
+		{name: "plain", raw: "2", want: 2},
+		{name: "trim", raw: " 42 ", want: 42},
+		{name: "zero", raw: "0", wantErr: true},
+		{name: "negative", raw: "-1", wantErr: true},
+		{name: "text", raw: "mba", wantErr: true},
+		{name: "blank", raw: " ", wantErr: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := parsePositiveInt64Flag("assignee", c.raw)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("err=%v wantErr=%v", err, c.wantErr)
+			}
+			if c.wantErr {
+				if !containsFold(err.Error(), "positive numeric id") {
+					t.Errorf("err=%q, want positive numeric id", err.Error())
+				}
+				return
+			}
+			if got != c.want {
+				t.Errorf("got=%d, want=%d", got, c.want)
+			}
+		})
+	}
+}
+
+func TestIssueUpdateDryRun_AssigneeIDIsNumeric(t *testing.T) {
+	t.Setenv(envURL, "https://example.test")
+	t.Setenv(envAPIKey, "test_key")
+
+	out, _, err := executeCLIForTest(t,
+		"--json",
+		"issue", "update", "PAI-1",
+		"--status", "qa",
+		"--assignee", "2",
+		"--dry-run",
+	)
+	if err != nil {
+		t.Fatalf("executeCLIForTest: %v", err)
+	}
+	var got struct {
+		Body map[string]any `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("decode dry-run JSON: %v\n%s", err, out)
+	}
+	if _, ok := got.Body["assignee_id"].(float64); !ok {
+		t.Fatalf("assignee_id type = %T, want JSON number (body=%v)", got.Body["assignee_id"], got.Body)
+	}
+	if got.Body["assignee_id"].(float64) != 2 {
+		t.Errorf("assignee_id=%v, want 2", got.Body["assignee_id"])
+	}
+	if got.Body["status"] != "qa" {
+		t.Errorf("status=%v, want qa", got.Body["status"])
+	}
+}
+
+func TestIssueUpdateCombinedRequest_AssigneeIDIsNumeric(t *testing.T) {
+	var received map[string]any
+	var handlerErr string
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPut || r.URL.Path != "/api/issues/PAI-1" {
+			handlerErr = fmt.Sprintf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.Error(w, `{"error":"unexpected request"}`, http.StatusNotFound)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			handlerErr = fmt.Sprintf("decode request: %v", err)
+			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issue_key":"PAI-1","title":"x"}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	if _, _, err := executeCLIForTest(t,
+		"issue", "update", "PAI-1",
+		"--status", "qa",
+		"--assignee", "2",
+	); err != nil {
+		t.Fatalf("executeCLIForTest: %v", err)
+	}
+	if handlerErr != "" {
+		t.Fatal(handlerErr)
+	}
+	if requests != 1 {
+		t.Fatalf("requests=%d, want 1", requests)
+	}
+	if received["status"] != "qa" {
+		t.Errorf("status=%v, want qa", received["status"])
+	}
+	if _, ok := received["assignee_id"].(float64); !ok {
+		t.Fatalf("assignee_id type = %T, want JSON number (body=%v)", received["assignee_id"], received)
+	}
+	if received["assignee_id"].(float64) != 2 {
+		t.Errorf("assignee_id=%v, want 2", received["assignee_id"])
+	}
+}
+
+func TestIssueUpdateInvalidAssigneeFailsBeforeRequest(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, `{"error":"should not be called"}`, http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	_, _, err := executeCLIForTest(t,
+		"issue", "update", "PAI-1",
+		"--status", "qa",
+		"--assignee", "mba",
+	)
+	if err == nil {
+		t.Fatal("expected invalid assignee error")
+	}
+	if _, ok := err.(*usageError); !ok {
+		t.Fatalf("err type=%T, want *usageError (%v)", err, err)
+	}
+	if requests != 0 {
+		t.Fatalf("requests=%d, want 0", requests)
+	}
 }
 
 // ── PAI-260: issue tag add/rm helpers ────────────────────────────────
