@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] — 2026-05-04
+
+### Fixed
+
+- [PAI-313](https://pm.barta.cm/projects/6/issues/PAI-313) — **Scoped issue search validation hardening.** Search palette requests now invalidate in-flight responses immediately when query or scope changes, project-detail loads are sequence-guarded against stale route responses, and issue-list freshness priming only suppresses the exact path it just primed.
+
 ## [2.5.0] — 2026-05-04
 
 ### Changed
