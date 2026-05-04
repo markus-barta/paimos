@@ -277,6 +277,70 @@ func TestResolveInstance_KeyHydration(t *testing.T) {
 	})
 }
 
+func TestResolveActiveInstance_EnvPairBypassesConfig(t *testing.T) {
+	withConfigDir(t, func(path string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(":\n"), 0o600); err != nil {
+			t.Fatalf("write invalid config: %v", err)
+		}
+		t.Setenv(envURL, "pm.barta.cm")
+		t.Setenv(envAPIKey, "env_key")
+
+		name, inst, err := resolveActiveInstance()
+		if err != nil {
+			t.Fatalf("resolveActiveInstance: %v", err)
+		}
+		if name != "env" {
+			t.Errorf("name=%q, want env", name)
+		}
+		if inst.URL != "https://pm.barta.cm" {
+			t.Errorf("URL=%q, want https://pm.barta.cm", inst.URL)
+		}
+		if inst.APIKey != "env_key" {
+			t.Errorf("APIKey=%q, want env_key", inst.APIKey)
+		}
+		if inst.URLSource != "env:"+envURL || inst.APIKeySource != "env:"+envAPIKey {
+			t.Errorf("sources url=%q key=%q", inst.URLSource, inst.APIKeySource)
+		}
+	})
+}
+
+func TestResolveActiveInstance_PPMEnvPair(t *testing.T) {
+	t.Setenv(envURL, "")
+	t.Setenv(envAPIKey, "")
+	t.Setenv(envPPMURL, "https://pm.barta.cm")
+	t.Setenv(envPPMAPIKey, "ppm_key")
+
+	name, inst, err := resolveActiveInstance()
+	if err != nil {
+		t.Fatalf("resolveActiveInstance: %v", err)
+	}
+	if name != "ppm-env" {
+		t.Errorf("name=%q, want ppm-env", name)
+	}
+	if inst.APIKey != "ppm_key" {
+		t.Errorf("APIKey=%q, want ppm_key", inst.APIKey)
+	}
+	if inst.URLSource != "env:"+envPPMURL || inst.APIKeySource != "env:"+envPPMAPIKey {
+		t.Errorf("sources url=%q key=%q", inst.URLSource, inst.APIKeySource)
+	}
+}
+
+func TestResolveEnvInstance_RequiresMatchingKey(t *testing.T) {
+	t.Setenv(envURL, "https://pm.barta.cm")
+	t.Setenv(envAPIKey, "")
+
+	_, _, _, err := resolveEnvInstance()
+	if err == nil {
+		t.Fatal("expected error when PAIMOS_URL is set without PAIMOS_API_KEY")
+	}
+	if !strings.Contains(err.Error(), envAPIKey) {
+		t.Errorf("error %q does not mention %s", err.Error(), envAPIKey)
+	}
+}
+
 // TestKeyringDelete_Idempotent — `paimos auth logout` runs delete
 // blindly; a missing entry must not surface as an error.
 func TestKeyringDelete_Idempotent(t *testing.T) {

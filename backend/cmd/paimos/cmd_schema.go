@@ -149,11 +149,7 @@ func schemaCmd() *cobra.Command {
 		Use:   "schema",
 		Short: "Show / refresh the cached API schema",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
-			if err != nil {
-				return err
-			}
-			instanceName, inst, err := resolveInstance(cfg)
+			instanceName, inst, err := resolveActiveInstance()
 			if err != nil {
 				return err
 			}
@@ -181,6 +177,9 @@ func schemaCmd() *cobra.Command {
 				return emitJSON(sch)
 			}
 			fmt.Fprintf(stdout, "instance: %s (%s)\n", instanceName, inst.URL)
+			if inst.URLSource != "" || inst.APIKeySource != "" {
+				fmt.Fprintf(stdout, "source:   url=%s credential=%s\n", inst.URLSource, inst.APIKeySource)
+			}
 			fmt.Fprintf(stdout, "version:  %s\n", sch.Version)
 			fmt.Fprintf(stdout, "fetched:  %s\n", sch.FetchedAt)
 			for name, values := range sch.Enums {
@@ -225,19 +224,14 @@ Exit codes:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var results []doctorCheck
 
-			// 1. Config readable + instance resolvable.
-			cfg, err := loadConfig()
-			if err != nil {
-				results = append(results, doctorCheck{Name: "config", Status: "fail", Detail: err.Error()})
-				return renderDoctor(results)
-			}
-			instanceName, inst, err := resolveInstance(cfg)
+			// 1. Config/env readable + instance resolvable.
+			instanceName, inst, err := resolveActiveInstance()
 			if err != nil {
 				results = append(results, doctorCheck{Name: "config", Status: "fail", Detail: err.Error()})
 				return renderDoctor(results)
 			}
 			results = append(results, doctorCheck{Name: "config", Status: "ok",
-				Detail: fmt.Sprintf("%s (%s)", instanceName, inst.URL)})
+				Detail: resolvedInstanceDetail(instanceName, inst)})
 
 			client := newClient(inst)
 

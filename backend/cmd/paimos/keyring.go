@@ -20,10 +20,21 @@ import (
 // stable: changing it would orphan everyone's stored credentials.
 const keyringServiceName = "paimos-cli"
 
+// envURL/envAPIKey provide the generic non-interactive override path.
+// When PAIMOS_URL is set, PAIMOS_API_KEY is required and the CLI bypasses
+// ~/.paimos/config.yaml + keyring instance resolution entirely.
+const envURL = "PAIMOS_URL"
+
 // envAPIKey lets headless / CI environments without a session keyring
-// supply the key directly. When set, it bypasses the keyring entirely
-// for the duration of the process.
+// supply the key directly. With PAIMOS_URL it selects an env-only
+// instance; without PAIMOS_URL it overrides the keyring lookup for the
+// configured instance.
 const envAPIKey = "PAIMOS_API_KEY"
+
+// PPM_* aliases match the personal-production secret files agents use
+// while working against pm.barta.cm.
+const envPPMURL = "PPM_URL"
+const envPPMAPIKey = "PPMAPIKEY"
 
 // keyringSet stores the API key for an instance in the OS keyring
 // (Keychain on macOS, Secret Service / KWallet on Linux, Credential
@@ -73,16 +84,16 @@ func keyringDelete(instance string) error {
 //
 // Backend errors (e.g. dbus refusing to talk) propagate; only "no such
 // entry" falls through to the empty-string case.
-func resolveAPIKey(instance string) (string, error) {
+func resolveAPIKey(instance string) (string, string, error) {
 	if v := os.Getenv(envAPIKey); v != "" {
-		return v, nil
+		return v, "env:" + envAPIKey, nil
 	}
 	key, ok, err := keyringGet(instance)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if !ok {
-		return "", nil
+		return "", "", nil
 	}
-	return key, nil
+	return key, "keyring:" + keyringServiceName + "/" + instance, nil
 }

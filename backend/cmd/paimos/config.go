@@ -11,13 +11,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Config is the CLI's persistent configuration. Stored at
-// $XDG_CONFIG_HOME/paimos/config.yaml (or ~/.paimos/config.yaml) with
-// mode 0600 since it holds API keys.
+// ~/.paimos/config.yaml with mode 0600. API keys live in the OS
+// keyring, but the restrictive mode is cheap defence-in-depth.
 type Config struct {
 	DefaultInstance string                    `yaml:"default_instance"`
 	Instances       map[string]InstanceConfig `yaml:"instances"`
@@ -31,8 +32,10 @@ type Config struct {
 // pre-keyring versions still parse cleanly during the one-time
 // migration in loadConfig.
 type InstanceConfig struct {
-	URL    string `yaml:"url"`
-	APIKey string `yaml:"api_key,omitempty"`
+	URL          string `yaml:"url"`
+	APIKey       string `yaml:"api_key,omitempty"`
+	URLSource    string `yaml:"-"`
+	APIKeySource string `yaml:"-"`
 }
 
 // defaultConfigPath returns ~/.paimos/config.yaml (cross-platform via
@@ -90,6 +93,13 @@ func loadConfig() (Config, error) {
 // Called once per loadConfig; a no-op when the keys are already gone
 // (the common steady-state case after the first migration).
 func migrateAPIKeysToKeyring(cfg *Config, path string) error {
+	if os.Getenv(envAPIKey) != "" {
+		for name, inst := range cfg.Instances {
+			inst.APIKey = ""
+			cfg.Instances[name] = inst
+		}
+		return nil
+	}
 	migrated := make([]string, 0)
 	for name, inst := range cfg.Instances {
 		if inst.APIKey == "" {
@@ -168,6 +178,17 @@ func saveConfig(cfg Config) error {
 	return nil
 }
 
+func normalizeInstanceURL(raw string) string {
+	u := strings.TrimSpace(raw)
+	if u == "" {
+		return u
+	}
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		u = "https://" + u
+	}
+	return u
+}
+
 // pickInstance picks the instance to use for a command without loading
 // its API key. Precedence:
 //
@@ -218,7 +239,7 @@ func resolveInstance(cfg Config) (string, InstanceConfig, error) {
 	if err != nil {
 		return name, inst, err
 	}
-	key, err := resolveAPIKey(name)
+	key, keySource, err := resolveAPIKey(name)
 	if err != nil {
 		return name, inst, err
 	}
@@ -228,7 +249,69 @@ func resolveInstance(cfg Config) (string, InstanceConfig, error) {
 		}
 	}
 	inst.APIKey = key
+	if inst.URLSource == "" {
+		inst.URLSource = "config:" + name
+	}
+	inst.APIKeySource = keySource
 	return name, inst, nil
+}
+
+func resolveEnvInstance() (string, InstanceConfig, bool, error) {
+	if rawURL := strings.TrimSpace(os.Getenv(envURL)); rawURL != "" {
+		key := strings.TrimSpace(os.Getenv(envAPIKey))
+		if key == "" {
+			return "", InstanceConfig{}, true, &usageError{
+				msg: fmt.Sprintf("%s is set but %s is missing", envURL, envAPIKey),
+			}
+		}
+		return "env", InstanceConfig{
+			URL:          normalizeInstanceURL(rawURL),
+			APIKey:       key,
+			URLSource:    "env:" + envURL,
+			APIKeySource: "env:" + envAPIKey,
+		}, true, nil
+	}
+	if rawURL := strings.TrimSpace(os.Getenv(envPPMURL)); rawURL != "" {
+		key := strings.TrimSpace(os.Getenv(envPPMAPIKey))
+		if key == "" {
+			return "", InstanceConfig{}, true, &usageError{
+				msg: fmt.Sprintf("%s is set but %s is missing", envPPMURL, envPPMAPIKey),
+			}
+		}
+		return "ppm-env", InstanceConfig{
+			URL:          normalizeInstanceURL(rawURL),
+			APIKey:       key,
+			URLSource:    "env:" + envPPMURL,
+			APIKeySource: "env:" + envPPMAPIKey,
+		}, true, nil
+	}
+	return "", InstanceConfig{}, false, nil
+}
+
+func resolveActiveInstance() (string, InstanceConfig, error) {
+	if name, inst, ok, err := resolveEnvInstance(); ok || err != nil {
+		return name, inst, err
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return "", InstanceConfig{}, err
+	}
+	return resolveInstance(cfg)
+}
+
+func resolvedInstanceDetail(name string, inst InstanceConfig) string {
+	detail := fmt.Sprintf("%s (%s)", name, inst.URL)
+	var meta []string
+	if inst.URLSource != "" {
+		meta = append(meta, "url="+inst.URLSource)
+	}
+	if inst.APIKeySource != "" {
+		meta = append(meta, "credential="+inst.APIKeySource)
+	}
+	if len(meta) > 0 {
+		detail += " [" + strings.Join(meta, ", ") + "]"
+	}
+	return detail
 }
 
 // listInstances returns a comma-separated list of configured instance

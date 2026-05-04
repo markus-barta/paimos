@@ -73,11 +73,7 @@ func projectListCmd() *cobra.Command {
 // All read commands share this preamble — keep it in one place so the
 // error message stays consistent.
 func instanceClient() (*Client, error) {
-	cfg, err := loadConfig()
-	if err != nil {
-		return nil, err
-	}
-	_, inst, err := resolveInstance(cfg)
+	_, inst, err := resolveActiveInstance()
 	if err != nil {
 		return nil, err
 	}

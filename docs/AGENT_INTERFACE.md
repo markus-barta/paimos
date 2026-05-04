@@ -52,12 +52,30 @@ Use `--instance <name>` on any command to switch, or rely on `default_instance`.
 
 #### Headless / CI
 
-If there's no session keyring available (CI runners, containers, headless Linux without `gnome-keyring` / `kwalletd`), set `PAIMOS_API_KEY` in the environment. It overrides the keyring lookup for the lifetime of the process — no `paimos auth login` needed:
+If there's no session keyring available (CI runners, containers, headless Linux without `gnome-keyring` / `kwalletd`), set `PAIMOS_API_KEY` in the environment. With a configured instance, it overrides the keyring lookup for the lifetime of the process:
 
 ```sh
 export PAIMOS_API_KEY="paimos_…"
 paimos issue list --project PAI
 ```
+
+For temporary agent credentials, set both URL and key to bypass `~/.paimos/config.yaml` and the keyring completely:
+
+```sh
+export PAIMOS_URL="https://pm.barta.cm"
+export PAIMOS_API_KEY="paimos_…"
+paimos doctor
+```
+
+The personal PPM aliases are also supported when sourcing local secret files:
+
+```sh
+export PPM_URL="https://pm.barta.cm"
+export PPMAPIKEY="paimos_…"
+paimos issue list --project PAI
+```
+
+Precedence is: `PAIMOS_URL` + `PAIMOS_API_KEY`, then `PPM_URL` + `PPMAPIKEY`, then configured instances (`--instance`, `default_instance`, sole instance). Without an env URL, `PAIMOS_API_KEY` remains a credential-only override for the configured instance.
 
 #### Log out
 
@@ -77,7 +95,7 @@ If you upgrade from an older `paimos` that stored `api_key:` inline in `config.y
 
 ```sh
 paimos doctor
-#   ✓ config   ok — ppm (https://pm.barta.cm)
+#   ✓ config   ok — ppm (https://pm.barta.cm) [url=config:ppm, credential=keyring:paimos-cli/ppm]
 #   ✓ health   ok
 #   ✓ auth     ok — user=mba
 #   ✓ schema   ok — version=1.1.0

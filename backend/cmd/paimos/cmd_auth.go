@@ -45,7 +45,8 @@ The URL and instance name are written to ~/.paimos/config.yaml; the
 API key is stored in the OS keyring (Keychain on macOS, Secret Service
 or KWallet on Linux, Credential Manager on Windows). Set
 PAIMOS_API_KEY in environments without a session keyring (CI,
-headless boxes) — it overrides the keyring lookup.
+headless boxes) — it overrides the keyring lookup. Set PAIMOS_URL +
+PAIMOS_API_KEY together to bypass config/keyring resolution entirely.
 
 Prompts for URL + API key unless --url and --api-key are passed
 (useful for scripting). The first configured instance becomes
@@ -63,9 +64,7 @@ default_instance automatically.`,
 					urlFlag = "https://pm.barta.cm"
 				}
 			}
-			if !strings.HasPrefix(urlFlag, "http://") && !strings.HasPrefix(urlFlag, "https://") {
-				urlFlag = "https://" + urlFlag
-			}
+			urlFlag = normalizeInstanceURL(urlFlag)
 
 			if keyFlag == "" {
 				fmt.Fprintf(stdout, "API key (input hidden): ")
@@ -149,11 +148,7 @@ func authWhoAmICmd() *cobra.Command {
 		Use:   "whoami",
 		Short: "Show the identity behind the current API key",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
-			if err != nil {
-				return err
-			}
-			name, inst, err := resolveInstance(cfg)
+			name, inst, err := resolveActiveInstance()
 			if err != nil {
 				return err
 			}
@@ -168,13 +163,18 @@ func authWhoAmICmd() *cobra.Command {
 			_ = json.Unmarshal(body, &me)
 			if flagJSON {
 				out := map[string]any{
-					"instance": name,
-					"url":      inst.URL,
-					"user":     me.User,
+					"instance":          name,
+					"url":               inst.URL,
+					"url_source":        inst.URLSource,
+					"credential_source": inst.APIKeySource,
+					"user":              me.User,
 				}
 				return emitJSON(out)
 			}
 			fmt.Fprintf(stdout, "instance: %s (%s)\n", name, inst.URL)
+			if inst.URLSource != "" || inst.APIKeySource != "" {
+				fmt.Fprintf(stdout, "source:   url=%s credential=%s\n", inst.URLSource, inst.APIKeySource)
+			}
 			fmt.Fprintf(stdout, "user:     %v (%v)\n", me.User["username"], me.User["role"])
 			return nil
 		},
@@ -183,8 +183,8 @@ func authWhoAmICmd() *cobra.Command {
 
 func authLogoutCmd() *cobra.Command {
 	var (
-		nameFlag   string
-		removeCfg  bool
+		nameFlag  string
+		removeCfg bool
 	)
 	c := &cobra.Command{
 		Use:   "logout",
@@ -235,11 +235,11 @@ Idempotent: missing keyring entries are not an error.`,
 			}
 			if flagJSON {
 				return emitJSON(map[string]any{
-					"ok":              true,
-					"instance":        target,
-					"keyring":         keyringServiceName,
-					"removed_config":  removeCfg,
-					"config":          path,
+					"ok":             true,
+					"instance":       target,
+					"keyring":        keyringServiceName,
+					"removed_config": removeCfg,
+					"config":         path,
 				})
 			}
 			fmt.Fprintf(stdout, "✓ removed keyring entry for %q (service %q)\n", target, keyringServiceName)
