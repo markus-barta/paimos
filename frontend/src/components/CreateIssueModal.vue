@@ -19,6 +19,7 @@ import { useRecentProjects } from '@/composables/useRecentProjects'
 import { useTimeUnit } from '@/composables/useTimeUnit'
 import { useAttachmentUploads } from '@/composables/useAttachmentUploads'
 import { EPIC_COLOR_PALETTE } from '@/config/epicColors'
+import { assignableIssueUsers } from '@/utils/users'
 // PAI-146: AI text optimization on multiline fields. issue_id is 0
 // here (no row exists yet); the backend skips context lookup for that
 // sentinel and works on the source text alone.
@@ -133,7 +134,7 @@ const formAssigneeStr = computed({
   set: (v: string) => { form.value.assignee_id = v ? Number(v) : null },
 })
 
-const assignableUsers = computed(() => users.value.filter(u => u.role !== 'external'))
+const assignableUsers = computed(() => assignableIssueUsers(users.value))
 
 const assigneeFormOptions = computed<MetaOption[]>(() => [
   { value: '', label: 'Unassigned' },

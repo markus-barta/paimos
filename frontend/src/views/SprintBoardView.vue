@@ -8,6 +8,7 @@ import IssueSidePanel from '@/components/IssueSidePanel.vue'
 import { api, errMsg } from '@/api/client'
 import type { Issue, Sprint, User } from '@/types'
 import { useConfirm } from '@/composables/useConfirm'
+import { assignableIssueUsers } from '@/utils/users'
 import {
   notifySidePanelOpened,
   onOtherSidePanelOpened,
@@ -18,6 +19,7 @@ const route        = useRoute()
 const { confirm }  = useConfirm()
 const sprints      = ref<Sprint[]>([])
 const allUsers     = ref<User[]>([])
+const assignableUsers = computed(() => assignableIssueUsers(allUsers.value))
 const loading      = ref(true)
 const error        = ref('')
 
@@ -780,7 +782,7 @@ function sprintLabel(s: Sprint): string {
               <button class="sb-assignee-opt" @click="assignUser(ticket.id, null)">
                 <span class="sb-assignee-opt-name">Unassigned</span>
               </button>
-              <button v-for="u in allUsers" :key="u.id" class="sb-assignee-opt" :class="{ 'sb-assignee-opt--active': ticket.assignee_id === u.id }" @click="assignUser(ticket.id, u.id)">
+              <button v-for="u in assignableUsers" :key="u.id" class="sb-assignee-opt" :class="{ 'sb-assignee-opt--active': ticket.assignee_id === u.id }" @click="assignUser(ticket.id, u.id)">
                 <span class="sb-assignee-opt-initials">{{ u.username.slice(0,2).toUpperCase() }}</span>
                 <span class="sb-assignee-opt-name">{{ u.username }}</span>
               </button>
@@ -825,7 +827,7 @@ function sprintLabel(s: Sprint): string {
                   <button class="sb-assignee-opt" @click="assignUser(task.id, null)">
                     <span class="sb-assignee-opt-name">Unassigned</span>
                   </button>
-                  <button v-for="u in allUsers" :key="u.id" class="sb-assignee-opt" :class="{ 'sb-assignee-opt--active': task.assignee_id === u.id }" @click="assignUser(task.id, u.id)">
+                  <button v-for="u in assignableUsers" :key="u.id" class="sb-assignee-opt" :class="{ 'sb-assignee-opt--active': task.assignee_id === u.id }" @click="assignUser(task.id, u.id)">
                     <span class="sb-assignee-opt-initials">{{ u.username.slice(0,2).toUpperCase() }}</span>
                     <span class="sb-assignee-opt-name">{{ u.username }}</span>
                   </button>

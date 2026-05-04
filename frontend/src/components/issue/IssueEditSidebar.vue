@@ -8,7 +8,8 @@ import NumericInput from '@/components/NumericInput.vue'
 import TagSelector from '@/components/TagSelector.vue'
 import SprintChips from '@/components/issue/SprintChips.vue'
 import { EPIC_COLOR_PALETTE } from '@/config/epicColors'
-import type { Issue, Tag, Sprint } from '@/types'
+import type { Issue, Tag, Sprint, User } from '@/types'
+import { assignableIssueUsers } from '@/utils/users'
 import {
   TYPE_SVGS,
   STATUS_DOT_STYLE, STATUS_LABEL,
@@ -39,7 +40,7 @@ const props = defineProps<{
   allTags: Tag[]
   issueTagIds: number[]
   validParents: Issue[]
-  users: { id: number; username: string; role: string }[]
+  users: Pick<User, 'id' | 'username' | 'role' | 'status'>[]
   assignedSprints: Sprint[]
   typeChangeWarning: string
   linkedBillingType: string | null
@@ -96,7 +97,7 @@ const parentOptions = computed<MetaOption[]>(() => {
 
 const assigneeOptions = computed<MetaOption[]>(() => [
   { value: '', label: 'Unassigned' },
-  ...props.users.filter(u => u.role !== 'external').map(u => ({ value: String(u.id), label: u.username })),
+  ...assignableIssueUsers(props.users).map(u => ({ value: String(u.id), label: u.username })),
 ])
 
 const formParentStr = computed({

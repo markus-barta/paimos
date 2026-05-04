@@ -30,6 +30,7 @@ import {
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 import { lsFiltersKey } from '@/constants/storage'
+import { assignableIssueUsers } from '@/utils/users'
 
 // ── Negation helpers ────────────────────────────────────────────────────────
 export const NEG = '!'
@@ -222,7 +223,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   const complexTab       = ref<ComplexTabKey>('assignee')
   const complexTabSearch = ref('')
 
-  const assignableUsers = computed(() => opts.users.value.filter(u => u.role !== 'external'))
+  const assignableUsers = computed(() => assignableIssueUsers(opts.users.value))
 
   const availableTags = computed(() => {
     if (opts.allTags?.value?.length) return [...opts.allTags.value].sort((a, b) => a.name.localeCompare(b.name))

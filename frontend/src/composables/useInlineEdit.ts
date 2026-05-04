@@ -28,6 +28,7 @@ import {
 } from '@/composables/useIssueDisplay'
 import type { User } from '@/types'
 import { api, errMsg } from '@/api/client'
+import { assignableIssueUsers } from '@/utils/users'
 
 export type EditableField =
   | 'status' | 'priority' | 'cost_unit' | 'release' | 'assignee_id' | 'sprint'
@@ -210,7 +211,7 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
   function inlineAssigneeOptions(): MetaOption[] {
     return [
       { value: '', label: 'Unassigned' },
-      ...opts.users.value.filter(u => u.role !== 'external').map(u => ({ value: String(u.id), label: u.username })),
+      ...assignableIssueUsers(opts.users.value).map(u => ({ value: String(u.id), label: u.username })),
     ]
   }
 

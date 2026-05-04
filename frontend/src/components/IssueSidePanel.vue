@@ -56,6 +56,7 @@ import {
 import { undoMutationByRequestId } from "@/services/aiPaperTrail";
 import { useUndoStore } from "@/stores/undo";
 import { addIssueRelation } from "@/services/issueRelations";
+import { assignableIssueUsers } from "@/utils/users";
 
 const ctx = useIssueContext(true);
 
@@ -157,8 +158,7 @@ const PRIORITY_OPTIONS: MetaOption[] = [
 ];
 const assigneeOptions = computed<MetaOption[]>(() => [
   { value: "", label: "Unassigned" },
-  ...users.value
-    .filter((u) => u.role !== "external")
+  ...assignableIssueUsers(users.value)
     .map((u) => ({ value: String(u.id), label: u.username })),
 ]);
 

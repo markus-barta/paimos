@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import AppModal from '@/components/AppModal.vue'
-import type { Issue, Sprint, User } from '@/types'
+import type { Issue, Sprint } from '@/types'
 import { api, errMsg } from '@/api/client'
 import { useIssueContext } from '@/composables/useIssueContext'
+import { assignableIssueUsers } from '@/utils/users'
 
 const { users, sprints, costUnits, releases } = useIssueContext()
 
@@ -28,7 +29,7 @@ const bulkSprintSearch   = ref('')
 const bulkChanging       = ref(false)
 const bulkChangeError    = ref('')
 
-const assignableUsers = computed(() => users.value.filter(u => u.role !== 'external'))
+const assignableUsers = computed(() => assignableIssueUsers(users.value))
 
 const BULK_FIELDS = computed(() => {
   const fields = [
