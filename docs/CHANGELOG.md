@@ -5,6 +5,12 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.11] — 2026-05-04
+
+### Added
+
+- [PAI-312](https://pm.barta.cm/projects/6/issues/PAI-312) — **Issue list counters now include an inline `show all` action.** When a filtered flat table is capped by progressive rendering, the muted toolbar copy reads like `443 issues · showing 100 · show all`; clicking the link renders every filtered row immediately without adding another toolbar button. Tree view no longer shows the misleading progressive-render counter because it already renders the full tree.
+
 ## [2.4.10] — 2026-05-04
 
 ### Fixed
