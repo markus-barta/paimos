@@ -16,11 +16,11 @@
 package models
 
 type User struct {
-	ID         int64  `json:"id"`
-	Username   string `json:"username"`
-	Role       string `json:"role"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
 	// Profile fields (migration 25)
 	Nickname   string `json:"nickname"`
 	FirstName  string `json:"first_name"`
@@ -28,8 +28,8 @@ type User struct {
 	Email      string `json:"email"`
 	AvatarPath string `json:"avatar_path"` // relative path, served under /static/
 	// Editor preferences (migration 29)
-	MarkdownDefault  bool `json:"markdown_default"`
-	MonospaceFields  bool `json:"monospace_fields"`
+	MarkdownDefault bool `json:"markdown_default"`
+	MonospaceFields bool `json:"monospace_fields"`
 	// Recent projects limit (migration 38)
 	RecentProjectsLimit int `json:"recent_projects_limit"`
 	// Internal hourly rate (migration 39)
@@ -45,6 +45,9 @@ type User struct {
 	Timezone string `json:"timezone"`
 	// Preview hover delay in ms (migration 53) — 0=instant, 1000=default
 	PreviewHoverDelay int `json:"preview_hover_delay"`
+	// Issue list auto-refresh preferences (migration 88)
+	IssueAutoRefreshEnabled         bool `json:"issue_auto_refresh_enabled"`
+	IssueAutoRefreshIntervalSeconds int  `json:"issue_auto_refresh_interval_seconds"`
 	// Last login timestamp (migration 54)
 	LastLoginAt *string `json:"last_login_at"`
 	// 2FA status — populated by admin list/update endpoints

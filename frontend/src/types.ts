@@ -402,6 +402,8 @@ export interface User {
   show_alt_unit_detail: boolean
   locale: string
   preview_hover_delay: number
+  issue_auto_refresh_enabled: boolean
+  issue_auto_refresh_interval_seconds: number
   last_login_at: string | null
   created_at: string
   totp_enabled: boolean

@@ -52,6 +52,9 @@ export interface User {
   timezone: string
   // Preview hover delay in ms (migration 53)
   preview_hover_delay: number
+  // Issue list auto-refresh preferences (migration 88)
+  issue_auto_refresh_enabled: boolean
+  issue_auto_refresh_interval_seconds: number
   // Last login timestamp (migration 54)
   last_login_at: string | null
   // Accruals report preferences (migration 62) — admin-only feature

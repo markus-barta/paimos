@@ -4,9 +4,36 @@ import { createPinia, setActivePinia } from "pinia";
 import AppHeader from "@/components/AppHeader.vue";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 
+const { routerPush, mockAuthStore, mockSearchStore } = vi.hoisted(() => ({
+  routerPush: vi.fn(),
+  mockAuthStore: { user: null as Record<string, unknown> | null },
+  mockSearchStore: (() => {
+    const store = {
+      query: "",
+      setQuery: vi.fn(),
+      clear: vi.fn(),
+    };
+    store.setQuery = vi.fn((q: string) => {
+      store.query = q;
+    });
+    store.clear = vi.fn(() => {
+      store.query = "";
+    });
+    return store;
+  })(),
+}));
+
 vi.mock("vue-router", () => ({
   useRoute: () => ({ path: "/issues" }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: routerPush }),
+}));
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: () => mockAuthStore,
+}));
+
+vi.mock("@/stores/search", () => ({
+  useSearchStore: () => mockSearchStore,
 }));
 
 vi.mock("@/components/AppIcon.vue", () => ({
@@ -38,13 +65,44 @@ vi.mock("@/stores/undo", () => ({
   }),
 }));
 
-async function mountHeader() {
+function fakeUser(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    username: "mba",
+    role: "admin",
+    created_at: "2026-01-01T00:00:00Z",
+    nickname: "",
+    first_name: "",
+    last_name: "",
+    email: "",
+    avatar_path: "",
+    markdown_default: true,
+    monospace_fields: false,
+    recent_projects_limit: 3,
+    internal_rate_hourly: null,
+    show_alt_unit_table: false,
+    show_alt_unit_detail: false,
+    locale: "en",
+    recent_timers_limit: 5,
+    timezone: "auto",
+    preview_hover_delay: 1000,
+    issue_auto_refresh_enabled: true,
+    issue_auto_refresh_interval_seconds: 60,
+    last_login_at: null,
+    accruals_stats_enabled: false,
+    accruals_extra_statuses: "",
+    ...overrides,
+  };
+}
+
+async function mountHeader(userOverrides: Record<string, unknown> = {}) {
   const el = document.createElement("div");
   document.body.appendChild(el);
 
   const pinia = createPinia();
   setActivePinia(pinia);
   const store = useIssueRefreshPromptStore(pinia);
+  mockAuthStore.user = fakeUser(userOverrides);
 
   const app = createApp(AppHeader);
   app.use(pinia);
@@ -85,10 +143,18 @@ async function flushCenterSwapTransition() {
   await flushDomUpdate();
 }
 
+async function flushCenterSwapTransitionWithFakeTimers() {
+  await nextTick();
+  vi.advanceTimersByTime(180);
+  await nextTick();
+}
+
 describe("AppHeader issue refresh prompt", () => {
   afterEach(() => {
+    vi.useRealTimers();
+    mockAuthStore.user = null;
+    mockSearchStore.query = "";
     document.body.innerHTML = "";
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -123,6 +189,75 @@ describe("AppHeader issue refresh prompt", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(refresh).toHaveBeenCalledTimes(1);
+
+    await mounted.unmount();
+  });
+
+  it("shows a muted countdown that opens the account preference", async () => {
+    const mounted = await mountHeader();
+
+    mounted.store.show(null, vi.fn());
+    await flushCenterSwapTransition();
+
+    const countdown = mounted.el.querySelector<HTMLButtonElement>(
+      ".ah-refresh-countdown",
+    );
+    expect(countdown?.textContent).toContain("(refreshing in 60s)");
+    expect(
+      countdown?.querySelector(".ah-refresh-countdown-icon")?.getAttribute("data-icon"),
+    ).toBe("settings");
+
+    countdown?.click();
+
+    expect(routerPush).toHaveBeenCalledWith({
+      path: "/settings",
+      query: { tab: "account", focus: "issue-auto-refresh" },
+    });
+
+    await mounted.unmount();
+  });
+
+  it("counts down in ten second steps and triggers the refresh", async () => {
+    vi.useFakeTimers();
+    const mounted = await mountHeader();
+    const refresh = vi.fn();
+
+    mounted.store.show(null, refresh);
+    await flushCenterSwapTransitionWithFakeTimers();
+
+    expect(
+      mounted.el.querySelector(".ah-refresh-countdown")?.textContent,
+    ).toContain("(refreshing in 60s)");
+
+    vi.advanceTimersByTime(10_000);
+    await nextTick();
+
+    expect(
+      mounted.el.querySelector(".ah-refresh-countdown")?.textContent,
+    ).toContain("(refreshing in 50s)");
+
+    vi.advanceTimersByTime(50_000);
+    await nextTick();
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await mounted.unmount();
+  });
+
+  it("hides the countdown and skips automatic refresh when disabled", async () => {
+    vi.useFakeTimers();
+    const mounted = await mountHeader({ issue_auto_refresh_enabled: false });
+    const refresh = vi.fn();
+
+    mounted.store.show(null, refresh);
+    await flushCenterSwapTransitionWithFakeTimers();
+
+    expect(mounted.el.querySelector(".ah-refresh-countdown")).toBeFalsy();
+
+    vi.advanceTimersByTime(60_000);
+    await nextTick();
+
+    expect(refresh).not.toHaveBeenCalled();
 
     await mounted.unmount();
   });

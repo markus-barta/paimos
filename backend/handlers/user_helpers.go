@@ -19,7 +19,7 @@ import "github.com/markus-barta/paimos/backend/models"
 
 // userSelectCols is the full column list for the users table (bare names, for
 // direct "SELECT ... FROM users" queries).
-const userSelectCols = `id, username, role, status, created_at, nickname, first_name, last_name, email, avatar_path, markdown_default, monospace_fields, recent_projects_limit, internal_rate_hourly, show_alt_unit_table, show_alt_unit_detail, locale, recent_timers_limit, timezone, preview_hover_delay, last_login_at, accruals_stats_enabled, accruals_extra_statuses`
+const userSelectCols = `id, username, role, status, created_at, nickname, first_name, last_name, email, avatar_path, markdown_default, monospace_fields, recent_projects_limit, internal_rate_hourly, show_alt_unit_table, show_alt_unit_detail, locale, recent_timers_limit, timezone, preview_hover_delay, issue_auto_refresh_enabled, issue_auto_refresh_interval_seconds, last_login_at, accruals_stats_enabled, accruals_extra_statuses`
 
 // userSelectColsWithTOTP appends totp_enabled — used by admin list/update endpoints.
 const userSelectColsWithTOTP = userSelectCols + `, totp_enabled`
@@ -30,7 +30,8 @@ func scanUser(row interface{ Scan(...any) error }, u *models.User) error {
 		&u.Nickname, &u.FirstName, &u.LastName, &u.Email, &u.AvatarPath,
 		&u.MarkdownDefault, &u.MonospaceFields, &u.RecentProjectsLimit,
 		&u.InternalRateHourly, &u.ShowAltUnitTable, &u.ShowAltUnitDetail, &u.Locale,
-		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay, &u.LastLoginAt,
+		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay,
+		&u.IssueAutoRefreshEnabled, &u.IssueAutoRefreshIntervalSeconds, &u.LastLoginAt,
 		&u.AccrualsStatsEnabled, &u.AccrualsExtraStatuses)
 }
 
@@ -40,6 +41,7 @@ func scanUserWithTOTP(row interface{ Scan(...any) error }, u *models.User) error
 		&u.Nickname, &u.FirstName, &u.LastName, &u.Email, &u.AvatarPath,
 		&u.MarkdownDefault, &u.MonospaceFields, &u.RecentProjectsLimit,
 		&u.InternalRateHourly, &u.ShowAltUnitTable, &u.ShowAltUnitDetail, &u.Locale,
-		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay, &u.LastLoginAt,
+		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay,
+		&u.IssueAutoRefreshEnabled, &u.IssueAutoRefreshIntervalSeconds, &u.LastLoginAt,
 		&u.AccrualsStatsEnabled, &u.AccrualsExtraStatuses, &u.TotpEnabled)
 }

@@ -19,8 +19,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,20 +36,22 @@ import (
 func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUser(r)
 	var body struct {
-		FirstName              *string `json:"first_name"`
-		LastName               *string `json:"last_name"`
-		Email                  *string `json:"email"`
-		MarkdownDefault        *bool   `json:"markdown_default"`
-		MonospaceFields        *bool   `json:"monospace_fields"`
-		RecentProjectsLimit    *int    `json:"recent_projects_limit"`
-		RecentTimersLimit      *int    `json:"recent_timers_limit"`
-		Timezone               *string `json:"timezone"`
-		ShowAltUnitTable       *bool   `json:"show_alt_unit_table"`
-		ShowAltUnitDetail      *bool   `json:"show_alt_unit_detail"`
-		Locale                 *string `json:"locale"`
-		PreviewHoverDelay      *int    `json:"preview_hover_delay"`
-		AccrualsStatsEnabled   *bool   `json:"accruals_stats_enabled"`
-		AccrualsExtraStatuses  *string `json:"accruals_extra_statuses"`
+		FirstName               *string `json:"first_name"`
+		LastName                *string `json:"last_name"`
+		Email                   *string `json:"email"`
+		MarkdownDefault         *bool   `json:"markdown_default"`
+		MonospaceFields         *bool   `json:"monospace_fields"`
+		RecentProjectsLimit     *int    `json:"recent_projects_limit"`
+		RecentTimersLimit       *int    `json:"recent_timers_limit"`
+		Timezone                *string `json:"timezone"`
+		ShowAltUnitTable        *bool   `json:"show_alt_unit_table"`
+		ShowAltUnitDetail       *bool   `json:"show_alt_unit_detail"`
+		Locale                  *string `json:"locale"`
+		PreviewHoverDelay       *int    `json:"preview_hover_delay"`
+		IssueAutoRefreshEnabled *bool   `json:"issue_auto_refresh_enabled"`
+		IssueAutoRefreshSeconds *int    `json:"issue_auto_refresh_interval_seconds"`
+		AccrualsStatsEnabled    *bool   `json:"accruals_stats_enabled"`
+		AccrualsExtraStatuses   *string `json:"accruals_extra_statuses"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -60,13 +62,36 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		body.AccrualsStatsEnabled = nil
 		body.AccrualsExtraStatuses = nil
 	}
+	if body.IssueAutoRefreshSeconds != nil && *body.IssueAutoRefreshSeconds < 10 {
+		v := 10
+		body.IssueAutoRefreshSeconds = &v
+	}
 	// Convert *bool to *int for SQLite COALESCE (SQLite has no native bool)
-	var mdDefault, monoFields, altTable, altDetail, accrualsEnabled *int
-	if body.MarkdownDefault != nil { v := boolToInt(*body.MarkdownDefault); mdDefault = &v }
-	if body.MonospaceFields != nil { v := boolToInt(*body.MonospaceFields); monoFields = &v }
-	if body.ShowAltUnitTable != nil { v := boolToInt(*body.ShowAltUnitTable); altTable = &v }
-	if body.ShowAltUnitDetail != nil { v := boolToInt(*body.ShowAltUnitDetail); altDetail = &v }
-	if body.AccrualsStatsEnabled != nil { v := boolToInt(*body.AccrualsStatsEnabled); accrualsEnabled = &v }
+	var mdDefault, monoFields, altTable, altDetail, issueAutoRefreshEnabled, accrualsEnabled *int
+	if body.MarkdownDefault != nil {
+		v := boolToInt(*body.MarkdownDefault)
+		mdDefault = &v
+	}
+	if body.MonospaceFields != nil {
+		v := boolToInt(*body.MonospaceFields)
+		monoFields = &v
+	}
+	if body.ShowAltUnitTable != nil {
+		v := boolToInt(*body.ShowAltUnitTable)
+		altTable = &v
+	}
+	if body.ShowAltUnitDetail != nil {
+		v := boolToInt(*body.ShowAltUnitDetail)
+		altDetail = &v
+	}
+	if body.IssueAutoRefreshEnabled != nil {
+		v := boolToInt(*body.IssueAutoRefreshEnabled)
+		issueAutoRefreshEnabled = &v
+	}
+	if body.AccrualsStatsEnabled != nil {
+		v := boolToInt(*body.AccrualsStatsEnabled)
+		accrualsEnabled = &v
+	}
 
 	_, err := db.DB.Exec(`
 		UPDATE users SET
@@ -82,10 +107,12 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			show_alt_unit_detail    = COALESCE(?, show_alt_unit_detail),
 			locale                  = COALESCE(?, locale),
 			preview_hover_delay     = COALESCE(?, preview_hover_delay),
+			issue_auto_refresh_enabled = COALESCE(?, issue_auto_refresh_enabled),
+			issue_auto_refresh_interval_seconds = COALESCE(?, issue_auto_refresh_interval_seconds),
 			accruals_stats_enabled  = COALESCE(?, accruals_stats_enabled),
 			accruals_extra_statuses = COALESCE(?, accruals_extra_statuses)
 		WHERE id = ?
-	`, body.FirstName, body.LastName, body.Email, mdDefault, monoFields, body.RecentProjectsLimit, body.RecentTimersLimit, body.Timezone, altTable, altDetail, body.Locale, body.PreviewHoverDelay, accrualsEnabled, body.AccrualsExtraStatuses, user.ID)
+	`, body.FirstName, body.LastName, body.Email, mdDefault, monoFields, body.RecentProjectsLimit, body.RecentTimersLimit, body.Timezone, altTable, altDetail, body.Locale, body.PreviewHoverDelay, issueAutoRefreshEnabled, body.IssueAutoRefreshSeconds, accrualsEnabled, body.AccrualsExtraStatuses, user.ID)
 	if err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
@@ -191,7 +218,9 @@ func DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 }
 
 func boolToInt(b bool) int {
-	if b { return 1 }
+	if b {
+		return 1
+	}
 	return 0
 }
 

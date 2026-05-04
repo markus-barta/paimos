@@ -130,8 +130,6 @@ func Middleware(next http.Handler) http.Handler {
 	})
 }
 
-
-
 // scanUser scans the standard user projection into a User struct.
 //
 // IMPORTANT: this list must stay in lock-step with `userSelectCols` AND with the
@@ -150,13 +148,14 @@ func userScanDests(u *models.User) []any {
 		&u.Nickname, &u.FirstName, &u.LastName, &u.Email, &u.AvatarPath,
 		&u.MarkdownDefault, &u.MonospaceFields, &u.RecentProjectsLimit,
 		&u.InternalRateHourly, &u.ShowAltUnitTable, &u.ShowAltUnitDetail, &u.Locale,
-		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay, &u.LastLoginAt,
+		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay,
+		&u.IssueAutoRefreshEnabled, &u.IssueAutoRefreshIntervalSeconds, &u.LastLoginAt,
 		&u.AccrualsStatsEnabled, &u.AccrualsExtraStatuses,
 	}
 }
 
 // userSelectCols is the full qualified column list for the users table.
-const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses`
+const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.issue_auto_refresh_enabled, u.issue_auto_refresh_interval_seconds, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses`
 
 func sessionUser(sessionID string) (*models.User, error) {
 	u, _, _, err := sessionUserAndCSRF(sessionID)
@@ -323,9 +322,9 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 // a dev session for a real one. Always false on production builds
 // (the dev_login_prod stub never sets the context flag).
 type MeResponse struct {
-	User         *models.User   `json:"user"`
-	Access       AccessResponse `json:"access"`
-	ViaDevLogin  bool           `json:"via_dev_login,omitempty"`
+	User        *models.User   `json:"user"`
+	Access      AccessResponse `json:"access"`
+	ViaDevLogin bool           `json:"via_dev_login,omitempty"`
 }
 
 func MeHandler(w http.ResponseWriter, r *http.Request) {

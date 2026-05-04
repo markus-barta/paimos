@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onBeforeUnmount, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, csrfHeaders, errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
@@ -9,7 +10,11 @@ import AppIcon from '@/components/AppIcon.vue'
 import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
 
 const auth = useAuthStore()
+const route = useRoute()
 const { confirm } = useConfirm()
+
+const ISSUE_AUTO_REFRESH_MIN_SECONDS = 10
+const ISSUE_AUTO_REFRESH_DEFAULT_SECONDS = 60
 
 // ── Profile ──────────────────────────────────────────────────────────────────
 const profileForm = ref({
@@ -19,6 +24,8 @@ const profileForm = ref({
   recent_projects_limit: 3,
   recent_timers_limit: 5,
   preview_hover_delay: 1000,
+  issue_auto_refresh_enabled: true,
+  issue_auto_refresh_interval_seconds: ISSUE_AUTO_REFRESH_DEFAULT_SECONDS,
   timezone: 'auto',
   show_alt_unit_table: false,
   show_alt_unit_detail: false,
@@ -31,6 +38,31 @@ const profileOk     = ref(false)
 const avatarUploading = ref(false)
 const avatarError     = ref('')
 const avatarInputRef  = ref<HTMLInputElement | null>(null)
+const issueAutoRefreshPrefRef = ref<HTMLElement | null>(null)
+const issueAutoRefreshToggleRef = ref<HTMLButtonElement | null>(null)
+const issueAutoRefreshFocused = ref(false)
+let issueAutoRefreshFocusTimer: number | null = null
+
+function normalizeIssueAutoRefreshSeconds() {
+  const next = Number(profileForm.value.issue_auto_refresh_interval_seconds)
+  profileForm.value.issue_auto_refresh_interval_seconds = Number.isFinite(next)
+    ? Math.max(ISSUE_AUTO_REFRESH_MIN_SECONDS, Math.round(next))
+    : ISSUE_AUTO_REFRESH_DEFAULT_SECONDS
+}
+
+function focusIssueAutoRefreshPreference() {
+  if (route.query.focus !== 'issue-auto-refresh') return
+  void nextTick(() => {
+    issueAutoRefreshPrefRef.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    issueAutoRefreshToggleRef.value?.focus({ preventScroll: true })
+    issueAutoRefreshFocused.value = true
+    if (issueAutoRefreshFocusTimer !== null) window.clearTimeout(issueAutoRefreshFocusTimer)
+    issueAutoRefreshFocusTimer = window.setTimeout(() => {
+      issueAutoRefreshFocused.value = false
+      issueAutoRefreshFocusTimer = null
+    }, 1800)
+  })
+}
 
 function initProfileForm() {
   if (!auth.user) return
@@ -43,6 +75,8 @@ function initProfileForm() {
     recent_projects_limit: auth.user.recent_projects_limit ?? 3,
     recent_timers_limit: auth.user.recent_timers_limit ?? 5,
     preview_hover_delay: auth.user.preview_hover_delay ?? 1000,
+    issue_auto_refresh_enabled: auth.user.issue_auto_refresh_enabled ?? true,
+    issue_auto_refresh_interval_seconds: auth.user.issue_auto_refresh_interval_seconds ?? ISSUE_AUTO_REFRESH_DEFAULT_SECONDS,
     timezone: auth.user.timezone ?? 'auto',
     show_alt_unit_table: auth.user.show_alt_unit_table ?? false,
     show_alt_unit_detail: auth.user.show_alt_unit_detail ?? false,
@@ -54,6 +88,7 @@ async function saveProfile() {
   profileError.value = ''; profileOk.value = false
   profileSaving.value = true
   try {
+    normalizeIssueAutoRefreshSeconds()
     const updated = await api.patch<typeof auth.user>('/auth/me', profileForm.value)
     auth.user = updated as any
     profileOk.value = true
@@ -192,6 +227,12 @@ async function revokeAPIKey(id: number) {
 }
 async function copyKey(key: string) { await navigator.clipboard.writeText(key) }
 
+watch(() => route.query.focus, focusIssueAutoRefreshPreference, { immediate: true })
+
+onBeforeUnmount(() => {
+  if (issueAutoRefreshFocusTimer !== null) window.clearTimeout(issueAutoRefreshFocusTimer)
+})
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 async function init() {
   initProfileForm()
@@ -290,6 +331,47 @@ init()
           >
             <span class="toggle-thumb" />
           </button>
+        </div>
+
+        <div
+          id="issue-auto-refresh"
+          ref="issueAutoRefreshPrefRef"
+          :class="['pref-composite-row', { 'pref-composite-row--focus': issueAutoRefreshFocused }]"
+        >
+          <div class="pref-toggle-row pref-toggle-row--embedded">
+            <label class="pref-toggle-label" for="pref-issue-auto-refresh">
+              <span class="pref-toggle-title">Auto-refresh changed issue lists</span>
+              <span class="pref-toggle-desc">Refresh stale issue lists after the header countdown reaches zero.</span>
+            </label>
+            <button
+              id="pref-issue-auto-refresh"
+              ref="issueAutoRefreshToggleRef"
+              type="button"
+              :class="['toggle-btn', { 'toggle-btn--on': profileForm.issue_auto_refresh_enabled }]"
+              @click="profileForm.issue_auto_refresh_enabled = !profileForm.issue_auto_refresh_enabled"
+              :aria-pressed="profileForm.issue_auto_refresh_enabled"
+            >
+              <span class="toggle-thumb" />
+            </button>
+          </div>
+
+          <div class="field issue-auto-refresh-delay-field">
+            <label for="pref-issue-auto-refresh-seconds">
+              Refresh delay <span class="label-hint">— seconds, minimum 10</span>
+            </label>
+            <div class="issue-auto-refresh-delay-control">
+              <input
+                id="pref-issue-auto-refresh-seconds"
+                v-model.number="profileForm.issue_auto_refresh_interval_seconds"
+                type="number"
+                min="10"
+                step="10"
+                :disabled="!profileForm.issue_auto_refresh_enabled"
+                @blur="normalizeIssueAutoRefreshSeconds"
+              />
+              <span class="issue-auto-refresh-delay-unit">s</span>
+            </div>
+          </div>
         </div>
 
         <div class="section-divider">Duration display</div>
@@ -584,11 +666,51 @@ init()
   display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
   padding: .6rem 0; border-bottom: 1px solid var(--border);
 }
+.pref-composite-row {
+  grid-column: 1 / -1;
+  padding: .6rem 0 .75rem;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px;
+  scroll-margin-top: 72px;
+  transition: background .18s, box-shadow .18s, margin .18s, padding .18s;
+}
+.pref-composite-row--focus {
+  margin-left: -.5rem;
+  margin-right: -.5rem;
+  padding-left: .5rem;
+  padding-right: .5rem;
+  background: color-mix(in srgb, var(--bp-blue) 7%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bp-blue) 24%, transparent);
+}
+.pref-toggle-row--embedded {
+  padding: 0;
+  border-bottom: none;
+}
 .pref-toggle-row:last-of-type { border-bottom: none; }
 .pref-toggle-label { flex: 1; cursor: pointer; }
 .pref-toggle-title { display: block; font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: .15rem; }
 .pref-toggle-desc  { display: block; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 .pref-toggle-desc code { font-family: 'DM Mono', monospace; font-size: 11px; background: var(--bg); padding: .05rem .3rem; border-radius: 3px; }
+.issue-auto-refresh-delay-field {
+  max-width: 220px;
+  margin-top: .65rem;
+}
+.issue-auto-refresh-delay-control {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.issue-auto-refresh-delay-control input {
+  width: 84px;
+}
+.issue-auto-refresh-delay-control input:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+.issue-auto-refresh-delay-unit {
+  font-size: 12px;
+  color: var(--text-muted);
+}
 
 .toggle-btn {
   position: relative; flex-shrink: 0;

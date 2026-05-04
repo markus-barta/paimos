@@ -27,6 +27,7 @@ export default mergeConfig(
       environment: 'happy-dom',
       globals: true,
       include: ['src/**/*.{test,spec}.ts'],
+      setupFiles: ['src/test/setup.ts'],
       // Keep the suite quick: no coverage by default, parallel workers.
       reporters: process.env.CI ? ['default', 'junit'] : ['default'],
       outputFile: process.env.CI ? { junit: 'test-results/frontend-junit.xml' } : undefined,

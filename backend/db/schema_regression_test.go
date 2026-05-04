@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 87
+const latestSchemaVersion = 88
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -95,6 +95,12 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "sessions", "csrf_token") {
 		t.Fatal("expected sessions.csrf_token to exist")
+	}
+	if !columnExists(t, db, "users", "issue_auto_refresh_enabled") {
+		t.Fatal("expected users.issue_auto_refresh_enabled to exist")
+	}
+	if !columnExists(t, db, "users", "issue_auto_refresh_interval_seconds") {
+		t.Fatal("expected users.issue_auto_refresh_interval_seconds to exist")
 	}
 }
 

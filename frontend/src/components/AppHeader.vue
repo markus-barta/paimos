@@ -7,22 +7,42 @@ import SearchPalette from "@/components/SearchPalette.vue";
 import { useSearchStore } from "@/stores/search";
 import { useUndoStore } from "@/stores/undo";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
 const search = useSearchStore();
 const undo = useUndoStore();
 const issueRefresh = useIssueRefreshPromptStore();
+const auth = useAuthStore();
+
+const ISSUE_AUTO_REFRESH_DEFAULT_SECONDS = 60;
+const ISSUE_AUTO_REFRESH_MIN_SECONDS = 10;
+const ISSUE_AUTO_REFRESH_STEP_SECONDS = 10;
 
 const searchFocused = ref(false);
 const topbarInput = ref<HTMLInputElement | null>(null);
 const searchWrap = ref<HTMLElement | null>(null);
 const paletteRef = ref<InstanceType<typeof SearchPalette> | null>(null);
 const paletteVisible = ref(false);
+const refreshCountdownSeconds = ref(ISSUE_AUTO_REFRESH_DEFAULT_SECONDS);
+let refreshCountdownTimer: number | null = null;
 
 const hasQuery = computed(() => search.query.length >= 2);
 const undoStackCount = computed(
   () => undo.undoRows.length + undo.redoRows.length + undo.historyRows.length,
+);
+const issueAutoRefreshEnabled = computed(
+  () => auth.user?.issue_auto_refresh_enabled ?? true,
+);
+const issueAutoRefreshIntervalSeconds = computed(() => {
+  const value = Number(auth.user?.issue_auto_refresh_interval_seconds);
+  return Number.isFinite(value)
+    ? Math.max(ISSUE_AUTO_REFRESH_MIN_SECONDS, Math.round(value))
+    : ISSUE_AUTO_REFRESH_DEFAULT_SECONDS;
+});
+const refreshCountdownLabel = computed(
+  () => `(refreshing in ${refreshCountdownSeconds.value}s)`,
 );
 
 function onFocus() {
@@ -93,6 +113,39 @@ function onGlobalKeydown(e: KeyboardEvent) {
   }
 }
 
+function stopRefreshCountdown() {
+  if (refreshCountdownTimer !== null) {
+    window.clearInterval(refreshCountdownTimer);
+    refreshCountdownTimer = null;
+  }
+}
+
+function startRefreshCountdown() {
+  stopRefreshCountdown();
+  refreshCountdownSeconds.value = issueAutoRefreshIntervalSeconds.value;
+  if (!issueRefresh.visible || !issueAutoRefreshEnabled.value) return;
+
+  refreshCountdownTimer = window.setInterval(() => {
+    const next = refreshCountdownSeconds.value - ISSUE_AUTO_REFRESH_STEP_SECONDS;
+    if (next <= 0) {
+      stopRefreshCountdown();
+      const refreshed = issueRefresh.triggerRefresh();
+      if (refreshed && issueRefresh.visible && issueAutoRefreshEnabled.value) {
+        startRefreshCountdown();
+      }
+      return;
+    }
+    refreshCountdownSeconds.value = next;
+  }, ISSUE_AUTO_REFRESH_STEP_SECONDS * 1000);
+}
+
+function openIssueAutoRefreshSettings() {
+  void router.push({
+    path: "/settings",
+    query: { tab: "account", focus: "issue-auto-refresh" },
+  });
+}
+
 onMounted(() => {
   void undo.refresh();
   window.addEventListener("keydown", onGlobalKeydown);
@@ -100,6 +153,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
+  stopRefreshCountdown();
 });
 
 watch(
@@ -107,6 +161,16 @@ watch(
   (visible) => {
     if (visible) paletteVisible.value = false;
   },
+);
+
+watch(
+  [
+    () => issueRefresh.visible,
+    issueAutoRefreshEnabled,
+    issueAutoRefreshIntervalSeconds,
+  ],
+  startRefreshCountdown,
+  { immediate: true },
 );
 
 const refreshPromptTitle = computed(
@@ -132,19 +196,39 @@ defineExpose({
     <div class="ah-center">
       <div class="ah-center-row">
         <Transition name="ah-center-swap" mode="out-in">
-          <button
+          <div
             v-if="issueRefresh.visible"
             key="refresh"
-            class="ah-refresh-prompt"
-            type="button"
-            :title="refreshPromptTitle"
-            @click="issueRefresh.triggerRefresh"
+            class="ah-refresh-cluster"
           >
-            <span class="ah-refresh-pulse" aria-hidden="true"></span>
-            <span class="ah-refresh-label">{{ issueRefresh.label }}</span>
-            <span class="ah-refresh-action">Refresh</span>
-            <kbd class="ah-refresh-shortcut">⌘R</kbd>
-          </button>
+            <button
+              class="ah-refresh-prompt"
+              type="button"
+              :title="refreshPromptTitle"
+              @click="issueRefresh.triggerRefresh"
+            >
+              <span class="ah-refresh-pulse" aria-hidden="true"></span>
+              <span class="ah-refresh-label">{{ issueRefresh.label }}</span>
+              <span class="ah-refresh-action">Refresh</span>
+              <kbd class="ah-refresh-shortcut">⌘R</kbd>
+            </button>
+            <button
+              v-if="issueAutoRefreshEnabled"
+              class="ah-refresh-countdown"
+              type="button"
+              title="Open issue auto-refresh settings"
+              aria-label="Open issue auto-refresh settings"
+              @click="openIssueAutoRefreshSettings"
+            >
+              <span>{{ refreshCountdownLabel }}</span>
+              <AppIcon
+                name="settings"
+                :size="12"
+                class="ah-refresh-countdown-icon"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
           <div
             v-else
             ref="searchWrap"
@@ -277,6 +361,15 @@ defineExpose({
   max-width: min(48vw, 420px);
 }
 
+.ah-refresh-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: min(72vw, 620px);
+}
+
 .ah-search-wrap {
   position: relative;
   display: flex;
@@ -404,6 +497,47 @@ defineExpose({
   font-weight: 700;
   text-align: center;
 }
+.ah-refresh-countdown {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0 0.15rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.ah-refresh-countdown:hover,
+.ah-refresh-countdown:focus-visible {
+  background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  color: var(--text);
+  outline: none;
+}
+.ah-refresh-countdown-icon {
+  flex: 0 0 auto;
+  opacity: 0;
+  transform: translateX(-2px);
+  color: var(--text-muted);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+.ah-refresh-countdown:hover .ah-refresh-countdown-icon,
+.ah-refresh-countdown:focus-visible .ah-refresh-countdown-icon {
+  opacity: 0.72;
+  transform: translateX(0);
+}
 @keyframes headerRefreshBreath {
   0%,
   100% {
@@ -524,6 +658,7 @@ defineExpose({
   .ah-search-wrap.focused { width: 280px; max-width: 280px; }
   .ah-search-wrap.focused .ah-search-input { padding-right: 28px; }
   .ah-refresh-prompt { width: 160px; max-width: 32vw; }
+  .ah-refresh-countdown { font-size: 11px; }
   .ah-refresh-label { display: none; }
   .ah-undo-button > span:not(.ah-undo-count) { display: none; }
 }
@@ -582,6 +717,14 @@ defineExpose({
     width: 100%;
     max-width: none;
   }
+  .ah-refresh-cluster {
+    width: 100%;
+    max-width: none;
+  }
+  .ah-refresh-cluster .ah-refresh-prompt {
+    flex: 1 1 auto;
+    width: auto;
+  }
   .ah-refresh-label { display: inline; }
 }
 
@@ -603,6 +746,13 @@ defineExpose({
 
   .ah-center-row {
     flex-wrap: wrap;
+  }
+  .ah-refresh-cluster {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .ah-refresh-countdown {
+    height: 24px;
   }
 }
 </style>

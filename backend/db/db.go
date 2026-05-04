@@ -3821,6 +3821,14 @@ func migrate(db *sql.DB) error {
 			  WHERE (c.contact_name IS NOT NULL AND c.contact_name <> '')
 			     OR (c.contact_email IS NOT NULL AND c.contact_email <> '')`,
 		}},
+
+		// M88 / PAI-309: per-user auto-refresh countdown for stale issue
+		// lists. Defaults preserve the new behaviour for existing users
+		// while allowing users to opt out from Account settings.
+		{88, []string{
+			`ALTER TABLE users ADD COLUMN issue_auto_refresh_enabled INTEGER NOT NULL DEFAULT 1`,
+			`ALTER TABLE users ADD COLUMN issue_auto_refresh_interval_seconds INTEGER NOT NULL DEFAULT 60`,
+		}},
 	}
 
 	for _, m := range migrations {

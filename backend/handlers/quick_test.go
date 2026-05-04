@@ -80,10 +80,29 @@ func Test_Auth(t *testing.T) {
 			User map[string]interface{} `json:"user"`
 		}
 		decode(t, resp, &env)
-		for _, key := range []string{"id", "username", "role", "status", "markdown_default", "monospace_fields", "recent_projects_limit", "locale"} {
+		for _, key := range []string{"id", "username", "role", "status", "markdown_default", "monospace_fields", "recent_projects_limit", "locale", "issue_auto_refresh_enabled", "issue_auto_refresh_interval_seconds"} {
 			if _, ok := env.User[key]; !ok {
 				t.Errorf("login response missing user.%q", key)
 			}
+		}
+	})
+
+	t.Run("profile update persists issue auto-refresh preferences with ten second floor", func(t *testing.T) {
+		resp := ts.patch(t, "/api/auth/me", ts.memberCookie, map[string]interface{}{
+			"issue_auto_refresh_enabled":          false,
+			"issue_auto_refresh_interval_seconds": 5,
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var user struct {
+			IssueAutoRefreshEnabled         bool `json:"issue_auto_refresh_enabled"`
+			IssueAutoRefreshIntervalSeconds int  `json:"issue_auto_refresh_interval_seconds"`
+		}
+		decode(t, resp, &user)
+		if user.IssueAutoRefreshEnabled {
+			t.Errorf("issue_auto_refresh_enabled = true, want false")
+		}
+		if user.IssueAutoRefreshIntervalSeconds != 10 {
+			t.Errorf("issue_auto_refresh_interval_seconds = %d, want 10", user.IssueAutoRefreshIntervalSeconds)
 		}
 	})
 }
@@ -107,11 +126,15 @@ func Test_ProjectCRUD(t *testing.T) {
 	t.Run("list projects returns created project", func(t *testing.T) {
 		resp := ts.get(t, "/api/projects", ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var projects []struct{ ID int64 `json:"id"` }
+		var projects []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &projects)
 		found := false
 		for _, p := range projects {
-			if p.ID == projectID { found = true }
+			if p.ID == projectID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("created project %d not found in list", projectID)
@@ -181,11 +204,15 @@ func Test_IssueCRUD(t *testing.T) {
 	t.Run("list project issues returns created issue", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var issues []struct{ ID int64 `json:"id"` }
+		var issues []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &issues)
 		found := false
 		for _, i := range issues {
-			if i.ID == issueID { found = true }
+			if i.ID == issueID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("created issue %d not found in list", issueID)
@@ -234,7 +261,9 @@ func Test_TagsOnIssues(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d", issueID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
 		var issue struct {
-			Tags []struct{ ID int64 `json:"id"` } `json:"tags"`
+			Tags []struct {
+				ID int64 `json:"id"`
+			} `json:"tags"`
 		}
 		decode(t, resp, &issue)
 		if len(issue.Tags) == 0 {
@@ -251,7 +280,9 @@ func Test_TagsOnIssues(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d", issueID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
 		var issue struct {
-			Tags []struct{ ID int64 `json:"id"` } `json:"tags"`
+			Tags []struct {
+				ID int64 `json:"id"`
+			} `json:"tags"`
 		}
 		decode(t, resp, &issue)
 		if len(issue.Tags) != 0 {
@@ -339,11 +370,15 @@ func Test_Comments(t *testing.T) {
 	t.Run("list comments returns posted comment", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/comments", issueID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var comments []struct{ ID int64 `json:"id"` }
+		var comments []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &comments)
 		found := false
 		for _, c := range comments {
-			if c.ID == commentID { found = true }
+			if c.ID == commentID {
+				found = true
+			}
 		}
 		if !found {
 			t.Errorf("posted comment %d not found in list", commentID)
@@ -375,7 +410,9 @@ func Test_Attachments(t *testing.T) {
 	t.Run("list attachments returns empty array", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/attachments", issueID), ts.memberCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var list []struct{ ID int64 `json:"id"` }
+		var list []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &list)
 		if len(list) != 0 {
 			t.Errorf("expected empty list, got %d", len(list))

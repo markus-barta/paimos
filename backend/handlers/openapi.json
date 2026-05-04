@@ -59,6 +59,8 @@
           "email": { "type": "string", "format": "email" },
           "locale": { "type": "string" },
           "timezone": { "type": "string" },
+          "issue_auto_refresh_enabled": { "type": "boolean" },
+          "issue_auto_refresh_interval_seconds": { "type": "integer", "minimum": 10, "default": 60 },
           "created_at": { "type": "string", "format": "date-time" },
           "last_login_at": { "type": "string", "format": "date-time", "nullable": true }
         }
@@ -269,6 +271,18 @@
         "summary": "Current authenticated user + project access summary",
         "responses": {
           "200": { "description": "Current user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MeResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "patch": {
+        "tags": ["auth"],
+        "summary": "Update current user's profile and preferences",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object" } } }
+        },
+        "responses": {
+          "200": { "description": "Updated user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
