@@ -5,6 +5,22 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-05-06
+
+### Fixed
+
+- **Bulk Change modal: assignee/status/priority/parent/cost-unit/release no longer return "internal error" on parallel writes.** The modal previously fired one `PUT /api/issues/{id}` per selected issue via `Promise.all`, which raced the SQLite single-writer and failed 6-of-8 calls in reproduction. The modal now sends a single atomic `PATCH /api/issues` per chunk; `writeBatchError` returns a `error` summary alongside `errors[]` so the modal renders the real cause instead of `request failed`.
+- [PAI-314](https://pm.barta.cm/projects/6/issues/PAI-314) — **Bulk Change sprint mode no longer silently swallows relation failures.** Per-issue sprint add/remove now stops on first error and surfaces `N/M updated before failure (issue PAI-X): <reason>` instead of completing without feedback.
+- [PAI-315](https://pm.barta.cm/projects/6/issues/PAI-315) — **Issues can clear nullable columns via the API.** `assignee_id`, `parent_id`, `total_budget`, `rate_hourly`, `rate_lp`, `estimate_hours`, `estimate_lp`, `ar_hours`, `ar_lp`, `time_override`, and `color` accept explicit JSON `null` to clear them. Previously the SQL used `COALESCE(?, col)` with typed pointers, collapsing absent-key and explicit-null to the same nil and silently no-op'ing the unset; presence-based parsing distinguishes them and uses `CASE WHEN ? = 1 THEN ? ELSE col END` for the truly-nullable columns.
+- [PAI-316](https://pm.barta.cm/projects/6/issues/PAI-316) — **`POST /api/undo/request/{requestID}` now reverts every row of a bulk batch in one call.** The previous loader used `LIMIT 1`, so undoing a 100-row bulk required 100 undo calls; the new anchor-then-expand loader detects the shared `batch_id` and atomically reverts the whole batch (with redo as the symmetric mirror).
+
+### Added
+
+- [PAI-317](https://pm.barta.cm/projects/6/issues/PAI-317) — **Bulk Change modal aborts in-flight chunks when closed mid-bulk.** A per-execution `AbortController` is wired through the API client's new `RequestOptions.signal`; closing the modal during a long bulk now stops new PATCH calls and shows `Cancelled — N/M issues updated`. Already-committed chunks stay committed.
+- [PAI-318](https://pm.barta.cm/projects/6/issues/PAI-318) — **`+ Select all N matching` chip on IssueList for cross-page bulk selection.** Backed by a new `GET /api/issues?ids_only=1` shortcut that returns just the matching id set (capped at 5,000) so bulk modal can act beyond the visible page without paying for full hydration. The Bulk Change modal already chunks selections into 50-id batches with an `Applying X of Y issues…` progress bar.
+- [PAI-319](https://pm.barta.cm/projects/6/issues/PAI-319) — **UI tests cover the Unassigned and No-parent (Orphan) bulk dropdown options end-to-end**, asserting the wire payload carries the explicit `null` that PAI-315's backend fix now honors.
+- **`mutation_log.batch_id` is populated for bulk PATCH** so undo treats the bulk as one logical user action and stack-depth accounting groups them as one slot.
+
 ## [2.5.2] — 2026-05-04
 
 ### Fixed
