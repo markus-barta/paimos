@@ -104,11 +104,26 @@ type BatchError struct {
 
 // writeBatchError replies with 400 + the per-row error list and a
 // rolled_back=true marker so agents can tell this apart from
-// per-item-success responses.
+// per-item-success responses. A top-level `error` summary is included so
+// generic UI error handlers (which read `data.error`) display something
+// actionable instead of "request failed".
 func writeBatchError(w http.ResponseWriter, errs []BatchError, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
+	summary := "batch failed"
+	if len(errs) > 0 {
+		first := errs[0].Error
+		if errs[0].Ref != "" {
+			first = errs[0].Ref + ": " + first
+		}
+		if len(errs) == 1 {
+			summary = first
+		} else {
+			summary = fmt.Sprintf("%d rows failed (first: %s)", len(errs), first)
+		}
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error":       summary,
 		"errors":      errs,
 		"rolled_back": true,
 	})
@@ -402,12 +417,54 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// One batch_id covers all rows so the undo stack treats the whole
+	// bulk op as a single user action (mutation_log.enforceUndoStackDepth
+	// already groups by batch_id when counting depth slots).
+	batchID := newAIRequestID()
+	reqID := requestIDFromRequest(r)
+	sessionID := sessionIDFromRequest(r)
+	mutationType := mutationTypeForRequest(r, "issue.update")
+	var actorID *int64
+	if user := auth.GetUser(r); user != nil {
+		actorID = &user.ID
+	}
+
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	for _, rw := range rows {
+		beforeSnap, err := fetchIssueMutationSnapshotTx(tx, rw.id)
+		if err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		if err := applyPartialIssueUpdate(tx, rw.id, rw.update, now); err != nil {
 			writeBatchError(w, []BatchError{{
 				Index: rw.index, Ref: rw.ref, Error: cleanDBError(err),
 			}}, http.StatusBadRequest)
+			return
+		}
+		afterSnap, err := fetchIssueMutationSnapshotTx(tx, rw.id)
+		if err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+			RequestID:    reqID,
+			BatchID:      batchID,
+			UserID:       actorID,
+			SessionID:    sessionID,
+			MutationType: mutationType,
+			SubjectType:  "issue",
+			SubjectID:    rw.id,
+			InverseOp: InverseOp{
+				Method: http.MethodPut,
+				Path:   fmt.Sprintf("/issues/%d", rw.id),
+				Body:   beforeSnap,
+			},
+			BeforeState: beforeSnap,
+			AfterState:  afterSnap,
+			Undoable:    true,
+		}); err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -434,22 +491,32 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 // partialIssueUpdate carries the parsed allowed fields for a bulk update.
 // Using typed pointers (nil = no change) matches how UpdateIssue encodes
 // partiality, so the SQL shape stays identical.
+//
+// Truly-nullable columns additionally track whether their JSON key was
+// *present in the request*, so an explicit `null` can clear them. The
+// typed pointer alone can't distinguish "key absent" from "key set to
+// null", and the modal's Unassigned / Orphan / clear-estimate options
+// would silently no-op without these flags (PAI-315).
 type partialIssueUpdate struct {
-	Title              *string
-	Description        *string
-	AcceptanceCriteria *string
-	Notes              *string
-	Type               *string
-	ParentID           *int64
-	Status             *string
-	Priority           *string
-	CostUnit           *string
-	Release            *string
-	AssigneeID         *int64
-	StartDate          *string
-	EndDate            *string
-	EstimateHours      *float64
-	EstimateLp         *float64
+	Title                *string
+	Description          *string
+	AcceptanceCriteria   *string
+	Notes                *string
+	Type                 *string
+	ParentID             *int64
+	ParentIDPresent      bool
+	Status               *string
+	Priority             *string
+	CostUnit             *string
+	Release              *string
+	AssigneeID           *int64
+	AssigneeIDPresent    bool
+	StartDate            *string
+	EndDate              *string
+	EstimateHours        *float64
+	EstimateHoursPresent bool
+	EstimateLp           *float64
+	EstimateLpPresent    bool
 }
 
 // parsePartialIssueUpdate decodes a generic fields map into the typed
@@ -462,6 +529,18 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 	if len(raw) == 0 {
 		return upd, "fields is required"
 	}
+	// First pass: detect which keys were present so explicit-null on
+	// nullable FK columns means "clear" not "ignore".
+	var keyMap map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keyMap); err != nil {
+		return upd, "invalid fields: " + err.Error()
+	}
+	_, upd.ParentIDPresent = keyMap["parent_id"]
+	_, upd.AssigneeIDPresent = keyMap["assignee_id"]
+	_, upd.EstimateHoursPresent = keyMap["estimate_hours"]
+	_, upd.EstimateLpPresent = keyMap["estimate_lp"]
+
+	// Second pass: typed decode for value access + validation.
 	var body struct {
 		Title              *string  `json:"title"`
 		Description        *string  `json:"description"`
@@ -498,14 +577,16 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 	upd.EstimateHours = body.EstimateHours
 	upd.EstimateLp = body.EstimateLp
 
-	// Hierarchy validation — mirror UpdateIssue's check.
-	if body.Type != nil || body.ParentID != nil {
+	// Hierarchy validation — mirror UpdateIssue's check. Use presence
+	// (not just non-nil pointer) so an explicit-null parent_id still
+	// runs the check against the cleared state.
+	if body.Type != nil || upd.ParentIDPresent {
 		newType := existing.Type
 		if body.Type != nil {
 			newType = *body.Type
 		}
 		newParent := existing.ParentID
-		if body.ParentID != nil {
+		if upd.ParentIDPresent {
 			newParent = body.ParentID
 		}
 		if err := validateParent(newType, newParent, existing.ProjectID); err != nil {
@@ -518,7 +599,19 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 // applyPartialIssueUpdate issues the UPDATE statement inside an open tx.
 // Column list intentionally narrower than single-issue UpdateIssue —
 // batch ops stay mechanical.
+//
+// parent_id and assignee_id use a presence flag (1/0) rather than the
+// IS-NOT-NULL trick so an explicit JSON null clears the column. Pure
+// COALESCE on the other columns is fine because none of them have
+// "clear me" semantics from the bulk modal — those that do (budget /
+// dates / jira_*) need their own follow-up to switch off COALESCE.
 func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now string) error {
+	flag := func(b bool) int {
+		if b {
+			return 1
+		}
+		return 0
+	}
 	_, err := tx.Exec(`
 		UPDATE issues SET
 			title               = COALESCE(?, title),
@@ -526,26 +619,27 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 			acceptance_criteria = COALESCE(?, acceptance_criteria),
 			notes               = COALESCE(?, notes),
 			type                = COALESCE(?, type),
-			parent_id           = CASE WHEN ? IS NOT NULL THEN ? ELSE parent_id END,
+			parent_id           = CASE WHEN ? = 1 THEN ? ELSE parent_id END,
 			status              = COALESCE(?, status),
 			priority            = COALESCE(?, priority),
 			cost_unit           = COALESCE(?, cost_unit),
 			release             = COALESCE(?, release),
-			assignee_id         = CASE WHEN ? IS NOT NULL THEN ? ELSE assignee_id END,
+			assignee_id         = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
 			start_date          = COALESCE(?, start_date),
 			end_date            = COALESCE(?, end_date),
-			estimate_hours      = COALESCE(?, estimate_hours),
-			estimate_lp         = COALESCE(?, estimate_lp),
+			estimate_hours      = CASE WHEN ? = 1 THEN ? ELSE estimate_hours END,
+			estimate_lp         = CASE WHEN ? = 1 THEN ? ELSE estimate_lp END,
 			updated_at          = ?
 		WHERE id=?
 	`,
 		upd.Title, upd.Description, upd.AcceptanceCriteria, upd.Notes,
 		upd.Type,
-		upd.ParentID, upd.ParentID,
+		flag(upd.ParentIDPresent), upd.ParentID,
 		upd.Status, upd.Priority, upd.CostUnit, upd.Release,
-		upd.AssigneeID, upd.AssigneeID,
+		flag(upd.AssigneeIDPresent), upd.AssigneeID,
 		upd.StartDate, upd.EndDate,
-		upd.EstimateHours, upd.EstimateLp,
+		flag(upd.EstimateHoursPresent), upd.EstimateHours,
+		flag(upd.EstimateLpPresent), upd.EstimateLp,
 		now, id)
 	return err
 }

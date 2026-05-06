@@ -16,7 +16,9 @@
 package handlers_test
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -24,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/handlers"
 )
 
 // seedBatchProject seeds a project and returns its numeric id + key.
@@ -250,6 +253,632 @@ func TestBatchUpdate_Atomicity_NotFound_RollsBack(t *testing.T) {
 	_ = db.DB.QueryRow("SELECT status FROM issues WHERE id=?", id1).Scan(&s)
 	if s != "backlog" {
 		t.Errorf("PAI-1 status leaked through rollback: got %q, want backlog", s)
+	}
+}
+
+// TestBatchUpdate_AllScalarFields walks every field the BulkChangeModal
+// can set (status, priority, assignee_id, parent_id, cost_unit, release)
+// in a single PATCH /api/issues call and verifies all rows updated.
+//
+// Regression for the PAI bulk-modal "internal error" caused by parallel
+// per-row PUTs racing the SQLite single-writer — the modal now uses this
+// single atomic batch, so each shape needs explicit coverage.
+func TestBatchUpdate_AllScalarFields(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+
+	// Seed an epic for the parent test, plus 6 tickets — one per field.
+	epicRes, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+		projID, 1, "epic", "Epic", "backlog")
+	epicID, _ := epicRes.LastInsertId()
+	ids := make([]int64, 6)
+	for i := 0; i < 6; i++ {
+		r, _ := db.DB.Exec(
+			`INSERT INTO issues(project_id,issue_number,type,title,status,priority) VALUES(?,?,?,?,?,?)`,
+			projID, i+2, "ticket", "T", "backlog", "medium")
+		ids[i], _ = r.LastInsertId()
+	}
+
+	// Resolve admin user id for the assignee_id case.
+	var adminID int64
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID); err != nil {
+		t.Fatalf("resolve admin id: %v", err)
+	}
+
+	body := []map[string]any{
+		{"ref": itoa(ids[0]), "fields": map[string]any{"status": "in-progress"}},
+		{"ref": itoa(ids[1]), "fields": map[string]any{"priority": "high"}},
+		{"ref": itoa(ids[2]), "fields": map[string]any{"assignee_id": adminID}},
+		{"ref": itoa(ids[3]), "fields": map[string]any{"parent_id": epicID}},
+		{"ref": itoa(ids[4]), "fields": map[string]any{"cost_unit": "ENG-A"}},
+		{"ref": itoa(ids[5]), "fields": map[string]any{"release": "v1.2"}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+
+	type expect struct {
+		col  string
+		want any
+	}
+	cases := []expect{
+		{"status", "in-progress"},
+		{"priority", "high"},
+		{"assignee_id", adminID},
+		{"parent_id", epicID},
+		{"cost_unit", "ENG-A"},
+		{"release", "v1.2"},
+	}
+	for i, c := range cases {
+		var got any
+		if err := db.DB.QueryRow(
+			"SELECT "+c.col+" FROM issues WHERE id=?", ids[i],
+		).Scan(&got); err != nil {
+			t.Errorf("read %s for id=%d: %v", c.col, ids[i], err)
+			continue
+		}
+		// SQLite returns int64 for INTEGER columns; coerce ints for compare.
+		if g, ok := got.(int64); ok {
+			if w, ok := c.want.(int64); ok && g != w {
+				t.Errorf("id=%d %s = %d, want %d", ids[i], c.col, g, w)
+			}
+			continue
+		}
+		gs := strings.TrimSpace(toStr(got))
+		ws := toStr(c.want)
+		if gs != ws {
+			t.Errorf("id=%d %s = %q, want %q", ids[i], c.col, gs, ws)
+		}
+	}
+}
+
+// TestBatchUpdate_AssigneeFK_RollsBack — an unknown assignee_id must
+// reject the whole batch (FK violation in SQLite). The other valid row
+// must NOT commit. Mirrors the live failure mode the modal guards against.
+func TestBatchUpdate_AssigneeFK_RollsBack(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	r1, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status,priority) VALUES(?,?,?,?,?,?)`,
+		projID, 1, "ticket", "Keep", "backlog", "medium")
+	id1, _ := r1.LastInsertId()
+	r2, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status,priority) VALUES(?,?,?,?,?,?)`,
+		projID, 2, "ticket", "Target", "backlog", "medium")
+	id2, _ := r2.LastInsertId()
+
+	body := []map[string]any{
+		{"ref": itoa(id1), "fields": map[string]any{"priority": "high"}},
+		{"ref": itoa(id2), "fields": map[string]any{"assignee_id": 999999}}, // unknown user
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusBadRequest {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d (want 400), body=%s", resp.StatusCode, b)
+	}
+
+	// id1 must NOT have priority=high — the batch rolled back.
+	var prio string
+	_ = db.DB.QueryRow(`SELECT priority FROM issues WHERE id=?`, id1).Scan(&prio)
+	if prio != "medium" {
+		t.Errorf("id1 priority=%q (want medium) — partial commit leaked through rollback", prio)
+	}
+}
+
+// TestBatchUpdate_RecordsBatchedMutationLog — the bulk endpoint must
+// write one mutation_log row per issue, all sharing a single batch_id,
+// so the undo stack treats the bulk operation as one user action.
+func TestBatchUpdate_RecordsBatchedMutationLog(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	ids := make([]int64, 3)
+	for i := 0; i < 3; i++ {
+		r, _ := db.DB.Exec(
+			`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+			projID, i+1, "ticket", "T", "backlog")
+		ids[i], _ = r.LastInsertId()
+	}
+
+	body := []map[string]any{
+		{"ref": itoa(ids[0]), "fields": map[string]any{"status": "in-progress"}},
+		{"ref": itoa(ids[1]), "fields": map[string]any{"status": "in-progress"}},
+		{"ref": itoa(ids[2]), "fields": map[string]any{"status": "in-progress"}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+
+	rows, err := db.DB.Query(`
+		SELECT subject_id, COALESCE(batch_id,'')
+		FROM mutation_log
+		WHERE subject_type='issue' AND subject_id IN (?,?,?)
+		ORDER BY id ASC`,
+		ids[0], ids[1], ids[2])
+	if err != nil {
+		t.Fatalf("query mutation_log: %v", err)
+	}
+	defer rows.Close()
+	var seen int
+	var firstBatch string
+	for rows.Next() {
+		var sid int64
+		var batchID string
+		if err := rows.Scan(&sid, &batchID); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if batchID == "" {
+			t.Errorf("subject_id=%d: batch_id is empty — bulk ops must group via batch_id", sid)
+			continue
+		}
+		if firstBatch == "" {
+			firstBatch = batchID
+		} else if batchID != firstBatch {
+			t.Errorf("subject_id=%d: batch_id=%q diverges from first row %q — should share one id", sid, batchID, firstBatch)
+		}
+		seen++
+	}
+	if seen != 3 {
+		t.Errorf("expected 3 mutation_log rows, got %d", seen)
+	}
+}
+
+// TestBatchUpdate_ErrorEnvelope_IncludesSummary — generic UI error
+// handlers read `data.error` from the body. The batch failure shape is
+// {errors:[…], rolled_back:true}; without a top-level `error` summary
+// the modal would render "request failed" instead of the real cause.
+func TestBatchUpdate_ErrorEnvelope_IncludesSummary(t *testing.T) {
+	ts := newTestServer(t)
+	seedBatchProject(t, "PAI", "PAI")
+
+	body := []map[string]any{
+		{"ref": "PAI-999", "fields": map[string]any{"status": "done"}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", resp.StatusCode)
+	}
+	var env map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if s, _ := env["error"].(string); s == "" {
+		t.Errorf("missing top-level error summary; body=%v", env)
+	}
+	if env["rolled_back"] != true {
+		t.Errorf("missing rolled_back=true marker; body=%v", env)
+	}
+}
+
+// TestBatchUpdate_ExplicitNullClearsAssigneeAndParent — explicit JSON null
+// on assignee_id / parent_id must CLEAR the column. With the older
+// `CASE WHEN ? IS NOT NULL` SQL, *int64 collapsed both "key absent" and
+// "key set to null" to nil, so the modal's Unassigned / Orphan options
+// were silently ignored. Presence-based parsing makes them work.
+func TestBatchUpdate_ExplicitNullClearsAssigneeAndParent(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+
+	// Resolve admin user id for the assigned-then-unassigned flow.
+	var adminID int64
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID); err != nil {
+		t.Fatalf("resolve admin id: %v", err)
+	}
+	// Seed an epic + a ticket parented to it AND assigned to admin.
+	epicRes, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+		projID, 1, "epic", "Epic", "backlog")
+	epicID, _ := epicRes.LastInsertId()
+	r, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,parent_id,title,status,assignee_id) VALUES(?,?,?,?,?,?,?)`,
+		projID, 2, "ticket", epicID, "T", "backlog", adminID)
+	id1, _ := r.LastInsertId()
+
+	body := []map[string]any{
+		{"ref": itoa(id1), "fields": map[string]any{
+			"assignee_id": nil,
+			"parent_id":   nil,
+		}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+
+	// Verify both columns went to NULL.
+	var assignee, parent any
+	_ = db.DB.QueryRow(`SELECT assignee_id, parent_id FROM issues WHERE id=?`, id1).Scan(&assignee, &parent)
+	if assignee != nil {
+		t.Errorf("assignee_id = %v (want nil after explicit-null clear)", assignee)
+	}
+	if parent != nil {
+		t.Errorf("parent_id = %v (want nil after explicit-null clear)", parent)
+	}
+}
+
+// TestBatchUpdate_AbsentKeysDoNotClear — sending a fields object that
+// omits assignee_id/parent_id must NOT touch those columns. Regression
+// guard so the presence-based fix doesn't accidentally treat "absent"
+// like "null".
+func TestBatchUpdate_AbsentKeysDoNotClear(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	var adminID int64
+	_ = db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID)
+	epicRes, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+		projID, 1, "epic", "Epic", "backlog")
+	epicID, _ := epicRes.LastInsertId()
+	r, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,parent_id,title,status,assignee_id) VALUES(?,?,?,?,?,?,?)`,
+		projID, 2, "ticket", epicID, "T", "backlog", adminID)
+	id1, _ := r.LastInsertId()
+
+	body := []map[string]any{
+		{"ref": itoa(id1), "fields": map[string]any{"status": "in-progress"}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+	var assignee, parent sql.NullInt64
+	_ = db.DB.QueryRow(`SELECT assignee_id, parent_id FROM issues WHERE id=?`, id1).Scan(&assignee, &parent)
+	if !assignee.Valid || assignee.Int64 != adminID {
+		t.Errorf("assignee_id=%v (want %d) — absent key wrongly cleared the column", assignee, adminID)
+	}
+	if !parent.Valid || parent.Int64 != epicID {
+		t.Errorf("parent_id=%v (want %d) — absent key wrongly cleared the column", parent, epicID)
+	}
+}
+
+// TestSinglePut_ExplicitNullClearsAllNullableColumns — PAI-315.
+// Every truly-nullable issue column (per the schema) must be clearable
+// via PUT /api/issues/{id} with `<col>: null`. Pre-fix, these silently
+// no-op'd because *float64/*int64/*string collapse "absent" and "null"
+// to nil, and the SQL was COALESCE(?, col).
+func TestSinglePut_ExplicitNullClearsAllNullableColumns(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	r, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status,
+		                    total_budget,rate_hourly,rate_lp,
+		                    estimate_hours,estimate_lp,ar_hours,ar_lp,
+		                    time_override,color)
+		 VALUES(?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?)`,
+		projID, 1, "ticket", "T", "backlog",
+		1000.0, 110.0, 90.0,
+		8.0, 5.0, 4.0, 3.0,
+		2.5, "#abcdef")
+	id1, _ := r.LastInsertId()
+
+	resp := ts.put(t, "/api/issues/"+itoa(id1), ts.adminCookie, map[string]any{
+		"total_budget":   nil,
+		"rate_hourly":    nil,
+		"rate_lp":        nil,
+		"estimate_hours": nil,
+		"estimate_lp":    nil,
+		"ar_hours":       nil,
+		"ar_lp":          nil,
+		"time_override":  nil,
+		"color":          nil,
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+	cols := []string{
+		"total_budget", "rate_hourly", "rate_lp",
+		"estimate_hours", "estimate_lp", "ar_hours", "ar_lp",
+		"time_override", "color",
+	}
+	for _, col := range cols {
+		var v any
+		_ = db.DB.QueryRow("SELECT "+col+" FROM issues WHERE id=?", id1).Scan(&v)
+		if v != nil {
+			t.Errorf("%s = %v (want nil after explicit-null clear)", col, v)
+		}
+	}
+}
+
+// TestSinglePut_NullableAbsentKeysDoNotClear — regression guard
+// matching the assignee/parent test above, extended to the new
+// presence-aware columns. Sending a body that omits the keys must
+// leave the values intact.
+func TestSinglePut_NullableAbsentKeysDoNotClear(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	r, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status,
+		                    total_budget,estimate_hours,color)
+		 VALUES(?,?,?,?,?, ?,?,?)`,
+		projID, 1, "ticket", "T", "backlog",
+		2500.0, 7.5, "#112233")
+	id1, _ := r.LastInsertId()
+
+	// Touch only `notes` — every other column must stay put.
+	resp := ts.put(t, "/api/issues/"+itoa(id1), ts.adminCookie, map[string]any{
+		"notes": "edited",
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+	var totalBudget sql.NullFloat64
+	var estimateHours sql.NullFloat64
+	var color sql.NullString
+	_ = db.DB.QueryRow(
+		`SELECT total_budget, estimate_hours, color FROM issues WHERE id=?`, id1,
+	).Scan(&totalBudget, &estimateHours, &color)
+	if !totalBudget.Valid || totalBudget.Float64 != 2500.0 {
+		t.Errorf("total_budget=%v (want 2500) — absent key wrongly cleared", totalBudget)
+	}
+	if !estimateHours.Valid || estimateHours.Float64 != 7.5 {
+		t.Errorf("estimate_hours=%v (want 7.5) — absent key wrongly cleared", estimateHours)
+	}
+	if !color.Valid || color.String != "#112233" {
+		t.Errorf("color=%v (want #112233) — absent key wrongly cleared", color)
+	}
+}
+
+// TestBatchUpdate_ExplicitNullClearsEstimates — PAI-315 batch surface
+// covers estimate_hours and estimate_lp; the remaining nullable
+// numeric columns aren't in the batch body shape today.
+func TestBatchUpdate_ExplicitNullClearsEstimates(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	r, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status,estimate_hours,estimate_lp)
+		 VALUES(?,?,?,?,?,?,?)`,
+		projID, 1, "ticket", "T", "backlog", 12.0, 8.0)
+	id1, _ := r.LastInsertId()
+
+	body := []map[string]any{
+		{"ref": itoa(id1), "fields": map[string]any{
+			"estimate_hours": nil,
+			"estimate_lp":    nil,
+		}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+	var eh, el any
+	_ = db.DB.QueryRow(`SELECT estimate_hours, estimate_lp FROM issues WHERE id=?`, id1).Scan(&eh, &el)
+	if eh != nil {
+		t.Errorf("estimate_hours = %v (want nil)", eh)
+	}
+	if el != nil {
+		t.Errorf("estimate_lp = %v (want nil)", el)
+	}
+}
+
+// TestSinglePut_ExplicitNullClearsAssigneeAndParent — same fix applied
+// to PUT /api/issues/{id} (the issue drawer's update path), so a single
+// edit can clear assignee/parent the same way bulk now can.
+func TestSinglePut_ExplicitNullClearsAssigneeAndParent(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	var adminID int64
+	_ = db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID)
+	epicRes, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+		projID, 1, "epic", "Epic", "backlog")
+	epicID, _ := epicRes.LastInsertId()
+	r, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,parent_id,title,status,assignee_id) VALUES(?,?,?,?,?,?,?)`,
+		projID, 2, "ticket", epicID, "T", "backlog", adminID)
+	id1, _ := r.LastInsertId()
+
+	resp := ts.put(t, "/api/issues/"+itoa(id1), ts.adminCookie, map[string]any{
+		"assignee_id": nil,
+		"parent_id":   nil,
+	})
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+	var assignee, parent any
+	_ = db.DB.QueryRow(`SELECT assignee_id, parent_id FROM issues WHERE id=?`, id1).Scan(&assignee, &parent)
+	if assignee != nil {
+		t.Errorf("assignee_id = %v (want nil)", assignee)
+	}
+	if parent != nil {
+		t.Errorf("parent_id = %v (want nil)", parent)
+	}
+}
+
+// TestBatchUpdate_UndoByRequestID_RevertsAllRows — PAI-316. The bulk
+// PATCH writes one mutation_log row per subject sharing one request_id;
+// a single POST /api/undo/request/{requestID} must revert ALL of them.
+// Pre-fix the loader was LIMIT 1, so only the most-recent row reverted
+// and the rest stayed in the post-bulk state. Round-trips with redo.
+func TestBatchUpdate_UndoByRequestID_RevertsAllRows(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	ids := make([]int64, 3)
+	for i := 0; i < 3; i++ {
+		r, _ := db.DB.Exec(
+			`INSERT INTO issues(project_id,issue_number,type,title,status,priority) VALUES(?,?,?,?,?,?)`,
+			projID, i+1, "ticket", fmt.Sprintf("T%d", i+1), "backlog", "medium")
+		ids[i], _ = r.LastInsertId()
+	}
+
+	// Bulk-update all 3 issues' status backlog → in-progress.
+	body := []map[string]any{
+		{"ref": itoa(ids[0]), "fields": map[string]any{"status": "in-progress"}},
+		{"ref": itoa(ids[1]), "fields": map[string]any{"status": "in-progress"}},
+		{"ref": itoa(ids[2]), "fields": map[string]any{"status": "in-progress"}},
+	}
+	resp := ts.patch(t, "/api/issues", ts.adminCookie, body)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("bulk PATCH status=%d, body=%s", resp.StatusCode, b)
+	}
+	requestID := resp.Header.Get("X-PAIMOS-Request-Id")
+	if requestID == "" {
+		t.Fatal("response missing X-PAIMOS-Request-Id header")
+	}
+
+	// Sanity: all 3 are in-progress before undo.
+	statusOf := func(id int64) string {
+		var s string
+		_ = db.DB.QueryRow(`SELECT status FROM issues WHERE id=?`, id).Scan(&s)
+		return s
+	}
+	for _, id := range ids {
+		if statusOf(id) != "in-progress" {
+			t.Fatalf("pre-undo: id=%d status=%q, want in-progress", id, statusOf(id))
+		}
+	}
+
+	// One undo call must revert ALL 3.
+	undoResp := ts.post(t, "/api/undo/request/"+requestID, ts.adminCookie, map[string]any{})
+	if undoResp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(undoResp.Body)
+		t.Fatalf("undo status=%d, body=%s", undoResp.StatusCode, b)
+	}
+	var undoBody map[string]any
+	_ = json.NewDecoder(undoResp.Body).Decode(&undoBody)
+	if got, _ := undoBody["batch_size"].(float64); int(got) != 3 {
+		t.Errorf("undo response batch_size=%v, want 3", undoBody["batch_size"])
+	}
+	for _, id := range ids {
+		if statusOf(id) != "backlog" {
+			t.Errorf("post-undo: id=%d status=%q, want backlog (single undo failed to revert all batch rows)", id, statusOf(id))
+		}
+	}
+
+	// Redo round-trip — a single redo must re-apply the bulk to all 3.
+	redoResp := ts.post(t, "/api/redo/request/"+requestID, ts.adminCookie, map[string]any{})
+	if redoResp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(redoResp.Body)
+		t.Fatalf("redo status=%d, body=%s", redoResp.StatusCode, b)
+	}
+	for _, id := range ids {
+		if statusOf(id) != "in-progress" {
+			t.Errorf("post-redo: id=%d status=%q, want in-progress", id, statusOf(id))
+		}
+	}
+}
+
+// TestListIssues_IdsOnly — PAI-318. The IssueList "Select all N matching"
+// chip needs the server-filtered id set without paying for full issue
+// payloads. /api/issues?ids_only=1 returns just {ids, total, truncated, cap}.
+func TestListIssues_IdsOnly(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	want := make([]int64, 0, 5)
+	for i := 1; i <= 5; i++ {
+		r, _ := db.DB.Exec(
+			`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+			projID, i, "ticket", fmt.Sprintf("T%d", i), "backlog")
+		id, _ := r.LastInsertId()
+		want = append(want, id)
+	}
+	resp := ts.get(t, "/api/issues?ids_only=1&project_ids="+itoa(projID), ts.adminCookie)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
+	}
+	var body struct {
+		IDs       []int64 `json:"ids"`
+		Total     int     `json:"total"`
+		Truncated bool    `json:"truncated"`
+		Cap       int     `json:"cap"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Total != len(want) {
+		t.Errorf("total=%d, want %d", body.Total, len(want))
+	}
+	if body.Cap != handlers.MaxBatchSize*50 {
+		t.Errorf("cap=%d, want %d", body.Cap, handlers.MaxBatchSize*50)
+	}
+	if body.Truncated {
+		t.Errorf("truncated=true unexpectedly (only %d issues seeded)", len(want))
+	}
+	if len(body.IDs) != len(want) {
+		t.Errorf("len(ids)=%d, want %d", len(body.IDs), len(want))
+	}
+	gotSet := map[int64]bool{}
+	for _, id := range body.IDs {
+		gotSet[id] = true
+	}
+	for _, id := range want {
+		if !gotSet[id] {
+			t.Errorf("missing id %d in ids_only response", id)
+		}
+	}
+}
+
+// TestListIssues_IdsOnly_RespectsFilters — same filter pipeline as the
+// hydrated path, so bulk selection sees exactly what the user sees.
+func TestListIssues_IdsOnly_RespectsFilters(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	// 3 backlog + 2 in-progress tickets.
+	mkIssue := func(num int, status string) {
+		_, _ = db.DB.Exec(
+			`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+			projID, num, "ticket", "T", status)
+	}
+	mkIssue(1, "backlog")
+	mkIssue(2, "backlog")
+	mkIssue(3, "backlog")
+	mkIssue(4, "in-progress")
+	mkIssue(5, "in-progress")
+
+	resp := ts.get(t, "/api/issues?ids_only=1&status=backlog", ts.adminCookie)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	var body struct {
+		IDs   []int64 `json:"ids"`
+		Total int     `json:"total"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Total != 3 {
+		t.Errorf("filtered total=%d, want 3 backlog", body.Total)
+	}
+}
+
+// TestBatchUpdate_NonAdmin_403 — bulk modal is gated to admins in the UI;
+// the endpoint must enforce the same on the wire.
+func TestBatchUpdate_NonAdmin_403(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	r1, _ := db.DB.Exec(
+		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "T", "backlog")
+	id1, _ := r1.LastInsertId()
+
+	body := []map[string]any{{"ref": itoa(id1), "fields": map[string]any{"status": "in-progress"}}}
+	resp := ts.patch(t, "/api/issues", ts.memberCookie, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("member PATCH: status=%d, want 403", resp.StatusCode)
+	}
+}
+
+// toStr coerces SQLite scan-result types (string, []byte, int64, etc.)
+// into a string for equality comparison in field-shape tests.
+func toStr(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case []byte:
+		return string(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", x)
 	}
 }
 

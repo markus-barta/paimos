@@ -7,7 +7,7 @@ import AppModal from '@/components/AppModal.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
 import IssueSidePanel from '@/components/IssueSidePanel.vue'
-import { api } from '@/api/client'
+import { api, errMsg } from '@/api/client'
 import { useConfirm } from '@/composables/useConfirm'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { useDraggedIssue } from '@/stores/draggedIssue'
@@ -169,6 +169,45 @@ const {
 
 // ── Selection composable ──────────────────────────────────────────────────
 const { selectionMode, selectedIds, toggleSelectionMode, toggleSelect, toggleSelectAll, allSelected } = useSelection(filteredIssues)
+
+// PAI-318 — "Select all N matching" chip. Server-side pagination limits
+// the visible-loaded set; this button calls /api/issues?ids_only=1 with
+// the same filter the parent used for the page load (today: q=) and
+// extends `selectedIds` to all matching ids without paying for full
+// payloads. Bulk modal already chunks at 50, so the resulting set just
+// flows through the existing code path.
+const expandingSelection = ref(false)
+const expandSelectionError = ref('')
+const canExpandSelectionToAllMatching = computed(() =>
+  selectionMode.value
+  && selectedIds.value.size > 0
+  && props.resultTotal !== undefined
+  && props.resultTotal > selectedIds.value.size,
+)
+async function selectAllMatching() {
+  if (expandingSelection.value) return
+  expandingSelection.value = true
+  expandSelectionError.value = ''
+  try {
+    const params = new URLSearchParams()
+    params.set('ids_only', '1')
+    const q = searchQuery.value.trim()
+    if (q.length >= 2) params.set('q', q)
+    const resp = await api.get<{ ids: number[]; total: number; truncated: boolean; cap: number }>(
+      `/issues?${params.toString()}`,
+    )
+    const next = new Set<number>(selectedIds.value)
+    for (const id of resp.ids ?? []) next.add(id)
+    selectedIds.value = next
+    if (resp.truncated) {
+      expandSelectionError.value = `Selected first ${resp.cap.toLocaleString()} matching issues — narrow the filter to reach the rest.`
+    }
+  } catch (e: unknown) {
+    expandSelectionError.value = errMsg(e, 'Could not expand selection.')
+  } finally {
+    expandingSelection.value = false
+  }
+}
 
 // ── Sort ──────────────────────────────────────────────────────────────────
 const ISSUE_COLS: ColDefs<Issue> = {
@@ -953,6 +992,19 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         <button :class="['btn btn-ghost btn-sm', { active: selectionMode }]" @click="toggleSelectionMode" title="Toggle selection mode">
           {{ selectionMode ? `✓ ${selectedIds.size} selected` : 'Select' }}
         </button>
+        <button
+          v-if="canExpandSelectionToAllMatching"
+          class="btn btn-ghost btn-sm select-all-matching"
+          :disabled="expandingSelection"
+          :title="`Select all ${props.resultTotal?.toLocaleString() ?? ''} issues matching the current filter`"
+          @click="selectAllMatching"
+        >
+          <template v-if="expandingSelection">Selecting…</template>
+          <template v-else>+ Select all {{ props.resultTotal?.toLocaleString() ?? '' }} matching</template>
+        </button>
+        <span v-if="expandSelectionError" class="select-all-matching-warn" :title="expandSelectionError">
+          {{ expandSelectionError }}
+        </span>
         <template v-if="treeView">
           <button class="btn btn-ghost btn-sm" @click="collapseAllTreeNodes" title="Collapse all">
             <AppIcon name="chevrons-up" :size="13" />
@@ -1296,6 +1348,22 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .issue-count-link:focus-visible { outline: 2px solid color-mix(in srgb, var(--bp-blue) 45%, transparent); outline-offset: 2px; border-radius: 3px; }
 .btn-sm { padding: .3rem .65rem; font-size: 12px; }
 .btn-sm.active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); border-color: var(--bp-blue-pale); }
+.select-all-matching {
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+  border-color: color-mix(in srgb, var(--bp-blue) 40%, transparent);
+}
+.select-all-matching:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--bp-blue-pale) 70%, var(--bp-blue));
+}
+.select-all-matching-warn {
+  font-size: 11px;
+  color: #b45309;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .filter-btn { display: inline-flex; align-items: center; gap: .35rem; }
 .filter-btn.has-filters { border-color: var(--bp-blue); color: var(--bp-blue-dark); background: var(--bp-blue-pale); }

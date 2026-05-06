@@ -110,6 +110,13 @@ function withCsrfHeader(
 export interface RequestOptions {
   timeoutMs?: number;
   headers?: Record<string, string>;
+  /**
+   * External AbortSignal — caller-driven cancellation. Linked to the
+   * internal timeout controller so either source cancels the fetch.
+   * Used by BulkChangeModal to abort in-flight chunked PATCH calls
+   * when the user closes the modal mid-bulk (PAI-317).
+   */
+  signal?: AbortSignal;
 }
 
 export interface ApiMetaResponse<T> {
@@ -173,6 +180,16 @@ async function fetchResponse(
   const ctrl = new AbortController();
   const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  // Wire the caller's external signal into our local controller so a
+  // user-initiated cancel (e.g. closing the bulk modal) tears down the
+  // pending fetch the same way a timeout does.
+  if (opts?.signal) {
+    if (opts.signal.aborted) {
+      ctrl.abort();
+    } else {
+      opts.signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+    }
+  }
   try {
     const headers: Record<string, string> = {
       ...(body ? { "Content-Type": "application/json" } : {}),

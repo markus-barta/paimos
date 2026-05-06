@@ -563,31 +563,6 @@ func loadRedoableMutation(tx *sql.Tx, logID int64, userID int64) (mutationLogRow
 	return row, nil
 }
 
-func loadRedoableMutationByRequestID(tx *sql.Tx, requestID string, userID int64) (mutationLogRow, error) {
-	var row mutationLogRow
-	var uid sql.NullInt64
-	var undoneBy sql.NullInt64
-	var undoable, onUserStack, redoable int
-	err := tx.QueryRow(`
-		SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
-		       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
-		FROM mutation_log
-		WHERE request_id = ? AND user_id = ? AND redoable = 1 AND undone_at IS NOT NULL
-		ORDER BY created_at DESC, id DESC
-		LIMIT 1
-	`, strings.TrimSpace(requestID), userID).Scan(
-		&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.BatchID, &row.ParentLogID, &row.InverseOp,
-		&row.BeforeState, &row.AfterState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &redoable, &row.UndoneAt, &undoneBy, &row.ResolutionChoice,
-	)
-	if err != nil {
-		return row, err
-	}
-	row.UserID = nullInt64Ptr(uid)
-	row.Undoable = undoable == 1
-	row.OnUserStack = onUserStack == 1
-	row.Redoable = redoable == 1
-	return row, nil
-}
 
 func issueLabel(id int64) string {
 	var key string
@@ -715,29 +690,107 @@ func runUndoMode(w http.ResponseWriter, r *http.Request, mode undoMode, byReques
 	}
 	defer tx.Rollback()
 
-	var row mutationLogRow
+	// byRequest expands to all mutation_log rows that share the request_id —
+	// for non-batch mutations this is a single row; for bulk operations
+	// (PATCH /api/issues) every subject in the batch shares one request_id
+	// AND one batch_id, and a single user-facing undo must revert them
+	// all atomically (PAI-316).
 	if byRequest {
 		requestID := strings.TrimSpace(chi.URLParam(r, "requestID"))
 		if requestID == "" {
 			jsonError(w, "invalid request id", http.StatusBadRequest)
 			return
 		}
+		var batchRows []mutationLogRow
 		if mode == undoModeUndo {
-			row, err = loadUndoableMutationByRequestID(tx, requestID, user.ID)
+			batchRows, err = loadUndoableMutationsByRequestID(tx, requestID, user.ID)
 		} else {
-			row, err = loadRedoableMutationByRequestID(tx, requestID, user.ID)
+			batchRows, err = loadRedoableMutationsByRequestID(tx, requestID, user.ID)
 		}
-	} else {
-		logID, parseErr := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if parseErr != nil {
-			jsonError(w, "invalid id", http.StatusBadRequest)
+		if err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if mode == undoModeUndo {
-			row, err = loadUndoableMutation(tx, logID, user.ID)
-		} else {
-			row, err = loadRedoableMutation(tx, logID, user.ID)
+		if len(batchRows) == 0 {
+			jsonError(w, "not found", http.StatusNotFound)
+			return
 		}
+		// Redo replays in chronological order; undo unwinds in reverse.
+		// Loaded order is DESC (newest first), so flip for redo.
+		if mode == undoModeRedo {
+			for i, j := 0, len(batchRows)-1; i < j; i, j = i+1, j-1 {
+				batchRows[i], batchRows[j] = batchRows[j], batchRows[i]
+			}
+		}
+
+		var resolution *undoResolutionPayload
+		if resolve {
+			var payload undoResolutionPayload
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				jsonError(w, "invalid JSON body", http.StatusBadRequest)
+				return
+			}
+			resolution = &payload
+		}
+
+		var lastBody map[string]any
+		var rowConflict *undoConflictResponse
+		var rowConflictStatus int
+		for _, row := range batchRows {
+			body, conflict, status, err := applyMutationFlowTx(r.Context(), tx, row, user.ID, mode, resolution)
+			if err != nil {
+				log.Printf("undo flow: %v", err)
+				jsonError(w, "undo failed", status)
+				return
+			}
+			if conflict != nil {
+				// First conflict in the batch aborts the whole tx —
+				// the user resolves the conflicting row via /undo/{id}/resolve
+				// and re-issues the request.
+				rowConflict = conflict
+				rowConflictStatus = status
+				break
+			}
+			if status == http.StatusLocked {
+				jsonError(w, "irreversible mutation", http.StatusLocked)
+				return
+			}
+			if status == http.StatusGone {
+				jsonError(w, "mutation is no longer on your active stack", http.StatusGone)
+				return
+			}
+			lastBody = body
+		}
+		if rowConflict != nil {
+			w.WriteHeader(rowConflictStatus)
+			_ = json.NewEncoder(w).Encode(rowConflict)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			jsonError(w, "undo failed", http.StatusInternalServerError)
+			return
+		}
+		// Aggregate response: keep the single-row body shape (caller
+		// expectations) and add batch_size so callers that care can
+		// tell how many rows were affected.
+		if lastBody == nil {
+			lastBody = map[string]any{}
+		}
+		lastBody["batch_size"] = len(batchRows)
+		jsonOK(w, lastBody)
+		return
+	}
+
+	var row mutationLogRow
+	logID, parseErr := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if parseErr != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	if mode == undoModeUndo {
+		row, err = loadUndoableMutation(tx, logID, user.ID)
+	} else {
+		row, err = loadRedoableMutation(tx, logID, user.ID)
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -473,30 +473,120 @@ func loadUndoableMutation(tx *sql.Tx, logID int64, userID int64) (mutationLogRow
 	return row, nil
 }
 
-func loadUndoableMutationByRequestID(tx *sql.Tx, requestID string, userID int64) (mutationLogRow, error) {
-	var row mutationLogRow
-	var uid sql.NullInt64
-	var undoneBy sql.NullInt64
-	var undoable, onUserStack, redoable int
-	err := tx.QueryRow(`
-		SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
-		       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
-		FROM mutation_log
-		WHERE request_id = ? AND user_id = ? AND undoable = 1 AND on_user_stack = 1 AND undone_at IS NULL
-		ORDER BY created_at DESC, id DESC
-		LIMIT 1
-	`, strings.TrimSpace(requestID), userID).Scan(
-		&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.BatchID, &row.ParentLogID, &row.InverseOp,
-		&row.BeforeState, &row.AfterState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &redoable, &row.UndoneAt, &undoneBy, &row.ResolutionChoice,
-	)
-	if err != nil {
-		return row, err
+// loadUndoableMutationsByRequestID returns every undoable mutation_log
+// row tied to a single user request. For non-batch mutations this is
+// always one row; for bulk operations (PATCH /api/issues, etc.) where
+// multiple subjects share one request_id AND one batch_id, it returns
+// the whole batch in DESC order so the caller can revert them as one
+// logical action (PAI-316).
+//
+// Subtle: enforceUndoStackDepth() marks all-but-one batch-mate as
+// on_user_stack=0 to make the batch count as one stack slot. Filtering
+// solely on on_user_stack=1 would therefore see only the representative
+// row. We instead anchor on the on-stack row for the request, then
+// expand by its batch_id so off-stack batch siblings come along.
+func loadUndoableMutationsByRequestID(tx *sql.Tx, requestID string, userID int64) ([]mutationLogRow, error) {
+	return loadMutationsByRequestID(tx, requestID, userID, undoModeUndo)
+}
+
+// loadRedoableMutationsByRequestID — symmetric to the undo loader.
+// runUndoMode reverses the loaded DESC order to redo chronologically.
+func loadRedoableMutationsByRequestID(tx *sql.Tx, requestID string, userID int64) ([]mutationLogRow, error) {
+	return loadMutationsByRequestID(tx, requestID, userID, undoModeRedo)
+}
+
+// loadMutationsByRequestID is the shared anchor-then-expand loader for
+// both undo and redo. It first finds the actionable representative row
+// for the request_id, then — if that row is part of a batch — expands
+// to all batch siblings; otherwise returns the single row.
+func loadMutationsByRequestID(tx *sql.Tx, requestID string, userID int64, mode undoMode) ([]mutationLogRow, error) {
+	requestID = strings.TrimSpace(requestID)
+	var anchorBatchID sql.NullString
+	var anchorWhere string
+	if mode == undoModeUndo {
+		anchorWhere = `request_id = ? AND user_id = ? AND undoable = 1 AND on_user_stack = 1 AND undone_at IS NULL`
+	} else {
+		anchorWhere = `request_id = ? AND user_id = ? AND undoable = 1 AND redoable = 1 AND undone_at IS NOT NULL`
 	}
-	row.UserID = nullInt64Ptr(uid)
-	row.Undoable = undoable == 1
-	row.OnUserStack = onUserStack == 1
-	row.Redoable = redoable == 1
-	return row, nil
+	err := tx.QueryRow(`
+		SELECT batch_id FROM mutation_log
+		WHERE `+anchorWhere+`
+		ORDER BY created_at DESC, id DESC LIMIT 1
+	`, requestID, userID).Scan(&anchorBatchID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// No actionable row for this request — caller renders this as 404.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		rows *sql.Rows
+		qerr error
+	)
+	expandedBatch := anchorBatchID.Valid && anchorBatchID.String != ""
+	if expandedBatch {
+		// Batch case — expand by batch_id (ignore on_user_stack so
+		// off-stack siblings come along). Still gate by undone_at and
+		// the mode-specific predicates.
+		var modeFilter string
+		if mode == undoModeUndo {
+			modeFilter = `undoable = 1 AND undone_at IS NULL`
+		} else {
+			modeFilter = `undoable = 1 AND redoable = 1 AND undone_at IS NOT NULL`
+		}
+		rows, qerr = tx.Query(`
+			SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
+			       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
+			FROM mutation_log
+			WHERE batch_id = ? AND user_id = ? AND `+modeFilter+`
+			ORDER BY created_at DESC, id DESC
+		`, anchorBatchID.String, userID)
+	} else {
+		// Single-row case — return just the anchor.
+		rows, qerr = tx.Query(`
+			SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
+			       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
+			FROM mutation_log
+			WHERE `+anchorWhere+`
+			ORDER BY created_at DESC, id DESC
+			LIMIT 1
+		`, requestID, userID)
+	}
+	if qerr != nil {
+		return nil, qerr
+	}
+	defer rows.Close()
+	var out []mutationLogRow
+	for rows.Next() {
+		var row mutationLogRow
+		var uid sql.NullInt64
+		var undoneBy sql.NullInt64
+		var undoable, onUserStack, redoable int
+		if err := rows.Scan(
+			&row.ID, &row.RequestID, &uid, &row.MutationType, &row.SubjectType, &row.SubjectID, &row.BatchID, &row.ParentLogID, &row.InverseOp,
+			&row.BeforeState, &row.AfterState, &row.BeforeHash, &row.AfterHash, &undoable, &onUserStack, &redoable, &row.UndoneAt, &undoneBy, &row.ResolutionChoice,
+		); err != nil {
+			return nil, err
+		}
+		row.UserID = nullInt64Ptr(uid)
+		row.Undoable = undoable == 1
+		// Force OnUserStack=true for batch-expanded rows: their DB flag
+		// is 0 because enforceUndoStackDepth marks all-but-one batch
+		// member off-stack to count as one slot. For the purpose of
+		// undoing the *batch as a whole* they're all in scope, and
+		// applyMutationFlowTx's StatusGone guard otherwise rejects the
+		// siblings.
+		if expandedBatch {
+			row.OnUserStack = true
+		} else {
+			row.OnUserStack = onUserStack == 1
+		}
+		row.Redoable = redoable == 1
+		out = append(out, row)
+	}
+	return out, nil
 }
 
 func currentMutationHashTx(tx *sql.Tx, row mutationLogRow) (string, error) {

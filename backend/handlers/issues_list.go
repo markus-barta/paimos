@@ -305,6 +305,47 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ids_only short-circuit: skip full hydration and return only the
+	// matching issue ids for the current filter — designed for the
+	// IssueList "Select all N matching" chip (PAI-318) which needs to
+	// turn a server-side filter into a client-side selection set
+	// without paying for full issue payloads. Hard-capped to keep the
+	// payload bounded (50 × MaxBatchSize = 5000); callers above that
+	// are out of scope for this endpoint and should narrow the filter.
+	if q.Get("ids_only") == "1" {
+		const idsOnlyCap = MaxBatchSize * 50
+		idsQuery := `SELECT i.id FROM issues i WHERE ` + whereSQL + ` ORDER BY i.id LIMIT ?`
+		idsArgs := append(append([]any{}, args...), idsOnlyCap+1)
+		// #nosec G701 -- idsQuery is composed from fixed fragments; user values are placeholders.
+		idRows, idErr := db.DB.Query(idsQuery, idsArgs...)
+		if idErr != nil {
+			jsonError(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		defer idRows.Close()
+		ids := make([]int64, 0, 64)
+		for idRows.Next() {
+			var id int64
+			if err := idRows.Scan(&id); err != nil {
+				jsonError(w, "scan failed", http.StatusInternalServerError)
+				return
+			}
+			ids = append(ids, id)
+		}
+		truncated := false
+		if len(ids) > idsOnlyCap {
+			ids = ids[:idsOnlyCap]
+			truncated = true
+		}
+		jsonOK(w, map[string]any{
+			"ids":       ids,
+			"total":     len(ids),
+			"truncated": truncated,
+			"cap":       idsOnlyCap,
+		})
+		return
+	}
+
 	query := issueSelectCore + ` WHERE ` + whereSQL
 	if len(searchTerm) >= 2 {
 		orderSQL, orderArgs := issueSearchRankOrder(searchTerm)

@@ -18,6 +18,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -291,21 +292,61 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		AssigneeID         *int64   `json:"assignee_id"`
 		CascadeChildren    *bool    `json:"cascade_children"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	// Read body once so we can both typed-decode (values) AND map-decode
+	// (key presence). The latter lets us tell `{"assignee_id": null}`
+	// (clear it) apart from the key being absent (no change). Without
+	// the distinction, *int64 collapses both to nil and clearing the
+	// column becomes impossible.
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
 		return
 	}
+	if err := json.Unmarshal(rawBody, &body); err != nil {
+		jsonError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	var keyMap map[string]json.RawMessage
+	if err := json.Unmarshal(rawBody, &keyMap); err != nil {
+		jsonError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	// Presence flags for every truly-nullable column the schema permits
+	// to be NULL. Without these, an explicit JSON null on any of these
+	// fields silently no-ops (PAI-315). Columns NOT listed here are
+	// either NOT NULL DEFAULT '' (cleared via empty string) or out of
+	// the partial-update surface (created_at etc.).
+	present := func(key string) int {
+		if _, ok := keyMap[key]; ok {
+			return 1
+		}
+		return 0
+	}
+	parentPresent := present("parent_id")
+	assigneePresent := present("assignee_id")
+	totalBudgetPresent := present("total_budget")
+	rateHourlyPresent := present("rate_hourly")
+	rateLpPresent := present("rate_lp")
+	estimateHoursPresent := present("estimate_hours")
+	estimateLpPresent := present("estimate_lp")
+	arHoursPresent := present("ar_hours")
+	arLpPresent := present("ar_lp")
+	timeOverridePresent := present("time_override")
+	colorPresent := present("color")
+	parentIDPresent := parentPresent == 1
 
-	// Validate hierarchy if type or parent changing
+	// Validate hierarchy if type or parent changing. Use presence-of-key
+	// (not just non-nil pointer) for parent_id so an explicit-null clear
+	// also runs the check against the cleared state.
 	newType := existing.Type
 	if body.Type != nil {
 		newType = *body.Type
 	}
 	newParent := existing.ParentID
-	if body.ParentID != nil {
+	if parentIDPresent {
 		newParent = body.ParentID
 	}
-	if body.Type != nil || body.ParentID != nil {
+	if body.Type != nil || parentIDPresent {
 		if err := validateParent(newType, newParent, existing.ProjectID); err != nil {
 			jsonError(w, err.Error(), http.StatusUnprocessableEntity)
 			return
@@ -331,15 +372,15 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			acceptance_criteria = COALESCE(?, acceptance_criteria),
 			notes               = COALESCE(?, notes),
 			type                = COALESCE(?, type),
-			parent_id           = CASE WHEN ? IS NOT NULL THEN ? ELSE parent_id END,
+			parent_id           = CASE WHEN ? = 1 THEN ? ELSE parent_id END,
 			status              = COALESCE(?, status),
 			priority            = COALESCE(?, priority),
 			cost_unit           = COALESCE(?, cost_unit),
 			release             = COALESCE(?, release),
 			billing_type        = COALESCE(?, billing_type),
-			total_budget        = COALESCE(?, total_budget),
-			rate_hourly         = COALESCE(?, rate_hourly),
-			rate_lp             = COALESCE(?, rate_lp),
+			total_budget        = CASE WHEN ? = 1 THEN ? ELSE total_budget END,
+			rate_hourly         = CASE WHEN ? = 1 THEN ? ELSE rate_hourly END,
+			rate_lp             = CASE WHEN ? = 1 THEN ? ELSE rate_lp END,
 			start_date          = COALESCE(?, start_date),
 			end_date            = COALESCE(?, end_date),
 			group_state         = COALESCE(?, group_state),
@@ -347,26 +388,32 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			jira_id             = COALESCE(?, jira_id),
 			jira_version        = COALESCE(?, jira_version),
 			jira_text           = COALESCE(?, jira_text),
-			estimate_hours      = COALESCE(?, estimate_hours),
-			estimate_lp         = COALESCE(?, estimate_lp),
-			ar_hours            = COALESCE(?, ar_hours),
-			ar_lp               = COALESCE(?, ar_lp),
-			time_override       = COALESCE(?, time_override),
-			color               = COALESCE(?, color),
-			assignee_id         = CASE WHEN ? IS NOT NULL THEN ? ELSE assignee_id END,
+			estimate_hours      = CASE WHEN ? = 1 THEN ? ELSE estimate_hours END,
+			estimate_lp         = CASE WHEN ? = 1 THEN ? ELSE estimate_lp END,
+			ar_hours            = CASE WHEN ? = 1 THEN ? ELSE ar_hours END,
+			ar_lp               = CASE WHEN ? = 1 THEN ? ELSE ar_lp END,
+			time_override       = CASE WHEN ? = 1 THEN ? ELSE time_override END,
+			color               = CASE WHEN ? = 1 THEN ? ELSE color END,
+			assignee_id         = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
 			updated_at          = ?
 		WHERE id=?
 	`, body.Title, body.Description, body.AcceptanceCriteria, body.Notes,
 		body.Type,
-		body.ParentID, body.ParentID,
+		parentPresent, body.ParentID,
 		body.Status, body.Priority, body.CostUnit, body.Release,
-		body.BillingType, body.TotalBudget, body.RateHourly, body.RateLp,
+		body.BillingType,
+		totalBudgetPresent, body.TotalBudget,
+		rateHourlyPresent, body.RateHourly,
+		rateLpPresent, body.RateLp,
 		body.StartDate, body.EndDate, body.GroupState, body.SprintState,
 		body.JiraID, body.JiraVersion, body.JiraText,
-		body.EstimateHours, body.EstimateLp, body.ArHours, body.ArLp,
-		body.TimeOverride,
-		body.Color,
-		body.AssigneeID, body.AssigneeID,
+		estimateHoursPresent, body.EstimateHours,
+		estimateLpPresent, body.EstimateLp,
+		arHoursPresent, body.ArHours,
+		arLpPresent, body.ArLp,
+		timeOverridePresent, body.TimeOverride,
+		colorPresent, body.Color,
+		assigneePresent, body.AssigneeID,
 		now, id)
 	if handleDBError(w, err, "issue") {
 		return
