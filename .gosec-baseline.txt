@@ -29,8 +29,10 @@ G202	MEDIUM	HIGH	handlers/issues.go	303-312	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues.go	343-354	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	217	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	97	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues_write.go	694	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_write.go	741	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	325	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	539-545	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	548-555	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	828	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
