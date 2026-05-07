@@ -9,8 +9,8 @@ G120	MEDIUM	HIGH	handlers/logo.go	43	Unbounded form parsing in HTTP handlers can
 G120	MEDIUM	HIGH	handlers/profile.go	133	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G124	MEDIUM	HIGH	auth/auth.go	185	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/auth.go	232	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-G124	MEDIUM	HIGH	auth/auth.go	408	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-G124	MEDIUM	HIGH	auth/auth.go	444	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	409	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	445	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/csrf.go	117	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/csrf.go	132	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/oidc.go	167	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute

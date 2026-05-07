@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.3] — 2026-05-07
+
+CI-only fix on top of v2.7.2. PAI-321's `ClearMustChangePassword` call shifted two `SetCookie` sites in `auth.go` (LoginHandler + LogoutHandler) by one line each, tripping the gosec line-keyed baseline. Refreshed the baseline; same `Secure: cookieSecure` variable pattern that's already accepted on every other cookie call site. v2.7.2's tag never produced a Docker image because of the failing gate; v2.7.3 carries the same code plus the baseline refresh.
+
+### Changed
+
+- Refreshed `.gosec-baseline.txt` to absorb the line-shift drift introduced by PAI-321.
+
 ## [2.7.2] — 2026-05-07
 
 Two bug fixes / feature follow-ups on top of v2.7.1.
