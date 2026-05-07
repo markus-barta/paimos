@@ -16,14 +16,15 @@
 package handlers
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,12 +136,24 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ct := header.Header.Get("Content-Type")
+	// PAI-110: always sniff and validate before storing, regardless of
+	// what the client declared. The Content-Type header is hostile-
+	// controlled — a benign-sounding declaration cannot be allowed to
+	// gate the active-content check.
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	if _, err := file.Seek(0, 0); err != nil {
+		jsonError(w, "read failed", http.StatusInternalServerError)
+		return
+	}
+	declaredCT := header.Header.Get("Content-Type")
+	if reason := rejectActiveContent(declaredCT, buf[:n]); reason != "" {
+		jsonError(w, "file type not allowed: "+reason, http.StatusUnsupportedMediaType)
+		return
+	}
+	ct := declaredCT
 	if ct == "" || ct == "application/octet-stream" {
-		buf := make([]byte, 512)
-		n, _ := file.Read(buf)
 		ct = http.DetectContentType(buf[:n])
-		file.Seek(0, 0)
 	}
 
 	filename := header.Filename
@@ -231,24 +244,43 @@ func GetAttachmentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reader, ct, objSize, err := storage.Get(r.Context(), a.ObjectKey)
+	reader, storedCT, objSize, err := storage.Get(r.Context(), a.ObjectKey)
 	if err != nil {
 		jsonError(w, "file not found in storage", http.StatusNotFound)
 		return
 	}
 	defer reader.Close()
 
-	if ct == "" {
-		ct = a.ContentType
+	// PAI-110: re-sniff the actual bytes leaving the server. Storage
+	// metadata and the DB content_type column reflect what we believed
+	// at upload time — re-sniffing on serve protects against legacy
+	// data uploaded before the active-content gate landed and against
+	// any future bypass that lets a mismatched type into storage.
+	br := bufio.NewReader(reader)
+	head, _ := br.Peek(512) // Peek does not consume; safe to io.Copy after.
+	detectedCT := http.DetectContentType(head)
+	if detectedCT == "application/octet-stream" {
+		// DetectContentType returns octet-stream for inputs it can't
+		// recognise. Fall back to whatever we stored, which may at
+		// least be a real type for office docs etc.
+		if storedCT != "" {
+			detectedCT = storedCT
+		} else {
+			detectedCT = a.ContentType
+		}
 	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, a.Filename))
+	servedCT, disposition, csp := safeServePolicy(detectedCT)
+
+	w.Header().Set("Content-Type", servedCT)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, a.Filename))
+	w.Header().Set("Content-Security-Policy", csp)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Use the actual stored object size, not a.SizeBytes — image processing
 	// (resize / re-encode) can shrink the file after upload, and the DB
 	// column records the pre-processing upload size.
 	w.Header().Set("Content-Length", strconv.FormatInt(objSize, 10))
 	w.Header().Set("Cache-Control", "private, max-age=86400")
-	io.Copy(w, reader)
+	io.Copy(w, br)
 }
 
 // DeleteAttachment — DELETE /api/attachments/{id}
@@ -317,12 +349,23 @@ func UploadPendingAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ct := header.Header.Get("Content-Type")
+	// PAI-110: same active-content gate as UploadAttachment. Pending
+	// uploads land in storage too, and a malicious paste/drop must not
+	// be reachable from the link endpoint.
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	if _, err := file.Seek(0, 0); err != nil {
+		jsonError(w, "read failed", http.StatusInternalServerError)
+		return
+	}
+	declaredCT := header.Header.Get("Content-Type")
+	if reason := rejectActiveContent(declaredCT, buf[:n]); reason != "" {
+		jsonError(w, "file type not allowed: "+reason, http.StatusUnsupportedMediaType)
+		return
+	}
+	ct := declaredCT
 	if ct == "" || ct == "application/octet-stream" {
-		buf := make([]byte, 512)
-		n, _ := file.Read(buf)
 		ct = http.DetectContentType(buf[:n])
-		file.Seek(0, 0)
 	}
 
 	filename := header.Filename
