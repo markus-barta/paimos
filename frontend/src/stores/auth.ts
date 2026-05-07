@@ -16,7 +16,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api, announceSessionRestored, permissionsEpoch } from '@/api/client'
 import router from '@/router'
 import i18n from '@/i18n'
@@ -60,6 +60,10 @@ export interface User {
   // Accruals report preferences (migration 62) — admin-only feature
   accruals_stats_enabled: boolean
   accruals_extra_statuses: string
+  // PAI-335: super-admin flag, orthogonal to role. Drives the user
+  // picker on the time-entry create form. Promoted to a proper role
+  // in PAI-336.
+  is_super_admin: boolean
 }
 
 // AccessLevel mirrors backend auth.AccessLevel.
@@ -126,6 +130,12 @@ export const useAuthStore = defineStore('auth', () => {
     if (allProjects.value) return true
     return accessibleProjects.value.get(projectId) === 'editor'
   }
+
+  // PAI-335: orthogonal to role. The single super-admin (`mba` per
+  // the M92 backfill) gets the user picker on the time-entry form.
+  // Components branch on this rather than reading user.value
+  // directly so they don't have to nil-check on every read.
+  const isSuperAdmin = computed(() => !!user.value?.is_super_admin)
 
   async function fetchMe() {
     try {
@@ -271,6 +281,7 @@ export const useAuthStore = defineStore('auth', () => {
     hydrateAccess,
     canView,
     canEdit,
+    isSuperAdmin,
     fetchTOTPStatus,
     setTOTPEnabled,
     logout,

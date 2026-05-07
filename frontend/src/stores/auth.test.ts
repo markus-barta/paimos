@@ -56,6 +56,7 @@ function fakeUser(): User {
     last_login_at: null,
     accruals_stats_enabled: false,
     accruals_extra_statuses: '',
+    is_super_admin: false,
   }
 }
 

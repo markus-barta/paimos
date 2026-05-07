@@ -64,6 +64,12 @@ func ListTimeEntries(w http.ResponseWriter, r *http.Request) {
 
 // CreateTimeEntry starts a new time entry (or records a manual one).
 // POST /api/issues/:id/time-entries
+//
+// PAI-335: when the caller is a super-admin, `user_id` may be set to
+// any other user — useful for retrospectively adding a forgotten
+// timer for a teammate, or correcting a wrong-user assignment.
+// Non-super-admins sending a foreign `user_id` get 403; absent /
+// matching `user_id` keeps the existing self-only behaviour.
 func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	ticketID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -75,6 +81,7 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		StoppedAt *string  `json:"stopped_at"`
 		Override  *float64 `json:"override"`
 		Comment   string   `json:"comment"`
+		UserID    *int64   `json:"user_id"` // PAI-335
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -84,22 +91,40 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		body.StartedAt = time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	}
 
-	userID := int64(0)
-	var userRate *float64
-	if u := auth.GetUser(r); u != nil {
-		userID = u.ID
-		// Snapshot user's current internal rate
-		if err := db.DB.QueryRow("SELECT internal_rate_hourly FROM users WHERE id=?", u.ID).Scan(&userRate); err != nil {
-			log.Printf("scan error: %v", err)
-			jsonError(w, "internal error", http.StatusInternalServerError)
+	caller := auth.GetUser(r)
+	if caller == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// PAI-335: decide whose entry this is. Default = caller. A super-
+	// admin can pass any user_id; anyone else passing a foreign id is
+	// denied even if the field's value would have been a no-op
+	// (paranoia: never silently accept a bad client request).
+	targetUserID := caller.ID
+	crossUser := false
+	if body.UserID != nil && *body.UserID != caller.ID {
+		if !auth.IsSuperAdmin(caller) {
+			jsonError(w, "only super-admin can create time entries for other users", http.StatusForbidden)
 			return
 		}
+		targetUserID = *body.UserID
+		crossUser = true
+	}
+
+	// Snapshot the TARGET user's rate, not the caller's — otherwise
+	// the super-admin's rate would silently shadow the actual worker's.
+	var userRate *float64
+	if err := db.DB.QueryRow("SELECT internal_rate_hourly FROM users WHERE id=?", targetUserID).Scan(&userRate); err != nil {
+		log.Printf("CreateTimeEntry: rate snapshot user=%d: %v", targetUserID, err)
+		jsonError(w, "target user not found", http.StatusBadRequest)
+		return
 	}
 
 	res, err := db.DB.Exec(`
 		INSERT INTO time_entries(issue_id, user_id, started_at, stopped_at, override, comment, internal_rate_hourly)
 		VALUES(?,?,?,?,?,?,?)
-	`, ticketID, userID, body.StartedAt, body.StoppedAt, body.Override, body.Comment, userRate)
+	`, ticketID, targetUserID, body.StartedAt, body.StoppedAt, body.Override, body.Comment, userRate)
 	if handleDBError(w, err, "time entry") {
 		return
 	}
@@ -108,6 +133,17 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	if entry == nil {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)
 		return
+	}
+	// PAI-335: structured audit line for the cross-user case. Same
+	// shape as the auth audit lines (login_ok / login_failed / …) so
+	// operators can grep for `super_admin_act` to find every
+	// privileged action across the deployment. PAI-336 will replace
+	// this with a queryable mutation_log entry + dashboard.
+	if crossUser {
+		log.Printf(
+			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_create target_user_id=%d entry_id=%d issue_id=%d",
+			caller.ID, caller.Username, targetUserID, id, ticketID,
+		)
 	}
 	// Re-evaluate system tags if this entry has hours (stopped or override)
 	if body.StoppedAt != nil || body.Override != nil {
@@ -126,7 +162,10 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// own-or-admin check
+	// own-or-admin check (PAI-335: super-admin is always allowed too,
+	// even though admin already covers it today — keeps the gate
+	// explicit so a future role-cascade refactor that narrows admin
+	// can't quietly take this away).
 	user := auth.GetUser(r)
 	var ownerID *int64
 	err = db.DB.QueryRow("SELECT user_id FROM time_entries WHERE id=?", id).Scan(&ownerID)
@@ -135,10 +174,11 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isOwner := ownerID != nil && *ownerID == user.ID
-	if !isOwner && user.Role != "admin" {
+	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	crossUser := !isOwner
 
 	var body struct {
 		StoppedAt     *string  `json:"stopped_at"`
@@ -177,6 +217,18 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	// PAI-335: stamp every cross-user write so a paper-trail grep
+	// surfaces every privileged action.
+	if crossUser {
+		var targetID int64
+		if ownerID != nil {
+			targetID = *ownerID
+		}
+		log.Printf(
+			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_update target_user_id=%d entry_id=%d issue_id=%d",
+			user.ID, user.Username, targetID, id, entry.IssueID,
+		)
+	}
 	// Re-evaluate system tags (timer stopped or override changed)
 	EvaluateSystemTags(entry.IssueID)
 	jsonOK(w, entry)
@@ -191,7 +243,7 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// own-or-admin check — also capture issue_id for system tag re-evaluation
+	// own-or-admin check (PAI-335: super-admin too — see UpdateTimeEntry).
 	user := auth.GetUser(r)
 	var ownerID *int64
 	var issueID int64
@@ -201,10 +253,11 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isOwner := ownerID != nil && *ownerID == user.ID
-	if !isOwner && user.Role != "admin" {
+	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	crossUser := !isOwner
 
 	res, err := db.DB.Exec("DELETE FROM time_entries WHERE id=?", id)
 	if err != nil {
@@ -215,6 +268,17 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 	if n == 0 {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
+	}
+	// PAI-335: paper-trail.
+	if crossUser {
+		var targetID int64
+		if ownerID != nil {
+			targetID = *ownerID
+		}
+		log.Printf(
+			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_delete target_user_id=%d entry_id=%d issue_id=%d",
+			user.ID, user.Username, targetID, id, issueID,
+		)
 	}
 	// Re-evaluate system tags after time entry removal
 	EvaluateSystemTags(issueID)

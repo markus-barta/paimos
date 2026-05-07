@@ -407,6 +407,10 @@ export interface User {
   last_login_at: string | null
   created_at: string
   totp_enabled: boolean
+  // PAI-335: super-admin flag, orthogonal to role. Drives the user
+  // picker on the time-entry create form. Promoted to a proper role
+  // in PAI-336.
+  is_super_admin: boolean
 }
 
 // Tag color palette — must match backend ValidColors

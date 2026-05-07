@@ -3865,6 +3865,19 @@ func migrate(db *sql.DB) error {
 		{91, []string{
 			`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`,
 		}},
+
+		// M92 / PAI-335: per-user super-admin flag, orthogonal to the
+		// role enum. Backfills `mba` to 1 — the single super-admin on
+		// both production instances per the operator's intent. Other
+		// users default to 0; flipping the bit on another account is
+		// a deliberate SQL-level act today (PAI-336 will add a UI).
+		// The flag gates cross-user time-entry writes (and is the
+		// foundation any future super-admin-only endpoint can build
+		// on via auth.IsSuperAdmin / auth.RequireSuperAdmin).
+		{92, []string{
+			`ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0`,
+			`UPDATE users SET is_super_admin = 1 WHERE username = 'mba'`,
+		}},
 	}
 
 	for _, m := range migrations {

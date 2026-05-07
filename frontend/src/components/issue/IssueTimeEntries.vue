@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import { errMsg } from '@/api/client'
+import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import type { User } from '@/types'
 import { useTimerStore } from '@/stores/timer'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDuration, parseDuration } from '@/composables/useDurationInput'
@@ -24,8 +25,33 @@ const teLoading      = ref(false)
 const showTeForm     = ref(false)
 const teSaving       = ref(false)
 const teError        = ref('')
-const teForm         = ref({ duration: '', comment: '' })
+const teForm         = ref({ duration: '', comment: '', userId: 0 as number })
 const teDurationRef  = ref<HTMLInputElement | null>(null)
+
+// PAI-335: super-admin can log time on behalf of any user. The picker
+// only renders when authStore.isSuperAdmin so non-super-admins never
+// see (or send) the user_id field. Lazy-loaded — first time the
+// super-admin opens the create form.
+const assignableUsers = ref<User[]>([])
+let assignableUsersLoaded = false
+async function ensureAssignableUsers() {
+  if (assignableUsersLoaded) return
+  if (!authStore.isSuperAdmin) return
+  try {
+    const all = await api.get<User[]>('/users')
+    // Only active accounts make sense as time-entry owners.
+    assignableUsers.value = all.filter(u => u.status === 'active')
+    assignableUsersLoaded = true
+  } catch { /* tolerate; picker just stays empty */ }
+}
+const pickedUser = computed<User | undefined>(() =>
+  assignableUsers.value.find(u => u.id === teForm.value.userId),
+)
+const isActingAsOther = computed(() =>
+  authStore.isSuperAdmin
+  && teForm.value.userId !== 0
+  && teForm.value.userId !== authStore.user?.id,
+)
 
 const isTimerIssue = computed(() => timerStore.isRunning(props.issueId))
 
@@ -67,9 +93,16 @@ defineExpose({ load, totalHours })
 watch(() => props.issueId, () => load())
 
 function openTeForm() {
-  teForm.value = { duration: '', comment: '' }
+  teForm.value = {
+    duration: '',
+    comment: '',
+    // PAI-335: default to caller; super-admin can change via picker.
+    userId: authStore.user?.id ?? 0,
+  }
   teError.value = ''
   showTeForm.value = true
+  // Fire-and-forget; the picker just stays empty until the fetch lands.
+  void ensureAssignableUsers()
   nextTick(() => teDurationRef.value?.focus())
 }
 
@@ -89,6 +122,13 @@ async function submitTimeEntry() {
       override: hours,
       started_at: now,
       stopped_at: now,
+    }
+    // PAI-335: only attach user_id when the super-admin picked
+    // someone OTHER than themselves. Sending the caller's own id is
+    // harmless server-side, but omitting it keeps the wire shape
+    // identical to the pre-PAI-335 client for the common case.
+    if (isActingAsOther.value) {
+      body.user_id = teForm.value.userId
     }
     await createIssueTimeEntry(props.issueId, body)
     await load()
@@ -228,6 +268,26 @@ async function deleteTimeEntry(entry: TimeEntry) {
               <input v-model="teForm.comment" type="text" placeholder="What did you work on?" />
             </div>
           </div>
+          <!-- PAI-335: super-admin user picker. Hidden for everyone
+               else so the picker can never silently submit a foreign
+               user_id from a stale form state. -->
+          <div v-if="authStore.isSuperAdmin" class="te-form-row te-form-row--super">
+            <div class="field" style="flex:1">
+              <label>Log on behalf of</label>
+              <select v-model.number="teForm.userId">
+                <option v-if="!assignableUsers.length" :value="authStore.user?.id ?? 0">
+                  {{ authStore.user?.username ?? 'me' }}
+                </option>
+                <option v-for="u in assignableUsers" :key="u.id" :value="u.id">
+                  {{ u.username }}{{ u.id === authStore.user?.id ? ' (me)' : '' }}
+                </option>
+              </select>
+            </div>
+            <div v-if="isActingAsOther" class="te-acting-badge" :title="`Time entry will be saved as ${pickedUser?.username}, not as you.`">
+              <AppIcon name="user" :size="12" />
+              Acting as <strong>{{ pickedUser?.username }}</strong>
+            </div>
+          </div>
           <div v-if="teError" class="form-error">{{ teError }}</div>
           <div class="te-form-actions">
             <button class="btn btn-ghost btn-sm" @click="showTeForm=false">Cancel</button>
@@ -341,6 +401,29 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .field label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 .form-error { font-size: 13px; color: #c0392b; background: #fde8e8; padding: .5rem .75rem; border-radius: var(--radius); }
 .te-form-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .5rem; padding: .25rem 0; }
+/* PAI-335 — super-admin user picker row. Anchors the "Acting as" badge
+   to the right so a moment of inattention never lets you misattribute
+   hours. */
+.te-form-row--super {
+  align-items: flex-end;
+}
+.te-acting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .65rem;
+  border-radius: 4px;
+  background: #fff7e6;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  align-self: flex-end;
+}
+.te-acting-badge strong {
+  font-weight: 700;
+}
 .te-save-btn { background: var(--bp-green, #16a34a); color: #fff; border-color: #15803d; }
 .te-save-btn:hover { background: #15803d; }
 
