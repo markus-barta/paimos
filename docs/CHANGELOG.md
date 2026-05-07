@@ -5,6 +5,29 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] — 2026-05-07
+
+Auth + session reliability release. Sessions stop dying mid-task once a day; admin permission changes take effect on the next request without forcing the affected user to re-login; new accounts get a forced password-change flow before they can do anything; attachment uploads no longer carry SVG/HTML script payloads.
+
+### Fixed
+
+- [PAI-110](https://pm.barta.cm/projects/6/issues/PAI-110) — **Block active-content uploads + safe-serve attachments.** Upload path now sniffs the first 512 bytes regardless of client-supplied Content-Type and rejects HTML, SVG, JS, and executable types with HTTP 415; payload-shape detection catches `<svg>` / `<script>` / `<!doctype html>` even when the declared type is benign. Serve path re-sniffs on every request and forces `Content-Type: application/octet-stream` + `Content-Disposition: attachment` for anything outside a small inline allowlist (PNG, JPEG, GIF, WebP, PDF), with a per-response `Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox`. Closes the SVG-XSS path where `AttachmentLightbox` was rendering same-origin SVGs inline.
+- [PAI-322](https://pm.barta.cm/projects/6/issues/PAI-322) — **Sessions no longer die mid-task once a day.** Replaces the 24h hard cap with a 30-day sliding window (renewed on every authenticated request, throttled to writes when remaining TTL falls below half) and a 90-day absolute cap measured from a new `sessions.created_at` (M89). Cookie `Expires` is anchored to the absolute cap so the browser keeps presenting it across renewals. Backend exposes `X-Session-Expires-At` on every authed response so the SPA can drive a low-key pre-expiry signal as the absolute cap nears.
+- [PAI-322](https://pm.barta.cm/projects/6/issues/PAI-322) — **The "unauthorized" toast → "session expired" banner double-message is gone.** The old banner is replaced by a centered non-dismissible `SessionExpiredModal` that captures the current URL and deep-links the user back via `?redirect=` after sign-in. A new `SessionExpiredError` distinct from `ApiError` lets `errMsg` suppress the per-action toast that used to race the banner.
+- [PAI-322](https://pm.barta.cm/projects/6/issues/PAI-322) — **Multi-tab session state is now consistent.** A `BroadcastChannel("paimos-auth")` broadcasts session-expired on first 401 and session-restored on successful login, so every open tab converges on the same modal and a single re-login dismisses it everywhere.
+
+### Added
+
+- [PAI-322](https://pm.barta.cm/projects/6/issues/PAI-322) — **Password change invalidates every other session for the user.** Mirrors GitHub / Google: the current session stays alive, all other devices and API keys are invalidated immediately. Plus a 5-minute `/auth/me` heartbeat in `App.vue` (gated by `document.visibilityState === "visible"`) catches slow-dying sessions for users who keep a tab open without clicking.
+- [PAI-320](https://pm.barta.cm/projects/6/issues/PAI-320) — **Role / membership / status changes take effect on the next request without re-login.** New `users.permissions_epoch` counter (M90) is bumped on every change to a user's role, status, or project membership; middleware emits `X-Permissions-Epoch` on every authed response (session-cookie and API-key paths). The SPA watches the header and triggers `refreshMe()` on a change to re-hydrate `auth.user` + `accessibleProjects` — soft refresh, no password retype.
+- [PAI-321](https://pm.barta.cm/projects/6/issues/PAI-321) — **Force password change on first login.** New `users.must_change_password` column (M91) and a `MustChangePasswordGate` middleware mounted on every authed route group. The admin user-create form grows a "Force password change on first login" checkbox (default ON, opt-out for service accounts). When the flag is set, the backend returns 403 `{"error":"must_change_password"}` everywhere except `/auth/me`, `/auth/password`, and `/auth/logout`; the SPA's 403 interceptor routes the user to a new `FirstLoginView` with inline rule list, "Why am I seeing this?" disclosure, and a sign-out escape hatch. `ChangePassword` clears the flag on success. Same flow works for external users via the same `POST /api/users` path.
+
+### Database
+
+- **M89** — `sessions.created_at TEXT NOT NULL` (UPDATE-backfilled in the same migration since SQLite forbids non-constant DEFAULTs on `ALTER TABLE`).
+- **M90** — `users.permissions_epoch INTEGER NOT NULL DEFAULT 0`.
+- **M91** — `users.must_change_password INTEGER NOT NULL DEFAULT 0`.
+
 ## [2.6.0] — 2026-05-06
 
 ### Fixed
