@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] — 2026-05-07
+
+CI-only fix release. Refreshes the `gosec` SAST baseline so the line-number shifts introduced by the v2.7.0 commits stop tripping the security-scan gate. The two genuinely new `SetCookie` findings (the expiry cookie in `clearSessionCookie` and the middleware slide-renewal cookie) are both benign — the first is an expiry response where the flags don't matter, the second uses the same `Secure: cookieSecure` pattern that's already accepted on `LoginHandler`'s cookie. No runtime change vs v2.7.0; the v2.7.0 tag never produced a Docker image because of the failing gate.
+
+### Changed
+
+- Refreshed `.gosec-baseline.txt` to match current line numbers and accept the two benign new SetCookie sites added in PAI-322.
+
 ## [2.7.0] — 2026-05-07
 
 Auth + session reliability release. Sessions stop dying mid-task once a day; admin permission changes take effect on the next request without forcing the affected user to re-login; new accounts get a forced password-change flow before they can do anything; attachment uploads no longer carry SVG/HTML script payloads.

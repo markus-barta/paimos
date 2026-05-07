@@ -1,14 +1,16 @@
 G117	MEDIUM	MEDIUM	handlers/integrations.go	228	Marshaled struct field "APIKey" (JSON key "api_key") matches secret pattern
-G120	MEDIUM	HIGH	handlers/attachments.go	121	Unbounded form parsing in HTTP handlers can cause memory exhaustion
-G120	MEDIUM	HIGH	handlers/attachments.go	303	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/attachments.go	122	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/attachments.go	335	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/branding.go	277	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/csv.go	266	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/dev_testreports_service.go	105	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/documents.go	152	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/logo.go	43	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/profile.go	133	Unbounded form parsing in HTTP handlers can cause memory exhaustion
-G124	MEDIUM	HIGH	auth/auth.go	267	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-G124	MEDIUM	HIGH	auth/auth.go	303	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	185	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	232	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	408	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	444	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/csrf.go	117	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/csrf.go	132	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/oidc.go	167	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
@@ -37,13 +39,6 @@ G202	MEDIUM	HIGH	handlers/project_context.go	828	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	117-133	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	341-348	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	363-373	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	425-431	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	456-464	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	481-489	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	499-507	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/search.go	517-528	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	276-282	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	314-320	SQL string concatenation
 G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	107	Subprocess launched with variable
@@ -91,12 +86,6 @@ G701	HIGH	HIGH	handlers/issues_list.go	100	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	221	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/search.go	341	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/search.go	363	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/search.go	456	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/search.go	481	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/search.go	499	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/search.go	517	SQL injection via taint analysis
 G703	HIGH	HIGH	cmd/paimos/cmd_manifest.go	317	Path traversal via taint analysis
 G703	HIGH	HIGH	db/db.go	63	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
@@ -108,9 +97,9 @@ G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	176	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	566	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	666	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	677	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	573	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	673	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	684	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis
