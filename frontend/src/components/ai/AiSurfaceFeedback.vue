@@ -274,11 +274,23 @@ async function undoLastApply() {
         {{ actionDecision.copy }}
       </template>
       <div class="ai-surface-detail">
-        <div class="ai-surface-detail__meta">
+        <!-- PAI-240: a no-op result has no provider call — model + tokens
+             would render as "—" / 0 and read as a failed call to the
+             user. Replace the meta line with an explicit local-check
+             marker, and surface the body's reason as the main text. -->
+        <div v-if="actionResult.outcome === 'no_op'" class="ai-surface-detail__meta">
+          <span>{{ t('ai.localCheck', { default: 'Local check — no provider call' }) }}</span>
+        </div>
+        <div v-else class="ai-surface-detail__meta">
           <span>{{ t('ai.modelLabel') }}: {{ actionResult.model || '—' }}</span>
           <span>{{ t('ai.tokensLabel') }}: {{ (actionResult.promptTokens ?? 0) + (actionResult.completionTokens ?? 0) }}</span>
         </div>
-        <template v-if="actionResult.action === 'find_parent'">
+        <template v-if="actionResult.outcome === 'no_op'">
+          <p class="ai-inline-noop">
+            {{ (actionResult.body as any)?.reason || t('ai.detailsHint') }}
+          </p>
+        </template>
+        <template v-else-if="actionResult.action === 'find_parent'">
           <div class="ai-inline-list">
             <div v-for="candidate in (actionResult.body as any)?.candidates ?? []" :key="candidate.issue_key" class="ai-inline-card">
               <strong>{{ candidate.issue_key }} — {{ candidate.title }}</strong>

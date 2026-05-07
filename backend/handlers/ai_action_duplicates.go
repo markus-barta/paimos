@@ -63,7 +63,12 @@ func detectDuplicatesHandler(ax *aiActionContext) (any, string, int, int, string
 		return nil, "", 0, 0, "", fmt.Errorf("load tree: %w", err)
 	}
 	if len(rows) == 0 {
-		return duplicatesBody{Matches: nil}, "", 0, 0, "", nil
+		// PAI-240: project has no peer issues to compare against.
+		// Returning an empty duplicatesBody used to look like a
+		// successful provider call (outcome=ok, model=—, tokens=0);
+		// the noOpResult is what the dispatcher records as outcome=
+		// no_op, and the SPA renders the reason directly.
+		return newNoOpResult("No other issues in this project to compare against."), "", 0, 0, "", nil
 	}
 
 	tree := renderIssueTree(rows, true)

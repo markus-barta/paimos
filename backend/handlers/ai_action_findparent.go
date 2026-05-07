@@ -64,9 +64,11 @@ func findParentHandler(ax *aiActionContext) (any, string, int, int, string, erro
 		return nil, "", 0, 0, "", fmt.Errorf("load tree: %w", err)
 	}
 	if len(rows) == 0 {
-		// Empty project — graceful "no candidates" return rather
-		// than calling the model.
-		return findParentBody{Candidates: nil, Truncated: false}, "", 0, 0, "", nil
+		// PAI-240: project has no peer issues to attach as a parent.
+		// Empty findParentBody used to look like a successful provider
+		// call; noOpResult records outcome=no_op and surfaces the
+		// reason to the UI.
+		return newNoOpResult("No other issues in this project to attach as a parent."), "", 0, 0, "", nil
 	}
 
 	tree := renderIssueTree(rows, false)

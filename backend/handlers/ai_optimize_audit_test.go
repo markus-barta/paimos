@@ -141,6 +141,7 @@ func TestAuditAction_FailureLineEmitted(t *testing.T) {
 func TestOutcomesAreStableEnum(t *testing.T) {
 	wantValues := map[string]string{
 		outcomeOK:              "ok",
+		outcomeNoOp:            "no_op", // PAI-240
 		outcomeFailTimeout:     "fail_timeout",
 		outcomeFailUpstream:    "fail_upstream",
 		outcomeDenied:          "denied",
@@ -158,7 +159,7 @@ func TestOutcomesAreStableEnum(t *testing.T) {
 	}
 	// Spot-check that auditAction renders a few outcomes so a
 	// downstream parser doesn't have to special-case any of them.
-	for _, outcome := range []string{outcomeOK, outcomeFailTimeout, outcomeFailUpstream, outcomeDenied, outcomeBadRequest} {
+	for _, outcome := range []string{outcomeOK, outcomeNoOp, outcomeFailTimeout, outcomeFailUpstream, outcomeDenied, outcomeBadRequest} {
 		buf, restore := captureLog(t)
 		auditAction("req-x", 1, "optimize", "", "description", 5, "m", outcome, 10*time.Millisecond, 0, 0)
 		got := buf.String()

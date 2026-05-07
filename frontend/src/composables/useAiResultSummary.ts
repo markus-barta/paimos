@@ -17,6 +17,13 @@ function sentenceCount(text: string): number {
 
 export function summarizeAiResult(input: AiResultSummaryInput): string {
   const { action, body, sourceText = '', optimizedText = '' } = input
+  // PAI-240: handler-decided no-op — surface the human-readable
+  // reason as the summary so the strip doesn't read like a failed
+  // provider call ("No close duplicate found") when in fact no
+  // provider was ever consulted.
+  if (body && typeof body === 'object' && (body as any).no_op === true) {
+    return String((body as any).reason || 'No applicable candidates in scope.')
+  }
   switch (action) {
     case 'optimize':
     case 'optimize_customer': {

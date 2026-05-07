@@ -66,15 +66,43 @@ type actionRequest struct {
 // {suggestions}, etc.) so we serialise it as raw JSON. Common
 // metadata stays on the envelope so the frontend can render it
 // uniformly.
+//
+// PAI-240: Outcome lets the SPA distinguish a provider-backed
+// success ("ok") from a handler-decided no-op ("no_op") so the
+// result modal can render an explicit "no candidates" message
+// instead of the misleading empty-but-successful state. Older
+// clients that don't read the field still see a body whose shape
+// has changed (no_op responses carry `{no_op: true, reason: "…"}`),
+// but the field is the canonical, machine-readable signal.
 type actionResponse struct {
 	RequestID        string          `json:"request_id,omitempty"`
 	Action           string          `json:"action"`
 	SubAction        string          `json:"sub_action,omitempty"`
 	Body             json.RawMessage `json:"body"`
+	Outcome          string          `json:"outcome,omitempty"`
 	Model            string          `json:"model,omitempty"`
 	PromptTokens     int             `json:"prompt_tokens,omitempty"`
 	CompletionTokens int             `json:"completion_tokens,omitempty"`
 	FinishReason     string          `json:"finish_reason,omitempty"`
+}
+
+// noOpResult is the body type a handler returns when it has decided
+// the action is a deliberate no-op — distinct from a successful
+// provider call that happens to find nothing. The dispatcher detects
+// this body type to record outcome=no_op (instead of ok), skip the
+// usage meter (no provider work happened), and surface the reason to
+// the UI via the response envelope. The `no_op: true` discriminator
+// stays on the wire so any consumer can tell the two states apart
+// without having to inspect the per-action body shape.
+type noOpResult struct {
+	NoOp   bool   `json:"no_op"`
+	Reason string `json:"reason"`
+}
+
+// newNoOpResult is the canonical constructor — keeps callers from
+// forgetting to set NoOp=true.
+func newNoOpResult(reason string) noOpResult {
+	return noOpResult{NoOp: true, Reason: reason}
 }
 
 // aiActionContext is what every action handler receives. The
@@ -415,7 +443,18 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, model, "ok", latency, ptok, ctok)
+	// PAI-240: a handler signals a deliberate no-op by returning a
+	// noOpResult body. Record outcome=no_op (so the paper trail and
+	// audit log distinguish it from a successful provider call) and
+	// skip the usage meter (no provider work happened, ptok/ctok are
+	// already 0). The body still flows to the SPA so the result modal
+	// can render the human-readable reason.
+	outcome := outcomeOK
+	if _, isNoOp := respBody.(noOpResult); isNoOp {
+		outcome = outcomeNoOp
+	}
+
+	auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, model, outcome, latency, ptok, ctok)
 	recordAICall(r.Context(), aiCallArgs{
 		RequestID:        requestID,
 		UserID:           userIDPtr,
@@ -430,11 +469,14 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		Model:            model,
 		PromptTokens:     ptok,
 		CompletionTokens: ctok,
-		Outcome:          "ok",
+		Outcome:          outcome,
 		LatencyMs:        latency.Milliseconds(),
 	})
 	// PAI-161 meter increments AFTER audit so log + DB row agree.
-	RecordUsage(userID, ptok, ctok)
+	// PAI-240 — only on a real provider call.
+	if outcome == outcomeOK {
+		RecordUsage(userID, ptok, ctok)
+	}
 
 	// Encode the action-specific body. We use json.RawMessage to keep
 	// the dispatcher generic; a handler that returns nil body gets a
@@ -458,6 +500,7 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		Action:           body.Action,
 		SubAction:        body.SubAction,
 		Body:             rawBody,
+		Outcome:          outcome,
 		Model:            model,
 		PromptTokens:     ptok,
 		CompletionTokens: ctok,

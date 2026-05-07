@@ -74,6 +74,11 @@ export interface ActionEnvelope<T = unknown> {
   action: string
   sub_action?: string
   body: T
+  // PAI-240: 'ok' for provider-backed success, 'no_op' when the
+  // backend handler decided the action was a deliberate no-op (e.g.
+  // detect_duplicates on a project with no peer issues). Older
+  // backends omit it; treat absent as 'ok' for backwards compat.
+  outcome?: 'ok' | 'no_op'
   model?: string
   prompt_tokens?: number
   completion_tokens?: number
@@ -128,6 +133,10 @@ interface ActiveResult {
   issueId?: number
   // The action-specific body; the host page narrows the type.
   body: unknown
+  // PAI-240: 'no_op' means no provider call was made — the result
+  // surface should render the body's `reason` instead of the usual
+  // candidate list, and skip token/model metadata.
+  outcome?: 'ok' | 'no_op'
   model?: string
   // Apply callback for actions that need the user's accept (e.g. spec_out)
   onApply?: (chosen: unknown) => void
@@ -246,6 +255,7 @@ async function run(args: RunArgs): Promise<void> {
       field: args.field,
       issueId: args.issueId,
       body: env.body,
+      outcome: env.outcome,
       model: env.model,
       sourceText: args.text,
       onAccept: args.onAccept,

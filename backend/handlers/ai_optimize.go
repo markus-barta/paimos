@@ -64,6 +64,7 @@ const (
 // dispatcher (auditAction) rather than the legacy auditOptimize.
 const (
 	outcomeOK              = "ok"
+	outcomeNoOp            = "no_op" // PAI-240: handler-decided no-op (no provider call)
 	outcomeFailTimeout     = "fail_timeout"
 	outcomeFailUpstream    = "fail_upstream"
 	outcomeDenied          = "denied"

@@ -236,21 +236,28 @@ watch(
 
     <!-- ── find_parent ─────────────────────────────────────────── -->
     <div v-else-if="action === 'find_parent'" class="ar">
-      <p class="ar-hint">
-        Top {{ body?.candidates?.length ?? 0 }} parent candidate{{ body?.candidates?.length === 1 ? '' : 's' }}
-        for this issue<span v-if="body?.truncated"> (project truncated to a partial view)</span>.
+      <!-- PAI-240: explicit "no peer issues" no-op rather than a
+           misleading "no obvious parent" empty-results message. -->
+      <p v-if="body?.no_op" class="ar-empty ar-empty--noop">
+        {{ body.reason || 'Nothing to attach as a parent in this project.' }}
       </p>
-      <div v-for="(c, i) in body?.candidates ?? []" :key="i" class="ar-card">
-        <div class="ar-card-headrow">
-          <strong class="ar-card-title">{{ c.issue_key }} — {{ c.title }}</strong>
-          <span :class="['ar-conf', `ar-conf--${c.confidence}`]">{{ c.confidence }} confidence</span>
+      <template v-else>
+        <p class="ar-hint">
+          Top {{ body?.candidates?.length ?? 0 }} parent candidate{{ body?.candidates?.length === 1 ? '' : 's' }}
+          for this issue<span v-if="body?.truncated"> (project truncated to a partial view)</span>.
+        </p>
+        <div v-for="(c, i) in body?.candidates ?? []" :key="i" class="ar-card">
+          <div class="ar-card-headrow">
+            <strong class="ar-card-title">{{ c.issue_key }} — {{ c.title }}</strong>
+            <span :class="['ar-conf', `ar-conf--${c.confidence}`]">{{ c.confidence }} confidence</span>
+          </div>
+          <p class="ar-card-text">{{ c.rationale }}</p>
+          <div class="ar-card-actions">
+            <button type="button" class="btn btn-ghost btn-sm" @click="emitApply('move-under', { issue_key: c.issue_key })">Move under {{ c.issue_key }}</button>
+          </div>
         </div>
-        <p class="ar-card-text">{{ c.rationale }}</p>
-        <div class="ar-card-actions">
-          <button type="button" class="btn btn-ghost btn-sm" @click="emitApply('move-under', { issue_key: c.issue_key })">Move under {{ c.issue_key }}</button>
-        </div>
-      </div>
-      <p v-if="!body?.candidates?.length" class="ar-empty">No obvious parent for this issue.</p>
+        <p v-if="!body?.candidates?.length" class="ar-empty">No obvious parent for this issue.</p>
+      </template>
       <div class="ar-actions">
         <button type="button" class="btn btn-ghost" @click="close">Close</button>
       </div>
@@ -311,21 +318,29 @@ watch(
 
     <!-- ── detect_duplicates ───────────────────────────────────── -->
     <div v-else-if="action === 'detect_duplicates'" class="ar">
-      <p class="ar-hint">
-        Top {{ body?.matches?.length ?? 0 }} candidate{{ body?.matches?.length === 1 ? '' : 's' }}
-        in the same project<span v-if="body?.truncated"> (project truncated to a partial view)</span>.
+      <!-- PAI-240: handler-decided no-op (e.g. project has no peers).
+           Render the explicit reason rather than the misleading
+           "no similar issues found" empty-results state. -->
+      <p v-if="body?.no_op" class="ar-empty ar-empty--noop">
+        {{ body.reason || 'Nothing to compare against in this project.' }}
       </p>
-      <div v-for="(m, i) in body?.matches ?? []" :key="i" class="ar-card">
-        <div class="ar-card-headrow">
-          <strong class="ar-card-title">{{ m.issue_key }} — {{ m.title }}</strong>
-          <span :class="['ar-conf', `ar-conf--${m.similarity}`]">{{ m.similarity }} match</span>
+      <template v-else>
+        <p class="ar-hint">
+          Top {{ body?.matches?.length ?? 0 }} candidate{{ body?.matches?.length === 1 ? '' : 's' }}
+          in the same project<span v-if="body?.truncated"> (project truncated to a partial view)</span>.
+        </p>
+        <div v-for="(m, i) in body?.matches ?? []" :key="i" class="ar-card">
+          <div class="ar-card-headrow">
+            <strong class="ar-card-title">{{ m.issue_key }} — {{ m.title }}</strong>
+            <span :class="['ar-conf', `ar-conf--${m.similarity}`]">{{ m.similarity }} match</span>
+          </div>
+          <p class="ar-card-text">{{ m.rationale }}</p>
+          <div class="ar-card-actions">
+            <button type="button" class="btn btn-ghost btn-sm" @click="emitApply('mark-duplicate', { issue_key: m.issue_key })">Mark as duplicate of {{ m.issue_key }}</button>
+          </div>
         </div>
-        <p class="ar-card-text">{{ m.rationale }}</p>
-        <div class="ar-card-actions">
-          <button type="button" class="btn btn-ghost btn-sm" @click="emitApply('mark-duplicate', { issue_key: m.issue_key })">Mark as duplicate of {{ m.issue_key }}</button>
-        </div>
-      </div>
-      <p v-if="!body?.matches?.length" class="ar-empty">No similar issues found.</p>
+        <p v-if="!body?.matches?.length" class="ar-empty">No similar issues found.</p>
+      </template>
       <div class="ar-actions">
         <button type="button" class="btn btn-ghost" @click="close">Close</button>
       </div>
