@@ -5,6 +5,18 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.2] — 2026-05-07
+
+Two bug fixes / feature follow-ups on top of v2.7.1.
+
+### Added
+
+- [PAI-335](https://pm.barta.cm/projects/6/issues/PAI-335) — **Super-admin can edit / add time entries on behalf of other users.** New `users.is_super_admin` column (M92), orthogonal to the existing role enum, with `mba` backfilled to 1 — the single super-admin per the operator's intent. Time-entry endpoints accept an optional `user_id`; non-super-admins get 403 when sending one. The rate snapshot reads the **target** user's `internal_rate_hourly` so the super-admin's rate never silently shadows the worker's hours in accruals reports. Every cross-user write emits a structured `audit: super_admin_act` log line. Frontend create form grows a "Log on behalf of" picker visible only to super-admins, with an amber "Acting as <username>" badge when the picked user is not self.
+
+### Fixed
+
+- [PAI-240](https://pm.barta.cm/projects/6/issues/PAI-240) — **`detect_duplicates` and `find_parent` no longer log a misleading "successful AI call" on projects with no peer issues.** Both handlers used to return an empty body which the dispatcher recorded as `outcome=ok / model=— / tokens=0` — operationally indistinguishable from a real provider call that found nothing. New `outcomeNoOp` enum value plus a `noOpResult` body marker that the dispatcher type-switches on: records `outcome=no_op`, skips the usage meter, and surfaces the human-readable reason via the response envelope. SPA renders the explicit reason in the modal + inline strip + result-summary composable instead of the old "No similar issues found." empty-results copy.
+
 ## [2.7.1] — 2026-05-07
 
 CI-only fix release. Refreshes the `gosec` SAST baseline so the line-number shifts introduced by the v2.7.0 commits stop tripping the security-scan gate. The two genuinely new `SetCookie` findings (the expiry cookie in `clearSessionCookie` and the middleware slide-renewal cookie) are both benign — the first is an expiry response where the flags don't matter, the second uses the same `Secure: cookieSecure` pattern that's already accepted on `LoginHandler`'s cookie. No runtime change vs v2.7.0; the v2.7.0 tag never produced a Docker image because of the failing gate.
