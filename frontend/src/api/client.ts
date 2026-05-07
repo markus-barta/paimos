@@ -44,6 +44,14 @@ export const sessionExpired = ref(false);
 // only appears as the 90-day absolute cap approaches.
 export const sessionExpiresAt = ref<Date | null>(null);
 
+// PAI-320: latest X-Permissions-Epoch observed for the current user.
+// Bumped server-side on every role / status / membership mutation;
+// the auth store watches this ref and triggers refreshMe() on a
+// change so the SPA's local access cache stays consistent without a
+// hard logout. -1 means "not yet observed" — distinct from a real 0
+// (the migration default).
+export const permissionsEpoch = ref<number>(-1);
+
 // PAI-322: the route the user was on when 401 first hit. Captured so
 // the post-login flow can deep-link them back. Cleared on successful
 // login. Used by the login page reading ?next=… as well — this is
@@ -307,6 +315,15 @@ async function fetchResponse(
       const t = new Date(expHdr);
       if (!Number.isNaN(t.valueOf())) sessionExpiresAt.value = t;
     }
+    // PAI-320: track per-user permissions epoch. The auth store
+    // watches this ref and refetches /auth/me on a change so the
+    // local access cache picks up admin-driven role / membership
+    // changes within one round-trip.
+    const epochHdr = res.headers.get("X-Permissions-Epoch");
+    if (epochHdr) {
+      const n = Number(epochHdr);
+      if (Number.isFinite(n)) permissionsEpoch.value = n;
+    }
     if (res.status === 401) {
       // Auth-endpoint 401s (wrong password, bad reset token, first
       // pristine /auth/me) bubble as ApiError so the login form can
@@ -416,6 +433,12 @@ async function upload<T>(
       if (expHdr) {
         const t = new Date(expHdr);
         if (!Number.isNaN(t.valueOf())) sessionExpiresAt.value = t;
+      }
+      // PAI-320: mirror epoch capture too.
+      const epochHdr = xhr.getResponseHeader("X-Permissions-Epoch");
+      if (epochHdr) {
+        const n = Number(epochHdr);
+        if (Number.isFinite(n)) permissionsEpoch.value = n;
       }
       if (xhr.status === 401) {
         if (isAuthEndpoint(path)) {

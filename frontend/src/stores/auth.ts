@@ -16,8 +16,8 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { api, announceSessionRestored } from '@/api/client'
+import { ref, watch } from 'vue'
+import { api, announceSessionRestored, permissionsEpoch } from '@/api/client'
 import router from '@/router'
 import i18n from '@/i18n'
 import { setDisplayTimezone } from '@/utils/formatTime'
@@ -155,6 +155,10 @@ export const useAuthStore = defineStore('auth', () => {
     viaDevLogin.value = !!resp.via_dev_login
     if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
     checked.value = true
+    // PAI-320: a fresh login means the next epoch we see is the new
+    // baseline — don't let a leftover from before logout retrigger
+    // refreshMe.
+    resetEpochBaseline()
     // PAI-322: broadcast session-restored so sibling tabs dismiss their
     // session-expired modals. Local ref clear is included in the helper.
     announceSessionRestored()
@@ -202,6 +206,7 @@ export const useAuthStore = defineStore('auth', () => {
     totpEnabled.value = false
     totpChecked.value = false
     checked.value = true
+    resetEpochBaseline() // PAI-320
     // PAI-242: search query persists across users via localStorage; reset
     // it on logout so the next login doesn't pre-fill the prior session's
     // sidebar search input.
@@ -219,6 +224,37 @@ export const useAuthStore = defineStore('auth', () => {
       hydrateAccess(resp.access)
       viaDevLogin.value = !!resp.via_dev_login
     } catch { /* ignore */ }
+  }
+
+  // PAI-320: server-pushed permissions invalidation. The middleware
+  // emits X-Permissions-Epoch on every authed response, captured into
+  // the module-level `permissionsEpoch` ref by client.ts. We track the
+  // last epoch we hydrated from /auth/me; when the next observed value
+  // differs (admin promoted/demoted/membership change), refetch /auth/me
+  // and re-hydrate access. Soft refresh, no re-login.
+  //
+  // We compare against `lastSyncedEpoch` rather than the previous
+  // ref value because the very first observation just sets the
+  // baseline — there's no "previous" hydration to invalidate yet.
+  let lastSyncedEpoch: number | null = null
+  watch(permissionsEpoch, (n) => {
+    if (n < 0) return // sentinel: not yet observed
+    if (!user.value) return // not logged in here — login flow will hydrate
+    if (lastSyncedEpoch === null) {
+      // First sighting after login / page load — record and don't refetch.
+      lastSyncedEpoch = n
+      return
+    }
+    if (n !== lastSyncedEpoch) {
+      lastSyncedEpoch = n
+      void refreshMe()
+    }
+  })
+
+  // Reset the epoch baseline on auth transitions so a fresh login
+  // doesn't immediately retrigger refreshMe based on a stale sentinel.
+  function resetEpochBaseline() {
+    lastSyncedEpoch = null
   }
 
   return {

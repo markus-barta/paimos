@@ -24,6 +24,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,6 +122,10 @@ func Middleware(next http.Handler) http.Handler {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
+			// PAI-320: API-key callers also get the epoch so any
+			// frontend that talks via a key picks up role / membership
+			// changes on the next request.
+			w.Header().Set("X-Permissions-Epoch", strconv.FormatInt(GetPermissionsEpoch(user.ID), 10))
 			ctx := context.WithValue(r.Context(), UserKey, user)
 			ctx = WithAccessCache(ctx)
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -195,6 +200,13 @@ func Middleware(next http.Handler) http.Handler {
 		// this — by design, the toast is rare.
 		w.Header().Set("X-Session-Expires-At", rec.expiresAt.UTC().Format(time.RFC3339))
 
+		// PAI-320: surface the per-user permissions epoch so the SPA
+		// re-fetches /auth/me when role / status / membership has
+		// changed on another tab or via an admin action. Backend
+		// permission checks already see fresh values per request; this
+		// header exists to invalidate the SPA's local access cache.
+		w.Header().Set("X-Permissions-Epoch", strconv.FormatInt(rec.permissionsEpoch, 10))
+
 		// PAI-113: lazy-upgrade pre-M72 sessions that have no token yet.
 		// The first authenticated request after deployment issues one and
 		// sets the cookie. Avoids forcing every existing session to log in
@@ -255,11 +267,12 @@ const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nick
 // or unparseable string) — callers must check .IsZero() before relying
 // on the value.
 type sessionRecord struct {
-	user        *models.User
-	csrfTok     string
-	viaDevLogin bool
-	expiresAt   time.Time
-	createdAt   time.Time
+	user             *models.User
+	csrfTok          string
+	viaDevLogin      bool
+	expiresAt        time.Time
+	createdAt        time.Time
+	permissionsEpoch int64
 }
 
 // loadSession resolves a session id to its full record. Enforces the
@@ -271,18 +284,21 @@ func loadSession(sessionID string) (*sessionRecord, error) {
 	var csrfTok string
 	var viaDevLoginInt int
 	var expiresStr, createdStr string
+	var epoch int64
 	dests := append(
-		[]any{&csrfTok, &viaDevLoginInt, &expiresStr, &createdStr},
+		[]any{&csrfTok, &viaDevLoginInt, &expiresStr, &createdStr, &epoch},
 		userScanDests(rec.user)...,
 	)
 	row := db.DB.QueryRow(`
-		SELECT s.csrf_token, s.via_dev_login, s.expires_at, s.created_at, `+userSelectCols+`
+		SELECT s.csrf_token, s.via_dev_login, s.expires_at, s.created_at,
+		       u.permissions_epoch, `+userSelectCols+`
 		FROM sessions s JOIN users u ON s.user_id = u.id
 		WHERE s.id = ? AND s.expires_at > datetime('now')
 	`, sessionID)
 	if err := row.Scan(dests...); err != nil {
 		return nil, err
 	}
+	rec.permissionsEpoch = epoch
 	if rec.user.Status == "inactive" || rec.user.Status == "deleted" {
 		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
 			log.Printf("loadSession: delete session %s: %v", sessionID, err)

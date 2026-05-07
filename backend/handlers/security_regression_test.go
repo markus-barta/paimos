@@ -464,6 +464,70 @@ func TestRegression_Session_003_ExpiresAtHeader(t *testing.T) {
 	}
 }
 
+// PAI-320 — promoting a user takes effect on the very next request,
+// without requiring re-login. The backend reads role fresh on every
+// request via loadSession's JOIN, so an admin endpoint that was 403
+// for member should be 200 right after the role flip.
+func TestRegression_PermsEpoch_001_PromoteTakesEffectImmediately(t *testing.T) {
+	ts := newTestServer(t)
+	// Member hits an admin-only endpoint — must 403 before the change.
+	resp := ts.get(t, "/api/users", ts.memberCookie)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		// /users is open to all internal roles; pick one we know is
+		// admin-gated.
+		t.Logf("note: /users returned %d for member (informational)", resp.StatusCode)
+	}
+	resp = ts.post(t, "/api/users", ts.memberCookie, map[string]string{
+		"username": "x", "password": "y", "role": "member",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup: member POST /users got %d, want 403", resp.StatusCode)
+	}
+
+	if _, err := db.DB.Exec("UPDATE users SET role='admin' WHERE username='member'"); err != nil {
+		t.Fatal(err)
+	}
+	// Same cookie — but role now resolves to admin via loadSession.
+	resp = ts.post(t, "/api/users", ts.memberCookie, map[string]string{
+		"username": "fresh-after-promote", "password": "secret123", "role": "member",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("INV-PERMS-001 violated: promoted member POST /users got %d, want 201", resp.StatusCode)
+	}
+}
+
+// PAI-320 — every authenticated response carries the user's
+// permissions_epoch so the SPA can re-fetch /auth/me when the value
+// changes. This test verifies presence + that bumping the column
+// reflects in the next response.
+func TestRegression_PermsEpoch_002_HeaderBumpsOnRoleChange(t *testing.T) {
+	ts := newTestServer(t)
+
+	// First request: capture the baseline epoch from the header.
+	resp := ts.get(t, "/api/auth/me", ts.memberCookie)
+	resp.Body.Close()
+	first := resp.Header.Get("X-Permissions-Epoch")
+	if first == "" {
+		t.Fatal("INV-PERMS-002 violated: X-Permissions-Epoch header missing")
+	}
+
+	// Bump via a role change.
+	if _, err := db.DB.Exec("UPDATE users SET permissions_epoch = permissions_epoch + 1 WHERE username='member'"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same cookie, next request — the header must reflect the bump.
+	resp = ts.get(t, "/api/auth/me", ts.memberCookie)
+	resp.Body.Close()
+	second := resp.Header.Get("X-Permissions-Epoch")
+	if second == first {
+		t.Errorf("INV-PERMS-002 violated: epoch did not change after bump (still %q)", first)
+	}
+}
+
 // PAI-322 — changing one's own password invalidates every OTHER
 // session for the user but keeps the current one alive. Mirrors how
 // modern apps (GitHub / Google) handle password change.

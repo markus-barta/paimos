@@ -157,6 +157,13 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		if handleDBError(w, err, "user") {
 			return
 		}
+		// PAI-320: bump the epoch only when something that affects
+		// permissions changed (role or status). Cosmetic updates
+		// (nickname, email, etc.) shouldn't force every open tab of
+		// the affected user to refetch /auth/me.
+		if body.Role != nil || body.Status != nil {
+			auth.BumpPermissionsEpoch(id)
+		}
 	}
 
 	// Sync project_members to the new role when it changed.
@@ -293,6 +300,7 @@ func DisableUser(w http.ResponseWriter, r *http.Request) {
 	if _, err := db.DB.Exec("DELETE FROM sessions WHERE user_id=?", id); err != nil {
 		log.Printf("DisableUser: delete sessions user_id=%d: %v", id, err)
 	}
+	auth.BumpPermissionsEpoch(id) // PAI-320
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -323,5 +331,6 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if _, err := db.DB.Exec("DELETE FROM api_keys WHERE user_id=?", id); err != nil {
 		log.Printf("DeleteUser: delete api_keys user_id=%d: %v", id, err)
 	}
+	auth.BumpPermissionsEpoch(id) // PAI-320
 	w.WriteHeader(http.StatusNoContent)
 }

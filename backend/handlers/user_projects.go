@@ -111,6 +111,7 @@ func AddUserProject(w http.ResponseWriter, r *http.Request) {
 		action = auth.AuditActionUpdate
 	}
 	auth.RecordAccessChange(r.Context(), nil, body.ProjectID, userID, action, oldLvl, auth.AccessViewer, actorID)
+	auth.BumpPermissionsEpoch(userID) // PAI-320
 
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]bool{"ok": true})
@@ -150,6 +151,7 @@ func RemoveUserProject(w http.ResponseWriter, r *http.Request) {
 		actorID = actor.ID
 	}
 	auth.RecordAccessChange(r.Context(), nil, projectID, userID, auth.AuditActionRevoke, oldLvl, auth.AccessNone, actorID)
+	auth.BumpPermissionsEpoch(userID) // PAI-320
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -265,6 +267,7 @@ func UpsertUserMembership(w http.ResponseWriter, r *http.Request) {
 		action = auth.AuditActionUpdate
 	}
 	auth.RecordAccessChange(r.Context(), nil, projectID, userID, action, oldLvl, lvl, actorID)
+	auth.BumpPermissionsEpoch(userID) // PAI-320
 
 	jsonOK(w, map[string]string{"access_level": string(lvl)})
 }
@@ -301,6 +304,7 @@ func DeleteUserMembership(w http.ResponseWriter, r *http.Request) {
 			actorID = actor.ID
 		}
 		auth.RecordAccessChange(r.Context(), nil, projectID, userID, auth.AuditActionRevoke, oldLvl, auth.AccessNone, actorID)
+		auth.BumpPermissionsEpoch(userID) // PAI-320
 	}
 
 	w.WriteHeader(http.StatusNoContent)

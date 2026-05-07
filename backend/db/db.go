@@ -3843,6 +3843,18 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
 			`UPDATE sessions SET created_at = datetime('now') WHERE created_at = ''`,
 		}},
+
+		// M90 / PAI-320: per-user permissions_epoch counter. Bumped on
+		// every change to a user's role, status, or project membership.
+		// Middleware emits the current value as `X-Permissions-Epoch`
+		// on every authenticated response; the SPA notices a change and
+		// re-fetches /auth/me to re-hydrate its access cache. Backend
+		// permission checks already read role/status fresh on every
+		// request via loadSession, so this column exists purely to
+		// invalidate the FRONTEND cache promptly without a hard logout.
+		{90, []string{
+			`ALTER TABLE users ADD COLUMN permissions_epoch INTEGER NOT NULL DEFAULT 0`,
+		}},
 	}
 
 	for _, m := range migrations {

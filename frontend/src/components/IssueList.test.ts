@@ -15,6 +15,16 @@ vi.mock('@/api/client', () => ({
     patch: vi.fn(),
     delete: vi.fn(),
   },
+  // Refs touched by the auth store on import — provide stubs so the
+  // module loads inside this test's mock without pulling the full
+  // client.ts (which would drag in BroadcastChannel, fetch, etc.).
+  permissionsEpoch: ref(-1),
+  sessionExpired: ref(false),
+  sessionExpiresAt: ref(null),
+  sessionReturnPath: ref(null),
+  announceSessionRestored: vi.fn(),
+  announceSessionExpired: vi.fn(),
+  isSessionExpiredError: () => false,
 }))
 
 vi.mock('vue-router', () => ({
