@@ -19,6 +19,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useUndoStore } from "@/stores/undo";
 import { safePostLoginRedirect } from "@/router/redirects";
+import { mustChangePassword } from "@/api/client";
 
 // Route meta shape. `projectIdParam` names the URL param that holds the
 // project ID — the beforeEach guard uses it to enforce per-project view
@@ -55,6 +56,16 @@ const router = createRouter({
     {
       path: "/reset/:token",
       component: () => import("@/views/ResetPasswordView.vue"),
+      meta: { public: true },
+    },
+    {
+      // PAI-321: forced first-login change-password screen. The guard
+      // routes here whenever the API client's 403 interceptor flips the
+      // mustChangePassword ref. Marked `public: true` so the guard's
+      // "must be logged in" check doesn't bounce the user back to /login
+      // — they ARE logged in, they just can't go anywhere else yet.
+      path: "/first-login",
+      component: () => import("@/views/FirstLoginView.vue"),
       meta: { public: true },
     },
     { path: "/", component: () => import("@/views/DashboardView.vue") },
@@ -152,6 +163,14 @@ router.beforeEach(async (to) => {
   if (!auth.checked) await auth.fetchMe();
   if (!to.meta.public && !auth.user) {
     return { path: "/login", query: { redirect: to.fullPath } };
+  }
+  // PAI-321: while must_change_password is set, the only authenticated
+  // route the user can reach is /first-login. The backend gate is the
+  // source of truth (it returns 403 with a marker on every other API),
+  // but bouncing them in the router avoids a brief flash of the
+  // requested page before the API call fails.
+  if (mustChangePassword.value && auth.user && to.path !== "/first-login") {
+    return "/first-login";
   }
   if (to.path === "/login" && auth.user) {
     const redirect = safePostLoginRedirect(to.query.redirect);

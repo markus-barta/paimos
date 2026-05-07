@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -525,6 +526,108 @@ func TestRegression_PermsEpoch_002_HeaderBumpsOnRoleChange(t *testing.T) {
 	second := resp.Header.Get("X-Permissions-Epoch")
 	if second == first {
 		t.Errorf("INV-PERMS-002 violated: epoch did not change after bump (still %q)", first)
+	}
+}
+
+// PAI-321 — a freshly created user with must_change_password is
+// blocked from non-allowlisted endpoints with 403
+// {"error":"must_change_password"} until they POST /auth/password.
+func TestRegression_MustChange_001_BlocksProtectedEndpoints(t *testing.T) {
+	ts := newTestServer(t)
+	// Create a user that requires a password change. Admin path.
+	resp := ts.post(t, "/api/users", ts.adminCookie, map[string]any{
+		"username":             "newhire",
+		"password":             "tempinitial",
+		"role":                 "member",
+		"must_change_password": true,
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create user: %d", resp.StatusCode)
+	}
+	cookie := ts.login(t, "newhire", "tempinitial")
+	// Allowlisted: /auth/me must work so the SPA can render the
+	// first-login screen.
+	resp = ts.get(t, "/api/auth/me", cookie)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("INV-MUSTCHG-001 violated: /auth/me blocked for must-change user (got %d)", resp.StatusCode)
+	}
+	// Non-allowlisted: /projects must 403 with the gate marker.
+	resp = ts.get(t, "/api/projects", cookie)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("INV-MUSTCHG-001 violated: /projects returned %d, want 403", resp.StatusCode)
+	}
+	if !strings.Contains(string(body), "must_change_password") {
+		t.Errorf("INV-MUSTCHG-001 violated: 403 body missing marker, got %q", string(body))
+	}
+}
+
+// PAI-321 — changing the password clears the flag and unlocks every
+// non-allowlisted endpoint on the next request.
+func TestRegression_MustChange_002_PasswordChangeUnlocks(t *testing.T) {
+	ts := newTestServer(t)
+	resp := ts.post(t, "/api/users", ts.adminCookie, map[string]any{
+		"username":             "newhire2",
+		"password":             "tempinitial",
+		"role":                 "member",
+		"must_change_password": true,
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create user: %d", resp.StatusCode)
+	}
+	cookie := ts.login(t, "newhire2", "tempinitial")
+	// Submit the password change. CSRF is enforced — fetch token first.
+	sid := strings.TrimPrefix(cookie, "session=")
+	var csrfTok string
+	_ = db.DB.QueryRow("SELECT csrf_token FROM sessions WHERE id=?", sid).Scan(&csrfTok)
+	body := bytes.NewBufferString(`{"current_password":"tempinitial","new_password":"realpermpw"}`)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.srv.URL+"/api/auth/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", cookie)
+	if csrfTok != "" {
+		req.Header.Set("X-CSRF-Token", csrfTok)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("change password: %d", resp.StatusCode)
+	}
+	// Re-login (ChangePassword nukes other sessions; the cookie above
+	// is the current session and survives, but reusing it is the
+	// realistic flow).
+	resp = ts.get(t, "/api/projects", cookie)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("INV-MUSTCHG-002 violated: /projects still blocked after password change (got %d)", resp.StatusCode)
+	}
+}
+
+// PAI-321 — admin opt-out: must_change_password=false on create
+// produces a user who can hit protected endpoints immediately.
+func TestRegression_MustChange_003_OptOutSkipsGate(t *testing.T) {
+	ts := newTestServer(t)
+	resp := ts.post(t, "/api/users", ts.adminCookie, map[string]any{
+		"username":             "service-acct",
+		"password":             "perm-from-day-one",
+		"role":                 "member",
+		"must_change_password": false,
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create user: %d", resp.StatusCode)
+	}
+	cookie := ts.login(t, "service-acct", "perm-from-day-one")
+	resp = ts.get(t, "/api/projects", cookie)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("INV-MUSTCHG-003 violated: opted-out user blocked anyway (got %d)", resp.StatusCode)
 	}
 }
 

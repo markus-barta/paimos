@@ -522,6 +522,13 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-321: clear the first-login gate. Called BEFORE the session
+	// pruning below so a user who was sitting on the change-password
+	// screen across multiple tabs gets unblocked everywhere on the
+	// next request. (The pruning will then trim those other tabs to
+	// a fresh re-login.)
+	ClearMustChangePassword(user.ID)
+
 	// PAI-322: kill every other session for this user so a stolen or
 	// abandoned cookie on another device stops working immediately.
 	// The current session is preserved by id-exclusion so the user

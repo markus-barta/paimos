@@ -130,6 +130,7 @@ func buildRouter() http.Handler {
 		// the four endpoints moved inside the auth group by ACME-1.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
 			r.Patch("/auth/me", handlers.UpdateProfile)
@@ -155,6 +156,7 @@ func buildRouter() http.Handler {
 		// Portal (external + admin)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.RequirePortalAccess)
 			r.Get("/portal/projects", handlers.PortalListProjects)
 			r.Get("/portal/projects/{id}", handlers.PortalGetProject)
@@ -168,6 +170,7 @@ func buildRouter() http.Handler {
 		// Internal (blocked for external)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
+			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.BlockExternal)
 
 			r.Get("/projects", handlers.ListProjects)

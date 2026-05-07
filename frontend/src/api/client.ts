@@ -52,6 +52,14 @@ export const sessionExpiresAt = ref<Date | null>(null);
 // (the migration default).
 export const permissionsEpoch = ref<number>(-1);
 
+// PAI-321: true while the current user has must_change_password set.
+// Flipped on by the global 403 interceptor when the backend returns
+// `{"error":"must_change_password"}`; flipped off by the first-login
+// screen on a successful change. Drives the global redirect to
+// /first-login. The router guard reads this and forces navigation to
+// the change-password screen even on direct deep-links.
+export const mustChangePassword = ref(false);
+
 // PAI-322: the route the user was on when 401 first hit. Captured so
 // the post-login flow can deep-link them back. Cleared on successful
 // login. Used by the login page reading ?next=… as well — this is
@@ -359,6 +367,21 @@ async function request<T>(
 
   const data = await readJSON<any>(res);
   if (!res.ok) {
+    // PAI-321: a 403 with `{"error":"must_change_password"}` is the
+    // backend's signal that the current user has the first-login gate
+    // set. Flip the global ref so the router guard / App-level
+    // listener routes the user to the change-password screen. The
+    // call still throws — components that handle the error see a
+    // distinct ApiError shape (data.error === "must_change_password")
+    // and can suppress their own toast via errMsg.
+    if (
+      res.status === 403 &&
+      data &&
+      typeof data === "object" &&
+      data.error === "must_change_password"
+    ) {
+      mustChangePassword.value = true;
+    }
     const err = new ApiError(res.status, data.error ?? "request failed");
     if (data && typeof data === "object") Object.assign(err, data);
     throw err;
@@ -480,6 +503,14 @@ export function errMsg(e: unknown, fallback = "An error occurred"): string {
   // SessionExpiredModal — returning empty here lets components that do
   // `if (error) {...}` skip rendering a duplicate per-action toast.
   if (isSessionExpiredError(e)) return "";
+  // PAI-321: the must_change_password gate is surfaced via the
+  // FirstLoginView, not a per-component toast. Same suppression.
+  if (
+    e instanceof ApiError &&
+    (e as { error?: string }).error === "must_change_password"
+  ) {
+    return "";
+  }
   let raw = "";
   if (e instanceof ApiError) {
     raw = e.message;

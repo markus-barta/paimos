@@ -18,7 +18,12 @@ const ROLE_OPTIONS: MetaOption[] = [{ value: 'member', label: 'Member' }, { valu
 const users          = ref<User[]>([])
 const usersLoaded    = ref(false)
 const showCreateUser = ref(false)
-const createUserForm  = ref({ username: '', password: '', role: 'member' })
+// PAI-321: must_change_password defaults to TRUE so a new account is
+// forced through the change-password screen on its first login. The
+// admin can uncheck it for service / test accounts; the field is sent
+// explicitly (not omitted) so the backend honors `false` rather than
+// falling back to its server-side default of true.
+const createUserForm  = ref({ username: '', password: '', role: 'member', must_change_password: true })
 const createUserError = ref('')
 const creatingUser    = ref(false)
 const editUserTarget  = ref<User | null>(null)
@@ -208,7 +213,7 @@ async function createUser() {
   try {
     const u = await api.post<User>('/users', createUserForm.value)
     users.value.push(u); showCreateUser.value = false
-    createUserForm.value = { username: '', password: '', role: 'member' }
+    createUserForm.value = { username: '', password: '', role: 'member', must_change_password: true }
   } catch (e: unknown) { createUserError.value = errMsg(e) }
   finally { creatingUser.value = false }
 }
@@ -372,11 +377,21 @@ loadUsers()
     </div>
   </AppModal>
 
-  <AppModal title="New User" :open="showCreateUser" @close="showCreateUser=false; createUserForm={username:'',password:'',role:'member'}">
+  <AppModal title="New User" :open="showCreateUser" @close="showCreateUser=false; createUserForm={username:'',password:'',role:'member',must_change_password:true}">
     <form @submit.prevent="createUser" class="form">
       <div class="field"><label>Username</label><input v-model="createUserForm.username" type="text" required autofocus /></div>
       <div class="field"><label>Password</label><input v-model="createUserForm.password" type="password" required /></div>
       <div class="field"><label>Role</label><MetaSelect v-model="createUserForm.role" :options="ROLE_OPTIONS" /></div>
+      <!-- PAI-321: first-login password-change gate. Default ON; admins can uncheck for service / test accounts. -->
+      <div class="field field-check">
+        <label class="check-row">
+          <input v-model="createUserForm.must_change_password" type="checkbox" />
+          <span>
+            Force password change on first login
+            <span class="check-hint">— recommended; uncheck only for automation accounts</span>
+          </span>
+        </label>
+      </div>
       <div v-if="createUserError" class="form-error">{{ createUserError }}</div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" @click="showCreateUser=false">Cancel</button>
@@ -566,6 +581,17 @@ loadUsers()
 .role-admin    { color: #d97706; }
 .role-member   { color: var(--bp-blue); }
 .role-external { color: #dc2626; }
+.field-check { display: flex; align-items: flex-start; }
+.check-row {
+  display: flex; align-items: flex-start; gap: .55rem;
+  font-size: 13px; color: var(--text); cursor: pointer;
+  user-select: none;
+}
+.check-row input[type="checkbox"] {
+  width: auto; margin: 2px 0 0;
+  accent-color: var(--bp-blue);
+}
+.check-hint { color: var(--text-muted); font-size: 12px; }
 .edit-user-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1.25rem; }
 .edit-user-totp {
   display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;

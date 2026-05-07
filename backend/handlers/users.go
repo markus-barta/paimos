@@ -60,10 +60,16 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
+	// PAI-321: must_change_password is a *pointer to bool* so the
+	// admin-side checkbox can be sent as `false` distinctly from
+	// "field omitted, use default". Omitted → default ON. The
+	// frontend's create-user form ships the checkbox checked by
+	// default.
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Username           string `json:"username"`
+		Password           string `json:"password"`
+		Role               string `json:"role"`
+		MustChangePassword *bool  `json:"must_change_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" || body.Password == "" {
 		jsonError(w, "username and password required", http.StatusBadRequest)
@@ -71,6 +77,10 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Role == "" {
 		body.Role = "member"
+	}
+	mustChange := 1 // default ON
+	if body.MustChangePassword != nil && !*body.MustChangePassword {
+		mustChange = 0
 	}
 
 	hash, err := auth.HashPassword(body.Password)
@@ -80,8 +90,8 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := db.DB.Exec(
-		"INSERT INTO users(username,password,role,status) VALUES(?,?,?,'active')",
-		body.Username, hash, body.Role,
+		"INSERT INTO users(username,password,role,status,must_change_password) VALUES(?,?,?,'active',?)",
+		body.Username, hash, body.Role, mustChange,
 	)
 	if handleDBError(w, err, "username") {
 		return

@@ -3855,6 +3855,16 @@ func migrate(db *sql.DB) error {
 		{90, []string{
 			`ALTER TABLE users ADD COLUMN permissions_epoch INTEGER NOT NULL DEFAULT 0`,
 		}},
+
+		// M91 / PAI-321: per-user must_change_password gate. Set by the
+		// admin user-create form (default ON) so a freshly minted
+		// account is forced through a password-change screen before it
+		// can do anything else. Cleared on successful self-service
+		// password change. Existing users default to 0 — the gate
+		// applies only to accounts created after this migration.
+		{91, []string{
+			`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`,
+		}},
 	}
 
 	for _, m := range migrations {

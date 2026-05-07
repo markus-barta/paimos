@@ -156,6 +156,11 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
 			r.Use(auth.CSRFMiddleware) // PAI-113
+			// PAI-321: must_change_password gate. Allowlist (logout,
+			// /auth/me, /auth/password) is built into the gate so the
+			// user can complete the change-password flow from this
+			// group without bypass.
+			r.Use(auth.MustChangePasswordGate)
 
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
@@ -189,6 +194,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
 			r.Use(auth.CSRFMiddleware) // PAI-113
+			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.RequirePortalAccess)
 
 			r.Get("/portal/projects", handlers.PortalListProjects)
@@ -208,6 +214,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
 			r.Use(auth.CSRFMiddleware) // PAI-113
+			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.BlockExternal)
 
 			// Projects
