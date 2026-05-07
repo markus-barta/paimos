@@ -29,11 +29,26 @@ export class ApiError extends Error {
 }
 
 // ── Session-expired signal ────────────────────────────────────
-// Any 401 from a non-auth endpoint flips this ref to true. A top-level
-// banner watches it and prompts the user to sign in again. A module-level
-// `ref` avoids a circular dep between this file and `stores/auth.ts`: the
-// store imports client, never the other way around.
+// PAI-322: any 401 from a non-auth endpoint flips this ref to true.
+// SessionExpiredModal watches it and prompts the user to sign in
+// again. Module-level `ref` avoids a circular dep between this file
+// and `stores/auth.ts`: the store imports client, never the other
+// way around. Cross-tab sync is provided by a BroadcastChannel below
+// so all open tabs converge on the same modal.
 export const sessionExpired = ref(false);
+
+// PAI-322: latest X-Session-Expires-At observed on any authenticated
+// response, parsed to a Date. The pre-expiry toast component reads
+// this and shows itself when the value is within 5 minutes. Sliding
+// renewal keeps this far in the future for active users; the toast
+// only appears as the 90-day absolute cap approaches.
+export const sessionExpiresAt = ref<Date | null>(null);
+
+// PAI-322: the route the user was on when 401 first hit. Captured so
+// the post-login flow can deep-link them back. Cleared on successful
+// login. Used by the login page reading ?next=… as well — this is
+// the in-memory mirror so single-tab flows don't need URL bouncing.
+export const sessionReturnPath = ref<string | null>(null);
 
 // Paths where a 401 is EXPECTED (wrong password, bad reset token, first
 // page load before any session exists) and MUST NOT flip the session-
@@ -56,10 +71,91 @@ function isAuthEndpoint(path: string): boolean {
   return AUTH_ENDPOINT_PREFIXES.some((p) => path.startsWith(p));
 }
 
-function maybeMarkSessionExpired(path: string) {
-  if (!isAuthEndpoint(path)) {
+// PAI-322: cross-tab sync. Modern browsers all support BroadcastChannel;
+// when one tab learns the session is dead, it posts a message and every
+// other tab opens the same modal — no waiting for each tab's next
+// request to discover the truth on its own.
+type AuthBroadcast =
+  | { type: "session-expired" }
+  | { type: "session-restored" };
+
+const authChannel: BroadcastChannel | null =
+  typeof BroadcastChannel !== "undefined"
+    ? new BroadcastChannel("paimos-auth")
+    : null;
+
+if (authChannel) {
+  authChannel.addEventListener("message", (ev: MessageEvent<AuthBroadcast>) => {
+    if (ev.data?.type === "session-expired") {
+      sessionExpired.value = true;
+    } else if (ev.data?.type === "session-restored") {
+      sessionExpired.value = false;
+      sessionReturnPath.value = null;
+    }
+  });
+}
+
+function broadcastAuth(msg: AuthBroadcast) {
+  authChannel?.postMessage(msg);
+}
+
+// Public — call from auth store when login/TOTP succeeds, so sibling
+// tabs dismiss their session-expired modals.
+export function announceSessionRestored() {
+  sessionExpired.value = false;
+  sessionReturnPath.value = null;
+  broadcastAuth({ type: "session-restored" });
+}
+
+// Public — call from App.vue's visibility/heartbeat path when it
+// detects a logged-in→logged-out transition. Broadcasts to sibling
+// tabs and captures the return path so re-login deep-links the user
+// back to where they were.
+export function announceSessionExpired() {
+  markSessionExpired();
+}
+
+function markSessionExpired() {
+  if (!sessionExpired.value) {
+    // Capture the current location ONCE, on the first 401. Subsequent
+    // 401s during the same dead-session episode would otherwise
+    // overwrite this with /login or whatever the app navigated to in
+    // the meantime.
+    if (!sessionReturnPath.value) {
+      const path = window.location.pathname + window.location.search;
+      if (!path.startsWith("/login")) sessionReturnPath.value = path;
+    }
     sessionExpired.value = true;
+    broadcastAuth({ type: "session-expired" });
   }
+}
+
+// PAI-322: thrown for 401s on non-auth endpoints. Distinct from
+// ApiError so component-level catch blocks can be told to ignore it
+// — the global SessionExpiredModal is the sole user-facing surface
+// for the dead-session condition. Callers that render `errMsg(e)`
+// must not render this one's message, or the user will see a toast
+// and a modal at the same time.
+export class SessionExpiredError extends Error {
+  // Discriminator so `e instanceof SessionExpiredError` is unambiguous
+  // even after bundling / minification mangles class names. Used by
+  // the helper below.
+  readonly isSessionExpired = true as const;
+  constructor() {
+    super("session expired");
+  }
+}
+
+// isSessionExpiredError narrows an unknown caught value. Component
+// error handlers should call this and skip toast/banner rendering
+// when it returns true.
+export function isSessionExpiredError(e: unknown): e is SessionExpiredError {
+  return (
+    e instanceof SessionExpiredError ||
+    (typeof e === "object" &&
+      e !== null &&
+      (e as { isSessionExpired?: boolean }).isSessionExpired === true)
+  );
 }
 
 // Hard ceiling on how long any single request can hang. Anything slower
@@ -202,9 +298,26 @@ async function fetchResponse(
       credentials: "same-origin",
       signal: ctrl.signal,
     });
+    // PAI-322: surface the server-side session expiry so the toast
+    // component can show a low-key warning as the absolute cap
+    // approaches. Always present on authed responses; absent on
+    // public auth endpoints like /auth/login.
+    const expHdr = res.headers.get("X-Session-Expires-At");
+    if (expHdr) {
+      const t = new Date(expHdr);
+      if (!Number.isNaN(t.valueOf())) sessionExpiresAt.value = t;
+    }
     if (res.status === 401) {
-      maybeMarkSessionExpired(path);
-      throw new ApiError(401, "unauthorized");
+      // Auth-endpoint 401s (wrong password, bad reset token, first
+      // pristine /auth/me) bubble as ApiError so the login form can
+      // render "invalid credentials". Only mid-session 401s become
+      // SessionExpiredError, which the global handler suppresses
+      // from the per-action toast layer.
+      if (isAuthEndpoint(path)) {
+        throw new ApiError(401, "unauthorized");
+      }
+      markSessionExpired();
+      throw new SessionExpiredError();
     }
     return res;
   } catch (e) {
@@ -298,9 +411,19 @@ async function upload<T>(
       });
     }
     xhr.onload = () => {
+      // PAI-322: mirror the fetch path for header capture + error type.
+      const expHdr = xhr.getResponseHeader("X-Session-Expires-At");
+      if (expHdr) {
+        const t = new Date(expHdr);
+        if (!Number.isNaN(t.valueOf())) sessionExpiresAt.value = t;
+      }
       if (xhr.status === 401) {
-        maybeMarkSessionExpired(path);
-        reject(new ApiError(401, "unauthorized"));
+        if (isAuthEndpoint(path)) {
+          reject(new ApiError(401, "unauthorized"));
+          return;
+        }
+        markSessionExpired();
+        reject(new SessionExpiredError());
         return;
       }
       try {
@@ -330,6 +453,10 @@ async function upload<T>(
  * for ("request failed (HTTP 502)").
  */
 export function errMsg(e: unknown, fallback = "An error occurred"): string {
+  // PAI-322: dead-session 401s are surfaced exclusively through the
+  // SessionExpiredModal — returning empty here lets components that do
+  // `if (error) {...}` skip rendering a duplicate per-action toast.
+  if (isSessionExpiredError(e)) return "";
   let raw = "";
   if (e instanceof ApiError) {
     raw = e.message;

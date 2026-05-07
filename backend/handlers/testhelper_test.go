@@ -133,6 +133,7 @@ func buildRouter() http.Handler {
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
 			r.Patch("/auth/me", handlers.UpdateProfile)
+			r.Post("/auth/password", auth.ChangePassword)
 			r.Get("/instance", func(w http.ResponseWriter, req *http.Request) {
 				// Minimal stand-in for the real instanceHandler — the test
 				// only asserts that this endpoint is *auth-gated*, not the

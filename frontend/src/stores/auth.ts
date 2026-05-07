@@ -17,7 +17,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, sessionExpired } from '@/api/client'
+import { api, announceSessionRestored } from '@/api/client'
 import router from '@/router'
 import i18n from '@/i18n'
 import { setDisplayTimezone } from '@/utils/formatTime'
@@ -155,17 +155,20 @@ export const useAuthStore = defineStore('auth', () => {
     viaDevLogin.value = !!resp.via_dev_login
     if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
     checked.value = true
-    sessionExpired.value = false
+    // PAI-322: broadcast session-restored so sibling tabs dismiss their
+    // session-expired modals. Local ref clear is included in the helper.
+    announceSessionRestored()
     await fetchTOTPStatus()
   }
 
   // PAI-83: installing a fresh authenticated user proves the session is
   // valid again; clear the banner flag here so both password and TOTP
   // login paths (which converge on setUser) recover from a stale 401.
+  // PAI-322: also broadcast across tabs.
   function setUser(u: User) {
     user.value = u
     checked.value = true
-    sessionExpired.value = false
+    announceSessionRestored()
   }
 
   async function fetchTOTPStatus(force = false) {

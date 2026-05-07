@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -379,5 +380,148 @@ func TestRegression_Hdr_003_CSPReportOnly(t *testing.T) {
 		if strings.Contains(csp, banned) {
 			t.Errorf("INV-HDR-003 violated: third-party host %q in CSP: %q", banned, csp)
 		}
+	}
+}
+
+// PAI-322 — sliding renewal: when remaining TTL drops below half the
+// 30-day window, the next authenticated request bumps expires_at back
+// out. The middleware does the renewal asynchronously to the response,
+// so we verify by reading the row before and after.
+func TestRegression_Session_001_SlidingRenewalBumpsExpiry(t *testing.T) {
+	ts := newTestServer(t)
+	sid := strings.TrimPrefix(ts.memberCookie, "session=")
+
+	// Force the session to be "near expiry" — within the 15-day renew
+	// threshold. Use a stamp 1 day from now.
+	target := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
+	if _, err := db.DB.Exec("UPDATE sessions SET expires_at=? WHERE id=?", target, sid); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := ts.get(t, "/api/auth/me", ts.memberCookie)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authed GET returned %d", resp.StatusCode)
+	}
+
+	var newExpiry string
+	if err := db.DB.QueryRow("SELECT expires_at FROM sessions WHERE id=?", sid).Scan(&newExpiry); err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := time.Parse("2006-01-02 15:04:05", newExpiry)
+	if err != nil {
+		t.Fatalf("parse new expiry %q: %v", newExpiry, err)
+	}
+	// Expect renewed expiry well past the 1-day mark we set — at least
+	// 25 days out (sliding window is 30d, leave slack for clock skew).
+	if time.Until(parsed) < 25*24*time.Hour {
+		t.Errorf("INV-SESSION-001 violated: expires_at not slid; remaining=%s", time.Until(parsed))
+	}
+}
+
+// PAI-322 — absolute cap: a session older than 90 days is rejected
+// even when sliding would otherwise extend it.
+func TestRegression_Session_002_AbsoluteCapForcesLogout(t *testing.T) {
+	ts := newTestServer(t)
+	sid := strings.TrimPrefix(ts.memberCookie, "session=")
+
+	// Backdate created_at to 100 days ago (past the 90-day cap), and
+	// keep expires_at far in the future so the SQL filter doesn't
+	// eject the session before our cap check sees it.
+	created := time.Now().UTC().Add(-100 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+	expires := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02 15:04:05")
+	if _, err := db.DB.Exec(
+		"UPDATE sessions SET created_at=?, expires_at=? WHERE id=?",
+		created, expires, sid,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := ts.get(t, "/api/auth/me", ts.memberCookie)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("INV-SESSION-002 violated: capped session returned %d, want 401", resp.StatusCode)
+	}
+	var n int
+	_ = db.DB.QueryRow("SELECT COUNT(*) FROM sessions WHERE id=?", sid).Scan(&n)
+	if n != 0 {
+		t.Errorf("INV-SESSION-002 violated: capped session row not cleaned up")
+	}
+}
+
+// PAI-322 — every authenticated response surfaces the session expiry
+// so the SPA can drive a low-key pre-expiry toast.
+func TestRegression_Session_003_ExpiresAtHeader(t *testing.T) {
+	ts := newTestServer(t)
+	resp := ts.get(t, "/api/auth/me", ts.memberCookie)
+	resp.Body.Close()
+	hdr := resp.Header.Get("X-Session-Expires-At")
+	if hdr == "" {
+		t.Fatal("INV-SESSION-003 violated: X-Session-Expires-At header missing")
+	}
+	if _, err := time.Parse(time.RFC3339, hdr); err != nil {
+		t.Errorf("INV-SESSION-003 violated: header %q not RFC3339: %v", hdr, err)
+	}
+}
+
+// PAI-322 — changing one's own password invalidates every OTHER
+// session for the user but keeps the current one alive. Mirrors how
+// modern apps (GitHub / Google) handle password change.
+func TestRegression_Session_004_PasswordChangeKillsOtherSessions(t *testing.T) {
+	ts := newTestServer(t)
+	var memberID int64
+	if err := db.DB.QueryRow("SELECT id FROM users WHERE username='member'").Scan(&memberID); err != nil {
+		t.Fatal(err)
+	}
+	currentSID := strings.TrimPrefix(ts.memberCookie, "session=")
+
+	// Plant a second, separate session for the same user — simulates a
+	// second device / browser. Use a known id and a future expiry so
+	// it's a "live" session in the same sense as the one issued by
+	// login.
+	otherSID := "ffffffffffffffffffffffffffffffff"
+	now := time.Now().UTC()
+	if _, err := db.DB.Exec(
+		`INSERT INTO sessions(id, user_id, expires_at, csrf_token, via_dev_login, created_at)
+		 VALUES (?, ?, ?, '', 0, ?)`,
+		otherSID, memberID,
+		now.Add(7*24*time.Hour).Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Member changes their own password through the current session.
+	// CSRF is enforced on /auth/password — fetch the token first.
+	var csrfTok string
+	if err := db.DB.QueryRow("SELECT csrf_token FROM sessions WHERE id=?", currentSID).Scan(&csrfTok); err != nil {
+		t.Fatal(err)
+	}
+	body := bytes.NewBufferString(`{"current_password":"memberpass","new_password":"newmemberpass"}`)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.srv.URL+"/api/auth/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", ts.memberCookie)
+	if csrfTok != "" {
+		req.Header.Set("X-CSRF-Token", csrfTok)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("change password: status %d", resp.StatusCode)
+	}
+
+	// The current session must still be alive.
+	var n int
+	_ = db.DB.QueryRow("SELECT COUNT(*) FROM sessions WHERE id=?", currentSID).Scan(&n)
+	if n != 1 {
+		t.Errorf("INV-SESSION-004 violated: current session was deleted on own password change")
+	}
+	// The "other device" session must be gone.
+	_ = db.DB.QueryRow("SELECT COUNT(*) FROM sessions WHERE id=?", otherSID).Scan(&n)
+	if n != 0 {
+		t.Errorf("INV-SESSION-004 violated: other-device session survived password change")
 	}
 }

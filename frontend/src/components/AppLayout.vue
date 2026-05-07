@@ -23,7 +23,7 @@ import SidebarRecentProjects from '@/components/SidebarRecentProjects.vue'
 import SidebarFooter from '@/components/SidebarFooter.vue'
 import GlobalNewIssueModal from '@/components/GlobalNewIssueModal.vue'
 import AttachmentLightbox from '@/components/issue/AttachmentLightbox.vue'
-import SessionExpiredBanner from '@/components/SessionExpiredBanner.vue'
+import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import AppDevLoginBanner from '@/components/AppDevLoginBanner.vue'
 import { LS_SIDEBAR_COLLAPSED as COLLAPSED_KEY } from '@/constants/storage'
 
@@ -141,7 +141,7 @@ onMounted(() => {
        banner lives outside .layout; .layout still owns the grid. -->
   <div class="app-shell">
     <AppDevLoginBanner />
-    <SessionExpiredBanner />
+    <SessionExpiredModal />
     <div :class="['layout', { 'sidebar-collapsed': sidebarCollapsed }]">
 
     <aside
@@ -239,9 +239,11 @@ onMounted(() => {
 
 <style scoped>
 /* ── Outer shell ─────────────────────────────────────────────────────────── */
-/* .app-shell is a vertical flex so the SessionExpiredBanner (when
+/* .app-shell is a vertical flex so the AppDevLoginBanner (when
    visible) naturally pushes the .layout grid downward without needing
-   to rewrite the existing grid geometry. */
+   to rewrite the existing grid geometry. The SessionExpiredModal is
+   teleported to <body> and overlays everything; it does not affect
+   layout flow. */
 .app-shell {
   display: flex;
   flex-direction: column;

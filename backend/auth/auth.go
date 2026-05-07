@@ -40,7 +40,32 @@ var cookieSecure = os.Getenv("COOKIE_SECURE") == "true"
 const totpPendingTTLAuth = 5 * time.Minute
 
 const sessionCookie = "session"
-const sessionDuration = 24 * time.Hour
+
+// PAI-322: 30-day sliding window with a 90-day absolute cap.
+//
+// - sessionDuration is the sliding window. Every authenticated request
+//   that finds the remaining TTL below half of this value bumps
+//   expires_at back to now+sessionDuration. So an active user never
+//   gets logged out; an inactive user is logged out 30 days after
+//   their last request.
+//
+// - sessionAbsoluteLifetime is a hard ceiling measured from the row's
+//   created_at. Even a perpetually-active session is forced to
+//   re-login once it crosses this. Catches stolen-cookie risk and
+//   keeps a clean session-table when users churn devices.
+//
+// - sessionRenewThreshold is the "below half" decision: don't UPDATE
+//   on every request — only when it earns us at least half a window.
+//   For 30d sliding, that means we write at most every ~15 days per
+//   session under normal use.
+//
+// The cookie's Expires attribute is set to sessionAbsoluteLifetime so
+// the browser keeps the cookie alive for the full possible lifetime
+// of the row; the DB row is the source of truth and renewal re-issues
+// the cookie alongside the DB UPDATE.
+const sessionDuration = 30 * 24 * time.Hour
+const sessionAbsoluteLifetime = 90 * 24 * time.Hour
+const sessionRenewThreshold = sessionDuration / 2
 
 const authRateLimitWindow = 10 * time.Minute
 const authRateLimitMaxAttempts = 5
@@ -108,40 +133,107 @@ func Middleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		user, csrfTok, viaDevLogin, err := sessionUserAndCSRF(cookie.Value)
+		rec, err := loadSession(cookie.Value)
 		if err != nil {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
+
+		// PAI-322: enforce the 90-day absolute cap. created_at can be
+		// zero for sessions that pre-date the M89 migration in unusual
+		// edge cases (the migration UPDATEs existing rows, but a zero
+		// value is still defensive); skip the cap check in that case
+		// rather than fail a legitimate session.
+		if !rec.createdAt.IsZero() && time.Since(rec.createdAt) > sessionAbsoluteLifetime {
+			if _, derr := db.DB.Exec("DELETE FROM sessions WHERE id=?", cookie.Value); derr != nil {
+				log.Printf("Middleware: delete capped session %s: %v", cookie.Value, derr)
+			}
+			clearSessionCookie(w)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
+		// PAI-322: sliding renewal — bump expires_at if remaining TTL
+		// is below half. Throttling the write to "remaining < half"
+		// means an active user triggers an UPDATE at most every
+		// sessionRenewThreshold (≈15 days for the 30d window) per
+		// session. The new expiry is also clamped to the absolute cap
+		// so we never slide past it.
+		remaining := time.Until(rec.expiresAt)
+		if remaining < sessionRenewThreshold {
+			newExpiry := time.Now().Add(sessionDuration)
+			if !rec.createdAt.IsZero() {
+				absoluteEnd := rec.createdAt.Add(sessionAbsoluteLifetime)
+				if newExpiry.After(absoluteEnd) {
+					newExpiry = absoluteEnd
+				}
+			}
+			if _, uerr := db.DB.Exec(
+				"UPDATE sessions SET expires_at = ? WHERE id = ?",
+				newExpiry.UTC().Format("2006-01-02 15:04:05"), cookie.Value,
+			); uerr != nil {
+				// A renewal failure is recoverable — log it and let the
+				// request proceed; the next request retries the slide.
+				log.Printf("Middleware: slide renewal for %s: %v", cookie.Value, uerr)
+			} else {
+				rec.expiresAt = newExpiry
+				http.SetCookie(w, &http.Cookie{
+					Name:     sessionCookie,
+					Value:    cookie.Value,
+					Path:     "/",
+					Expires:  time.Now().Add(sessionAbsoluteLifetime),
+					HttpOnly: true,
+					Secure:   cookieSecure,
+					SameSite: http.SameSiteLaxMode,
+				})
+			}
+		}
+
+		// PAI-322: surface the session's current expiry to the SPA so
+		// it can show a low-key "expires in N minutes" toast as the
+		// absolute cap approaches. Sliding sessions almost never reach
+		// this — by design, the toast is rare.
+		w.Header().Set("X-Session-Expires-At", rec.expiresAt.UTC().Format(time.RFC3339))
+
 		// PAI-113: lazy-upgrade pre-M72 sessions that have no token yet.
 		// The first authenticated request after deployment issues one and
 		// sets the cookie. Avoids forcing every existing session to log in
 		// again at deploy time; new sessions get a token at login.
-		if csrfTok == "" {
+		if rec.csrfTok == "" {
 			if t, err := IssueCSRFForSession(w, cookie.Value); err == nil {
-				csrfTok = t
+				rec.csrfTok = t
 			}
 		}
-		ctx := context.WithValue(r.Context(), UserKey, user)
+		ctx := context.WithValue(r.Context(), UserKey, rec.user)
 		ctx = WithAccessCache(ctx)
-		ctx = withSessionAuth(ctx, csrfTok)
-		ctx = withDevLoginFlag(ctx, viaDevLogin)
+		ctx = withSessionAuth(ctx, rec.csrfTok)
+		ctx = withDevLoginFlag(ctx, rec.viaDevLogin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// scanUser scans the standard user projection into a User struct.
+// clearSessionCookie writes a Set-Cookie that immediately expires the
+// session cookie on the client. Used when the server kills a session
+// (absolute cap, account disabled, etc.) so the browser doesn't keep
+// presenting a value the server has already deleted.
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:    sessionCookie,
+		Value:   "",
+		Path:    "/",
+		Expires: time.Unix(0, 0),
+		MaxAge:  -1,
+	})
+	ClearCSRFCookie(w)
+}
+
+// userScanDests returns the scan destination pointers for userSelectCols.
+// Useful when the query has extra prefix/suffix columns around the user cols.
 //
 // IMPORTANT: this list must stay in lock-step with `userSelectCols` AND with the
 // twin `handlers/userSelectCols` / `handlers/scanUser`. Adding a new user column
 // requires updating BOTH packages — see Test_APIKeyAuth for the regression that
 // caused this to be a recurring footgun.
-func scanUser(row interface{ Scan(...any) error }, u *models.User) error {
-	return row.Scan(userScanDests(u)...)
-}
-
-// userScanDests returns the scan destination pointers for userSelectCols.
-// Useful when the query has extra prefix/suffix columns around the user cols.
 func userScanDests(u *models.User) []any {
 	return []any{
 		&u.ID, &u.Username, &u.Role, &u.Status, &u.CreatedAt,
@@ -157,38 +249,59 @@ func userScanDests(u *models.User) []any {
 // userSelectCols is the full qualified column list for the users table.
 const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.issue_auto_refresh_enabled, u.issue_auto_refresh_interval_seconds, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses`
 
-func sessionUser(sessionID string) (*models.User, error) {
-	u, _, _, err := sessionUserAndCSRF(sessionID)
-	return u, err
+// sessionRecord is the full row needed to make slide / cap / surface
+// decisions in Middleware. Times are parsed from the SQLite TEXT
+// columns; a zero time means the column was empty (pre-migration row
+// or unparseable string) — callers must check .IsZero() before relying
+// on the value.
+type sessionRecord struct {
+	user        *models.User
+	csrfTok     string
+	viaDevLogin bool
+	expiresAt   time.Time
+	createdAt   time.Time
 }
 
-// sessionUserAndCSRF resolves a session id to its user, the per-session
-// CSRF token (PAI-113), and the via_dev_login flag (PAI-267). The
-// token is empty for sessions created before migration 72 — Middleware
-// lazy-upgrades those on the first authenticated request so the user
-// does not have to log in again at deploy time. via_dev_login is 0
-// (false) for sessions created before migration 85 since the column
-// defaults to 0.
-func sessionUserAndCSRF(sessionID string) (*models.User, string, bool, error) {
-	u := &models.User{}
+// loadSession resolves a session id to its full record. Enforces the
+// expires_at > now sliding-window check in SQL (so a long-expired
+// session is invisible to the rest of the code) and disables the
+// session inline if the user has been deactivated.
+func loadSession(sessionID string) (*sessionRecord, error) {
+	rec := &sessionRecord{user: &models.User{}}
 	var csrfTok string
 	var viaDevLoginInt int
-	dests := append([]any{&csrfTok, &viaDevLoginInt}, userScanDests(u)...)
+	var expiresStr, createdStr string
+	dests := append(
+		[]any{&csrfTok, &viaDevLoginInt, &expiresStr, &createdStr},
+		userScanDests(rec.user)...,
+	)
 	row := db.DB.QueryRow(`
-		SELECT s.csrf_token, s.via_dev_login, `+userSelectCols+`
+		SELECT s.csrf_token, s.via_dev_login, s.expires_at, s.created_at, `+userSelectCols+`
 		FROM sessions s JOIN users u ON s.user_id = u.id
 		WHERE s.id = ? AND s.expires_at > datetime('now')
 	`, sessionID)
 	if err := row.Scan(dests...); err != nil {
-		return nil, "", false, err
+		return nil, err
 	}
-	if u.Status == "inactive" || u.Status == "deleted" {
+	if rec.user.Status == "inactive" || rec.user.Status == "deleted" {
 		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
-			log.Printf("sessionUser: delete session %s: %v", sessionID, err)
+			log.Printf("loadSession: delete session %s: %v", sessionID, err)
 		}
-		return nil, "", false, fmt.Errorf("account disabled")
+		return nil, fmt.Errorf("account disabled")
 	}
-	return u, csrfTok, viaDevLoginInt != 0, nil
+	rec.csrfTok = csrfTok
+	rec.viaDevLogin = viaDevLoginInt != 0
+	// SQLite stores timestamps as "YYYY-MM-DD HH:MM:SS" (UTC). Parse
+	// errors leave the times zero, which the cap/slide logic tolerates.
+	if t, err := time.Parse("2006-01-02 15:04:05", expiresStr); err == nil {
+		rec.expiresAt = t.UTC()
+	}
+	if createdStr != "" {
+		if t, err := time.Parse("2006-01-02 15:04:05", createdStr); err == nil {
+			rec.createdAt = t.UTC()
+		}
+	}
+	return rec, nil
 }
 
 // Login handler
@@ -255,20 +368,32 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 		return
 	}
-	expiresAt := time.Now().Add(sessionDuration)
+	now := time.Now()
+	expiresAt := now.Add(sessionDuration)
+	// PAI-322: created_at is the anchor for the absolute cap. We write
+	// it explicitly here (rather than relying on a SQL default) so the
+	// row is unambiguously stamped with the login moment in app-time,
+	// matching whatever the server clock says when expires_at is read.
 	if _, err := db.DB.Exec(
-		"INSERT INTO sessions(id,user_id,expires_at) VALUES(?,?,?)",
-		sid, loginUser.ID, expiresAt.UTC().Format("2006-01-02 15:04:05"),
+		"INSERT INTO sessions(id,user_id,expires_at,created_at) VALUES(?,?,?,?)",
+		sid, loginUser.ID,
+		expiresAt.UTC().Format("2006-01-02 15:04:05"),
+		now.UTC().Format("2006-01-02 15:04:05"),
 	); err != nil {
 		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 		return
 	}
 
+	// PAI-322: cookie outlives the sliding window — expires at the
+	// absolute cap so the browser keeps the cookie even when the
+	// backend has slid expires_at past the current value. The DB row
+	// is the source of truth; the cookie just has to survive long
+	// enough for the next request to renew it.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sid,
 		Path:     "/",
-		Expires:  expiresAt,
+		Expires:  now.Add(sessionAbsoluteLifetime),
 		HttpOnly: true,
 		Secure:   cookieSecure,
 		SameSite: http.SameSiteLaxMode,
@@ -379,6 +504,32 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if _, err := db.DB.Exec("UPDATE users SET password=? WHERE id=?", newHash, user.ID); err != nil {
 		http.Error(w, `{"error":"update failed"}`, http.StatusInternalServerError)
 		return
+	}
+
+	// PAI-322: kill every other session for this user so a stolen or
+	// abandoned cookie on another device stops working immediately.
+	// The current session is preserved by id-exclusion so the user
+	// stays logged in here. API-key-authenticated callers don't carry
+	// a session cookie — for them, all sessions are nuked, which is
+	// the conservative choice (an automated client doesn't have a
+	// "this one" to keep).
+	currentSID := ""
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		currentSID = c.Value
+	}
+	if currentSID != "" {
+		if _, err := db.DB.Exec(
+			"DELETE FROM sessions WHERE user_id=? AND id != ?",
+			user.ID, currentSID,
+		); err != nil {
+			log.Printf("ChangePassword: prune sessions user_id=%d: %v", user.ID, err)
+		}
+	} else {
+		if _, err := db.DB.Exec(
+			"DELETE FROM sessions WHERE user_id=?", user.ID,
+		); err != nil {
+			log.Printf("ChangePassword: prune all sessions user_id=%d: %v", user.ID, err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

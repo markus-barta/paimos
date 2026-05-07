@@ -9,24 +9,36 @@ import UndoToast from "@/components/undo/UndoToast.vue";
 import UndoActivityPanel from "@/components/undo/UndoActivityPanel.vue";
 import UndoConflictModal from "@/components/undo/UndoConflictModal.vue";
 import { useAuthStore } from "@/stores/auth";
-import { sessionExpired } from "@/api/client";
+import { announceSessionExpired } from "@/api/client";
 import { useUndoStore } from "@/stores/undo";
 
 const auth = useAuthStore();
 const undo = useUndoStore();
 
-// ── Session-death heartbeat ──────────────────────────────────
-// When the browser tab regains focus after being hidden (closed laptop,
-// user tabbed away for hours, OS sleep), re-validate the session by
-// calling fetchMe(). If the session is dead the call 401s and fetchMe
-// clears auth.user. We detect the was-set→now-null transition right here
-// and flip the banner flag explicitly — /auth/me is in the client's
-// carve-out list (so first-load 401s don't nag), which means the global
-// 401 interceptor does NOT fire for /auth/me and we have to set the ref
-// ourselves.
-async function handleVisibilityChange() {
-  if (document.visibilityState !== "visible") return;
-  if (!auth.user) return; // never logged in this tab — normal login flow
+// ── Session-death heartbeat (PAI-322) ────────────────────────
+// Two complementary triggers:
+//
+//   1. visibilitychange — fires when the tab regains focus after a
+//      sleep / hidden period. Catches "laptop was closed all night"
+//      cases without polling overhead while hidden.
+//
+//   2. 5-minute interval while visible — catches a slowly-dying
+//      session for users who keep a tab in the foreground without
+//      clicking. Stops while the tab is hidden so we don't burn
+//      battery / CPU on a backgrounded tab. /auth/me is cheap and
+//      hits the same sliding-renewal path as any other request, so
+//      it doubles as a keep-alive for active users.
+//
+// /auth/me is in client.ts's carve-out list (so a fresh-load 401
+// doesn't pop the modal), which means the global 401 interceptor
+// does NOT fire here. We detect the was-logged-in → now-not
+// transition explicitly and call announceSessionExpired so all
+// open tabs converge on the modal via BroadcastChannel.
+const HEARTBEAT_MS = 5 * 60 * 1000;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+async function probeSession() {
+  if (!auth.user) return;
   const wasLoggedIn = !!auth.user;
   try {
     await auth.fetchMe();
@@ -34,15 +46,40 @@ async function handleVisibilityChange() {
     /* fetchMe already swallows errors internally */
   }
   if (wasLoggedIn && !auth.user) {
-    sessionExpired.value = true;
+    announceSessionExpired();
   }
+}
+
+function startHeartbeat() {
+  if (heartbeatTimer != null) return;
+  heartbeatTimer = setInterval(() => {
+    if (document.visibilityState === "visible") probeSession();
+  }, HEARTBEAT_MS);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer != null) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+async function handleVisibilityChange() {
+  if (document.visibilityState !== "visible") {
+    stopHeartbeat();
+    return;
+  }
+  startHeartbeat();
+  await probeSession();
 }
 
 onMounted(() => {
   document.addEventListener("visibilitychange", handleVisibilityChange);
+  if (document.visibilityState === "visible") startHeartbeat();
 });
 onBeforeUnmount(() => {
   document.removeEventListener("visibilitychange", handleVisibilityChange);
+  stopHeartbeat();
 });
 </script>
 

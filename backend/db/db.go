@@ -3829,6 +3829,20 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE users ADD COLUMN issue_auto_refresh_enabled INTEGER NOT NULL DEFAULT 1`,
 			`ALTER TABLE users ADD COLUMN issue_auto_refresh_interval_seconds INTEGER NOT NULL DEFAULT 60`,
 		}},
+
+		// M89 / PAI-322: sessions get a created_at column so we can
+		// enforce an absolute lifetime cap (90 days) alongside the new
+		// 30-day sliding window. SQLite forbids non-constant DEFAULTs
+		// on ALTER TABLE, so we add the column with an empty default
+		// and UPDATE existing rows in the same migration. Existing
+		// sessions effectively reset their absolute cap to migration
+		// time, which is acceptable — the user only feels it if they
+		// then go 90 days without logging in. Future inserts set the
+		// column explicitly in LoginHandler.
+		{89, []string{
+			`ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
+			`UPDATE sessions SET created_at = datetime('now') WHERE created_at = ''`,
+		}},
 	}
 
 	for _, m := range migrations {
