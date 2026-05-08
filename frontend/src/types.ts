@@ -309,6 +309,57 @@ export interface ProjectDeployRecipeInput {
   sort_order?: number
 }
 
+// PAI-339 / PAI-338. Knowledge plane — memory / runbook /
+// external_system / related_project / guideline. Per PAI-346 these
+// are issues with a discriminating `type` and a slug; the convenience
+// endpoints (`/api/projects/:id/{memory|runbooks|external-systems|...}`)
+// hide that. Per-category tail fields live in `metadata`; the editor
+// UI surfaces a small set of well-known keys per type but the column
+// itself is intentionally schemaless so the front-end can iterate
+// without server changes (see PAI-338's "validation is intentionally
+// lax" remark).
+export type KnowledgeCategory =
+  | 'memory'
+  | 'runbook'
+  | 'external_system'
+  | 'related_project'
+  | 'guideline'
+
+// URL-aliases for the convenience endpoints. Differ from the SQL
+// discriminators (memory→memory, runbook→runbooks, etc.) — kept here
+// in one place so callers don't construct paths by hand.
+export const KNOWLEDGE_PATH_ALIAS: Record<KnowledgeCategory, string> = {
+  memory: 'memory',
+  runbook: 'runbooks',
+  external_system: 'external-systems',
+  related_project: 'related-projects',
+  guideline: 'guidelines',
+}
+
+export interface KnowledgeEntry {
+  id: number
+  project_id: number
+  type: KnowledgeCategory
+  slug: string
+  title: string
+  body: string
+  // Server uses 'backlog' as default-active and 'cancelled' for
+  // archived (PAI-346 §"Status values"). The UI labels them as
+  // "active" / "archived" but speaks the existing enum on the wire.
+  status: string
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface KnowledgeEntryInput {
+  slug: string
+  title: string
+  body: string
+  status?: string
+  metadata: Record<string, unknown>
+}
+
 export interface ProjectRepo {
   id: number
   project_id: number
