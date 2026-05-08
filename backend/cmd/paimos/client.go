@@ -25,13 +25,29 @@ import (
 // gets blocked on pm.bytepoets.com, see paimos_api_gotchas.md).
 var userAgent = "paimos-cli/" + Version
 
+// agentAttrCap mirrors the server-side defensive cap from PAI-324
+// (handlers/issues_history.go: agentAttrCap). The server already
+// truncates, but trimming on the client too keeps the audit log
+// clean and avoids sending obviously bogus payloads.
+const agentAttrCap = 64
+
+// agentAttrHeader and sessionAttrHeader are the canonical header
+// names PAI-324 reads on the server side. Keep the spellings identical
+// (Go's http.Header canonicalises anyway, but matching the server's
+// constants makes greps easier and prevents drift).
+const (
+	agentAttrHeader   = "X-Paimos-Agent-Name"
+	sessionAttrHeader = "X-Paimos-Session-Id"
+)
+
 // sessionID is generated once per CLI invocation and sent on every
-// request as X-PAIMOS-Session-Id. Lets PAI-97's server-side audit
+// request as X-Paimos-Session-Id. Lets PAI-97's server-side audit
 // correlate the mutations from one `paimos …` run. Honors the env
 // override PAIMOS_SESSION_ID so multi-step shell scripts can share
-// one session across invocations.
+// one session across invocations. PAI-325 layers on a flag override
+// (--session-id) that wins over the env var; see resolveAgentAttribution.
 var sessionID = func() string {
-	if s := os.Getenv("PAIMOS_SESSION_ID"); s != "" {
+	if s := strings.TrimSpace(os.Getenv("PAIMOS_SESSION_ID")); s != "" {
 		return s
 	}
 	id, err := uuid.NewV7()
@@ -42,6 +58,59 @@ var sessionID = func() string {
 	}
 	return id.String()
 }()
+
+// resolveAgentAttribution returns the (agent-name, session-id) pair
+// that write commands should forward to the server, applying the
+// PAI-325 precedence rules:
+//
+//	flag (--agent-name / --session-id) > env > nothing
+//
+// Both values are trimmed and capped at agentAttrCap to mirror the
+// server's defensive truncation. An empty return means "send no header"
+// — the caller (do) checks before setting it.
+//
+// Session-id has one extra wrinkle for backwards-compat: the auto-
+// generated per-invocation UUID from the package-level sessionID is
+// used as a final fallback so PAI-97's server-side correlation still
+// works for old call sites. PAI-325's "no header when unset" rule
+// applies specifically to the agent-attribution surface — flipping
+// that fallback off would regress existing audit behaviour and is
+// not what the ticket asks for.
+func resolveAgentAttribution() (agent, session string) {
+	agent = strings.TrimSpace(flagAgentName)
+	if agent == "" {
+		agent = strings.TrimSpace(os.Getenv("PAIMOS_AGENT_NAME"))
+	}
+	if len(agent) > agentAttrCap {
+		agent = agent[:agentAttrCap]
+	}
+
+	session = strings.TrimSpace(flagSessionID)
+	if session == "" {
+		session = strings.TrimSpace(os.Getenv("PAIMOS_SESSION_ID"))
+	}
+	if session == "" {
+		// Fall back to the per-invocation UUID. Documented in the
+		// package var above; preserves PAI-97 behaviour.
+		session = sessionID
+	}
+	if len(session) > agentAttrCap {
+		session = session[:agentAttrCap]
+	}
+	return agent, session
+}
+
+// isWriteMethod reports whether the HTTP method mutates server state.
+// PAI-325 only forwards agent-attribution headers on writes; GETs (and
+// HEAD/OPTIONS in the unlikely event the CLI ever sends them) carry no
+// audit payload.
+func isWriteMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case "POST", "PUT", "PATCH", "DELETE":
+		return true
+	}
+	return false
+}
 
 // Client is a thin HTTP wrapper with auth + error semantics tailored
 // for the CLI's JSON-first flow. One per command invocation.
@@ -81,7 +150,24 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-PAIMOS-Session-Id", sessionID)
+
+	// Agent-attribution forwarding (PAI-325). Centralised here so every
+	// command picks it up automatically — sprinkling the header logic
+	// across each subcommand was the obvious alternative and it was
+	// strictly worse: easy to forget, hard to test, drift-prone.
+	agent, session := resolveAgentAttribution()
+	if session != "" {
+		// Session header is sent on all methods (preserves PAI-97
+		// per-invocation correlation; reads benefit from it too).
+		req.Header.Set(sessionAttrHeader, session)
+	}
+	if isWriteMethod(method) && agent != "" {
+		// Agent header is writes-only — server only persists it on
+		// history-snapshotted mutations, sending it on GETs would be
+		// noise.
+		req.Header.Set(agentAttrHeader, agent)
+	}
+
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}

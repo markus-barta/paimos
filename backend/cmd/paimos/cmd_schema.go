@@ -271,9 +271,83 @@ Exit codes:
 					Detail: "version=" + sch.Version})
 			}
 
+			// 5. PAI-325: agent attribution state. Always "ok" — this
+			// section is informational, not a health check. We surface
+			// the resolved values (flag > env > fallback) so users can
+			// confirm what their writes will look like to the server.
+			results = append(results, doctorCheck{Name: "attribution", Status: "ok",
+				Detail: attributionDoctorDetail()})
+
 			return renderDoctor(results)
 		},
 	}
+}
+
+// attributionDoctorDetail summarises the PAI-325 agent-attribution
+// state for the doctor output. Layout mirrors `resolvedInstanceDetail`
+// — short value followed by `[source=…]` annotations so users can see
+// not just what would be sent but where it came from (flag, env, or
+// the auto-generated fallback).
+//
+// Session id is shown as the first 8 characters + ellipsis; the value
+// isn't a secret but the full UUID is noisy in CLI output and clipping
+// matches the convention used elsewhere (see cmd_issue.go's title
+// truncation at 60 chars).
+func attributionDoctorDetail() string {
+	agentVal, agentSource := pickAttribution(flagAgentName, "PAIMOS_AGENT_NAME", "")
+	sessionVal, sessionSource := pickAttribution(flagSessionID, "PAIMOS_SESSION_ID", sessionID)
+
+	agentDisp := agentVal
+	if agentDisp == "" {
+		agentDisp = "(unset)"
+	}
+	sessionDisp := truncateForDoctor(sessionVal)
+	if sessionDisp == "" {
+		sessionDisp = "(unset)"
+	}
+
+	parts := []string{
+		fmt.Sprintf("agent=%s [%s]", agentDisp, agentSource),
+		fmt.Sprintf("session=%s [%s]", sessionDisp, sessionSource),
+	}
+	return strings.Join(parts, ", ")
+}
+
+// pickAttribution returns the resolved value and a short source label
+// describing where it came from. Source values are stable strings so
+// the JSON doctor output stays scriptable. fallback is used as a
+// last-resort source-less default (only session-id supplies one — the
+// per-invocation auto-generated UUID).
+func pickAttribution(flagVal, envVar, fallback string) (string, string) {
+	if v := strings.TrimSpace(flagVal); v != "" {
+		if len(v) > agentAttrCap {
+			v = v[:agentAttrCap]
+		}
+		return v, "flag"
+	}
+	if v := strings.TrimSpace(os.Getenv(envVar)); v != "" {
+		if len(v) > agentAttrCap {
+			v = v[:agentAttrCap]
+		}
+		return v, "env:" + envVar
+	}
+	if fallback != "" {
+		return fallback, "auto"
+	}
+	return "", "unset"
+}
+
+// truncateForDoctor returns the first 8 chars + ellipsis (for session
+// IDs and similar UUID-shaped values). Empty input returns empty so
+// the caller can substitute "(unset)".
+func truncateForDoctor(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 8 {
+		return s
+	}
+	return s[:8] + "…"
 }
 
 // doctorExitCode is returned by renderDoctor via a typed error so main()

@@ -47,6 +47,14 @@ var (
 	flagInstance   string
 	flagJSON       bool
 	flagConfigPath string
+	// PAI-325: optional ad-hoc overrides for agent-attribution.
+	// Empty (default) → resolveAgentAttribution falls back to env vars
+	// (PAIMOS_AGENT_NAME / PAIMOS_SESSION_ID), then to nothing for
+	// agent-name and the auto-generated per-invocation UUID for
+	// session-id. Flags take precedence so one-off scripts can
+	// attribute writes without re-exporting env.
+	flagAgentName string
+	flagSessionID string
 )
 
 func main() {
@@ -92,6 +100,12 @@ Get started:
 	cmd.PersistentFlags().StringVar(&flagInstance, "instance", "", "instance name from config (defaults to default_instance)")
 	cmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "emit JSON output suitable for piping")
 	cmd.PersistentFlags().StringVar(&flagConfigPath, "config", "", "path to config file (default ~/.paimos/config.yaml)")
+	// PAI-325: ad-hoc agent-attribution overrides. Env vars
+	// PAIMOS_AGENT_NAME / PAIMOS_SESSION_ID are the recommended path;
+	// these flags exist for one-off shell scripts that don't want to
+	// re-export env. Both are forwarded only on writes.
+	cmd.PersistentFlags().StringVar(&flagAgentName, "agent-name", "", "agent attribution forwarded on writes (overrides PAIMOS_AGENT_NAME)")
+	cmd.PersistentFlags().StringVar(&flagSessionID, "session-id", "", "session id forwarded on writes (overrides PAIMOS_SESSION_ID)")
 
 	cmd.AddCommand(authCmd())
 	cmd.AddCommand(projectCmd())
