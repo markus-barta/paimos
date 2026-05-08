@@ -4130,6 +4130,74 @@ func migrate(db *sql.DB) error {
 			`INSERT OR IGNORE INTO attachments SELECT * FROM attachments_old96`,
 			`DROP TABLE attachments_old96`,
 
+			// issue_anchors (M75) and ai_calls (M82) were created
+			// after the last issues recreate (M58), so their FK
+			// references inside SQLite still point to the freshly-
+			// dropped issues_old96 — same SQLite FK rewrite bug
+			// the rest of this migration spends most of its
+			// length on. Recreate both with the same column shape
+			// and indexes they had at their original migration
+			// site, otherwise the next INSERT against either
+			// table fails with "no such table: issues_old96".
+			`DROP TABLE IF EXISTS issue_anchors_old96`,
+			`ALTER TABLE issue_anchors RENAME TO issue_anchors_old96`,
+			`CREATE TABLE issue_anchors (
+				id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				issue_id       INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				repo_id        INTEGER NOT NULL REFERENCES project_repos(id) ON DELETE CASCADE,
+				file_path      TEXT NOT NULL,
+				line           INTEGER NOT NULL,
+				label          TEXT NOT NULL DEFAULT '',
+				confidence     TEXT NOT NULL DEFAULT 'declared'
+				               CHECK(confidence IN ('declared','derived','suggested')),
+				symbol_json    TEXT NOT NULL DEFAULT '',
+				schema_version TEXT NOT NULL DEFAULT '',
+				repo_revision  TEXT NOT NULL DEFAULT '',
+				generated_at   TEXT NOT NULL DEFAULT '',
+				hidden         INTEGER NOT NULL DEFAULT 0,
+				stale          INTEGER NOT NULL DEFAULT 0,
+				created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`INSERT OR IGNORE INTO issue_anchors SELECT * FROM issue_anchors_old96`,
+			`DROP TABLE issue_anchors_old96`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_anchors_issue ON issue_anchors(issue_id, repo_id, file_path, line)`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_anchors_repo ON issue_anchors(project_id, repo_id, issue_id)`,
+
+			`DROP TABLE IF EXISTS ai_calls_old96`,
+			`ALTER TABLE ai_calls RENAME TO ai_calls_old96`,
+			`CREATE TABLE ai_calls (
+				id                INTEGER PRIMARY KEY AUTOINCREMENT,
+				request_id        TEXT NOT NULL,
+				user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				action_key        TEXT NOT NULL,
+				sub_action        TEXT NOT NULL DEFAULT '',
+				surface           TEXT NOT NULL,
+				issue_id          INTEGER REFERENCES issues(id) ON DELETE SET NULL,
+				project_id        INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+				customer_id       INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+				cooperation_id    INTEGER REFERENCES project_cooperation(id) ON DELETE SET NULL,
+				provider          TEXT NOT NULL,
+				model             TEXT NOT NULL,
+				prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+				completion_tokens INTEGER NOT NULL DEFAULT 0,
+				total_tokens      INTEGER NOT NULL DEFAULT 0,
+				cost_micro_usd    INTEGER NOT NULL DEFAULT 0,
+				outcome           TEXT NOT NULL,
+				error_class       TEXT NOT NULL DEFAULT '',
+				latency_ms        INTEGER NOT NULL DEFAULT 0,
+				created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
+			)`,
+			`INSERT OR IGNORE INTO ai_calls SELECT * FROM ai_calls_old96`,
+			`DROP TABLE ai_calls_old96`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_calls_user_time   ON ai_calls(user_id, created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_calls_time        ON ai_calls(created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_calls_action_time ON ai_calls(action_key, created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_calls_model_time  ON ai_calls(model, created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_calls_request     ON ai_calls(request_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_calls_issue_time  ON ai_calls(issue_id, created_at DESC)`,
+
 			// Recreate the standard issue indexes (covered by M58)
 			// plus the soft-delete index from M66.
 			`CREATE INDEX IF NOT EXISTS idx_issues_project    ON issues(project_id)`,
