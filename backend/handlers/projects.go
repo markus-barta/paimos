@@ -167,6 +167,20 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, p)
 }
 
+// projectDetailResponse is the wire shape returned by GET /api/projects/{id}.
+// PAI-329 expands the response with project-level inventories (agents,
+// repos, environments, deploy_recipes) so the SPA / adapters can fetch
+// the full project state in a single round-trip. The Project model
+// itself stays unchanged so list endpoints (which return many rows)
+// don't grow unbounded.
+type projectDetailResponse struct {
+	*models.Project
+	Agents        []models.ProjectAgent        `json:"agents"`
+	Repos         []models.ProjectRepo         `json:"repos"`
+	Environments  []models.ProjectEnvironment  `json:"environments"`
+	DeployRecipes []models.ProjectDeployRecipe `json:"deploy_recipes"`
+}
+
 func GetProject(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -178,7 +192,39 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	jsonOK(w, p)
+
+	// Defensive on the inventory queries — surface as best-effort
+	// empty arrays rather than failing the whole detail response.
+	// All four queries hit small-cardinality, project-scoped tables;
+	// any error is a real DB problem worth surfacing as 500.
+	agents, err := loadProjectAgents(id)
+	if err != nil {
+		jsonError(w, "query failed (agents)", http.StatusInternalServerError)
+		return
+	}
+	repos, err := listProjectReposData(id)
+	if err != nil {
+		jsonError(w, "query failed (repos)", http.StatusInternalServerError)
+		return
+	}
+	envs, err := loadProjectEnvironments(id)
+	if err != nil {
+		jsonError(w, "query failed (environments)", http.StatusInternalServerError)
+		return
+	}
+	recipes, err := loadProjectDeployRecipes(id)
+	if err != nil {
+		jsonError(w, "query failed (deploy_recipes)", http.StatusInternalServerError)
+		return
+	}
+
+	jsonOK(w, projectDetailResponse{
+		Project:       p,
+		Agents:        agents,
+		Repos:         repos,
+		Environments:  envs,
+		DeployRecipes: recipes,
+	})
 }
 
 func UpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +247,15 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		ClearCustomer bool     `json:"clear_customer"`
 		RateHourly    *float64 `json:"rate_hourly"`
 		RateLp        *float64 `json:"rate_lp"`
+		// PAI-329 — project-level inventory replace-all hooks. When
+		// any of these arrays is non-nil (vs. omitted), the
+		// corresponding table is wiped + re-inserted in a single
+		// transaction. Per-item CRUD remains the preferred path for
+		// targeted edits; this hook exists for hand-authored writes
+		// and round-trip byte-identity testing (acceptance #6).
+		// Omitting a field leaves the table untouched.
+		Environments  *[]projectEnvironmentPayload  `json:"environments"`
+		DeployRecipes *[]projectDeployRecipePayload `json:"deploy_recipes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -242,12 +297,50 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-329 — replace-all of inventory arrays, when provided.
+	// Validation runs before any mutation so a bad payload aborts
+	// without partial writes. Every replace runs in its own
+	// transaction; failures are surfaced as 4xx/5xx and roll back
+	// only that table.
+	if body.Environments != nil {
+		if msg := validateEnvironmentsPayload(*body.Environments); msg != "" {
+			jsonError(w, msg, http.StatusBadRequest)
+			return
+		}
+		if err := replaceProjectEnvironments(id, *body.Environments); err != nil {
+			jsonError(w, "environments write failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	if body.DeployRecipes != nil {
+		if msg := validateDeployRecipesPayload(*body.DeployRecipes); msg != "" {
+			jsonError(w, msg, http.StatusBadRequest)
+			return
+		}
+		if err := replaceProjectDeployRecipes(id, *body.DeployRecipes); err != nil {
+			jsonError(w, "deploy_recipes write failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Re-fetch + return the same extended detail shape as GetProject
+	// so callers see the post-write state in one round-trip.
 	p := getProjectByID(id)
 	if p == nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	jsonOK(w, p)
+	agents, _ := loadProjectAgents(id)
+	repos, _ := listProjectReposData(id)
+	envs, _ := loadProjectEnvironments(id)
+	recipes, _ := loadProjectDeployRecipes(id)
+	jsonOK(w, projectDetailResponse{
+		Project:       p,
+		Agents:        agents,
+		Repos:         repos,
+		Environments:  envs,
+		DeployRecipes: recipes,
+	})
 }
 
 // DeleteProject soft-deletes: sets status to 'deleted'. Hidden from UI, restorable via DB.
