@@ -3918,6 +3918,276 @@ func migrate(db *sql.DB) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_project_agents_project_name ON project_agents(project_id, name)`,
 			`CREATE INDEX IF NOT EXISTS idx_project_agents_project ON project_agents(project_id)`,
 		}},
+
+		// M95 reserved for PAI-329 (per-agent body / bootstrap_steps /
+		// non_negotiable_rules). Implemented in parallel — leave the
+		// version slot vacant here so PAI-329's branch can claim it
+		// without merge surgery. PAI-338 starts at M96.
+
+		// M96 / PAI-338 (gated by PAI-346): knowledge plane on issues.
+		// Three logical changes recreated as a single issues-rebuild:
+		//   1. Extend `type` CHECK to add the five knowledge types:
+		//      'memory','runbook','external_system','related_project',
+		//      'guideline'. These behave like first-class issues —
+		//      reusing history snapshots, comments, tags, FTS, parent-
+		//      child, soft-delete and undo for free (PAI-346 §"Why
+		//      adopt").
+		//   2. Extend `status` CHECK to add 'archived' and 'proposed'.
+		//      Knowledge entries live primarily in 'backlog' and
+		//      transition to 'archived' on soft-removal; PAI-349 will
+		//      use 'proposed' for bot-authored drafts pending review.
+		//      Adding both up-front avoids a follow-up recreate.
+		//   3. Add nullable `slug TEXT` and `category_metadata TEXT`
+		//      columns. Slug is populated only on knowledge types
+		//      ([a-z][a-z0-9_-]* pattern, max 64 chars, application-
+		//      enforced); UNIQUE INDEX scoped via WHERE slug IS NOT
+		//      NULL so non-knowledge issues stay unconstrained.
+		//      category_metadata holds per-type tail fields (e.g.
+		//      external_system.url) as JSON-as-text.
+		// Backwards-compat: existing rows keep their existing `type`
+		// and `status`; slug + category_metadata default to NULL.
+		// No data backfill — knowledge entries materialize when their
+		// CRUD endpoints (PAI-338 handler package) start writing.
+		// Pattern follows M51/M55/M58/M82 — same dance:
+		// PRAGMA off → rename → recreate → INSERT SELECT → drop old →
+		// recreate child tables (SQLite FK rewrite bug) → recreate
+		// FTS triggers → PRAGMA on. system_tag_rules left untouched
+		// (the new statuses don't change the default exclusion list).
+		{96, []string{
+			`PRAGMA foreign_keys=OFF`,
+
+			`DROP TABLE IF EXISTS issues_old96`,
+			`ALTER TABLE issues RENAME TO issues_old96`,
+			`CREATE TABLE issues (
+				id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id          INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+				issue_number        INTEGER NOT NULL DEFAULT 0,
+				type                TEXT NOT NULL DEFAULT 'ticket'
+				                    CHECK(type IN ('epic','cost_unit','release','sprint','ticket','task',
+				                                   'memory','runbook','external_system','related_project','guideline')),
+				parent_id           INTEGER REFERENCES issues(id) ON DELETE SET NULL,
+				title               TEXT NOT NULL,
+				description         TEXT NOT NULL DEFAULT '',
+				acceptance_criteria TEXT NOT NULL DEFAULT '',
+				notes               TEXT NOT NULL DEFAULT '',
+				status              TEXT NOT NULL DEFAULT 'new'
+				                    CHECK(status IN ('new','backlog','in-progress','qa','done','delivered','accepted','invoiced','cancelled','archived','proposed')),
+				priority            TEXT NOT NULL DEFAULT 'medium'
+				                    CHECK(priority IN ('low','medium','high')),
+				cost_unit           TEXT NOT NULL DEFAULT '',
+				release             TEXT NOT NULL DEFAULT '',
+				billing_type        TEXT NOT NULL DEFAULT '',
+				total_budget        REAL,
+				rate_hourly         REAL,
+				rate_lp             REAL,
+				start_date          TEXT NOT NULL DEFAULT '',
+				end_date            TEXT NOT NULL DEFAULT '',
+				group_state         TEXT NOT NULL DEFAULT '',
+				sprint_state        TEXT NOT NULL DEFAULT '',
+				jira_id             TEXT NOT NULL DEFAULT '',
+				jira_version        TEXT NOT NULL DEFAULT '',
+				jira_text           TEXT NOT NULL DEFAULT '',
+				estimate_hours      REAL,
+				estimate_lp         REAL,
+				ar_hours            REAL,
+				ar_lp               REAL,
+				time_override       REAL,
+				color               TEXT,
+				archived            INTEGER NOT NULL DEFAULT 0,
+				assignee_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				created_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				accepted_at         TEXT,
+				accepted_by         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				invoiced_at         TEXT,
+				invoice_number      TEXT NOT NULL DEFAULT '',
+				created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+				target_ar           REAL,
+				deleted_at          TEXT,
+				deleted_by          INTEGER,
+				slug                TEXT,
+				category_metadata   TEXT
+			)`,
+			// Carry data forward — list every column explicitly so
+			// new nullable additions (slug, category_metadata) don't
+			// break the SELECT * shape contract. Existing rows pick
+			// up NULL for the new columns by virtue of not being in
+			// the column list.
+			`INSERT INTO issues (
+				id, project_id, issue_number, type, parent_id,
+				title, description, acceptance_criteria, notes,
+				status, priority, cost_unit, release,
+				billing_type, total_budget, rate_hourly, rate_lp,
+				start_date, end_date, group_state, sprint_state,
+				jira_id, jira_version, jira_text,
+				estimate_hours, estimate_lp, ar_hours, ar_lp,
+				time_override, color, archived, assignee_id, created_by,
+				accepted_at, accepted_by, invoiced_at, invoice_number,
+				created_at, updated_at, target_ar,
+				deleted_at, deleted_by
+			) SELECT
+				id, project_id, issue_number, type, parent_id,
+				title, description, acceptance_criteria, notes,
+				status, priority, cost_unit, release,
+				billing_type, total_budget, rate_hourly, rate_lp,
+				start_date, end_date, group_state, sprint_state,
+				jira_id, jira_version, jira_text,
+				estimate_hours, estimate_lp, ar_hours, ar_lp,
+				time_override, color, archived, assignee_id, created_by,
+				accepted_at, accepted_by, invoiced_at, invoice_number,
+				created_at, updated_at, target_ar,
+				deleted_at, deleted_by
+			FROM issues_old96`,
+			`DROP TABLE issues_old96`,
+
+			// Recreate child tables (SQLite FK rewrite bug — same
+			// dance as M58/M55/M51/M82+). Keep the column shape
+			// stable; we're only here for the FK pointer fix.
+			`DROP TABLE IF EXISTS issue_tags_old96`,
+			`ALTER TABLE issue_tags RENAME TO issue_tags_old96`,
+			`CREATE TABLE issue_tags (
+				issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				tag_id   INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+				PRIMARY KEY (issue_id, tag_id)
+			)`,
+			`INSERT OR IGNORE INTO issue_tags SELECT * FROM issue_tags_old96`,
+			`DROP TABLE issue_tags_old96`,
+
+			`DROP TABLE IF EXISTS comments_old96`,
+			`ALTER TABLE comments RENAME TO comments_old96`,
+			`CREATE TABLE comments (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				issue_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				author_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				body       TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`INSERT INTO comments SELECT * FROM comments_old96`,
+			`DROP TABLE comments_old96`,
+
+			// issue_history carries M93's agent_name + session_id
+			// columns — preserve them on the recreate.
+			`DROP TABLE IF EXISTS issue_history_old96`,
+			`ALTER TABLE issue_history RENAME TO issue_history_old96`,
+			`CREATE TABLE issue_history (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				issue_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				snapshot   TEXT NOT NULL DEFAULT '',
+				changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+				agent_name TEXT,
+				session_id TEXT
+			)`,
+			`INSERT INTO issue_history (id, issue_id, changed_by, snapshot, changed_at, agent_name, session_id)
+				SELECT id, issue_id, changed_by, snapshot, changed_at, agent_name, session_id FROM issue_history_old96`,
+			`DROP TABLE issue_history_old96`,
+
+			// issue_relations carries M67's extended type CHECK and
+			// M59's rank column — preserve both on recreate.
+			`DROP TABLE IF EXISTS issue_relations_old96`,
+			`ALTER TABLE issue_relations RENAME TO issue_relations_old96`,
+			`CREATE TABLE issue_relations (
+				source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				type      TEXT NOT NULL
+				          CHECK(type IN ('groups','sprint','depends_on','impacts',
+				                         'follows_from','blocks','related')),
+				rank      INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (source_id, target_id, type)
+			)`,
+			`INSERT OR IGNORE INTO issue_relations SELECT source_id, target_id, type, rank FROM issue_relations_old96`,
+			`DROP TABLE issue_relations_old96`,
+
+			`DROP TABLE IF EXISTS time_entries_old96`,
+			`ALTER TABLE time_entries RENAME TO time_entries_old96`,
+			`CREATE TABLE time_entries (
+				id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+				issue_id             INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				started_at           TEXT NOT NULL DEFAULT (datetime('now')),
+				stopped_at           TEXT,
+				override             REAL,
+				comment              TEXT NOT NULL DEFAULT '',
+				created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+				internal_rate_hourly REAL,
+				mite_id              INTEGER
+			)`,
+			`INSERT OR IGNORE INTO time_entries SELECT * FROM time_entries_old96`,
+			`DROP TABLE time_entries_old96`,
+
+			`DROP TABLE IF EXISTS attachments_old96`,
+			`ALTER TABLE attachments RENAME TO attachments_old96`,
+			`CREATE TABLE attachments (
+				id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				issue_id     INTEGER REFERENCES issues(id) ON DELETE CASCADE,
+				object_key   TEXT NOT NULL,
+				filename     TEXT NOT NULL,
+				content_type TEXT NOT NULL,
+				size_bytes   INTEGER NOT NULL DEFAULT 0,
+				uploaded_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`INSERT OR IGNORE INTO attachments SELECT * FROM attachments_old96`,
+			`DROP TABLE attachments_old96`,
+
+			// Recreate the standard issue indexes (covered by M58)
+			// plus the soft-delete index from M66.
+			`CREATE INDEX IF NOT EXISTS idx_issues_project    ON issues(project_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_parent     ON issues(parent_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_assignee   ON issues(assignee_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_status     ON issues(status)`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_type       ON issues(type)`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_number     ON issues(project_id, issue_number)`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_deleted_at ON issues(deleted_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_time_entries_mite_id ON time_entries(mite_id)`,
+
+			// New: knowledge-plane slug lookup — unique per
+			// (type, slug, project_id), but only when slug is
+			// non-NULL. SQLite supports partial UNIQUE indexes so
+			// non-knowledge issues stay unconstrained on this column.
+			// memory_ref resolution (PAI-329 → PAI-330) hits this
+			// directly: SELECT * FROM issues WHERE type='memory' AND
+			// slug=? AND project_id=?.
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_type_slug_project
+				ON issues(type, slug, project_id) WHERE slug IS NOT NULL`,
+
+			// Recreate FTS triggers — same content surface as M58.
+			`DROP TRIGGER IF EXISTS trg_issues_ai`,
+			`DROP TRIGGER IF EXISTS trg_issues_au`,
+			`DROP TRIGGER IF EXISTS trg_issues_ad`,
+			`CREATE TRIGGER trg_issues_ai AFTER INSERT ON issues BEGIN
+				INSERT INTO search_index(entity_type, entity_id, content)
+				VALUES('issue', NEW.id,
+					COALESCE(NEW.title,'') || ' ' || COALESCE(NEW.description,'') || ' ' ||
+					COALESCE(NEW.acceptance_criteria,'') || ' ' || COALESCE(NEW.notes,'') || ' ' ||
+					COALESCE(NEW.cost_unit,'') || ' ' || COALESCE(NEW.release,'') || ' ' ||
+					COALESCE(NEW.jira_id,'') || ' ' || COALESCE(NEW.jira_version,'') || ' ' || COALESCE(NEW.jira_text,''));
+			END`,
+			`CREATE TRIGGER trg_issues_au AFTER UPDATE ON issues BEGIN
+				UPDATE search_index SET content =
+					COALESCE(NEW.title,'') || ' ' || COALESCE(NEW.description,'') || ' ' ||
+					COALESCE(NEW.acceptance_criteria,'') || ' ' || COALESCE(NEW.notes,'') || ' ' ||
+					COALESCE(NEW.cost_unit,'') || ' ' || COALESCE(NEW.release,'') || ' ' ||
+					COALESCE(NEW.jira_id,'') || ' ' || COALESCE(NEW.jira_version,'') || ' ' || COALESCE(NEW.jira_text,'')
+				WHERE entity_type='issue' AND entity_id=NEW.id;
+			END`,
+			`CREATE TRIGGER trg_issues_ad AFTER DELETE ON issues BEGIN
+				DELETE FROM search_index WHERE entity_type='issue' AND entity_id=OLD.id;
+			END`,
+
+			// Recreate comment FTS triggers (M58 keyed by issue_id;
+			// preserve that semantic).
+			`DROP TRIGGER IF EXISTS trg_comments_ai`,
+			`DROP TRIGGER IF EXISTS trg_comments_ad`,
+			`CREATE TRIGGER trg_comments_ai AFTER INSERT ON comments BEGIN
+				INSERT INTO search_index(entity_type, entity_id, content) VALUES('comment', NEW.issue_id, NEW.body);
+			END`,
+			`CREATE TRIGGER trg_comments_ad AFTER DELETE ON comments BEGIN
+				DELETE FROM search_index WHERE entity_type='comment' AND entity_id=OLD.issue_id AND content=OLD.body;
+			END`,
+
+			`PRAGMA foreign_keys=ON`,
+		}},
 	}
 
 	for _, m := range migrations {
