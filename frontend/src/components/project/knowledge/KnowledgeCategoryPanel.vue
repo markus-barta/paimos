@@ -28,6 +28,7 @@ import {
   listKnowledgeEntries,
   updateKnowledgeEntry,
 } from '@/services/projectKnowledge'
+import { filterKnowledge, type KnowledgeSortMode } from '@/composables/useKnowledgeFilter'
 import type { KnowledgeCategory, KnowledgeEntry, KnowledgeEntryInput } from '@/types'
 
 const props = defineProps<{
@@ -63,7 +64,7 @@ const saveError = ref('')
 const memoryTypeFilter = ref<string>('all')
 const showArchived = ref(false)
 const environmentFilter = ref<string>('')
-const sortMode = ref<'recency' | 'alpha' | 'confidence'>('recency')
+const sortMode = ref<KnowledgeSortMode>('recency')
 
 // Bulk-op state. Selection is a Set of slugs — slugs are unique
 // within (project_id, type) so they're sufficient as identity here.
@@ -213,43 +214,19 @@ async function bulkArchive(targetStatus: 'archived' | 'active') {
 }
 
 // ── filter / search / sort ───────────────────────────────────────
+// Delegated to `filterKnowledge` for testability — the contract is
+// covered in src/composables/useKnowledgeFilter.test.ts.
 
-const filtered = computed<KnowledgeEntry[]>(() => {
-  const q = (props.searchQuery ?? '').trim().toLowerCase()
-  return entries.value
-    .filter((e) => {
-      if (!showArchived.value && isArchived(e)) return false
-      if (props.category === 'memory' && memoryTypeFilter.value !== 'all') {
-        const t = (e.metadata?.['type'] as string | undefined) ?? ''
-        if (t !== memoryTypeFilter.value) return false
-      }
-      if (environmentFilter.value.trim() !== '') {
-        const envs = (e.metadata?.['applies_to_environments'] as unknown[] | undefined) ?? []
-        const want = environmentFilter.value.trim().toLowerCase()
-        const ok = envs.some((v) => typeof v === 'string' && v.toLowerCase() === want)
-        if (!ok) return false
-      }
-      if (q !== '') {
-        const hay = `${e.title} ${e.slug} ${e.body}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-    .sort((a, b) => {
-      if (sortMode.value === 'alpha') {
-        return a.slug.localeCompare(b.slug)
-      }
-      if (sortMode.value === 'confidence' && props.category === 'memory') {
-        const order = (e: KnowledgeEntry): number => {
-          const v = (e.metadata?.['confidence'] as string | undefined) ?? 'medium'
-          return v === 'high' ? 0 : v === 'medium' ? 1 : 2
-        }
-        return order(a) - order(b)
-      }
-      // recency
-      return b.updated_at.localeCompare(a.updated_at)
-    })
-})
+const filtered = computed<KnowledgeEntry[]>(() =>
+  filterKnowledge(entries.value, {
+    category: props.category,
+    search: props.searchQuery ?? '',
+    memoryType: memoryTypeFilter.value,
+    showArchived: showArchived.value,
+    environment: environmentFilter.value,
+    sort: sortMode.value,
+  }),
+)
 
 const allFilteredSelected = computed(
   () => filtered.value.length > 0 && filtered.value.every((e) => selection.value.has(e.slug)),
