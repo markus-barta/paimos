@@ -219,6 +219,31 @@ export interface Project {
   rate_inherited?: boolean
 }
 
+// PAI-326. ProjectAgent declares an agent that works a project (e.g.
+// `ops`, `dev`, `refinement`). `name` is the canonical project-scoped
+// key (slug-style, max 32 chars, [a-z][a-z0-9_-]*). The other fields
+// are optional and additive over time — PAI-329 will introduce body /
+// bootstrap_steps[] / non_negotiable_rules[].
+export interface ProjectAgent {
+  id: number
+  project_id: number
+  name: string
+  description: string
+  slash_command_name: string
+  lane_tags: string[]
+  metadata: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ProjectAgentInput {
+  name: string
+  description: string
+  slash_command_name: string
+  lane_tags: string[]
+  metadata: Record<string, unknown>
+}
+
 export interface ProjectRepo {
   id: number
   project_id: number

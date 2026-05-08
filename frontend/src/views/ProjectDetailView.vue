@@ -51,6 +51,7 @@ import {
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectContextSection from '@/components/project/ProjectContextSection.vue'
+import ProjectAgentsSection from '@/components/project/ProjectAgentsSection.vue'
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
@@ -1031,6 +1032,16 @@ watch(
             {{ saving ? 'Saving…' : 'Save changes' }}
           </button>
         </div>
+
+        <!-- PAI-326: declarable agents per project. Lives inside the
+             Edit Project modal because that's the canonical project-
+             settings surface; mounted only while the modal is open so
+             the GET fires when the operator actually wants it. -->
+        <ProjectAgentsSection
+          v-if="showEdit"
+          :project-id="projectId"
+          :can-write="isAdmin && canEditProject"
+        />
 
         <!-- Danger zone -->
         <div class="danger-zone">
