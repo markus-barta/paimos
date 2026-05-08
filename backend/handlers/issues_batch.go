@@ -263,7 +263,7 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 	for i, id := range insertedIDs {
 		issue := getIssueByID(id)
 		if issue != nil {
-			saveSnapshot(issue, auth.GetUser(r))
+			saveSnapshot(issue, auth.GetUser(r), r)
 			out[i] = issue
 		}
 	}
@@ -479,7 +479,7 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 	for i, rw := range rows {
 		issue := getIssueByID(rw.id)
 		if issue != nil {
-			saveSnapshot(issue, auth.GetUser(r))
+			saveSnapshot(issue, auth.GetUser(r), r)
 			out[i] = issue
 		}
 	}
