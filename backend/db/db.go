@@ -3890,6 +3890,34 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE issue_history ADD COLUMN agent_name TEXT`,
 			`ALTER TABLE issue_history ADD COLUMN session_id TEXT`,
 		}},
+
+		// M94 / PAI-326: declarable agents per project. The "what
+		// agents work this project" definition used to live in per-
+		// repo local files (e.g. .claude/commands/{ops,dev}.md);
+		// moving it to project metadata makes it the single source
+		// of truth, queryable, and consistent across instances.
+		// Schema is intentionally minimal — PAI-329 will add per-
+		// agent `body`, `bootstrap_steps[]`, and
+		// `non_negotiable_rules[]` columns when those fields
+		// stabilize. `lane_tags` and `metadata` are stored as JSON
+		// blobs in TEXT (matching the project_manifests / ai_calls
+		// pattern) so the API contract can stabilize before
+		// exploding into specialised tables.
+		{94, []string{
+			`CREATE TABLE IF NOT EXISTS project_agents (
+				id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id         INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				name               TEXT NOT NULL,
+				description        TEXT NOT NULL DEFAULT '',
+				slash_command_name TEXT NOT NULL DEFAULT '',
+				lane_tags          TEXT NOT NULL DEFAULT '[]',
+				metadata           TEXT NOT NULL DEFAULT '{}',
+				created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_project_agents_project_name ON project_agents(project_id, name)`,
+			`CREATE INDEX IF NOT EXISTS idx_project_agents_project ON project_agents(project_id)`,
+		}},
 	}
 
 	for _, m := range migrations {
