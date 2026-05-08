@@ -3918,6 +3918,67 @@ func migrate(db *sql.DB) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_project_agents_project_name ON project_agents(project_id, name)`,
 			`CREATE INDEX IF NOT EXISTS idx_project_agents_project ON project_agents(project_id)`,
 		}},
+
+		// M95 / PAI-329: extend agent rendering shape + add project-
+		// level shared inventories that agent artifacts inherit.
+		//
+		// Per-agent additive columns on project_agents:
+		//   body                  TEXT  — markdown freetext, the bulk of
+		//                                  the rendered skill body.
+		//   bootstrap_steps       TEXT  — JSON array of {title,
+		//                                  command, rationale}; ordered
+		//                                  list of "do these once at
+		//                                  session start" steps.
+		//   non_negotiable_rules  TEXT  — JSON array of {title, body,
+		//                                  memory_ref}; the rules that
+		//                                  must NEVER be silently broken.
+		//                                  memory_ref is just a string
+		//                                  here — resolution into an
+		//                                  actual memory entry happens
+		//                                  at render time (PAI-330).
+		//
+		// New project-level inventories — separate tables (mirrors
+		// project_repos precedent from M75; one row per item, easy
+		// CRUD, no JSON-blob editing dance):
+		//   project_environments  — {name, url, host_alias, host_ip}
+		//                            e.g. staging vs prod.
+		//   project_deploy_recipes — {name, command, summary} —
+		//                            named deployment shorthand the
+		//                            agent body can reference by name.
+		//
+		// project_repos (existing) is the third leg of project-level
+		// inventory and is reused as-is; the canonical agent artifact
+		// endpoint inlines all three.
+		{95, []string{
+			`ALTER TABLE project_agents ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE project_agents ADD COLUMN bootstrap_steps TEXT NOT NULL DEFAULT '[]'`,
+			`ALTER TABLE project_agents ADD COLUMN non_negotiable_rules TEXT NOT NULL DEFAULT '[]'`,
+			`CREATE TABLE IF NOT EXISTS project_environments (
+				id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				name        TEXT NOT NULL,
+				url         TEXT NOT NULL DEFAULT '',
+				host_alias  TEXT NOT NULL DEFAULT '',
+				host_ip     TEXT NOT NULL DEFAULT '',
+				sort_order  INTEGER NOT NULL DEFAULT 0,
+				created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_project_environments_project_name ON project_environments(project_id, name)`,
+			`CREATE INDEX IF NOT EXISTS idx_project_environments_project ON project_environments(project_id, sort_order, id)`,
+			`CREATE TABLE IF NOT EXISTS project_deploy_recipes (
+				id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				name        TEXT NOT NULL,
+				command     TEXT NOT NULL DEFAULT '',
+				summary     TEXT NOT NULL DEFAULT '',
+				sort_order  INTEGER NOT NULL DEFAULT 0,
+				created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_project_deploy_recipes_project_name ON project_deploy_recipes(project_id, name)`,
+			`CREATE INDEX IF NOT EXISTS idx_project_deploy_recipes_project ON project_deploy_recipes(project_id, sort_order, id)`,
+		}},
 	}
 
 	for _, m := range migrations {

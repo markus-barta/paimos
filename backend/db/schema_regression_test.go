@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 94
+const latestSchemaVersion = 95
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -77,6 +77,8 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"app_settings",
 		"project_members",
 		"project_agents",
+		"project_environments",
+		"project_deploy_recipes",
 	} {
 		if !tableExists(t, db, table) {
 			t.Fatalf("expected table %s to exist", table)
@@ -109,6 +111,16 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "issue_history", "session_id") {
 		t.Fatal("expected issue_history.session_id to exist")
+	}
+	// PAI-329 / M95 — agent rendering shape extensions.
+	if !columnExists(t, db, "project_agents", "body") {
+		t.Fatal("expected project_agents.body to exist")
+	}
+	if !columnExists(t, db, "project_agents", "bootstrap_steps") {
+		t.Fatal("expected project_agents.bootstrap_steps to exist")
+	}
+	if !columnExists(t, db, "project_agents", "non_negotiable_rules") {
+		t.Fatal("expected project_agents.non_negotiable_rules to exist")
 	}
 }
 
