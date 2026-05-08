@@ -7,6 +7,11 @@ export interface IssueHistoryEntry {
   changed_by_name: string
   snapshot: Record<string, any>
   changed_at: string
+  // PAI-324 — agent + session attribution. Both columns are nullable
+  // on the server: rows written before PAI-324 (and rows written by
+  // callers that don't send the X-Paimos-* headers) read null here.
+  agent_name: string | null
+  session_id: string | null
 }
 
 export function loadIssueHistory(issueId: number): Promise<IssueHistoryEntry[]> {

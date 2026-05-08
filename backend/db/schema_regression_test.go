@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 92
+const latestSchemaVersion = 93
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -101,6 +101,13 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "users", "issue_auto_refresh_interval_seconds") {
 		t.Fatal("expected users.issue_auto_refresh_interval_seconds to exist")
+	}
+	// PAI-324 / M93 — agent + session attribution on history snapshots.
+	if !columnExists(t, db, "issue_history", "agent_name") {
+		t.Fatal("expected issue_history.agent_name to exist")
+	}
+	if !columnExists(t, db, "issue_history", "session_id") {
+		t.Fatal("expected issue_history.session_id to exist")
 	}
 }
 

@@ -143,7 +143,7 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)
 		return
 	}
-	saveSnapshot(issue, auth.GetUser(r))
+	saveSnapshot(issue, auth.GetUser(r), r)
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, issue)
 }
@@ -227,7 +227,7 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after clone", http.StatusInternalServerError)
 		return
 	}
-	saveSnapshot(clone, auth.GetUser(r))
+	saveSnapshot(clone, auth.GetUser(r), r)
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, clone)
 }
@@ -456,7 +456,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	saveSnapshot(issue, auth.GetUser(r))
+	saveSnapshot(issue, auth.GetUser(r), r)
 
 	// Auto-promote parent epic: if this ticket just moved to in-progress,
 	// and its parent is an epic still in backlog, bump the epic to in-progress.
@@ -470,7 +470,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 				log.Printf("UpdateIssue: auto-promote parent=%d: %v", parent.ID, err)
 			}
 			if promoted := getIssueByID(parent.ID); promoted != nil {
-				saveSnapshot(promoted, auth.GetUser(r))
+				saveSnapshot(promoted, auth.GetUser(r), r)
 			}
 		}
 	}
@@ -590,7 +590,7 @@ func CompleteEpic(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				if updated := getIssueByID(ch.ID); updated != nil {
-					saveSnapshot(updated, user)
+					saveSnapshot(updated, user, r)
 				}
 			}
 		}
@@ -606,7 +606,7 @@ func CompleteEpic(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after update", http.StatusInternalServerError)
 		return
 	}
-	saveSnapshot(updated, user)
+	saveSnapshot(updated, user, r)
 	jsonOK(w, updated)
 }
 
@@ -656,7 +656,7 @@ func DeleteIssue(w http.ResponseWriter, r *http.Request) {
 	// History snapshot on the targeted issue only — cascaded tasks are
 	// reconstructible from the ticket snapshot + parent_id chain.
 	if snap := getIssueByID(id); snap != nil {
-		saveSnapshot(snap, user)
+		saveSnapshot(snap, user, r)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -689,7 +689,7 @@ func RestoreIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after restore", http.StatusInternalServerError)
 		return
 	}
-	saveSnapshot(restored, auth.GetUser(r))
+	saveSnapshot(restored, auth.GetUser(r), r)
 	jsonOK(w, restored)
 }
 
