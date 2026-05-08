@@ -53,6 +53,11 @@ import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectContextSection from '@/components/project/ProjectContextSection.vue'
 import ProjectAgentsSection from '@/components/project/ProjectAgentsSection.vue'
 import ProjectInventoriesSection from '@/components/project/ProjectInventoriesSection.vue'
+// PAI-339: project page primary tab structure (Overview / Issues /
+// Knowledge). Settings is the existing "Edit project" modal reached
+// via the ⋯ menu; Agents lives inside Edit Project (PAI-326/329).
+import ProjectKnowledgeTab from '@/components/project/knowledge/ProjectKnowledgeTab.vue'
+import ProjectOverviewTab from '@/components/project/knowledge/ProjectOverviewTab.vue'
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
@@ -161,6 +166,18 @@ function onOverflowKey(e: KeyboardEvent) {
 function onMenuExport() { closeOverflow(); void exportCSV() }
 function onMenuImport() { closeOverflow(); triggerImport() }
 function onMenuEdit() { closeOverflow(); openEdit() }
+
+// ── Primary tabs (PAI-339) ───────────────────────────────────────────────
+// Issues / Overview / Knowledge — Settings is the existing "Edit
+// project" modal reached via the ⋯ menu; Agents lives inside Edit
+// Project too (PAI-326/329). The default landing tab is 'issues' to
+// preserve the existing UX — daily users hit /projects/:id and
+// expect the issue list, not a marketing card.
+type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge'
+const primaryTab = ref<ProjectPrimaryTab>('issues')
+function setPrimaryTab(t: ProjectPrimaryTab) {
+  primaryTab.value = t
+}
 
 // ── Admin-default views as tabs ───────────────────────────────────────────────
 
@@ -742,37 +759,97 @@ watch(
            wasted space on projects that don't use anchors yet.
            The Context toggle in the IssueList toolbar opens it. -->
 
-      <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
-      <nav class="tab-nav">
+      <!-- PAI-339: primary project tabs — Issues (existing default),
+           Overview (description + state callouts), Knowledge (the
+           five categories). Sits above the existing view-tab strip
+           so the issue-list filtering stays where users expect it. -->
+      <nav class="tab-nav pd-primary-tabs" role="tablist">
         <button
-          v-for="v in displayTabs"
-          :key="v.id"
+          type="button"
           class="tab-btn"
-          :class="{ active: activeTabId === v.id }"
-          :data-label="v.title"
-          @click="selectTab(v)"
+          :class="{ active: primaryTab === 'issues' }"
+          data-label="Issues"
+          role="tab"
+          :aria-selected="primaryTab === 'issues'"
+          @click="setPrimaryTab('issues')"
         >
-          {{ v.title }}
-          <AppIcon name="refresh-cw" :size="11" class="tab-refresh-icon" :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }" />
+          <AppIcon name="layout-list" :size="12" />
+          <span>Issues</span>
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: primaryTab === 'overview' }"
+          data-label="Overview"
+          role="tab"
+          :aria-selected="primaryTab === 'overview'"
+          @click="setPrimaryTab('overview')"
+        >
+          <AppIcon name="house" :size="12" />
+          <span>Overview</span>
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: primaryTab === 'knowledge' }"
+          data-label="Knowledge"
+          role="tab"
+          :aria-selected="primaryTab === 'knowledge'"
+          @click="setPrimaryTab('knowledge')"
+        >
+          <AppIcon name="book-open" :size="12" />
+          <span>Knowledge</span>
         </button>
       </nav>
 
-      <!-- Single IssueList for all tabs. Project-level workspaces now live
-           in the footer rail instead of competing with issue-list controls. -->
-      <IssueList
-        ref="issueListRef"
-        :project-id="projectId"
+      <!-- Issues tab (existing UX preserved verbatim) ───────────────── -->
+      <template v-if="primaryTab === 'issues'">
+        <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
+        <nav class="tab-nav">
+          <button
+            v-for="v in displayTabs"
+            :key="v.id"
+            class="tab-btn"
+            :class="{ active: activeTabId === v.id }"
+            :data-label="v.title"
+            @click="selectTab(v)"
+          >
+            {{ v.title }}
+            <AppIcon name="refresh-cw" :size="11" class="tab-refresh-icon" :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }" />
+          </button>
+        </nav>
+
+        <!-- Single IssueList for all tabs. Project-level workspaces now live
+             in the footer rail instead of competing with issue-list controls. -->
+        <IssueList
+          ref="issueListRef"
+          :project-id="projectId"
+          :issues="issues"
+          :search-query-override="projectIssueQuery"
+          :initial-panel-issue-id="initialPanelIssueId"
+          @created="onCreated"
+          @updated="onUpdated"
+          @deleted="onDeleted"
+          @view-applied="onViewApplied"
+          @views-changed="refreshViews"
+        />
+      </template>
+
+      <!-- Overview tab — README-like + state callouts ───────────────── -->
+      <ProjectOverviewTab
+        v-else-if="primaryTab === 'overview'"
+        :project="project"
         :issues="issues"
-        :search-query-override="projectIssueQuery"
-        :initial-panel-issue-id="initialPanelIssueId"
-        @created="onCreated"
-        @updated="onUpdated"
-        @deleted="onDeleted"
-        @view-applied="onViewApplied"
-        @views-changed="refreshViews"
       />
 
-      <section class="pd-workspaces">
+      <!-- Knowledge tab — five-category sub-nav, search, CRUD ──────── -->
+      <ProjectKnowledgeTab
+        v-else-if="primaryTab === 'knowledge'"
+        :project-id="projectId"
+        :can-write="isAdmin && canEditProject"
+      />
+
+      <section v-if="primaryTab === 'issues'" class="pd-workspaces">
         <Transition name="pd-workspace-dock">
           <div v-if="workspacePanel" class="pd-workspace-dock">
             <div class="pd-workspace-dock__head">
@@ -1272,6 +1349,18 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 /* ── Tabs ───────────────────────────────────────────────────────────────────── */
+/* PAI-339: primary tabs (Issues/Overview/Knowledge) sit above the
+   existing view-tab strip. Slightly heavier visual weight to read
+   as the page-level switch — bigger left/right padding + the icon
+   left of the label. */
+.pd-primary-tabs {
+  margin-bottom: .85rem;
+}
+.pd-primary-tabs .tab-btn {
+  font-size: 14px;
+  padding: .55rem 1.1rem;
+  gap: .35rem;
+}
 .tab-nav {
   display: flex; gap: 0; margin-bottom: 1.25rem;
   border-bottom: 2px solid var(--border);
