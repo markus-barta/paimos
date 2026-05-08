@@ -399,6 +399,33 @@ func getIssueByID(id int64) *models.Issue {
 	return i
 }
 
+// knowledgeIssueTypes are the issue.type values introduced by PAI-338
+// for the knowledge plane (memory, runbook, external_system,
+// related_project, guideline). They are first-class issues but get
+// default-hidden from the standard project / cross-project issue
+// lists so the day-to-day work view stays uncluttered. Callers opt
+// in by passing an explicit `?type=` filter.
+var knowledgeIssueTypes = []string{
+	"memory",
+	"runbook",
+	"external_system",
+	"related_project",
+	"guideline",
+}
+
+// IsKnowledgeIssueType reports whether t is one of the PAI-338
+// knowledge-plane issue types. Exposed (capitalized) so the
+// knowledge handler package can reuse it without duplicating the
+// list.
+func IsKnowledgeIssueType(t string) bool {
+	for _, k := range knowledgeIssueTypes {
+		if k == t {
+			return true
+		}
+	}
+	return false
+}
+
 // applyIssueFilters adds WHERE clauses based on common filter query params.
 // Supports multi-value (comma-separated) and negation (! prefix).
 func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
@@ -411,8 +438,24 @@ func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
 		query, args = applyMultiFilter(query, args, "i.priority", p)
 	}
 	// type: multi-value, negation
+	// PAI-338 / PAI-346 §"Default-hide rules": when the caller does
+	// NOT pass an explicit `?type=` filter, hide knowledge-plane
+	// issue types from the result so the standard project / cross-
+	// project issue list stays uncluttered. Knowledge-aware clients
+	// (Knowledge tab, the convenience endpoints in
+	// handlers/knowledge/) opt in with explicit `?type=memory,...`.
 	if t := q.Get("type"); t != "" {
 		query, args = applyMultiFilter(query, args, "i.type", t)
+	} else {
+		ph := ""
+		for _, k := range knowledgeIssueTypes {
+			if ph != "" {
+				ph += ","
+			}
+			ph += "?"
+			args = append(args, k)
+		}
+		query += " AND i.type NOT IN (" + ph + ")"
 	}
 	// cost_unit: multi-value
 	if cu := q.Get("cost_unit"); cu != "" {
