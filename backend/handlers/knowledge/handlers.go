@@ -113,7 +113,16 @@ func MakeCreateHandler(alias string) http.HandlerFunc {
 			writeError(w, msg, http.StatusBadRequest)
 			return
 		}
-		out, err := insertEntry(r, projectID, mod, in)
+		// PAI-353 — when the parent `handlers` package has registered
+		// a hook, route the insert through it so the new issue picks
+		// up history-snapshot + mutation_log + system-tag side-effects.
+		// Falls back to the direct-SQL implementation when the hook is
+		// nil (sub-package tests, mostly).
+		insert := insertEntry
+		if CreateEntryHook != nil {
+			insert = CreateEntryHook
+		}
+		out, err := insert(r, projectID, mod, in)
 		if errors.Is(err, errSlugTaken) {
 			writeError(w, "slug already exists for this type", http.StatusConflict)
 			return
@@ -160,7 +169,15 @@ func MakeUpdateHandler(alias string) http.HandlerFunc {
 			writeError(w, msg, http.StatusBadRequest)
 			return
 		}
-		out, err := updateEntry(r, projectID, mod, current, in)
+		// PAI-353 — see the matching note on MakeCreateHandler. When
+		// the parent handlers package registers UpdateEntryHook, the
+		// knowledge UPDATE path goes through the canonical issue
+		// helpers (history snapshot, mutation_log, system tags).
+		update := updateEntry
+		if UpdateEntryHook != nil {
+			update = UpdateEntryHook
+		}
+		out, err := update(r, projectID, mod, current, in)
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, "not found", http.StatusNotFound)
 			return
@@ -197,30 +214,49 @@ func MakeDeleteHandler(alias string) http.HandlerFunc {
 			writeError(w, "slug required", http.StatusBadRequest)
 			return
 		}
-		var deletedBy *int64
-		if user := auth.GetUser(r); user != nil {
-			deletedBy = &user.ID
+		// PAI-353 — see the matching note on MakeCreateHandler. The
+		// hook records the snapshot + mutation_log entry so trashed
+		// knowledge entries are first-class on the undo / history
+		// surface.
+		del := deleteEntry
+		if DeleteEntryHook != nil {
+			del = DeleteEntryHook
 		}
-		res, err := db.DB.Exec(`
-			UPDATE issues
-			   SET deleted_at = datetime('now'),
-			       deleted_by = ?
-			 WHERE project_id = ?
-			   AND type       = ?
-			   AND slug       = ?
-			   AND deleted_at IS NULL
-		`, deletedBy, projectID, mod.Type(), slug)
+		n, err := del(r, projectID, mod, slug)
 		if err != nil {
 			writeError(w, "delete failed", http.StatusInternalServerError)
 			return
 		}
-		n, _ := res.RowsAffected()
 		if n == 0 {
 			writeError(w, "not found", http.StatusNotFound)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// deleteEntry is the direct-SQL fallback used when no hook is
+// registered. Soft-deletes the row matching (project_id, type, slug)
+// and returns the affected-row count so the caller can map 0 to 404.
+func deleteEntry(r *http.Request, projectID int64, mod Module, slug string) (int64, error) {
+	var deletedBy *int64
+	if user := auth.GetUser(r); user != nil {
+		deletedBy = &user.ID
+	}
+	res, err := db.DB.Exec(`
+		UPDATE issues
+		   SET deleted_at = datetime('now'),
+		       deleted_by = ?
+		 WHERE project_id = ?
+		   AND type       = ?
+		   AND slug       = ?
+		   AND deleted_at IS NULL
+	`, deletedBy, projectID, mod.Type(), slug)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // ── internals ───────────────────────────────────────────────────
@@ -404,6 +440,13 @@ func loadOneBySlug(projectID int64, mod Module, slug string) (Output, error) {
 		   AND deleted_at IS NULL
 	`, projectID, mod.Type(), slug)
 	return scanOutput(row, mod)
+}
+
+// LoadOneByID is the exported sibling of loadOneByID — same behavior,
+// usable from the parent handlers package's PAI-353 write hooks so
+// they can build the canonical Output payload after a write.
+func LoadOneByID(id int64, mod Module) (Output, error) {
+	return loadOneByID(id, mod)
 }
 
 func loadOneByID(id int64, mod Module) (Output, error) {
