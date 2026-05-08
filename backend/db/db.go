@@ -3878,6 +3878,18 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0`,
 			`UPDATE users SET is_super_admin = 1 WHERE username = 'mba'`,
 		}},
+
+		// M93 / PAI-324: agent + session attribution on issue_history
+		// snapshots. Both columns are nullable TEXT — existing rows
+		// stay NULL (no backfill, no synthesis). Write endpoints
+		// persist the values from the X-Paimos-Agent-Name and
+		// X-Paimos-Session-Id headers when present, otherwise NULL.
+		// Length cap is enforced application-side (64 chars each)
+		// before the INSERT to avoid surprise blow-ups.
+		{93, []string{
+			`ALTER TABLE issue_history ADD COLUMN agent_name TEXT`,
+			`ALTER TABLE issue_history ADD COLUMN session_id TEXT`,
+		}},
 	}
 
 	for _, m := range migrations {
