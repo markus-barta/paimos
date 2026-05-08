@@ -71,6 +71,13 @@ func main() {
 		if de, ok := err.(*doctorExitCode); ok {
 			os.Exit(de.code)
 		}
+		// PAI-330: skill render --check uses a typed exit code so 0/1/2
+		// can flow through without a generic "Error:" prefix (the
+		// drift-detection caller has already written the relevant
+		// message to stderr in its chosen format).
+		if ce, ok := err.(*checkExitCode); ok {
+			os.Exit(ce.code)
+		}
 		if _, ok := err.(*apiError); !ok {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 		}
@@ -116,6 +123,7 @@ Get started:
 	cmd.AddCommand(schemaCmd())
 	cmd.AddCommand(doctorCmd())
 	cmd.AddCommand(applyCmd())
+	cmd.AddCommand(skillCmd())
 
 	// If no subcommand is given, Cobra's default is to print help with
 	// exit 0. The AC wants exit 2 for that case (standard convention).
