@@ -11,10 +11,27 @@ Format: JSON in, JSON out.
 ```
 GET    /auth/me
 POST   /auth/login                  {username, password}
+POST   /auth/password               {current_password, new_password}
+                                      — invalidates all *other* sessions; clears must_change_password
 POST   /auth/api-keys               {name} → {key} (shown once)
 GET    /auth/api-keys
 DELETE /auth/api-keys/:id
 ```
+
+Every authenticated response carries two session-state response
+headers (PAI-320 / PAI-322):
+
+- `X-Session-Expires-At` — RFC3339 absolute expiry of the current
+  session. Sessions slide on each request up to a 90-day absolute
+  cap; the SPA uses this to render the unified expiry modal.
+- `X-Permissions-Epoch` — per-user counter bumped on role /
+  membership / status change. Clients compare against the value at
+  login; a mismatch means cached capability decisions are stale.
+
+Newly created users with `must_change_password=true` (the default)
+get `403 {"error":"must_change_password"}` on every endpoint except
+`/auth/login`, `/auth/me`, `/auth/logout`, and `/auth/password`
+until they POST a new password.
 
 ## Projects
 
@@ -79,12 +96,16 @@ GET    /issues/:id/members          list by relation
 
 ```
 GET    /issues/:id/time-entries
-POST   /issues/:id/time-entries     {started_at, stopped_at?, override?, comment?}
-PUT    /time-entries/:id            partial update
-DELETE /time-entries/:id
+POST   /issues/:id/time-entries     {started_at, stopped_at?, override?, comment?, user_id?}
+                                      — super-admin only: user_id = create on behalf of another user
+PUT    /time-entries/:id            partial update — super-admin can edit any user's entry
+DELETE /time-entries/:id            super-admin can delete any user's entry
 GET    /time-entries/running        active timers for current user
 GET    /time-entries/recent         recent entries for quick re-entry
 ```
+
+Cross-user writes are stamped in `mutation_log` and emit a
+`super_admin_act` audit line (PAI-335).
 
 ## Attachments
 
@@ -113,7 +134,7 @@ PUT    /sprints/:id/reorder         {member_order}
 
 ```
 GET    /users
-POST   /users                       admin only
+POST   /users                       admin only — accepts must_change_password (default true)
 PUT    /users/:id                   admin only
 POST   /users/:id/disable           admin only
 DELETE /users/:id                   admin only

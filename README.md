@@ -286,6 +286,18 @@ Everything operator-configurable is in `docs/CONFIGURATION.md`:
 - Project create/update/delete is admin-only
 - Session cookies: `HttpOnly`, `SameSite=Lax`, `Secure` when
   `COOKIE_SECURE=true`
+- **Sliding 30-day sessions with a 90-day absolute lifetime cap;**
+  `X-Session-Expires-At` is exposed as a response header so the SPA
+  can warn before expiry
+- **Force-password-change on first login** — operators can flag any
+  user (and the seeded `admin` defaults to it); new password
+  invalidates all other sessions
+- **Per-user `permissions_epoch`** — role/membership/status changes
+  bump the counter and invalidate live sessions, surfaced via
+  `X-Permissions-Epoch`
+- **Attachments serve safely** — uploads of active content
+  (HTML/SVG/JS) are rejected; downloads are sent with
+  `Content-Disposition: attachment` and a hardened content-type
 - Rate-limited auth endpoints (login, forgot, reset, TOTP-verify)
   shared under one window: 5 attempts per 10 minutes per IP+identity
 - API keys stored as sha256 hashes, never decryptable
@@ -369,6 +381,8 @@ obligation.
 - Per-user accrual totals across projects
 - Billing lifecycle: `accepted_at`, `invoiced_at`, `invoice_number`
 - Time rollup from child issues
+- Super-admin can edit / add time entries on behalf of other users
+  (audited in `mutation_log`)
 
 ### Views, filters, sort
 - Custom saved views (filter + column + sort set)
@@ -403,6 +417,8 @@ obligation.
 - TOTP 2FA: setup QR, enable with code, disable with password, status
   endpoint
 - Magic-link password reset (forgot → email → validate → reset)
+- Force-password-change on first login (seeded `admin` defaults on;
+  operators can flag any user)
 - Personal API keys: create / list / revoke (shown once on create)
 
 ### Portal (external role)
@@ -442,7 +458,7 @@ obligation.
 - Optional MinIO for attachments (graceful disable)
 - Optional SMTP for password reset (dev mode = log to stdout)
 - SQLite with WAL + 5-second busy timeout + connection pool
-- 68 additive migrations run on startup
+- 92 additive migrations run on startup
 - Health endpoint: `GET /api/health` → `{ "status": "ok", "service": "...", "version": "<VERSION>" }` (`version` is stamped from `VERSION` at build time; local non-Docker builds report `"dev"`)
 - Instance endpoint: `GET /api/instance` (label, hostname,
   attachments-enabled flag)

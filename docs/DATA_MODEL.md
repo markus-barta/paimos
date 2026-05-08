@@ -352,6 +352,25 @@ See `docs/DEVELOPER_GUIDE.md` section 4a for the implementation walkthrough.
 
 ---
 
+## Session & auth columns (v2.7.1+)
+
+Four columns landed in the `v2.7.x` window. None are env-configurable;
+all are operator-visible via the API or admin UI.
+
+| Migration | Column                          | Ticket   | Purpose                                                                                                                |
+| --------- | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| M89       | `sessions.created_at`           | PAI-322  | Anchors the 90-day absolute lifetime cap independent of the sliding `expires_at`.                                       |
+| M90       | `users.permissions_epoch`       | PAI-320  | Counter bumped on role / membership / status change. Surfaced as `X-Permissions-Epoch`; mismatch invalidates sessions. |
+| M91       | `users.must_change_password`    | PAI-321  | Force-password-change gate. Default `1` for new users; cleared on first successful `POST /auth/password`.              |
+| M92       | `users.is_super_admin`          | PAI-335  | Narrow boolean orthogonal to `users.role`. Today gates only the time-entry on-behalf surface; PAI-336 will widen it.   |
+
+`sessions` is touched on every authenticated write — keep changes
+additive. The `users.role` enum is not yet promoted to include
+`super_admin` (that's PAI-336); the boolean is the deliberate
+short-term shape.
+
+---
+
 ## Related
 
 - Legacy v0.3.5 schema snapshot: `docs/archive/DATA_MODEL.md`

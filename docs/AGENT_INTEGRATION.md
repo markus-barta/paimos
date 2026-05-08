@@ -62,6 +62,19 @@ curl -s -H "Authorization: Bearer $KEY" https://paimos.example.com/api/auth/me
 
 Revoke a key with `DELETE /api/auth/api-keys/{id}`.
 
+### Response headers worth watching
+
+Every authenticated response (key or cookie) carries:
+
+- `X-Permissions-Epoch` — per-user counter (PAI-320). Bumped on
+  role / membership / status change. Track the value seen at first
+  request; if it changes, capability decisions cached client-side
+  are stale and should be re-derived.
+
+Cookie-authenticated responses (i.e. browser SPA, not API keys)
+additionally carry `X-Session-Expires-At` (RFC3339) for the unified
+expiry-modal flow (PAI-322).
+
 ---
 
 ## Core workflows for agents

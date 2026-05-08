@@ -88,6 +88,32 @@ TLS-protected userinfo round trip back to the issuer. This trade-off
 keeps the dependency surface small. JWKS-based id_token verification
 is a follow-on if a future deployment requires it.
 
+## Sessions (PAI-322 / PAI-321 / PAI-320)
+
+Session lifetime is **not** env-configurable today — the values live as
+constants in `backend/auth/auth.go`. They're called out here so
+operators know where to look if they need to fork the defaults:
+
+| Constant                  | Value | Meaning                                                                                       |
+| ------------------------- | ----- | --------------------------------------------------------------------------------------------- |
+| `sessionDuration`         | 30d   | Sliding window. Every authenticated request that's at least half-expired pushes `expires_at`. |
+| `sessionAbsoluteLifetime` | 90d   | Hard ceiling measured from `sessions.created_at` (M89). Forces re-login regardless of slide.  |
+| `sessionRenewThreshold`   | 15d   | "Don't `UPDATE` on every request" floor — only renew when below this remaining-time mark.     |
+
+Cookie `Expires` is set to `sessionAbsoluteLifetime` so browser
+state doesn't outlive what the server will accept.
+
+Two response headers expose session state to clients (PAI-320 /
+PAI-322):
+
+- `X-Session-Expires-At` — RFC3339; the SPA renders an expiry modal
+  before this value passes.
+- `X-Permissions-Epoch` — bumped on role / membership / status
+  change; mismatch invalidates capability decisions.
+
+`POST /auth/password` invalidates all *other* sessions for the user
+and clears the `users.must_change_password` (M91) flag on success.
+
 ## Audit & retention (PAI-116 / PAI-117)
 
 The session-mutation audit is on by default for NIS2 readiness. Set
