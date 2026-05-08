@@ -1,5 +1,27 @@
 package models
 
+// ProjectAgent is a declarable agent attached to a project (PAI-326).
+// `name` is the canonical key — slug-style, project-scoped unique. The
+// other fields are optional and additive over time. lane_tags is a list
+// of tag names this agent owns; metadata is a free-form JSON object
+// (color, icon, etc.). Both are stored as JSON blobs in TEXT in SQLite
+// and exposed as native shapes in JSON.
+//
+// Future fields (PAI-329) — body, bootstrap_steps[], and
+// non_negotiable_rules[] — will land as additional columns; the
+// minimal v1 shape here is the foundation, not the final form.
+type ProjectAgent struct {
+	ID               int64          `json:"id"`
+	ProjectID        int64          `json:"project_id"`
+	Name             string         `json:"name"`
+	Description      string         `json:"description"`
+	SlashCommandName string         `json:"slash_command_name"`
+	LaneTags         []string       `json:"lane_tags"`
+	Metadata         map[string]any `json:"metadata"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+}
+
 type ProjectRepo struct {
 	ID            int64  `json:"id"`
 	ProjectID     int64  `json:"project_id"`
