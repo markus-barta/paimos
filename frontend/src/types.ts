@@ -219,11 +219,30 @@ export interface Project {
   rate_inherited?: boolean
 }
 
-// PAI-326. ProjectAgent declares an agent that works a project (e.g.
-// `ops`, `dev`, `refinement`). `name` is the canonical project-scoped
-// key (slug-style, max 32 chars, [a-z][a-z0-9_-]*). The other fields
-// are optional and additive over time — PAI-329 will introduce body /
-// bootstrap_steps[] / non_negotiable_rules[].
+// PAI-326 + PAI-329. ProjectAgent declares an agent that works a
+// project (e.g. `ops`, `dev`, `refinement`). `name` is the canonical
+// project-scoped key (slug-style, max 32 chars, [a-z][a-z0-9_-]*).
+//
+// PAI-329 adds the rendering shape:
+//   - body: free-text markdown — bulk of the rendered skill body.
+//   - bootstrap_steps[]: ordered "do these once at session start"
+//     actions — each {title, command, rationale}.
+//   - non_negotiable_rules[]: rules the agent must NEVER silently
+//     break — each {title, body, memory_ref}. memory_ref is a
+//     pass-through string here; resolution happens at render time
+//     (PAI-330).
+export interface AgentBootstrapStep {
+  title: string
+  command: string
+  rationale: string
+}
+
+export interface AgentRule {
+  title: string
+  body: string
+  memory_ref: string
+}
+
 export interface ProjectAgent {
   id: number
   project_id: number
@@ -232,6 +251,9 @@ export interface ProjectAgent {
   slash_command_name: string
   lane_tags: string[]
   metadata: Record<string, unknown>
+  body: string
+  bootstrap_steps: AgentBootstrapStep[]
+  non_negotiable_rules: AgentRule[]
   created_at?: string
   updated_at?: string
 }
@@ -242,6 +264,49 @@ export interface ProjectAgentInput {
   slash_command_name: string
   lane_tags: string[]
   metadata: Record<string, unknown>
+  body: string
+  bootstrap_steps: AgentBootstrapStep[]
+  non_negotiable_rules: AgentRule[]
+}
+
+// PAI-329. ProjectEnvironment / ProjectDeployRecipe are the project-
+// level shared inventories every agent inherits at render time.
+export interface ProjectEnvironment {
+  id: number
+  project_id: number
+  name: string
+  url: string
+  host_alias: string
+  host_ip: string
+  sort_order: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ProjectEnvironmentInput {
+  name: string
+  url: string
+  host_alias: string
+  host_ip: string
+  sort_order?: number
+}
+
+export interface ProjectDeployRecipe {
+  id: number
+  project_id: number
+  name: string
+  command: string
+  summary: string
+  sort_order: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ProjectDeployRecipeInput {
+  name: string
+  command: string
+  summary: string
+  sort_order?: number
 }
 
 export interface ProjectRepo {

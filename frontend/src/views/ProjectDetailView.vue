@@ -52,6 +52,7 @@ import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectContextSection from '@/components/project/ProjectContextSection.vue'
 import ProjectAgentsSection from '@/components/project/ProjectAgentsSection.vue'
+import ProjectInventoriesSection from '@/components/project/ProjectInventoriesSection.vue'
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
@@ -1038,6 +1039,14 @@ watch(
              settings surface; mounted only while the modal is open so
              the GET fires when the operator actually wants it. -->
         <ProjectAgentsSection
+          v-if="showEdit"
+          :project-id="projectId"
+          :can-write="isAdmin && canEditProject"
+        />
+
+        <!-- PAI-329: project-level shared inventories (environments +
+             deploy recipes). Same modal-mount discipline. -->
+        <ProjectInventoriesSection
           v-if="showEdit"
           :project-id="projectId"
           :can-write="isAdmin && canEditProject"

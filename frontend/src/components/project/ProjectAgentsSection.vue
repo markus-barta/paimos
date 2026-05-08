@@ -1,13 +1,16 @@
 <script setup lang="ts">
-// PAI-326. Project-settings panel — declarable agents per project.
+// PAI-326 (base) + PAI-329 (rendering shape extensions).
+// Project-settings panel — declarable agents per project.
 // List rows show name + description + slash-command + lane-tag chips
-// with inline add / edit / delete. Validation mirrors the server's
-// rules for fast feedback; the server is the source of truth for
-// uniqueness (409 collision is surfaced as a save error).
+// with inline add / edit / delete. The PAI-329 fields (body,
+// bootstrap_steps, non_negotiable_rules) are exposed via collapsible
+// editor sections inside the inline form. Validation mirrors the
+// server's rules for fast feedback; the server is the source of
+// truth for uniqueness (409 collision is surfaced as a save error).
 
 import { computed, onMounted, ref, watch } from 'vue'
 import { errMsg } from '@/api/client'
-import type { ProjectAgent, ProjectAgentInput } from '@/types'
+import type { AgentBootstrapStep, AgentRule, ProjectAgent, ProjectAgentInput } from '@/types'
 import {
   createProjectAgent,
   deleteProjectAgent,
@@ -47,6 +50,14 @@ watch(
   { immediate: true },
 )
 
+function emptyStep(): AgentBootstrapStep {
+  return { title: '', command: '', rationale: '' }
+}
+
+function emptyRule(): AgentRule {
+  return { title: '', body: '', memory_ref: '' }
+}
+
 function emptyForm(): ProjectAgentInput {
   return {
     name: '',
@@ -54,6 +65,9 @@ function emptyForm(): ProjectAgentInput {
     slash_command_name: '',
     lane_tags: [],
     metadata: {},
+    body: '',
+    bootstrap_steps: [],
+    non_negotiable_rules: [],
   }
 }
 
@@ -89,6 +103,11 @@ function startEdit(agent: ProjectAgent) {
     slash_command_name: agent.slash_command_name,
     lane_tags: [...agent.lane_tags],
     metadata: { ...agent.metadata },
+    body: agent.body ?? '',
+    // Defensive copies — without them, dropping a step / rule from
+    // the editor would mutate the original object in `agents`.
+    bootstrap_steps: (agent.bootstrap_steps ?? []).map((s) => ({ ...s })),
+    non_negotiable_rules: (agent.non_negotiable_rules ?? []).map((r) => ({ ...r })),
   }
   laneTagsInput.value = agent.lane_tags.join(', ')
   saveError.value = ''
@@ -109,6 +128,32 @@ function parseLaneTags(raw: string): string[] {
     .filter((t) => t !== '')
 }
 
+function addBootstrapStep() {
+  form.value.bootstrap_steps.push(emptyStep())
+}
+function removeBootstrapStep(i: number) {
+  form.value.bootstrap_steps.splice(i, 1)
+}
+function moveBootstrapStep(i: number, delta: number) {
+  const arr = form.value.bootstrap_steps
+  const j = i + delta
+  if (j < 0 || j >= arr.length) return
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+}
+
+function addRule() {
+  form.value.non_negotiable_rules.push(emptyRule())
+}
+function removeRule(i: number) {
+  form.value.non_negotiable_rules.splice(i, 1)
+}
+function moveRule(i: number, delta: number) {
+  const arr = form.value.non_negotiable_rules
+  const j = i + delta
+  if (j < 0 || j >= arr.length) return
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+}
+
 async function save() {
   if (!isFormValid.value) {
     saveError.value = nameError.value
@@ -122,6 +167,21 @@ async function save() {
     description: form.value.description.trim(),
     slash_command_name: form.value.slash_command_name.trim(),
     lane_tags: parseLaneTags(laneTagsInput.value),
+    body: form.value.body,
+    bootstrap_steps: form.value.bootstrap_steps
+      .map((s) => ({
+        title: s.title.trim(),
+        command: s.command.trim(),
+        rationale: s.rationale.trim(),
+      }))
+      .filter((s) => s.title || s.command || s.rationale),
+    non_negotiable_rules: form.value.non_negotiable_rules
+      .map((r) => ({
+        title: r.title.trim(),
+        body: r.body.trim(),
+        memory_ref: r.memory_ref.trim(),
+      }))
+      .filter((r) => r.title || r.body || r.memory_ref),
   }
   try {
     if (editingName.value === null) {
@@ -201,6 +261,67 @@ onMounted(load)
               <label>Lane tags <span class="pa-hint">comma-separated</span></label>
               <input v-model="laneTagsInput" type="text" placeholder="ops, infra" />
             </div>
+
+            <details class="pa-collapsible" open>
+              <summary>Body <span class="pa-hint">markdown — bulk of the rendered skill</span></summary>
+              <textarea
+                v-model="form.body"
+                class="pa-textarea"
+                rows="8"
+                placeholder="## What this agent owns&#10;&#10;…"
+              />
+            </details>
+
+            <details class="pa-collapsible">
+              <summary>
+                Bootstrap steps
+                <span class="pa-hint">{{ form.bootstrap_steps.length }} step(s)</span>
+              </summary>
+              <div class="pa-repeater">
+                <div
+                  v-for="(step, i) in form.bootstrap_steps"
+                  :key="`bs-${i}`"
+                  class="pa-repeater-row"
+                >
+                  <div class="pa-repeater-head">
+                    <span class="pa-repeater-num">{{ i + 1 }}.</span>
+                    <button type="button" class="btn btn-ghost btn-sm" @click="moveBootstrapStep(i, -1)" :disabled="i === 0">↑</button>
+                    <button type="button" class="btn btn-ghost btn-sm" @click="moveBootstrapStep(i, 1)" :disabled="i === form.bootstrap_steps.length - 1">↓</button>
+                    <button type="button" class="btn btn-ghost btn-sm danger" @click="removeBootstrapStep(i)">Remove</button>
+                  </div>
+                  <input v-model="step.title" type="text" placeholder="Title — e.g. Source ops env" />
+                  <input v-model="step.command" type="text" placeholder="Command — e.g. source ~/Secrets/ops.env" class="pa-mono" />
+                  <input v-model="step.rationale" type="text" placeholder="Rationale (optional)" />
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" @click="addBootstrapStep">+ Add step</button>
+              </div>
+            </details>
+
+            <details class="pa-collapsible">
+              <summary>
+                Non-negotiable rules
+                <span class="pa-hint">{{ form.non_negotiable_rules.length }} rule(s)</span>
+              </summary>
+              <div class="pa-repeater">
+                <div
+                  v-for="(rule, i) in form.non_negotiable_rules"
+                  :key="`nr-${i}`"
+                  class="pa-repeater-row"
+                >
+                  <div class="pa-repeater-head">
+                    <span class="pa-repeater-num">{{ i + 1 }}.</span>
+                    <button type="button" class="btn btn-ghost btn-sm" @click="moveRule(i, -1)" :disabled="i === 0">↑</button>
+                    <button type="button" class="btn btn-ghost btn-sm" @click="moveRule(i, 1)" :disabled="i === form.non_negotiable_rules.length - 1">↓</button>
+                    <button type="button" class="btn btn-ghost btn-sm danger" @click="removeRule(i)">Remove</button>
+                  </div>
+                  <input v-model="rule.title" type="text" placeholder="Title — e.g. No prod writes without PR" />
+                  <textarea v-model="rule.body" rows="2" placeholder="Body (optional)" />
+                  <input v-model="rule.memory_ref" type="text" placeholder="memory_ref (optional, resolved at render time)" class="pa-mono" />
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" @click="addRule">+ Add rule</button>
+              </div>
+            </details>
+
             <div v-if="saveError" class="pa-error">{{ saveError }}</div>
             <div class="pa-actions">
               <button type="button" class="btn btn-ghost btn-sm" @click="cancelEdit">Cancel</button>
@@ -224,6 +345,11 @@ onMounted(load)
             <div v-if="agent.description" class="pa-row-desc">{{ agent.description }}</div>
             <div v-if="agent.lane_tags.length" class="pa-chips">
               <span v-for="tag in agent.lane_tags" :key="tag" class="pa-chip">{{ tag }}</span>
+            </div>
+            <div v-if="agent.body || agent.bootstrap_steps?.length || agent.non_negotiable_rules?.length" class="pa-meta">
+              <span v-if="agent.body" class="pa-meta-pill">body</span>
+              <span v-if="agent.bootstrap_steps?.length" class="pa-meta-pill">{{ agent.bootstrap_steps.length }} bootstrap step(s)</span>
+              <span v-if="agent.non_negotiable_rules?.length" class="pa-meta-pill">{{ agent.non_negotiable_rules.length }} rule(s)</span>
             </div>
           </div>
           <div v-if="canWrite && editingName === null && !adding" class="pa-row-actions">
@@ -252,6 +378,65 @@ onMounted(load)
             <label>Lane tags <span class="pa-hint">comma-separated</span></label>
             <input v-model="laneTagsInput" type="text" placeholder="ops, infra" />
           </div>
+
+          <details class="pa-collapsible">
+            <summary>Body <span class="pa-hint">markdown</span></summary>
+            <textarea
+              v-model="form.body"
+              class="pa-textarea"
+              rows="6"
+              placeholder="## What this agent owns…"
+            />
+          </details>
+          <details class="pa-collapsible">
+            <summary>
+              Bootstrap steps
+              <span class="pa-hint">{{ form.bootstrap_steps.length }} step(s)</span>
+            </summary>
+            <div class="pa-repeater">
+              <div
+                v-for="(step, i) in form.bootstrap_steps"
+                :key="`bsa-${i}`"
+                class="pa-repeater-row"
+              >
+                <div class="pa-repeater-head">
+                  <span class="pa-repeater-num">{{ i + 1 }}.</span>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="moveBootstrapStep(i, -1)" :disabled="i === 0">↑</button>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="moveBootstrapStep(i, 1)" :disabled="i === form.bootstrap_steps.length - 1">↓</button>
+                  <button type="button" class="btn btn-ghost btn-sm danger" @click="removeBootstrapStep(i)">Remove</button>
+                </div>
+                <input v-model="step.title" type="text" placeholder="Title" />
+                <input v-model="step.command" type="text" placeholder="Command" class="pa-mono" />
+                <input v-model="step.rationale" type="text" placeholder="Rationale (optional)" />
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" @click="addBootstrapStep">+ Add step</button>
+            </div>
+          </details>
+          <details class="pa-collapsible">
+            <summary>
+              Non-negotiable rules
+              <span class="pa-hint">{{ form.non_negotiable_rules.length }} rule(s)</span>
+            </summary>
+            <div class="pa-repeater">
+              <div
+                v-for="(rule, i) in form.non_negotiable_rules"
+                :key="`nra-${i}`"
+                class="pa-repeater-row"
+              >
+                <div class="pa-repeater-head">
+                  <span class="pa-repeater-num">{{ i + 1 }}.</span>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="moveRule(i, -1)" :disabled="i === 0">↑</button>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="moveRule(i, 1)" :disabled="i === form.non_negotiable_rules.length - 1">↓</button>
+                  <button type="button" class="btn btn-ghost btn-sm danger" @click="removeRule(i)">Remove</button>
+                </div>
+                <input v-model="rule.title" type="text" placeholder="Title" />
+                <textarea v-model="rule.body" rows="2" placeholder="Body (optional)" />
+                <input v-model="rule.memory_ref" type="text" placeholder="memory_ref (optional)" class="pa-mono" />
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" @click="addRule">+ Add rule</button>
+            </div>
+          </details>
+
           <div v-if="saveError" class="pa-error">{{ saveError }}</div>
           <div class="pa-actions">
             <button type="button" class="btn btn-ghost btn-sm" @click="cancelEdit">Cancel</button>
@@ -288,6 +473,8 @@ onMounted(load)
 .pa-row-desc { color: var(--text); font-size: 13px; }
 .pa-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .15rem; }
 .pa-chip { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: .1rem .55rem; font-size: 11px; color: var(--text-muted); }
+.pa-meta { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .15rem; }
+.pa-meta-pill { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: .05rem .4rem; font-size: 10px; color: var(--text-muted); }
 .pa-row-actions { display: flex; gap: .35rem; align-items: flex-start; }
 .pa-form { width: 100%; display: flex; flex-direction: column; gap: .55rem; }
 .pa-field { display: flex; flex-direction: column; gap: .2rem; }
@@ -296,4 +483,15 @@ onMounted(load)
 .pa-field-error { color: #b42318; font-size: 11px; }
 .pa-hint { color: var(--text-muted); font-weight: 400; font-size: 11px; }
 .pa-actions { display: flex; gap: .4rem; justify-content: flex-end; }
+.pa-collapsible { border: 1px solid var(--border); border-radius: 6px; padding: .35rem .55rem; background: var(--bg-card); }
+.pa-collapsible > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text); display: flex; gap: .4rem; align-items: center; }
+.pa-collapsible > summary::-webkit-details-marker { display: none; }
+.pa-textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; padding: .45rem .55rem; margin-top: .35rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.pa-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.pa-repeater { display: flex; flex-direction: column; gap: .55rem; margin-top: .35rem; }
+.pa-repeater-row { display: flex; flex-direction: column; gap: .3rem; padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.pa-repeater-row input,
+.pa-repeater-row textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; padding: .35rem .5rem; }
+.pa-repeater-head { display: flex; gap: .3rem; align-items: center; }
+.pa-repeater-num { font-weight: 700; color: var(--text-muted); font-size: 12px; min-width: 1.4em; }
 </style>
