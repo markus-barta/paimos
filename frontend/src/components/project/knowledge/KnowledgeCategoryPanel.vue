@@ -1,0 +1,505 @@
+<script setup lang="ts">
+// PAI-339 — list view for a single knowledge category. Owns the
+// category's data lifecycle (load + CRUD) so the parent
+// ProjectKnowledgeTab can render five of these side-by-side without
+// coordinating shared state. Each panel has:
+//   - filters (memory.type, archived toggle, environment)
+//   - full-text search (title / slug / body, client-side filter on
+//     the loaded set — the typical project has 30–60 entries; the
+//     500-entry case is rare enough that we don't need server-side
+//     search yet)
+//   - sort (recency / alphabetical / confidence for memory)
+//   - bulk archive / unarchive
+//   - inline editor (KnowledgeEntryEditor)
+//   - cross-references (memory.originating_tickets[] rendered as
+//     ticket-key links).
+
+import { computed, onMounted, ref, watch } from 'vue'
+import { errMsg } from '@/api/client'
+import LoadingText from '@/components/LoadingText.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import KnowledgeEntryEditor from './KnowledgeEntryEditor.vue'
+import {
+  archivedStatusValue,
+  activeStatusValue,
+  createKnowledgeEntry,
+  deleteKnowledgeEntry,
+  isArchived,
+  listKnowledgeEntries,
+  updateKnowledgeEntry,
+} from '@/services/projectKnowledge'
+import type { KnowledgeCategory, KnowledgeEntry, KnowledgeEntryInput } from '@/types'
+
+const props = defineProps<{
+  projectId: number
+  category: KnowledgeCategory
+  // Optional shared search query — when the parent's search box is
+  // populated, the panel filters its own list against it. Keeps the
+  // single-search-box contract from the spec while letting per-panel
+  // filters layer on top.
+  searchQuery?: string
+  canWrite: boolean
+}>()
+
+const emit = defineEmits<{
+  count: [n: number]
+}>()
+
+const entries = ref<KnowledgeEntry[]>([])
+const loading = ref(true)
+const loadError = ref('')
+
+// Editor state. `editingSlug` is the slug of the row being edited,
+// or null when no row is in edit mode. `adding` toggles the create
+// form; both are mutually exclusive — opening one closes the other
+// in the openers below.
+const editingSlug = ref<string | null>(null)
+const adding = ref(false)
+const draft = ref<KnowledgeEntryInput>(emptyDraft())
+const saving = ref(false)
+const saveError = ref('')
+
+// Filter state. memoryTypeFilter only renders for the memory tab.
+const memoryTypeFilter = ref<string>('all')
+const showArchived = ref(false)
+const environmentFilter = ref<string>('')
+const sortMode = ref<'recency' | 'alpha' | 'confidence'>('recency')
+
+// Bulk-op state. Selection is a Set of slugs — slugs are unique
+// within (project_id, type) so they're sufficient as identity here.
+const selection = ref(new Set<string>())
+const bulkBusy = ref(false)
+const bulkError = ref('')
+
+watch(
+  () => entries.value.length,
+  (n) => emit('count', n),
+  { immediate: true },
+)
+
+// Re-load when the parent swaps the active category. Without this,
+// switching tabs would render the previous category's data while the
+// fetch was in flight.
+watch(
+  () => props.category,
+  () => {
+    cancelEdit()
+    selection.value = new Set()
+    void load()
+  },
+)
+
+function emptyDraft(): KnowledgeEntryInput {
+  return {
+    slug: '',
+    title: '',
+    body: '',
+    status: activeStatusValue(),
+    metadata: {},
+  }
+}
+
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    entries.value = await listKnowledgeEntries(props.projectId, props.category)
+  } catch (e) {
+    loadError.value = errMsg(e, 'Failed to load entries.')
+  } finally {
+    loading.value = false
+  }
+}
+
+function startAdd() {
+  editingSlug.value = null
+  adding.value = true
+  draft.value = emptyDraft()
+  saveError.value = ''
+}
+
+function startEdit(entry: KnowledgeEntry) {
+  adding.value = false
+  editingSlug.value = entry.slug
+  draft.value = {
+    slug: entry.slug,
+    title: entry.title,
+    body: entry.body,
+    status: entry.status,
+    metadata: { ...(entry.metadata ?? {}) },
+  }
+  saveError.value = ''
+}
+
+function cancelEdit() {
+  editingSlug.value = null
+  adding.value = false
+  draft.value = emptyDraft()
+  saveError.value = ''
+}
+
+async function onSave(payload: KnowledgeEntryInput) {
+  saving.value = true
+  saveError.value = ''
+  try {
+    if (editingSlug.value === null) {
+      await createKnowledgeEntry(props.projectId, props.category, payload)
+    } else {
+      await updateKnowledgeEntry(props.projectId, props.category, editingSlug.value, payload)
+    }
+    cancelEdit()
+    await load()
+  } catch (e) {
+    saveError.value = errMsg(e, 'Failed to save entry.')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function remove(entry: KnowledgeEntry) {
+  if (!confirm(`Delete "${entry.slug}"? This sends it to Trash.`)) return
+  saveError.value = ''
+  try {
+    await deleteKnowledgeEntry(props.projectId, props.category, entry.slug)
+    if (editingSlug.value === entry.slug) cancelEdit()
+    await load()
+  } catch (e) {
+    saveError.value = errMsg(e, 'Failed to delete entry.')
+  }
+}
+
+function toggleSelection(slug: string, selected: boolean) {
+  const next = new Set(selection.value)
+  if (selected) next.add(slug)
+  else next.delete(slug)
+  selection.value = next
+}
+
+function toggleSelectAll(selected: boolean) {
+  if (!selected) {
+    selection.value = new Set()
+    return
+  }
+  selection.value = new Set(filtered.value.map((e) => e.slug))
+}
+
+async function bulkArchive(targetStatus: 'archived' | 'active') {
+  if (!selection.value.size) return
+  bulkBusy.value = true
+  bulkError.value = ''
+  const status = targetStatus === 'archived' ? archivedStatusValue() : activeStatusValue()
+  try {
+    // Sequential rather than Promise.all — keeps mutation_log
+    // ordering deterministic and avoids 5x parallel writes when a
+    // user accidentally selects everything.
+    for (const slug of selection.value) {
+      const entry = entries.value.find((e) => e.slug === slug)
+      if (!entry) continue
+      await updateKnowledgeEntry(props.projectId, props.category, slug, {
+        slug: entry.slug,
+        title: entry.title,
+        body: entry.body,
+        status,
+        metadata: entry.metadata,
+      })
+    }
+    selection.value = new Set()
+    await load()
+  } catch (e) {
+    bulkError.value = errMsg(e, 'Bulk operation failed.')
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+// ── filter / search / sort ───────────────────────────────────────
+
+const filtered = computed<KnowledgeEntry[]>(() => {
+  const q = (props.searchQuery ?? '').trim().toLowerCase()
+  return entries.value
+    .filter((e) => {
+      if (!showArchived.value && isArchived(e)) return false
+      if (props.category === 'memory' && memoryTypeFilter.value !== 'all') {
+        const t = (e.metadata?.['type'] as string | undefined) ?? ''
+        if (t !== memoryTypeFilter.value) return false
+      }
+      if (environmentFilter.value.trim() !== '') {
+        const envs = (e.metadata?.['applies_to_environments'] as unknown[] | undefined) ?? []
+        const want = environmentFilter.value.trim().toLowerCase()
+        const ok = envs.some((v) => typeof v === 'string' && v.toLowerCase() === want)
+        if (!ok) return false
+      }
+      if (q !== '') {
+        const hay = `${e.title} ${e.slug} ${e.body}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+    .sort((a, b) => {
+      if (sortMode.value === 'alpha') {
+        return a.slug.localeCompare(b.slug)
+      }
+      if (sortMode.value === 'confidence' && props.category === 'memory') {
+        const order = (e: KnowledgeEntry): number => {
+          const v = (e.metadata?.['confidence'] as string | undefined) ?? 'medium'
+          return v === 'high' ? 0 : v === 'medium' ? 1 : 2
+        }
+        return order(a) - order(b)
+      }
+      // recency
+      return b.updated_at.localeCompare(a.updated_at)
+    })
+})
+
+const allFilteredSelected = computed(
+  () => filtered.value.length > 0 && filtered.value.every((e) => selection.value.has(e.slug)),
+)
+
+const someFilteredSelected = computed(() => filtered.value.some((e) => selection.value.has(e.slug)))
+
+const archivedCount = computed(() => entries.value.filter(isArchived).length)
+
+function ticketLinks(entry: KnowledgeEntry): string[] {
+  const arr = entry.metadata?.['originating_tickets']
+  if (!Array.isArray(arr)) return []
+  return arr.filter((s): s is string => typeof s === 'string')
+}
+
+function applicableMemorySlugs(entry: KnowledgeEntry): string[] {
+  // PAI-342 will populate this on issues; rendering here is purely
+  // forward-compat for when issues link back to memories.
+  const arr = entry.metadata?.['applicable_memories']
+  if (!Array.isArray(arr)) return []
+  return arr.filter((s): s is string => typeof s === 'string')
+}
+
+const hasMemoryFilters = computed(() => props.category === 'memory')
+const hasConfidenceSort = computed(() => props.category === 'memory')
+
+onMounted(() => {
+  void load()
+})
+</script>
+
+<template>
+  <section class="kp-section">
+    <div class="kp-toolbar">
+      <div class="kp-filters">
+        <select v-if="hasMemoryFilters" v-model="memoryTypeFilter" class="kp-select" :title="'Filter by memory type'">
+          <option value="all">All types</option>
+          <option value="feedback">feedback</option>
+          <option value="project">project</option>
+          <option value="reference">reference</option>
+          <option value="user">user</option>
+        </select>
+        <input
+          v-model="environmentFilter"
+          type="text"
+          class="kp-input"
+          placeholder="env (e.g. prod)"
+          :title="'Filter by applies_to_environments'"
+        />
+        <label class="kp-checkbox" :title="'Show archived entries'">
+          <input v-model="showArchived" type="checkbox" />
+          <span>Archived <span v-if="archivedCount" class="kp-count">{{ archivedCount }}</span></span>
+        </label>
+      </div>
+      <div class="kp-sort">
+        <label class="kp-sort-label">Sort:</label>
+        <select v-model="sortMode" class="kp-select">
+          <option value="recency">Most recent</option>
+          <option value="alpha">Alphabetical</option>
+          <option v-if="hasConfidenceSort" value="confidence">Confidence</option>
+        </select>
+      </div>
+      <button
+        v-if="canWrite && editingSlug === null && !adding"
+        type="button"
+        class="btn btn-ghost btn-sm"
+        @click="startAdd"
+      >
+        <AppIcon name="plus" :size="13" />
+        <span>Add entry</span>
+      </button>
+    </div>
+
+    <!-- Bulk-op bar surfaces only when at least one row is selected.
+         Keeps the toolbar above uncluttered for the typical case. -->
+    <div v-if="selection.size > 0" class="kp-bulkbar">
+      <span class="kp-bulkbar-count">{{ selection.size }} selected</span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :disabled="bulkBusy"
+        @click="bulkArchive('archived')"
+      >Archive</button>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :disabled="bulkBusy"
+        @click="bulkArchive('active')"
+      >Unarchive</button>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        @click="selection = new Set()"
+      >Clear</button>
+      <span v-if="bulkError" class="kp-error">{{ bulkError }}</span>
+    </div>
+
+    <div v-if="loadError" class="kp-error">{{ loadError }}</div>
+    <LoadingText v-if="loading" class="kp-empty" label="Loading entries…" />
+
+    <div v-else-if="adding" class="kp-add-slot">
+      <KnowledgeEntryEditor
+        :category="category"
+        :initial="draft"
+        :current-slug="null"
+        :saving="saving"
+        :save-error="saveError"
+        :autosuggest-slug="true"
+        @save="onSave"
+        @cancel="cancelEdit"
+      />
+    </div>
+
+    <div v-if="!loading && entries.length === 0 && !adding" class="kp-empty">
+      No {{ category === 'related_project' ? 'related projects' : category === 'external_system' ? 'external systems' : category + 's' }} yet.
+    </div>
+
+    <div v-else-if="!loading" class="kp-list">
+      <div
+        v-if="filtered.length > 0"
+        class="kp-list-head"
+      >
+        <label class="kp-checkbox">
+          <input
+            type="checkbox"
+            :checked="allFilteredSelected"
+            :indeterminate.prop="!allFilteredSelected && someFilteredSelected"
+            @change="(e) => toggleSelectAll((e.target as HTMLInputElement).checked)"
+          />
+          <span class="kp-hint-muted">Select all visible</span>
+        </label>
+        <span class="kp-list-summary">{{ filtered.length }} shown of {{ entries.length }}</span>
+      </div>
+      <div
+        v-for="entry in filtered"
+        :key="entry.slug"
+        class="kp-row"
+        :class="{ 'kp-row--archived': isArchived(entry) }"
+      >
+        <template v-if="editingSlug === entry.slug">
+          <KnowledgeEntryEditor
+            :category="category"
+            :initial="draft"
+            :current-slug="entry.slug"
+            :saving="saving"
+            :save-error="saveError"
+            :autosuggest-slug="false"
+            @save="onSave"
+            @cancel="cancelEdit"
+          />
+        </template>
+        <template v-else>
+          <label class="kp-row-select">
+            <input
+              type="checkbox"
+              :checked="selection.has(entry.slug)"
+              @change="(e) => toggleSelection(entry.slug, (e.target as HTMLInputElement).checked)"
+            />
+          </label>
+          <div class="kp-row-main" @click="canWrite && startEdit(entry)">
+            <div class="kp-row-head">
+              <span class="kp-slug">{{ entry.slug }}</span>
+              <span v-if="isArchived(entry)" class="kp-pill kp-pill--archived">archived</span>
+              <span v-if="entry.metadata?.['type']" class="kp-pill">{{ entry.metadata.type }}</span>
+              <span
+                v-if="hasConfidenceSort && entry.metadata?.['confidence']"
+                class="kp-pill"
+              >
+                {{ entry.metadata.confidence }} confidence
+              </span>
+            </div>
+            <div class="kp-row-title">{{ entry.title }}</div>
+            <div v-if="entry.body" class="kp-row-snippet">{{ entry.body.slice(0, 200) }}{{ entry.body.length > 200 ? '…' : '' }}</div>
+            <div
+              v-if="ticketLinks(entry).length"
+              class="kp-row-refs"
+            >
+              <span class="kp-hint-muted">Originating:</span>
+              <a
+                v-for="t in ticketLinks(entry)"
+                :key="t"
+                :href="`/issues?key=${encodeURIComponent(t)}`"
+                class="kp-ticket-link"
+                @click.stop
+              >{{ t }}</a>
+            </div>
+            <div
+              v-if="applicableMemorySlugs(entry).length"
+              class="kp-row-refs"
+            >
+              <span class="kp-hint-muted">Applicable memories:</span>
+              <span
+                v-for="m in applicableMemorySlugs(entry)"
+                :key="m"
+                class="kp-pill kp-pill--ref"
+              >{{ m }}</span>
+            </div>
+          </div>
+          <div v-if="canWrite" class="kp-row-actions">
+            <button type="button" class="btn btn-ghost btn-sm" @click.stop="startEdit(entry)">Edit</button>
+            <button type="button" class="btn btn-ghost btn-sm danger" @click.stop="remove(entry)">Delete</button>
+          </div>
+        </template>
+      </div>
+      <div v-if="filtered.length === 0 && entries.length > 0" class="kp-empty">
+        No entries match the current filter.
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.kp-section { display: flex; flex-direction: column; gap: .55rem; }
+.kp-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.kp-filters { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.kp-sort { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
+.kp-sort-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.kp-select, .kp-input { border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; padding: .3rem .5rem; font-size: 12px; }
+.kp-input { min-width: 140px; }
+.kp-checkbox { display: inline-flex; align-items: center; gap: .35rem; font-size: 12px; color: var(--text); cursor: pointer; }
+.kp-count { background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0 .35rem; font-size: 10px; color: var(--text-muted); }
+.kp-bulkbar { display: flex; align-items: center; gap: .4rem; padding: .35rem .55rem; background: var(--bp-blue-pale); border: 1px solid var(--bp-blue); border-radius: 6px; font-size: 12px; }
+.kp-bulkbar-count { font-weight: 700; color: var(--bp-blue-dark); margin-right: .35rem; }
+.kp-empty { color: var(--text-muted); font-size: 13px; padding: 1rem 0; }
+.kp-list { display: flex; flex-direction: column; gap: .4rem; }
+.kp-list-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: 0 .35rem; }
+.kp-list-summary { font-size: 11px; color: var(--text-muted); }
+.kp-row { display: flex; align-items: flex-start; gap: .45rem; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.kp-row--archived { opacity: .65; background: var(--bg-card); }
+.kp-row-select { padding-top: .15rem; flex-shrink: 0; }
+.kp-row-main { flex: 1; display: flex; flex-direction: column; gap: .2rem; min-width: 0; cursor: pointer; }
+.kp-row-head { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.kp-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12px; color: var(--text); }
+.kp-pill { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: 0 .5rem; font-size: 10px; color: var(--text-muted); line-height: 1.55; }
+.kp-pill--archived { background: var(--bg); color: #b45309; border-color: #fcd9a3; }
+.kp-pill--ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.kp-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.kp-row-snippet { font-size: 12px; color: var(--text-muted); white-space: pre-wrap; line-height: 1.45; }
+.kp-row-refs { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; font-size: 11px; }
+.kp-hint-muted { color: var(--text-muted); font-size: 11px; }
+.kp-ticket-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; color: var(--bp-blue); text-decoration: none; }
+.kp-ticket-link:hover { text-decoration: underline; }
+.kp-row-actions { display: flex; gap: .3rem; flex-shrink: 0; }
+.kp-add-slot { padding: .15rem 0; }
+.kp-error { color: #b42318; font-size: 12px; background: #fef3f2; border: 1px solid #fecdca; border-radius: 8px; padding: .45rem .6rem; }
+
+@media (max-width: 540px) {
+  .kp-toolbar { flex-direction: column; align-items: stretch; }
+  .kp-sort { margin-left: 0; }
+  .kp-row { flex-direction: column; }
+  .kp-row-actions { align-self: flex-end; }
+}
+</style>
