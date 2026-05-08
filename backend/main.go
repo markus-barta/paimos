@@ -34,6 +34,7 @@ import (
 	"github.com/markus-barta/paimos/backend/devseed"
 	"github.com/markus-barta/paimos/backend/handlers"
 	"github.com/markus-barta/paimos/backend/handlers/crm"
+	"github.com/markus-barta/paimos/backend/handlers/knowledge"
 	"github.com/markus-barta/paimos/backend/storage"
 
 	// CRM provider plugins. Blank-import each provider so its init()
@@ -249,6 +250,23 @@ func main() {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/deploy-recipes", handlers.CreateProjectDeployRecipe)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
+
+			// PAI-338 (gated by PAI-346) — knowledge plane. Five
+			// resource paths funnel through one dispatcher per
+			// alias; each is the type-discriminating GET / POST /
+			// PUT / DELETE quintet over the issues table. Auth
+			// mirrors agents: read = project view, writes = admin
+			// (knowledge entries shape an agent's view of the
+			// project, so they're project-settings adjacent).
+			for _, alias := range knowledge.AllPathAliases() {
+				base := "/projects/{id}/" + alias
+				one := base + "/{slug}"
+				r.With(auth.RequireProjectView).Get(base, knowledge.MakeListHandler(alias))
+				r.With(auth.RequireProjectView).Get(one, knowledge.MakeGetHandler(alias))
+				r.With(auth.RequireAdmin, auth.RequireProjectView).Post(base, knowledge.MakeCreateHandler(alias))
+				r.With(auth.RequireAdmin, auth.RequireProjectView).Put(one, knowledge.MakeUpdateHandler(alias))
+				r.With(auth.RequireAdmin, auth.RequireProjectView).Delete(one, knowledge.MakeDeleteHandler(alias))
+			}
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)

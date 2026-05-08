@@ -34,6 +34,7 @@ import (
 	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/markus-barta/paimos/backend/handlers/knowledge"
 
 	_ "modernc.org/sqlite"
 )
@@ -199,6 +200,17 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/deploy-recipes", handlers.CreateProjectDeployRecipe)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
+
+			// PAI-338 — knowledge plane. Mirror main.go.
+			for _, alias := range knowledge.AllPathAliases() {
+				base := "/projects/{id}/" + alias
+				one := base + "/{slug}"
+				r.With(auth.RequireProjectView).Get(base, knowledge.MakeListHandler(alias))
+				r.With(auth.RequireProjectView).Get(one, knowledge.MakeGetHandler(alias))
+				r.With(auth.RequireAdmin, auth.RequireProjectView).Post(base, knowledge.MakeCreateHandler(alias))
+				r.With(auth.RequireAdmin, auth.RequireProjectView).Put(one, knowledge.MakeUpdateHandler(alias))
+				r.With(auth.RequireAdmin, auth.RequireProjectView).Delete(one, knowledge.MakeDeleteHandler(alias))
+			}
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
