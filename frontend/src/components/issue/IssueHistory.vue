@@ -70,6 +70,23 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
   if (field === 'parent_id')   return String(v)
   return String(v)
 }
+
+// PAI-324 — short session id for the meta sub-line. Full id rendered
+// via title=… tooltip on the chip. Trims to 8 chars + ellipsis when
+// the value is longer (UUIDs are 36); leaves shorter ids intact.
+function shortSession(id: string | null | undefined): string {
+  if (!id) return ''
+  if (id.length <= 8) return id
+  return id.slice(0, 8) + '…'
+}
+
+// True when the row carries any PAI-324 attribution. Used to gate the
+// optional sub-line so rows from before the migration (both fields
+// null) don't get an empty bullet point.
+function hasAttribution(entry: HistoryEntry | null): boolean {
+  if (!entry) return false
+  return Boolean(entry.agent_name) || Boolean(entry.session_id)
+}
 </script>
 
 <template>
@@ -88,6 +105,18 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
             <div class="history-meta" v-if="currentEntry">
               <span class="history-by">{{ historyIndex === 0 ? 'Created' : 'Changed' }} by <strong>{{ currentEntry.changed_by_name || 'unknown' }}</strong></span>
               <span class="history-at">{{ fmtShortDateTime(currentEntry.changed_at) }}</span>
+              <!-- PAI-324: agent + session attribution sub-line. Hidden when
+                   both fields are null (rows from before the migration, or
+                   header-less callers). Full session id surfaces in title=. -->
+              <span
+                v-if="hasAttribution(currentEntry)"
+                class="history-attr"
+                :title="currentEntry.session_id || ''"
+              >
+                <template v-if="currentEntry.agent_name">agent: <strong>{{ currentEntry.agent_name }}</strong></template>
+                <template v-if="currentEntry.agent_name && currentEntry.session_id"> · </template>
+                <template v-if="currentEntry.session_id">session: <strong>{{ shortSession(currentEntry.session_id) }}</strong></template>
+              </span>
             </div>
             <button class="hist-close" @click="emit('close')">
               <AppIcon name="x" :size="16" />
@@ -200,6 +229,16 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
 .history-by  { font-size: 12px; color: var(--text-muted); }
 .history-by strong { color: var(--text); }
 .history-at  { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+/* PAI-324: agent + session attribution sub-line. Sits under the
+   "Changed by ... at ..." pair; muted by default, the agent + short
+   session id are bolded so they stand out from the prose around them. */
+.history-attr {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+  cursor: help;
+}
+.history-attr strong { color: var(--text); font-weight: 600; }
 .hist-close {
   background: none; border: none; color: var(--text-muted);
   cursor: pointer; padding: .25rem; border-radius: var(--radius);
