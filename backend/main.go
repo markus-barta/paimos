@@ -235,6 +235,20 @@ func main() {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/agents", handlers.CreateProjectAgent)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/agents/{name}", handlers.UpdateProjectAgent)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/agents/{name}", handlers.DeleteProjectAgent)
+			// PAI-329 — canonical agent artifact + markdown debug
+			// rendering. Read-only, view-gated.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.json", handlers.GetProjectAgentArtifact)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.md", handlers.GetProjectAgentArtifactMarkdown)
+			// PAI-329 — project-level inventories (environments,
+			// deploy recipes). repos already exists at /repos.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/environments", handlers.ListProjectEnvironments)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/environments", handlers.CreateProjectEnvironment)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/environments/{envId}", handlers.UpdateProjectEnvironment)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/environments/{envId}", handlers.DeleteProjectEnvironment)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/deploy-recipes", handlers.ListProjectDeployRecipes)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/deploy-recipes", handlers.CreateProjectDeployRecipe)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
