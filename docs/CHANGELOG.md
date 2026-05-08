@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] — Unreleased
+
+Three-pillar agent metadata cycle. The work spans three sibling epics:
+
+- [PAI-323](https://pm.barta.cm/projects/6/issues/PAI-323) — caller-session attribution (who did what).
+- [PAI-328](https://pm.barta.cm/projects/6/issues/PAI-328) — skill scaffolding from project metadata (who can do what).
+- [PAI-337](https://pm.barta.cm/projects/6/issues/PAI-337) — knowledge plane: memory, runbooks, references, guidelines (what they need to know).
+
+Together they move project metadata to be the durable upstream of any agent harness or machine — local files become a cache, paimos becomes SSOT.
+
 ## [2.7.3] — 2026-05-07
 
 CI-only fix on top of v2.7.2. PAI-321's `ClearMustChangePassword` call shifted two `SetCookie` sites in `auth.go` (LoginHandler + LogoutHandler) by one line each, tripping the gosec line-keyed baseline. Refreshed the baseline; same `Secure: cookieSecure` variable pattern that's already accepted on every other cookie call site. v2.7.2's tag never produced a Docker image because of the failing gate; v2.7.3 carries the same code plus the baseline refresh.
