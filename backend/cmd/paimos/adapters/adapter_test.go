@@ -229,6 +229,122 @@ func TestHasHeader_TolerantToBOM(t *testing.T) {
 	}
 }
 
+// TestManifest_ParseValidatesProtocolVersion: PAI-332 v1 manifests
+// pass; future-version manifests fail with a clear error rather than
+// being silently truncated. Missing protocol_version is tolerated for
+// backward compat with PAI-330 manifests and filled in.
+func TestManifest_ParseValidatesProtocolVersion(t *testing.T) {
+	// Missing — tolerated, filled in.
+	m, err := ParseManifest([]byte(`{"name":"a","version":"1.0.0"}`))
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if m.ProtocolVersion != ProtocolVersion {
+		t.Fatalf("missing protocol_version should default to %q, got %q", ProtocolVersion, m.ProtocolVersion)
+	}
+
+	// Match — pass.
+	if _, err := ParseManifest([]byte(`{"protocol_version":"1","name":"a"}`)); err != nil {
+		t.Fatalf("v1 should pass: %v", err)
+	}
+
+	// Mismatch — reject.
+	_, err = ParseManifest([]byte(`{"protocol_version":"2","name":"a"}`))
+	if err == nil {
+		t.Fatal("expected error for unsupported protocol_version")
+	}
+	if !strings.Contains(err.Error(), "protocol_version") {
+		t.Fatalf("error should mention protocol_version: %q", err.Error())
+	}
+}
+
+// TestManifest_RequiresName ensures the SDK rejects nameless manifests
+// — a registry without unique names is meaningless.
+func TestManifest_RequiresName(t *testing.T) {
+	if _, err := ParseManifest([]byte(`{"protocol_version":"1"}`)); err == nil {
+		t.Fatal("expected error for missing name")
+	}
+}
+
+// TestManifest_RejectsInvalidSemver ensures malformed adapter versions
+// are caught at manifest-load time, not at dispatch time.
+func TestManifest_RejectsInvalidSemver(t *testing.T) {
+	_, err := ParseManifest([]byte(`{"name":"a","version":"not-a-version"}`))
+	if err == nil {
+		t.Fatal("expected version validation error")
+	}
+}
+
+// TestManifest_LegacyAliasesAccepted: PAI-330 used `describe` and
+// `suggested_path`; PAI-332's canonical names are `description` and
+// `target_path_template`. Loaders accept both for back-compat.
+func TestManifest_LegacyAliasesAccepted(t *testing.T) {
+	m, err := ParseManifest([]byte(`{
+		"name": "old",
+		"describe": "legacy describe",
+		"suggested_path": ".x/{{.agent.name}}.md"
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := m.effectiveDescription(); got != "legacy describe" {
+		t.Fatalf("legacy describe alias not honoured: %q", got)
+	}
+	if got := m.effectiveTargetPath(); got != ".x/{{.agent.name}}.md" {
+		t.Fatalf("legacy suggested_path alias not honoured: %q", got)
+	}
+}
+
+// TestManifest_MarshalEmitsCanonicalShape: when paimos serves a
+// manifest (registry endpoint) or an adapter binary emits one via
+// `describe`, the output must use the canonical names so external
+// tooling has one shape to parse.
+func TestManifest_MarshalEmitsCanonicalShape(t *testing.T) {
+	m := Manifest{
+		Name:          "x",
+		Version:       "1.0.0",
+		Describe:      "legacy describe",
+		SuggestedPath: ".x.md",
+	}
+	raw, err := m.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, `"description":"legacy describe"`) {
+		t.Fatalf("legacy describe should be promoted to description: %s", got)
+	}
+	if !strings.Contains(got, `"target_path_template":".x.md"`) {
+		t.Fatalf("legacy suggested_path should be promoted to target_path_template: %s", got)
+	}
+	if strings.Contains(got, `"describe"`) || strings.Contains(got, `"suggested_path"`) {
+		t.Fatalf("legacy field names must not appear in canonical output: %s", got)
+	}
+	if !strings.Contains(got, `"protocol_version":"1"`) {
+		t.Fatalf("canonical output must declare protocol_version: %s", got)
+	}
+}
+
+// TestManifestOf_FallsBackForBareAdapters: an adapter that doesn't
+// implement ManifestProvider still produces a uniform v1 manifest so
+// the registry endpoint can list it.
+func TestManifestOf_FallsBackForBareAdapters(t *testing.T) {
+	a := newStub("bare", ">=1.0.0 <2.0.0", "x")
+	got := ManifestOf(a)
+	if got.ProtocolVersion != ProtocolVersion {
+		t.Fatalf("protocol_version: %q", got.ProtocolVersion)
+	}
+	if got.Name != "bare" {
+		t.Fatalf("name: %q", got.Name)
+	}
+	if got.Supports != ">=1.0.0 <2.0.0" {
+		t.Fatalf("supports: %q", got.Supports)
+	}
+	if got.InputFormat != "json" {
+		t.Fatalf("input_format default should be json, got %q", got.InputFormat)
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

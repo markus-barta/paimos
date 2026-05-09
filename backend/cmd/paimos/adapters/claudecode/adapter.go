@@ -87,6 +87,24 @@ func (a *Adapter) Describe() string {
 	return "Claude Code skill markdown — writes to .claude/commands/<slash>.md"
 }
 
+// Manifest returns the formal PAI-332 v1 manifest for this adapter.
+// External tooling (registry endpoint, conformance suite) reads this
+// for self-describing metadata. The fields here match what an
+// external binary adapter would emit via
+// `paimos-adapter-claude-code describe`.
+func (a *Adapter) Manifest() adapters.Manifest {
+	return adapters.Manifest{
+		ProtocolVersion:    adapters.ProtocolVersion,
+		Name:               Name,
+		Version:            Version,
+		Supports:           SupportsRange,
+		Description:        a.Describe(),
+		TargetPathTemplate: "{workspace}/.claude/commands/{slash_command_name}.md",
+		InputFormat:        "json",
+		OutputFormat:       "markdown",
+	}
+}
+
 // canonicalArtifact mirrors the shape returned by
 // /api/projects/:id/agents/:name.json. We re-declare it here (rather
 // than importing from handlers/) to keep the adapter package self-

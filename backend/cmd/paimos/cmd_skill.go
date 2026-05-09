@@ -299,14 +299,13 @@ func skillListAdaptersCmd() *cobra.Command {
 			}
 			items := reg.List()
 			if flagJSON {
-				out := make([]map[string]any, 0, len(items))
+				// Emit the formal v1 manifest shape (PAI-332). Older
+				// `describe` / `supports` keys remain present in the
+				// canonical manifest; consumers should prefer the
+				// PAI-332 canonical names.
+				out := make([]adapters.Manifest, 0, len(items))
 				for _, a := range items {
-					out = append(out, map[string]any{
-						"name":     a.Name(),
-						"version":  a.Version(),
-						"supports": a.Supports(),
-						"describe": a.Describe(),
-					})
+					out = append(out, adapters.ManifestOf(a))
 				}
 				b, _ := json.Marshal(out)
 				fmt.Fprintln(stdout, string(b))
