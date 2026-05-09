@@ -214,6 +214,19 @@ func buildRouter() http.Handler {
 				r.With(auth.RequireAdmin, auth.RequireProjectView).Delete(one, knowledge.MakeDeleteHandler(alias))
 				r.With(auth.RequireProjectView).Get(rev, handlers.MakeKnowledgeRevHandler(alias))
 			}
+
+			// PAI-345 — user / instance memory + promotion. Mirror main.go.
+			r.Get("/users/me/memory", handlers.ListUserMemory)
+			r.Post("/users/me/memory", handlers.CreateUserMemory)
+			r.Get("/users/me/memory/{slug}", handlers.GetUserMemory)
+			r.Put("/users/me/memory/{slug}", handlers.UpdateUserMemory)
+			r.Delete("/users/me/memory/{slug}", handlers.DeleteUserMemory)
+			r.Get("/instance/memory", handlers.ListInstanceMemory)
+			r.With(auth.RequireAdmin).Post("/instance/memory", handlers.CreateInstanceMemory)
+			r.Get("/instance/memory/{slug}", handlers.GetInstanceMemory)
+			r.With(auth.RequireAdmin).Put("/instance/memory/{slug}", handlers.UpdateInstanceMemory)
+			r.With(auth.RequireAdmin).Delete("/instance/memory/{slug}", handlers.DeleteInstanceMemory)
+			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
