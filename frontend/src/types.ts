@@ -350,6 +350,12 @@ export interface KnowledgeEntry {
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
+  // PAI-347 — reference-count tracking for memory entries. The list
+  // endpoint includes them when present; the editor doesn't expose
+  // them as user-editable fields (they're maintained by bundle
+  // include + auto-suggest paths server-side).
+  reference_count?: number
+  last_referenced_at?: string | null
 }
 
 export interface KnowledgeEntryInput {

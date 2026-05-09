@@ -22,10 +22,12 @@ import KnowledgeEntryEditor from './KnowledgeEntryEditor.vue'
 import {
   archivedStatusValue,
   activeStatusValue,
+  bumpMemoryReferences,
   createKnowledgeEntry,
   deleteKnowledgeEntry,
   isArchived,
   listKnowledgeEntries,
+  listStaleMemory,
   updateKnowledgeEntry,
 } from '@/services/projectKnowledge'
 import { filterKnowledge, type KnowledgeSortMode } from '@/composables/useKnowledgeFilter'
@@ -72,6 +74,15 @@ const showArchived = ref(false)
 const environmentFilter = ref<string>('')
 const sortMode = ref<KnowledgeSortMode>('recency')
 
+// PAI-347 — stale-memory filter. When toggled on we narrow the list
+// to entries the server flagged as stale (no recent ref + confidence
+// ≤ medium + no in-flight originating ticket). The id-set is fetched
+// lazily — toggling on issues the GET; toggling off clears the set.
+const showStaleOnly = ref(false)
+const staleIds = ref<Set<number>>(new Set())
+const staleLoading = ref(false)
+const staleError = ref('')
+
 // Bulk-op state. Selection is a Set of slugs — slugs are unique
 // within (project_id, type) so they're sufficient as identity here.
 const selection = ref(new Set<string>())
@@ -92,6 +103,8 @@ watch(
   () => {
     cancelEdit()
     selection.value = new Set()
+    showStaleOnly.value = false
+    staleIds.value = new Set()
     void load()
   },
 )
@@ -246,6 +259,7 @@ const filtered = computed<KnowledgeEntry[]>(() =>
     showArchived: showArchived.value,
     environment: environmentFilter.value,
     sort: sortMode.value,
+    staleIds: showStaleOnly.value ? staleIds.value : undefined,
   }),
 )
 
@@ -256,6 +270,53 @@ const allFilteredSelected = computed(
 const someFilteredSelected = computed(() => filtered.value.some((e) => selection.value.has(e.slug)))
 
 const archivedCount = computed(() => entries.value.filter(isArchived).length)
+
+// PAI-347 — stale memory loading + reset. Both surfaces only on the
+// memory tab; the dispatcher endpoint is project-scoped to memory
+// type so calling it for non-memory categories is a waste.
+async function loadStaleProposals() {
+  if (props.category !== 'memory') {
+    staleIds.value = new Set()
+    return
+  }
+  staleLoading.value = true
+  staleError.value = ''
+  try {
+    const proposals = await listStaleMemory(props.projectId)
+    staleIds.value = new Set(proposals.map((p) => p.id))
+  } catch (e) {
+    staleError.value = errMsg(e, 'Failed to load stale memory proposals.')
+  } finally {
+    staleLoading.value = false
+  }
+}
+
+watch(
+  () => showStaleOnly.value,
+  (on) => {
+    if (on) void loadStaleProposals()
+    else staleIds.value = new Set()
+  },
+)
+
+const staleCount = computed(() => staleIds.value.size)
+
+async function markStillRelevant(entry: KnowledgeEntry) {
+  if (props.category !== 'memory') return
+  try {
+    await bumpMemoryReferences(props.projectId, [entry.id], 'ui-still-relevant')
+    // Drop the id from the local set so the row immediately disappears
+    // from the stale-only view; a follow-up refresh re-pulls fresh
+    // data when the user toggles again.
+    const next = new Set(staleIds.value)
+    next.delete(entry.id)
+    staleIds.value = next
+  } catch (e) {
+    saveError.value = errMsg(e, 'Failed to mark as still relevant.')
+  }
+}
+
+const showStaleControls = computed(() => props.category === 'memory')
 
 function ticketLinks(entry: KnowledgeEntry): string[] {
   const arr = entry.metadata?.['originating_tickets']
@@ -301,6 +362,19 @@ onMounted(() => {
           <input v-model="showArchived" type="checkbox" />
           <span>Archived <span v-if="archivedCount" class="kp-count">{{ archivedCount }}</span></span>
         </label>
+        <label
+          v-if="showStaleControls"
+          class="kp-checkbox"
+          :title="'Show only memory entries flagged stale by the decay heuristic (PAI-347)'"
+        >
+          <input v-model="showStaleOnly" type="checkbox" />
+          <span>
+            Stale only
+            <span v-if="staleLoading" class="kp-count">…</span>
+            <span v-else-if="staleCount" class="kp-count">{{ staleCount }}</span>
+          </span>
+        </label>
+        <span v-if="staleError" class="kp-error">{{ staleError }}</span>
       </div>
       <div class="kp-sort">
         <label class="kp-sort-label">Sort:</label>
@@ -449,6 +523,13 @@ onMounted(() => {
             </div>
           </div>
           <div v-if="canWrite" class="kp-row-actions">
+            <button
+              v-if="showStaleOnly && showStaleControls"
+              type="button"
+              class="btn btn-ghost btn-sm"
+              :title="'Reset the decay clock — keep this memory in active rotation'"
+              @click.stop="markStillRelevant(entry)"
+            >Still relevant</button>
             <button type="button" class="btn btn-ghost btn-sm" @click.stop="startEdit(entry)">Edit</button>
             <button type="button" class="btn btn-ghost btn-sm danger" @click.stop="remove(entry)">Delete</button>
           </div>

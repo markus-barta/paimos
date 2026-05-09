@@ -118,6 +118,53 @@ export function deleteKnowledgeEntry(
   );
 }
 
+// ── PAI-347 — decay-based archive proposals ───────────────────────
+
+export interface StaleMemoryProposal extends KnowledgeEntry {
+  confidence: string;
+  reference_count: number;
+  last_referenced_at?: string;
+  days_since_reference: number;
+}
+
+/**
+ * Fetch the project's stale-memory archive proposals. The server
+ * applies the three conditions (no recent reference + confidence ≤
+ * medium + no in-flight originating ticket); the UI is responsible
+ * only for rendering + allowing the user to one-click archive or
+ * "still relevant" reset.
+ *
+ * `days` defaults to 90 (server default). Pass a different value
+ * to widen / narrow the window from a Knowledge tab control.
+ */
+export function listStaleMemory(
+  projectId: number,
+  days?: number,
+): Promise<StaleMemoryProposal[]> {
+  const qs = days && days > 0 ? `?days=${days}` : "";
+  return api.get<StaleMemoryProposal[]>(
+    `/projects/${projectId}/memory/stale${qs}`,
+  );
+}
+
+/**
+ * Reset the decay clock for a list of memory ids. Powers the
+ * "still relevant" UI button — bumps the same reference_count
+ * counter the bundle resolver bumps so the entry won't show up
+ * in the next stale list. Cross-project ids are silently dropped
+ * server-side.
+ */
+export function bumpMemoryReferences(
+  projectId: number,
+  memoryIds: number[],
+  source = "ui",
+): Promise<{ updated: number }> {
+  return api.post<{ updated: number }>(
+    `/projects/${projectId}/memory/references`,
+    { ids: memoryIds, source },
+  );
+}
+
 // ── derived state helpers ─────────────────────────────────────────
 
 // Status mapping per PAI-346 §"Status values": knowledge entries

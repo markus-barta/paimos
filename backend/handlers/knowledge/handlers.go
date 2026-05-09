@@ -403,7 +403,8 @@ func updateEntry(r *http.Request, projectID int64, mod Module, currentSlug strin
 func loadByType(projectID int64, mod Module) ([]Output, error) {
 	rows, err := db.DB.Query(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
-		       status, COALESCE(category_metadata,''), created_at, updated_at
+		       status, COALESCE(category_metadata,''), created_at, updated_at,
+		       reference_count, COALESCE(last_referenced_at,'')
 		  FROM issues
 		 WHERE project_id = ?
 		   AND type       = ?
@@ -432,7 +433,8 @@ func loadByType(projectID int64, mod Module) ([]Output, error) {
 func loadOneBySlug(projectID int64, mod Module, slug string) (Output, error) {
 	row := db.DB.QueryRow(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
-		       status, COALESCE(category_metadata,''), created_at, updated_at
+		       status, COALESCE(category_metadata,''), created_at, updated_at,
+		       reference_count, COALESCE(last_referenced_at,'')
 		  FROM issues
 		 WHERE project_id = ?
 		   AND type       = ?
@@ -452,7 +454,8 @@ func LoadOneByID(id int64, mod Module) (Output, error) {
 func loadOneByID(id int64, mod Module) (Output, error) {
 	row := db.DB.QueryRow(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
-		       status, COALESCE(category_metadata,''), created_at, updated_at
+		       status, COALESCE(category_metadata,''), created_at, updated_at,
+		       reference_count, COALESCE(last_referenced_at,'')
 		  FROM issues
 		 WHERE id = ?
 	`, id)
@@ -473,6 +476,7 @@ func scanOutput(s rowScanner, mod Module) (Output, error) {
 	if err := s.Scan(
 		&o.ID, &o.ProjectID, &o.Type, &o.Slug, &o.Title, &o.Body,
 		&o.Status, &metaRaw, &o.CreatedAt, &o.UpdatedAt,
+		&o.ReferenceCount, &o.LastReferencedAt,
 	); err != nil {
 		return o, err
 	}
