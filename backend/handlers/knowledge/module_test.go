@@ -125,6 +125,41 @@ func TestExternalSystemValidatesURL(t *testing.T) {
 	}
 }
 
+// TestMemoryValidatesInheritFlag — PAI-348. The `inherit` flag on
+// memory.metadata is optional and bool-typed. Missing / nil pass; bool
+// values pass unchanged; any other type is rejected so the resolver
+// doesn't have to guess at "true"/"1"/etc.
+func TestMemoryValidatesInheritFlag(t *testing.T) {
+	mod, err := RouteByType("memory")
+	if err != nil {
+		t.Fatalf("RouteByType: %v", err)
+	}
+	cases := []struct {
+		name    string
+		meta    map[string]any
+		wantErr bool
+	}{
+		{"missing", map[string]any{}, false},
+		{"true", map[string]any{"inherit": true}, false},
+		{"false", map[string]any{"inherit": false}, false},
+		{"string is rejected", map[string]any{"inherit": "true"}, true},
+		{"number is rejected", map[string]any{"inherit": 1}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := mod.ValidateInput(Input{
+				Slug: "ok", Title: "ok", Metadata: c.meta,
+			})
+			if c.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 	mod, err := RouteByType("memory")
 	if err != nil {
