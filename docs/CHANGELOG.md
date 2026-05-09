@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] — 2026-05-09
+
+Post-ship redesign on top of v2.8.x. Two tickets close out the v2.8 cycle's UX feedback loop: the project-page primary tab strip moves from top to bottom, and the legacy `project_manifests.data` blob gains a deterministic migration path into the PAI-338 knowledge plane.
+
+### Added
+
+- **PAI-356** — `<ProjectFooterBar>` replaces the top tab strip on the project page. Same three identities (Issues / Overview / Knowledge), 40px hairline strip with a 2px green top-border active marker, anchored at the bottom of the project content area via `margin-top: auto`. Counters next to "Issues" (open, excluding knowledge entries) and "Knowledge" (memory + runbook + external_system + related_project + guideline excluding cancelled). v-model preserves PAI-339's `primaryTab` API so PAI-342's `?tab=knowledge&memory=:slug` deep-link still resolves.
+- **PAI-356** — `GET /api/projects/{id}` response gains a `counts` aggregate (`open_issues`, `knowledge_entries`). One indexed scan; absent on list responses.
+- **PAI-357** — `POST /api/projects/{id}/migrate-manifest-to-knowledge` admin-only endpoint. Migrates the legacy `project_manifests.data` blob deterministically: top-level non-`_` keys → 1 runbook (`legacy_manifest`); `_guardrails[i]` → 1 guideline per entry; `_glossary[term]` → 1 memory with `category_metadata.type=reference`; `_dev`/`_ops` → `project_agents.body`. Idempotent via `data._migrated_at` marker. Knowledge writes flow through the canonical `knowledge.CreateEntryHook` (PAI-353) so migrated entries pick up `issue_history` snapshots, `mutation_log` rows, and SSE notifications.
+- **PAI-357** — `paimos migrate manifest-to-knowledge --project KEY [--dry-run] [--force]` CLI verb, thin wrapper over the endpoint.
+- **PAI-357** — Admin "Migrate to Knowledge…" button in the legacy banner above `ProjectManifestTabs`. Two-step: dry-run preview lists planned writes + conflicts, then Commit / Force commit applies.
+
+### Changed
+
+- **PAI-356** — `ProjectContextSection` now renders a soft-deprecation "Legacy" banner above the manifest editor when populated, linking to PAI-357. The legacy editor stays mounted; PAI-358 will delete it after the 30-day window.
+
+### Notes
+
+- **PAI-358** (legacy `ProjectManifestTabs` + `project_manifests` table delete) is filed but blocked until PAI-357 has been live for 30 days and every project's manifest has either been migrated (`data._migrated_at` set) or explicitly opted out of migration. Pre-flight assertion in PAI-358's eventual migration fails closed otherwise.
+
 ## [2.8.2] — 2026-05-09
 
 CI-only fix on top of v2.8.1. v2.8.1's tag never produced a Docker image because of a third pre-existing CI gate: `gosec` flagged 24 new SAST findings on the v2.8.0 cycle's file-handling and SQL-concat patterns (G202 / G204 / G301 / G304 / G306 / G703). All are line-shift drift from accepted patterns plus a few new-but-equivalent ones from PAI-330's adapter exec, PAI-340's cache writer, and PAI-354's mutation_log queries. v2.8.2 carries the same code as v2.8.1 plus the baseline refresh.
