@@ -4364,6 +4364,22 @@ func migrate(db *sql.DB) error {
 			`CREATE INDEX IF NOT EXISTS idx_auto_watch_user_project ON auto_watch_subscriptions(user_id, project_id)`,
 			`CREATE INDEX IF NOT EXISTS idx_auto_watch_device ON auto_watch_subscriptions(device_id)`,
 		}},
+
+		// M100 / PAI-347: memory reference-count tracking. Two cheap
+		// nullable column additions on the issues table — applied to
+		// every row but only meaningful for rows where type='memory'.
+		// The counter increments each time a memory is included in a
+		// `paimos session start --bundle full` resolve (PAI-340) or
+		// surfaces as an auto-suggest candidate (PAI-342); the
+		// timestamp is the wall-clock of the most recent reference.
+		// Both default to 0 / NULL — existing memory entries pre-date
+		// the tracking and are treated as "freshly referenced" by the
+		// stale-proposal logic so the day this lands doesn't generate
+		// a flood of bogus archive proposals (see /memory/stale handler).
+		{100, []string{
+			`ALTER TABLE issues ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE issues ADD COLUMN last_referenced_at TEXT`,
+		}},
 	}
 
 	for _, m := range migrations {

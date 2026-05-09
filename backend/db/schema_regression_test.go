@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 98
+const latestSchemaVersion = 100
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -128,6 +128,13 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "issues", "category_metadata") {
 		t.Fatal("expected issues.category_metadata to exist (PAI-338 / M96)")
+	}
+	// PAI-347 / M100 — memory reference-count tracking.
+	if !columnExists(t, db, "issues", "reference_count") {
+		t.Fatal("expected issues.reference_count to exist (PAI-347 / M100)")
+	}
+	if !columnExists(t, db, "issues", "last_referenced_at") {
+		t.Fatal("expected issues.last_referenced_at to exist (PAI-347 / M100)")
 	}
 }
 
