@@ -68,6 +68,11 @@ const memoryEnvironments = ref(arrayFromMeta(metadata.value, 'applies_to_environ
 const memoryOriginatingTickets = ref(arrayFromMeta(metadata.value, 'originating_tickets'))
 const memoryEnvironmentsInput = ref(memoryEnvironments.value.join(', '))
 const memoryTicketsInput = ref(memoryOriginatingTickets.value.join(', '))
+// PAI-348 — inherit flag. Default `true` matches the bundle resolver's
+// memoryInheritsFlag (existing entries without the field still
+// inherit). Persisted under `metadata.inherit` so the server validator
+// in handlers/knowledge/memory.go can enforce the bool type.
+const memoryInherit = ref(boolFromMeta(metadata.value, 'inherit', true))
 
 const externalUrl = ref(stringFromMeta(metadata.value, 'url', ''))
 const externalPurpose = ref(stringFromMeta(metadata.value, 'purpose', ''))
@@ -194,6 +199,14 @@ function buildPayload(): KnowledgeEntryInput {
     meta.confidence = memoryConfidence.value
     meta.applies_to_environments = parseList(memoryEnvironmentsInput.value)
     meta.originating_tickets = parseList(memoryTicketsInput.value)
+    // PAI-348 — only persist `inherit` when explicitly false. Omitting
+    // the field defaults to true (the bundle resolver's contract), so
+    // we keep existing entries untouched and only write the opt-out.
+    if (memoryInherit.value === false) {
+      meta.inherit = false
+    } else {
+      delete meta.inherit
+    }
   } else if (props.category === 'external_system') {
     if (externalUrl.value.trim() !== '') meta.url = externalUrl.value.trim()
     else delete meta.url
@@ -246,6 +259,19 @@ function arrayFromMeta(meta: Record<string, unknown>, key: string): string[] {
   return v.filter((s): s is string => typeof s === 'string')
 }
 
+// PAI-348 — strict bool reader for `inherit`. The server validator
+// rejects non-bool values, so we only accept `true` / `false` here.
+// Anything else falls back to the default so a partially-migrated
+// entry doesn't render as a confusing "tri-state" checkbox.
+function boolFromMeta(
+  meta: Record<string, unknown>,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const v = meta[key]
+  return typeof v === 'boolean' ? v : fallback
+}
+
 // Re-sync local state if parent swaps the entry under us (e.g. user
 // clicks a different row mid-edit). Without this the editor would
 // keep the previous row's body when the keyed parent re-renders.
@@ -262,6 +288,7 @@ watch(
     memoryConfidence.value = stringFromMeta(metadata.value, 'confidence', 'medium')
     memoryEnvironmentsInput.value = arrayFromMeta(metadata.value, 'applies_to_environments').join(', ')
     memoryTicketsInput.value = arrayFromMeta(metadata.value, 'originating_tickets').join(', ')
+    memoryInherit.value = boolFromMeta(metadata.value, 'inherit', true)
     externalUrl.value = stringFromMeta(metadata.value, 'url', '')
     externalPurpose.value = stringFromMeta(metadata.value, 'purpose', '')
     externalSecretPath.value = stringFromMeta(metadata.value, 'secret_path', '')
@@ -328,6 +355,26 @@ watch(
           <label>Originating tickets <span class="ke-hint">comma-separated keys (free-text, cross-instance OK)</span></label>
           <input v-model="memoryTicketsInput" type="text" placeholder="PAI-339, PAI-353" class="ke-mono" />
         </div>
+      </div>
+
+      <!-- PAI-348 — opt out of inheritance per-memory. Default is
+           checked: most rules ARE general, so they propagate to
+           projects that declare this project as related/upstream. -->
+      <div class="ke-field">
+        <label class="ke-inline-toggle">
+          <input
+            v-model="memoryInherit"
+            type="checkbox"
+            data-testid="memory-inherit-checkbox"
+          />
+          <span>Inherit</span>
+          <span
+            class="ke-hint"
+            title="When unchecked, this memory will not be visible to projects that declare this project as related/upstream."
+          >
+            propagate to downstream projects
+          </span>
+        </label>
       </div>
 
       <!-- PAI-342: Live reverse-direction view of issues linked via the
@@ -464,6 +511,8 @@ watch(
 .ke-field-error { color: #b42318; font-size: 11px; }
 .ke-hint { color: var(--text-muted); font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; }
 .ke-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.ke-inline-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; font-size: 12px; }
+.ke-inline-toggle input[type="checkbox"] { width: auto; margin: 0; }
 .ke-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 200px; resize: vertical; }
 .ke-body-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .ke-body-head > label { margin-bottom: 0; }
