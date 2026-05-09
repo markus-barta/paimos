@@ -125,6 +125,8 @@ Get started:
 	cmd.AddCommand(applyCmd())
 	// PAI-327: agent-attribution session lifecycle.
 	cmd.AddCommand(sessionCmd())
+	// PAI-349: memory propose verb.
+	cmd.AddCommand(memoryCmd())
 	// PAI-330: skill render with adapter dispatch.
 	cmd.AddCommand(skillCmd())
 	// PAI-352: paimos onboard — human-readable briefing renderer.

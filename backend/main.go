@@ -324,6 +324,10 @@ func main() {
 			// archive proposals.
 			r.With(auth.RequireProjectView).Post("/projects/{id}/memory/references", handlers.BumpMemoryReferences)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
+			// PAI-349 — stale proposed-memory drafts (admin review surface).
+			// Read-only: admins drive archives via the existing PUT path
+			// after eyeballing the candidates.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/proposed/stale", handlers.ListStaleProposedMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)

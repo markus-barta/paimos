@@ -67,3 +67,13 @@ var DeleteEntryHook func(r *http.Request, projectID int64, mod Module, slug stri
 // hook in `handlers` can raise it without re-importing this file's
 // internals.
 var ErrSlugTaken = errSlugTaken
+
+// httpCodedError is the contract a hook can implement to surface a
+// non-default HTTP status (e.g. 429 / 503) without smuggling status
+// codes through string parsing. PAI-349's propose-gate hook returns
+// errors satisfying this interface so the dispatcher can map rate-
+// limit / opt-out failures to the right shape.
+type httpCodedError interface {
+	error
+	HTTPStatus() int
+}

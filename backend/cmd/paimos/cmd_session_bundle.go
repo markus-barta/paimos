@@ -160,11 +160,24 @@ type bundlePayload struct {
 // counts as live for v1; that's the same rule the UI applies.
 const archivedStatus = "cancelled"
 
+// proposedStatusEntry is the status value PAI-349 uses for bot-authored
+// memory drafts pending operator review. Excluded from the bundle by
+// default; the agent that drafted opts back in via --include-proposed.
+const proposedStatusEntry = "proposed"
+
 // archivedStatus check kept loose: a missing status is treated as
 // live so a server that elides empty fields never produces an empty
 // bundle by accident.
 func isLiveEntry(e knowledgeEntry) bool {
 	return strings.TrimSpace(e.Status) != archivedStatus
+}
+
+// isProposedEntry reports whether the entry is in the PAI-349 draft
+// state. Only memory entries can be 'proposed' for v1; runbooks /
+// guidelines have no propose UX yet, so the check still returns false
+// for them.
+func isProposedEntry(e knowledgeEntry) bool {
+	return strings.TrimSpace(e.Status) == proposedStatusEntry
 }
 
 // agentMetadata is the subset of the canonical artifact's `agent`
@@ -276,10 +289,21 @@ func hasAnyOverlap(a, b []string) bool {
 //     is set. Missing / unknown confidence is treated as "medium" per
 //     the ticket's backwards-compat rule, so existing memory
 //     (no explicit confidence) continues to flow through.
-func filterMemory(entries []knowledgeEntry, currentUserID int64, agentEnvs []string, includeLow bool) []knowledgeEntry {
+//  6. PAI-349: drop entries with status == "proposed" unless
+//     `includeProposed` is set. Bot-authored drafts await operator
+//     review before they affect downstream agents; the agent that
+//     drafted them opts back in via --include-proposed to verify its
+//     own pending work.
+func filterMemory(entries []knowledgeEntry, currentUserID int64, agentEnvs []string, includeLow, includeProposed bool) []knowledgeEntry {
 	out := make([]knowledgeEntry, 0, len(entries))
 	for _, e := range entries {
 		if !isLiveEntry(e) {
+			continue
+		}
+		// PAI-349 — proposed entries are filtered before the scope /
+		// environment / confidence checks; the gate is independent and
+		// short-circuiting here keeps the rest of the pipeline simple.
+		if !includeProposed && isProposedEntry(e) {
 			continue
 		}
 		scope := strings.TrimSpace(stringFromMeta(e.Metadata, "scope"))
@@ -819,6 +843,11 @@ func mergeInherited(own, inherited []knowledgeEntry) []knowledgeEntry {
 // `includeLow` (PAI-347) flips the confidence gate: by default `low`
 // memories are excluded; pass true to opt them back in.
 //
+// `includeProposed` (PAI-349) flips the propose gate: by default
+// `proposed` memories (bot-authored drafts) are excluded; pass true
+// when the agent that drafted them wants to verify its own pending
+// work via the bundle.
+//
 // PAI-348 — when the project declares related_projects[] entries with
 // an inheritance-eligible role (upstream-tool / philosophy / infra),
 // the resolver pulls memory / runbooks / guidelines from each upstream
@@ -826,7 +855,7 @@ func mergeInherited(own, inherited []knowledgeEntry) []knowledgeEntry {
 // precedence on slug collision. Cross-instance failures degrade
 // gracefully: the bundle keeps the project's own entries plus a
 // `source: warning` marker so the agent never silently misses content.
-func resolveBundle(c *Client, project projectSummary, agentName string, includeLow bool) (*bundlePayload, error) {
+func resolveBundle(c *Client, project projectSummary, agentName string, includeLow, includeProposed bool) (*bundlePayload, error) {
 	// Agent artifact is canonical (PAI-329); we keep the full JSON so
 	// every field the server emits round-trips into the bundle.
 	agentRaw, err := c.do("GET",
@@ -871,9 +900,9 @@ func resolveBundle(c *Client, project projectSummary, agentName string, includeL
 	userMemRaw := fetchScopedMemory(c, "/api/users/me/memory")
 	instanceMemRaw := fetchScopedMemory(c, "/api/instance/memory")
 
-	projectMem := filterMemory(memRaw, currentUserID, agentEnvs, includeLow)
-	userMem := filterMemory(userMemRaw, currentUserID, agentEnvs, includeLow)
-	instanceMem := filterMemory(instanceMemRaw, currentUserID, agentEnvs, includeLow)
+	projectMem := filterMemory(memRaw, currentUserID, agentEnvs, includeLow, includeProposed)
+	userMem := filterMemory(userMemRaw, currentUserID, agentEnvs, includeLow, includeProposed)
+	instanceMem := filterMemory(instanceMemRaw, currentUserID, agentEnvs, includeLow, includeProposed)
 	ownMemory := mergeMemoryByScope(projectMem, userMem, instanceMem)
 	ownRunbooks := filterRunbooks(rbRaw, agentName)
 	ownGuidelines := filterGuidelines(glRaw, agentName)

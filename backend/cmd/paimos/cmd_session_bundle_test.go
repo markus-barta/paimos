@@ -76,7 +76,7 @@ func TestFilterMemory_ScopeAndEnvironment(t *testing.T) {
 			Metadata: map[string]any{"scope": "user-on-this-project"}},
 	}
 
-	got := filterMemory(entries, currentUserID, agentEnvs, true)
+	got := filterMemory(entries, currentUserID, agentEnvs, true, false)
 	gotSlugs := []string{}
 	for _, e := range got {
 		gotSlugs = append(gotSlugs, e.Slug)
@@ -100,7 +100,7 @@ func TestFilterMemory_NoAgentEnvironments(t *testing.T) {
 				"applies_to_environments": []any{"prod"},
 			}},
 	}
-	got := filterMemory(entries, 0, nil, true)
+	got := filterMemory(entries, 0, nil, true, false)
 	if len(got) != 2 {
 		t.Fatalf("expected both entries with no agent envs, got %d (%v)", len(got), got)
 	}
@@ -123,7 +123,7 @@ func TestFilterMemory_ConfidenceGate(t *testing.T) {
 	}
 
 	// Default gate (includeLow=false) drops only "low-rule".
-	got := filterMemory(entries, 0, nil, false)
+	got := filterMemory(entries, 0, nil, false, false)
 	gotSlugs := []string{}
 	for _, e := range got {
 		gotSlugs = append(gotSlugs, e.Slug)
@@ -134,9 +134,34 @@ func TestFilterMemory_ConfidenceGate(t *testing.T) {
 	}
 
 	// includeLow=true keeps everything.
-	got = filterMemory(entries, 0, nil, true)
+	got = filterMemory(entries, 0, nil, true, false)
 	if len(got) != 4 {
 		t.Fatalf("includeLow: got %d entries, want 4", len(got))
+	}
+}
+
+// TestFilterMemory_ProposeGate (PAI-349) — proposed entries are excluded
+// by default; --include-proposed flips the gate. The agent that drafted
+// a proposal opts in to verify its own pending work without polluting
+// downstream agents.
+func TestFilterMemory_ProposeGate(t *testing.T) {
+	entries := []knowledgeEntry{
+		{Slug: "active-rule", Title: "active", Status: "backlog",
+			Metadata: map[string]any{}},
+		{Slug: "draft-rule", Title: "draft", Status: "proposed",
+			Metadata: map[string]any{}},
+	}
+
+	// Default gate (includeProposed=false) drops the draft.
+	got := filterMemory(entries, 0, nil, true, false)
+	if len(got) != 1 || got[0].Slug != "active-rule" {
+		t.Fatalf("default gate: got %v, want only [active-rule]", got)
+	}
+
+	// includeProposed=true keeps both.
+	got = filterMemory(entries, 0, nil, true, true)
+	if len(got) != 2 {
+		t.Fatalf("includeProposed=true: got %d entries, want 2 (%v)", len(got), got)
 	}
 }
 

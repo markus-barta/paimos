@@ -26,13 +26,18 @@ vi.mock('@/api/client', () => ({
 
 import { api } from '@/api/client'
 import {
+  acceptProposedMemory,
   activeStatusValue,
   archivedStatusValue,
   createKnowledgeEntry,
   deleteKnowledgeEntry,
   getKnowledgeEntry,
   isArchived,
+  isProposed,
   listKnowledgeEntries,
+  listStaleProposedMemory,
+  proposedStatusValue,
+  rejectProposedMemory,
   suggestSlug,
   updateKnowledgeEntry,
   validateKnowledgeSlug,
@@ -146,6 +151,47 @@ describe('projectKnowledge service', () => {
     it('exposes status enum values used for the wire', () => {
       expect(archivedStatusValue()).toBe('cancelled')
       expect(activeStatusValue()).toBe('backlog')
+    })
+  })
+
+  // PAI-349 — proposed-memory accept / reject + stale list endpoint.
+  describe('proposed memory helpers', () => {
+    it('isProposed flips true on status=proposed only', () => {
+      expect(isProposed(makeEntry({ status: 'proposed' }))).toBe(true)
+      expect(isProposed(makeEntry({ status: 'backlog' }))).toBe(false)
+      expect(isProposed(makeEntry({ status: 'cancelled' }))).toBe(false)
+      expect(proposedStatusValue()).toBe('proposed')
+    })
+
+    it('acceptProposedMemory PUTs status=backlog (active)', async () => {
+      const entry = makeEntry({ status: 'proposed', metadata: { type: 'feedback' } })
+      vi.mocked(api.put).mockResolvedValue(entry as never)
+      await acceptProposedMemory(7, entry)
+      expect(api.put).toHaveBeenCalledWith(
+        '/projects/7/memory/feedback_thread_dump',
+        expect.objectContaining({ status: 'backlog', slug: 'feedback_thread_dump' }),
+      )
+    })
+
+    it('rejectProposedMemory PUTs status=cancelled and stamps archived_reason', async () => {
+      const entry = makeEntry({ status: 'proposed', metadata: { type: 'feedback' } })
+      vi.mocked(api.put).mockResolvedValue(entry as never)
+      await rejectProposedMemory(7, entry)
+      const call = vi.mocked(api.put).mock.calls[0]
+      expect(call[0]).toBe('/projects/7/memory/feedback_thread_dump')
+      const body = call[1] as { status: string; metadata: { archived_reason?: string; type?: string } }
+      expect(body.status).toBe('cancelled')
+      expect(body.metadata.archived_reason).toBe('rejected')
+      // Existing metadata fields are preserved.
+      expect(body.metadata.type).toBe('feedback')
+    })
+
+    it('listStaleProposedMemory hits /memory/proposed/stale with optional days', async () => {
+      vi.mocked(api.get).mockResolvedValue([] as never)
+      await listStaleProposedMemory(7)
+      expect(api.get).toHaveBeenCalledWith('/projects/7/memory/proposed/stale')
+      await listStaleProposedMemory(7, 14)
+      expect(api.get).toHaveBeenCalledWith('/projects/7/memory/proposed/stale?days=14')
     })
   })
 })

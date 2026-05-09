@@ -20,14 +20,17 @@ import LoadingText from '@/components/LoadingText.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import KnowledgeEntryEditor from './KnowledgeEntryEditor.vue'
 import {
+  acceptProposedMemory,
   archivedStatusValue,
   activeStatusValue,
   bumpMemoryReferences,
   createKnowledgeEntry,
   deleteKnowledgeEntry,
   isArchived,
+  isProposed,
   listKnowledgeEntries,
   listStaleMemory,
+  rejectProposedMemory,
   updateKnowledgeEntry,
 } from '@/services/projectKnowledge'
 import { filterKnowledge, type KnowledgeSortMode } from '@/composables/useKnowledgeFilter'
@@ -83,6 +86,15 @@ const staleIds = ref<Set<number>>(new Set())
 const staleLoading = ref(false)
 const staleError = ref('')
 
+// PAI-349 — proposed inbox toggle. When on, the list narrows to
+// status='proposed' rows; bulk accept / reject + per-row actions
+// become available. The two stale + proposed toggles are mutually
+// exclusive at the UX level (showing stale-and-proposed simultaneously
+// produces an empty intersection in practice, since stale is computed
+// from updated_at and proposed entries are usually fresh enough).
+const showProposedOnly = ref(false)
+const proposedActionError = ref('')
+
 // Bulk-op state. Selection is a Set of slugs — slugs are unique
 // within (project_id, type) so they're sufficient as identity here.
 const selection = ref(new Set<string>())
@@ -105,9 +117,21 @@ watch(
     selection.value = new Set()
     showStaleOnly.value = false
     staleIds.value = new Set()
+    showProposedOnly.value = false
+    proposedActionError.value = ''
     void load()
   },
 )
+
+// PAI-349 — Proposed and Stale toggles are mutually exclusive at the
+// UX level. Flipping one off when the other turns on prevents stale
+// IDs from leaking into the proposed view and vice versa.
+watch(showProposedOnly, (on) => {
+  if (on) {
+    showStaleOnly.value = false
+    staleIds.value = new Set()
+  }
+})
 
 function emptyDraft(): KnowledgeEntryInput {
   return {
@@ -269,6 +293,7 @@ const filtered = computed<KnowledgeEntry[]>(() =>
     environment: environmentFilter.value,
     sort: sortMode.value,
     staleIds: showStaleOnly.value ? staleIds.value : undefined,
+    showProposedOnly: showProposedOnly.value,
   }),
 )
 
@@ -326,6 +351,65 @@ async function markStillRelevant(entry: KnowledgeEntry) {
 }
 
 const showStaleControls = computed(() => props.category === 'memory')
+
+// PAI-349 — Proposed inbox controls live only on the memory tab.
+const showProposedControls = computed(() => props.category === 'memory')
+const proposedCount = computed(() => entries.value.filter(isProposed).length)
+
+async function acceptOne(entry: KnowledgeEntry) {
+  proposedActionError.value = ''
+  try {
+    await acceptProposedMemory(props.projectId, entry)
+    if (selection.value.has(entry.slug)) {
+      const next = new Set(selection.value)
+      next.delete(entry.slug)
+      selection.value = next
+    }
+    await load()
+  } catch (e) {
+    proposedActionError.value = errMsg(e, 'Failed to accept proposal.')
+  }
+}
+
+async function rejectOne(entry: KnowledgeEntry) {
+  if (!confirm(`Reject proposed memory "${entry.slug}"? This archives it with reason='rejected'.`)) return
+  proposedActionError.value = ''
+  try {
+    await rejectProposedMemory(props.projectId, entry)
+    if (selection.value.has(entry.slug)) {
+      const next = new Set(selection.value)
+      next.delete(entry.slug)
+      selection.value = next
+    }
+    await load()
+  } catch (e) {
+    proposedActionError.value = errMsg(e, 'Failed to reject proposal.')
+  }
+}
+
+async function bulkProposeAction(action: 'accept' | 'reject') {
+  if (!selection.value.size) return
+  if (action === 'reject' && !confirm(`Reject ${selection.value.size} proposed memories?`)) return
+  bulkBusy.value = true
+  proposedActionError.value = ''
+  try {
+    for (const slug of selection.value) {
+      const entry = entries.value.find((e) => e.slug === slug)
+      if (!entry || !isProposed(entry)) continue
+      if (action === 'accept') {
+        await acceptProposedMemory(props.projectId, entry)
+      } else {
+        await rejectProposedMemory(props.projectId, entry)
+      }
+    }
+    selection.value = new Set()
+    await load()
+  } catch (e) {
+    proposedActionError.value = errMsg(e, 'Bulk proposal action failed.')
+  } finally {
+    bulkBusy.value = false
+  }
+}
 
 function ticketLinks(entry: KnowledgeEntry): string[] {
   const arr = entry.metadata?.['originating_tickets']
@@ -447,7 +531,19 @@ onMounted(() => {
             <span v-else-if="staleCount" class="kp-count">{{ staleCount }}</span>
           </span>
         </label>
+        <label
+          v-if="showProposedControls"
+          class="kp-checkbox"
+          :title="'Show only bot-authored memory drafts pending review (PAI-349)'"
+        >
+          <input v-model="showProposedOnly" type="checkbox" />
+          <span>
+            Proposed
+            <span v-if="proposedCount" class="kp-count">{{ proposedCount }}</span>
+          </span>
+        </label>
         <span v-if="staleError" class="kp-error">{{ staleError }}</span>
+        <span v-if="proposedActionError" class="kp-error">{{ proposedActionError }}</span>
       </div>
       <div class="kp-sort">
         <label class="kp-sort-label">Sort:</label>
@@ -469,21 +565,39 @@ onMounted(() => {
     </div>
 
     <!-- Bulk-op bar surfaces only when at least one row is selected.
-         Keeps the toolbar above uncluttered for the typical case. -->
+         Keeps the toolbar above uncluttered for the typical case.
+         PAI-349 — when the proposed-only filter is on, the bar swaps
+         in Accept / Reject actions instead of Archive / Unarchive. -->
     <div v-if="selection.size > 0" class="kp-bulkbar">
       <span class="kp-bulkbar-count">{{ selection.size }} selected</span>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm"
-        :disabled="bulkBusy"
-        @click="bulkArchive('archived')"
-      >Archive</button>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm"
-        :disabled="bulkBusy"
-        @click="bulkArchive('active')"
-      >Unarchive</button>
+      <template v-if="showProposedOnly">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :disabled="bulkBusy"
+          @click="bulkProposeAction('accept')"
+        >Accept</button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm danger"
+          :disabled="bulkBusy"
+          @click="bulkProposeAction('reject')"
+        >Reject</button>
+      </template>
+      <template v-else>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :disabled="bulkBusy"
+          @click="bulkArchive('archived')"
+        >Archive</button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :disabled="bulkBusy"
+          @click="bulkArchive('active')"
+        >Unarchive</button>
+      </template>
       <button
         type="button"
         class="btn btn-ghost btn-sm"
@@ -561,6 +675,7 @@ onMounted(() => {
             <div class="kp-row-head">
               <span class="kp-slug">{{ entry.slug }}</span>
               <span v-if="isArchived(entry)" class="kp-pill kp-pill--archived">archived</span>
+              <span v-if="isProposed(entry)" class="kp-pill kp-pill--proposed">proposed</span>
               <span v-if="entry.metadata?.['type']" class="kp-pill">{{ entry.metadata.type }}</span>
               <span
                 v-if="hasConfidenceSort && entry.metadata?.['confidence']"
@@ -624,8 +739,36 @@ onMounted(() => {
               :title="'Reset the decay clock — keep this memory in active rotation'"
               @click.stop="markStillRelevant(entry)"
             >Still relevant</button>
-            <button type="button" class="btn btn-ghost btn-sm" @click.stop="startEdit(entry)">Edit</button>
-            <button type="button" class="btn btn-ghost btn-sm danger" @click.stop="remove(entry)">Delete</button>
+            <!-- PAI-349 — per-row accept / edit-and-accept / reject for
+                 proposed memory drafts. Edit & Accept reuses the regular
+                 editor (startEdit) — when the operator saves, status
+                 defaults to whatever's in the draft, but the typical
+                 flow is to flip it to active in the editor. The Accept
+                 button is the no-edit fast path. -->
+            <template v-if="isProposed(entry)">
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                :title="'Accept this proposal as-is — flips status to active'"
+                @click.stop="acceptOne(entry)"
+              >Accept</button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                :title="'Edit before accepting — opens the inline editor'"
+                @click.stop="startEdit(entry)"
+              >Edit &amp; Accept</button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm danger"
+                :title="'Reject — archives with reason=rejected'"
+                @click.stop="rejectOne(entry)"
+              >Reject</button>
+            </template>
+            <template v-else>
+              <button type="button" class="btn btn-ghost btn-sm" @click.stop="startEdit(entry)">Edit</button>
+              <button type="button" class="btn btn-ghost btn-sm danger" @click.stop="remove(entry)">Delete</button>
+            </template>
           </div>
         </template>
       </div>
@@ -660,6 +803,7 @@ onMounted(() => {
 .kp-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12px; color: var(--text); }
 .kp-pill { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: 0 .5rem; font-size: 10px; color: var(--text-muted); line-height: 1.55; }
 .kp-pill--archived { background: var(--bg); color: #b45309; border-color: #fcd9a3; }
+.kp-pill--proposed { background: #fef9c3; color: #713f12; border-color: #fde68a; }
 .kp-pill--inherited { background: var(--bp-blue-pale, #eef4ff); color: var(--bp-blue-dark, #1d4ed8); border-color: var(--bp-blue, #3b82f6); text-decoration: none; cursor: pointer; }
 .kp-pill--inherited:hover { background: var(--bp-blue, #3b82f6); color: #fff; }
 .kp-pill--warning { background: #fef3f2; color: #b42318; border-color: #fecdca; }
