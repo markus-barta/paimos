@@ -233,6 +233,11 @@ func sessionStartCmd() *cobra.Command {
 		// PAI-347 — opt-in flag to include `low` confidence memories
 		// in the bundle. Default-off keeps the bundle compact.
 		includeLow bool
+		// PAI-349 — opt-in flag to include `proposed` (bot-authored
+		// draft) memories in the bundle. Default-off so accepted
+		// content drives downstream agents; the drafting agent flips
+		// it on to verify its own pending work.
+		includeProposed bool
 	)
 	c := &cobra.Command{
 		Use:   "start",
@@ -343,7 +348,7 @@ Bundle modes (PAI-340):
 				}
 			}
 
-			bundle, err := resolveBundle(client, project, agentName, includeLow)
+			bundle, err := resolveBundle(client, project, agentName, includeLow, includeProposed)
 			if err != nil {
 				return reportError(err)
 			}
@@ -373,6 +378,9 @@ Bundle modes (PAI-340):
 	// PAI-347 — confidence gate. Default-off (skip low-confidence
 	// memories); opt in to include them.
 	c.Flags().BoolVar(&includeLow, "include-low", false, "include low-confidence memories in --bundle full (default: skip)")
+	// PAI-349 — proposed-memory opt-in. Default-off; the drafting
+	// agent flips it on to verify its own pending work.
+	c.Flags().BoolVar(&includeProposed, "include-proposed", false, "include proposed (bot-authored draft) memories in --bundle full (default: skip)")
 	// `--export` and `--json` aren't strictly mutually-exclusive at the
 	// flag layer — resolveSessionFormat handles precedence — so the
 	// --bundle / --format extension layers over them cleanly.
