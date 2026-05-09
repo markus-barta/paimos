@@ -38,8 +38,18 @@ func startFakeSyncAPI(t *testing.T) *httptest.Server {
 			body := strings.ReplaceAll(fakeArtifactJSON, `"name": "qa"`, `"name": "ops"`)
 			body = strings.ReplaceAll(body, `"slash_command_name": "qa"`, `"slash_command_name": "ops"`)
 			_, _ = w.Write([]byte(body))
+		// PAI-341 — knowledge-plane lists. The init/pull/check verbs
+		// iterate every registered kind, so the fake server has to
+		// answer empty arrays for the five knowledge aliases or those
+		// loops fail before reaching the skill leg.
+		case "/api/projects/7/memory",
+			"/api/projects/7/runbooks",
+			"/api/projects/7/external-systems",
+			"/api/projects/7/related-projects",
+			"/api/projects/7/guidelines":
+			_, _ = w.Write([]byte(`[]`))
 		default:
-			http.Error(w, `{"error":"unexpected route"}`, http.StatusNotFound)
+			http.Error(w, `{"error":"unexpected route: `+r.URL.Path+`"}`, http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -221,5 +231,73 @@ func TestSyncInit_RequiresProject(t *testing.T) {
 	}
 	if _, ok := err.(*usageError); !ok {
 		t.Fatalf("err type %T, want *usageError", err)
+	}
+}
+
+// TestSyncInit_PullsKnowledgePlaneEndToEnd is the PAI-341 acceptance
+// check the ticket calls out: `paimos sync init --project PAI` should
+// pull skill files plus all five knowledge kinds in one shot. The fake
+// server returns one entry per knowledge kind and two skills; the test
+// asserts every cache directory ends up populated.
+func TestSyncInit_PullsKnowledgePlaneEndToEnd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/projects":
+			_, _ = w.Write([]byte(`[{"id":7,"key":"ACME","name":"Acme"}]`))
+		case "/api/projects/7/agents":
+			_, _ = w.Write([]byte(fakeAgentsListJSON))
+		case "/api/projects/7/agents/qa.json":
+			_, _ = w.Write([]byte(fakeArtifactJSON))
+		case "/api/projects/7/agents/ops.json":
+			body := strings.ReplaceAll(fakeArtifactJSON, `"name": "qa"`, `"name": "ops"`)
+			body = strings.ReplaceAll(body, `"slash_command_name": "qa"`, `"slash_command_name": "ops"`)
+			_, _ = w.Write([]byte(body))
+		case "/api/projects/7/memory":
+			_, _ = w.Write([]byte(`[{"id":1,"project_id":7,"type":"memory","slug":"feedback_x","title":"Mem","body":"m","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+		case "/api/projects/7/runbooks":
+			_, _ = w.Write([]byte(`[{"id":2,"project_id":7,"type":"runbook","slug":"deploy","title":"Run","body":"r","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+		case "/api/projects/7/external-systems":
+			_, _ = w.Write([]byte(`[{"id":3,"project_id":7,"type":"external_system","slug":"ch","title":"Ext","body":"e","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+		case "/api/projects/7/related-projects":
+			_, _ = w.Write([]byte(`[{"id":4,"project_id":7,"type":"related_project","slug":"frontend","title":"Rel","body":"l","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+		case "/api/projects/7/guidelines":
+			_, _ = w.Write([]byte(`[{"id":5,"project_id":7,"type":"guideline","slug":"no-secrets","title":"Gd","body":"g","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+		default:
+			http.Error(w, `{"error":"unexpected route: `+r.URL.Path+`"}`, http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	work := t.TempDir()
+	if _, _, err := executeCLIForTest(t,
+		"sync", "init",
+		"--project", "ACME",
+		"--workspace", work,
+	); err != nil {
+		t.Fatalf("sync init: %v", err)
+	}
+
+	// Skill files land under .claude/commands.
+	for _, name := range []string{"qa", "ops"} {
+		if _, err := os.Stat(filepath.Join(work, ".claude", "commands", name+".md")); err != nil {
+			t.Errorf("skill %s missing: %v", name, err)
+		}
+	}
+	// Knowledge files land under .paimos/cache/<project>/<subdir>/<slug>.md.
+	knowledgeChecks := map[string]string{
+		"memory":           "feedback_x",
+		"runbooks":         "deploy",
+		"external-systems": "ch",
+		"related-projects": "frontend",
+		"guidelines":       "no-secrets",
+	}
+	for subdir, slug := range knowledgeChecks {
+		path := filepath.Join(work, ".paimos", "cache", "ACME", subdir, slug+".md")
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("knowledge %s/%s missing: %v", subdir, slug, err)
+		}
 	}
 }

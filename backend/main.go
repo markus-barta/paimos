@@ -281,11 +281,16 @@ func main() {
 			for _, alias := range knowledge.AllPathAliases() {
 				base := "/projects/{id}/" + alias
 				one := base + "/{slug}"
+				rev := one + ".rev"
 				r.With(auth.RequireProjectView).Get(base, knowledge.MakeListHandler(alias))
 				r.With(auth.RequireProjectView).Get(one, knowledge.MakeGetHandler(alias))
 				r.With(auth.RequireAdmin, auth.RequireProjectView).Post(base, knowledge.MakeCreateHandler(alias))
 				r.With(auth.RequireAdmin, auth.RequireProjectView).Put(one, knowledge.MakeUpdateHandler(alias))
 				r.With(auth.RequireAdmin, auth.RequireProjectView).Delete(one, knowledge.MakeDeleteHandler(alias))
+				// PAI-341 — cheap-poll .rev fallback for clients that
+				// can't hold an SSE connection. Mirrors the agent .rev
+				// shape (text/plain, 12-char hex hash).
+				r.With(auth.RequireProjectView).Get(rev, handlers.MakeKnowledgeRevHandler(alias))
 			}
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
