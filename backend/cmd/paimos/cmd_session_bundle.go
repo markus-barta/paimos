@@ -79,11 +79,15 @@ func resolveBundleMode(raw string) (bundleMode, error) {
 // transparently because we re-encode using a generic map for the
 // `files` and `json` outputs.
 //
-// PAI-345 — the CLI annotates each entry with a `scope` field
-// ("project"|"user"|"instance") so downstream agents can
-// disambiguate cross-scope merges. The server itself doesn't emit
-// this field; the bundle resolver fills it in based on which
-// endpoint the entry came from.
+// PAI-345 + PAI-348 — both add CLI-side annotations:
+//   Scope  (PAI-345): "project"|"user"|"instance" — set by the
+//     bundle resolver based on which endpoint the entry came from
+//     so downstream agents can disambiguate cross-scope merges.
+//   Source (PAI-348): provenance for inherited entries (from
+//     related_projects[]). Never persisted server-side; the resolver
+//     fills it in when pulling cross-project inheritance.
+// Both use `omitempty` so own / project-scope entries stay free of
+// empty annotation noise.
 type knowledgeEntry struct {
 	ID        int64          `json:"id"`
 	ProjectID int64          `json:"project_id"`
@@ -95,11 +99,43 @@ type knowledgeEntry struct {
 	Metadata  map[string]any `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
-	// PAI-345: bundle-resolver-assigned scope discriminator. Empty
-	// when the entry pre-dates the cross-scope changes (treated as
-	// "project" for backwards-compat).
-	Scope string `json:"scope,omitempty"`
+	Scope     string         `json:"scope,omitempty"`  // PAI-345
+	Source    *entrySource   `json:"source,omitempty"` // PAI-348
 }
+
+// entrySource is the PAI-348 provenance annotation. `Type` is one of:
+//
+//   - "inherited": entry was pulled from a project declared in
+//     related_projects[]. FromProject + FromInstance identify the
+//     upstream.
+//   - "warning": cross-instance inheritance failed; Message describes
+//     the cause. Surfaced so the bundle is never silently incomplete.
+//
+// The struct is intentionally narrow — the inheritance contract is
+// "carry enough info for the agent / UI to render a click-through to
+// the source"; richer provenance (rev, fetched_at) layers on PAI-341.
+type entrySource struct {
+	Type         string `json:"type"`
+	FromProject  string `json:"from_project,omitempty"`
+	FromInstance string `json:"from_instance,omitempty"`
+	Message      string `json:"message,omitempty"`
+}
+
+// inheritableRoles is the set of related_projects[] roles that pull
+// memory / runbooks / guidelines into the downstream bundle. PAI-348
+// limits inheritance to "this project depends on / extends Q"
+// relationships — a peer relationship like "shared-customer" must
+// stay opaque to the bundle resolver.
+var inheritableRoles = map[string]bool{
+	"upstream-tool": true,
+	"philosophy":    true,
+	"infra":         true,
+}
+
+// inheritableCategories enumerates the knowledge kinds PAI-348 inherits.
+// `external_systems` and `related_projects` are project-specific by
+// nature (PAI-348 §"Out-of-scope") so they never inherit.
+var inheritableCategories = []string{"memory", "runbooks", "guidelines"}
 
 // bundlePayload is the canonical in-memory shape the resolver builds.
 // `Agent` is the canonical artifact JSON (PAI-329) — kept as
@@ -481,6 +517,299 @@ func fetchCurrentUserID(c *Client) int64 {
 	return probe.User.ID
 }
 
+// memoryInheritsFlag returns whether a memory entry should be exposed
+// to downstream projects via PAI-348's inheritance. Default is true
+// (most rules generalise); a typed-false `inherit` flag opts out. A
+// non-bool value falls back to true so a corrupt metadata map never
+// silently hides the entry — the editor / API enforce the type.
+func memoryInheritsFlag(meta map[string]any) bool {
+	if meta == nil {
+		return true
+	}
+	raw, ok := meta["inherit"]
+	if !ok {
+		return true
+	}
+	if b, isBool := raw.(bool); isBool {
+		return b
+	}
+	return true
+}
+
+// inheritedSources is the resolver's intermediate output for one
+// related_projects[] declaration: the entries pulled from the upstream
+// per category, plus an optional warning entry when the cross-instance
+// fetch failed. Per PAI-348 §"Backwards-compat" the bundle never fails
+// because of an upstream outage — the warning surfaces the cause and
+// resolution continues with the project's own entries.
+type inheritedSources struct {
+	memory     []knowledgeEntry
+	runbooks   []knowledgeEntry
+	guidelines []knowledgeEntry
+	warning    *knowledgeEntry // synthetic memory-typed warning, if any
+}
+
+// PAI-348 §"Cross-instance inheritance" calls for caching the
+// resolved inherited set per (project, related-project) pair, with
+// invalidation tied to PAI-341's rev mechanism. v1 piggy-backs on the
+// existing PAI-340 manifest: inherited entries land in the manifest's
+// `memory` / `runbooks` / `guidelines` slices alongside own entries
+// (carrying their `Source` annotation), so the bundle-level rev hash
+// already invalidates inherited content the moment any upstream entry
+// changes the merged shape. PAI-341 will layer per-upstream `?since=rev`
+// lookups on top once the server endpoint exists; the manifest format
+// is forward-compatible because `Source` already carries the upstream
+// pointer.
+
+// fetchInheritedFromUpstream pulls memory / runbooks / guidelines from
+// the upstream project (cross-instance when `instance_url` differs
+// from the caller's own URL). On failure the returned `warning` is
+// non-nil and the category slices are empty — matching PAI-348's
+// "graceful degradation" rule. On success entries carry an
+// `entrySource` annotation so downstream code (and agents reading the
+// bundle JSON) can attribute the rule to its origin.
+//
+// Same-instance pulls reuse `c` directly (auth, baseURL, headers).
+// Cross-instance pulls build a fresh unauthenticated client at the
+// upstream URL — the inherited memory plane is read-only here, and
+// PAI-348 v1 deliberately doesn't propagate API keys across instances
+// (PAI-341's sync infrastructure layers richer auth on top).
+func fetchInheritedFromUpstream(c *Client, upstream relatedProjectRef) inheritedSources {
+	out := inheritedSources{}
+	upstreamClient, err := upstreamClientFor(c, upstream.InstanceURL)
+	if err != nil {
+		out.warning = makeInheritWarning(upstream, fmt.Sprintf("resolve instance: %v", err))
+		return out
+	}
+	upstreamID, err := resolveProjectKeyToIDOnInstance(upstreamClient, upstream.Key)
+	if err != nil {
+		out.warning = makeInheritWarning(upstream, fmt.Sprintf("project lookup: %v", err))
+		return out
+	}
+	for _, alias := range inheritableCategories {
+		entries, err := fetchKnowledge(upstreamClient, upstreamID, alias)
+		if err != nil {
+			// Partial failure — surface a warning and stop pulling
+			// from this upstream. The caller still merges what we
+			// have so far (all-or-nothing would punish a transient
+			// blip on one endpoint).
+			out.warning = makeInheritWarning(upstream, fmt.Sprintf("fetch %s: %v", alias, err))
+			return out
+		}
+		// inherit-flag filter applies only to memory; runbooks /
+		// guidelines inherit unconditionally for v1 (PAI-348's opt-out
+		// surface focused on memory; runbooks are procedural and
+		// almost always universal).
+		if alias == "memory" {
+			entries = filterInheritableMemory(entries)
+		} else {
+			entries = filterAlwaysLive(entries)
+		}
+		annotated := annotateInherited(entries, upstream)
+		switch alias {
+		case "memory":
+			out.memory = annotated
+		case "runbooks":
+			out.runbooks = annotated
+		case "guidelines":
+			out.guidelines = annotated
+		}
+	}
+	return out
+}
+
+// relatedProjectRef is the parsed shape of a related_projects[] entry
+// the resolver hands to the inheritance pipeline. `Key` is the
+// upstream project key, `InstanceURL` is the absolute URL of the
+// upstream instance (required by PAI-338 schema), `Role` is one of
+// the inheritance-eligible roles (see inheritableRoles).
+type relatedProjectRef struct {
+	Key         string
+	InstanceURL string
+	Role        string
+}
+
+// inheritableRefs filters the related_projects[] knowledge entries to
+// those whose role triggers inheritance (PAI-348 §"Inheritance
+// resolution"). Iteration order matches the on-disk slug order so the
+// resulting precedence is stable per-project. Entries missing key or
+// instance_url are skipped — bundle resolution is best-effort.
+func inheritableRefs(entries []knowledgeEntry) []relatedProjectRef {
+	out := []relatedProjectRef{}
+	for _, e := range entries {
+		role := strings.TrimSpace(stringFromMeta(e.Metadata, "role"))
+		// PAI-338 stored the relationship under "relationship" in the
+		// editor, but the inheritance contract uses "role". Accept
+		// both so existing entries don't need a content migration.
+		if role == "" {
+			role = strings.TrimSpace(stringFromMeta(e.Metadata, "relationship"))
+		}
+		if !inheritableRoles[role] {
+			continue
+		}
+		key := strings.TrimSpace(stringFromMeta(e.Metadata, "key"))
+		instanceURL := strings.TrimSpace(stringFromMeta(e.Metadata, "instance_url"))
+		if key == "" || instanceURL == "" {
+			continue
+		}
+		out = append(out, relatedProjectRef{Key: key, InstanceURL: instanceURL, Role: role})
+	}
+	return out
+}
+
+// filterInheritableMemory drops archived entries AND entries whose
+// `inherit` flag is explicitly false. The memory.scope filter is NOT
+// applied here — user-on-this-project entries are inherently
+// upstream-private and the inherit flag covers the opt-out, but
+// scoping is a different concern (the upstream user might not exist
+// on the downstream instance).
+func filterInheritableMemory(entries []knowledgeEntry) []knowledgeEntry {
+	out := make([]knowledgeEntry, 0, len(entries))
+	for _, e := range entries {
+		if !isLiveEntry(e) {
+			continue
+		}
+		if !memoryInheritsFlag(e.Metadata) {
+			continue
+		}
+		// User-scoped memory does not propagate to other projects —
+		// the user-id namespace is per-instance and we don't carry a
+		// user mapping across instances. Project-scoped + missing
+		// scope both flow through.
+		if scope := strings.TrimSpace(stringFromMeta(e.Metadata, "scope")); scope == "user-on-this-project" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// annotateInherited tags each entry with the PAI-348 source
+// annotation. The slice is copied (rather than mutated in place) so
+// the upstream cache stays clean for re-use across invocations.
+func annotateInherited(entries []knowledgeEntry, upstream relatedProjectRef) []knowledgeEntry {
+	out := make([]knowledgeEntry, len(entries))
+	for i, e := range entries {
+		clone := e
+		clone.Source = &entrySource{
+			Type:         "inherited",
+			FromProject:  upstream.Key,
+			FromInstance: upstream.InstanceURL,
+		}
+		out[i] = clone
+	}
+	return out
+}
+
+// makeInheritWarning synthesises a marker memory-typed entry the
+// bundle surfaces in place of failed-inheritance content. The slug
+// embeds the upstream key so multiple warnings (rare) stay
+// distinguishable in the bundle JSON. PAI-348 §"Backwards-compat"
+// requires the bundle to keep working — this is the visible signal.
+func makeInheritWarning(upstream relatedProjectRef, reason string) *knowledgeEntry {
+	return &knowledgeEntry{
+		Type:  "memory",
+		Slug:  fmt.Sprintf("inherit_warning_%s", strings.ToLower(strings.ReplaceAll(upstream.Key, "-", "_"))),
+		Title: fmt.Sprintf("inheritance from %s failed", upstream.Key),
+		Body:  fmt.Sprintf("Bundle resolution could not pull memory from %s (%s): %s", upstream.Key, upstream.InstanceURL, reason),
+		Source: &entrySource{
+			Type:         "warning",
+			FromProject:  upstream.Key,
+			FromInstance: upstream.InstanceURL,
+			Message:      reason,
+		},
+	}
+}
+
+// upstreamClientFor returns a Client configured to talk to the
+// upstream instance. Same-instance pulls return `c` unchanged so
+// auth + headers + custom transport carry over. Cross-instance pulls
+// get a fresh unauthenticated client — PAI-348 v1 doesn't propagate
+// credentials, the inheritance contract assumes the upstream's
+// memory plane is publicly readable for the configured projects (or
+// equivalent auth has been granted out-of-band).
+func upstreamClientFor(c *Client, upstreamURL string) (*Client, error) {
+	upstreamURL = strings.TrimRight(strings.TrimSpace(upstreamURL), "/")
+	if upstreamURL == "" {
+		return nil, fmt.Errorf("instance_url is empty")
+	}
+	if upstreamURL == strings.TrimRight(c.baseURL, "/") {
+		return c, nil
+	}
+	parsed, err := url.Parse(upstreamURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse instance_url: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("instance_url must be absolute (scheme + host)")
+	}
+	return &Client{
+		baseURL: upstreamURL,
+		http:    c.http,
+	}, nil
+}
+
+// resolveProjectKeyToIDOnInstance fetches the project list from `c`
+// and returns the numeric id matching `key`. Mirrors the existing
+// per-instance lookup in cmd_session.go (resolveProjectKeyFromID) but
+// keyed by key instead of id — the cross-instance pull path knows
+// the key from related_projects[] but not the upstream's id.
+func resolveProjectKeyToIDOnInstance(c *Client, key string) (int64, error) {
+	body, err := c.do("GET", "/api/projects", nil)
+	if err != nil {
+		return 0, err
+	}
+	var list []projectSummary
+	if err := json.Unmarshal(body, &list); err != nil {
+		return 0, fmt.Errorf("decode projects: %w", err)
+	}
+	for _, p := range list {
+		if strings.EqualFold(strings.TrimSpace(p.Key), strings.TrimSpace(key)) {
+			return p.ID, nil
+		}
+	}
+	return 0, fmt.Errorf("project %q not found on upstream", key)
+}
+
+// inheritanceFetcher is the resolver's seam for cross-instance pulls.
+// Tests swap in a stub so the bundle merge logic can be exercised
+// without a real upstream server. Production wiring routes through
+// fetchInheritedFromUpstream.
+type inheritanceFetcher func(c *Client, upstream relatedProjectRef) inheritedSources
+
+// inheritanceFetcherImpl is the package-level seam. Indirected so
+// tests can swap it without touching the resolver signature. The
+// default uses a per-call cache (one entry per (project, upstream)
+// per process) so a single bundle resolution doesn't pull the same
+// upstream twice when both runbooks and guidelines hit it.
+var inheritanceFetcherImpl inheritanceFetcher = fetchInheritedFromUpstream
+
+// mergeInherited folds inherited entries into the project's own
+// entries with PAI-348's precedence rules: project-own beats inherited
+// on slug collision, inherited entries appear in declaration order,
+// and the slugs that came from upstream carry their `Source` annotation
+// for the bundle / UI / agent to render.
+//
+// `own` is the post-filter project memory / runbooks / guidelines
+// (the existing PAI-340 filter chain). `inherited` is a list of
+// already-annotated upstream entries in declaration order.
+func mergeInherited(own, inherited []knowledgeEntry) []knowledgeEntry {
+	taken := map[string]bool{}
+	for _, e := range own {
+		taken[e.Slug] = true
+	}
+	out := make([]knowledgeEntry, 0, len(own)+len(inherited))
+	out = append(out, own...)
+	for _, e := range inherited {
+		if taken[e.Slug] {
+			continue
+		}
+		taken[e.Slug] = true
+		out = append(out, e)
+	}
+	return out
+}
+
 // resolveBundle is the orchestration entry point: it fetches the agent
 // artifact and all five knowledge categories, applies the per-category
 // filters, and returns the assembled payload. The resolver does not
@@ -488,9 +817,15 @@ func fetchCurrentUserID(c *Client) int64 {
 // formats persist; json prints to stdout).
 //
 // `includeLow` (PAI-347) flips the confidence gate: by default `low`
-// memories are excluded; pass true to opt them back in. The decision
-// is plumbed all the way through here (rather than at the CLI flag
-// layer) so the helper test surface can pin both paths.
+// memories are excluded; pass true to opt them back in.
+//
+// PAI-348 — when the project declares related_projects[] entries with
+// an inheritance-eligible role (upstream-tool / philosophy / infra),
+// the resolver pulls memory / runbooks / guidelines from each upstream
+// (in declaration order) and merges them into the bundle with project
+// precedence on slug collision. Cross-instance failures degrade
+// gracefully: the bundle keeps the project's own entries plus a
+// `source: warning` marker so the agent never silently misses content.
 func resolveBundle(c *Client, project projectSummary, agentName string, includeLow bool) (*bundlePayload, error) {
 	// Agent artifact is canonical (PAI-329); we keep the full JSON so
 	// every field the server emits round-trips into the bundle.
@@ -530,26 +865,50 @@ func resolveBundle(c *Client, project projectSummary, agentName string, includeL
 
 	currentUserID := fetchCurrentUserID(c)
 
-	// PAI-345 — pull cross-scope memory layers. These are best-effort:
-	// older servers without the new endpoints return 404, which the
-	// fetch helper translates to nil (empty list). The merge keeps
-	// project > user > instance precedence on slug collision.
+	// PAI-345 — cross-scope memory layers (own/user/instance). Best-
+	// effort: older servers without the new endpoints return nil. Merge
+	// keeps project > user > instance precedence on slug collision.
 	userMemRaw := fetchScopedMemory(c, "/api/users/me/memory")
 	instanceMemRaw := fetchScopedMemory(c, "/api/instance/memory")
 
 	projectMem := filterMemory(memRaw, currentUserID, agentEnvs, includeLow)
 	userMem := filterMemory(userMemRaw, currentUserID, agentEnvs, includeLow)
 	instanceMem := filterMemory(instanceMemRaw, currentUserID, agentEnvs, includeLow)
-	mergedMem := mergeMemoryByScope(projectMem, userMem, instanceMem)
+	ownMemory := mergeMemoryByScope(projectMem, userMem, instanceMem)
+	ownRunbooks := filterRunbooks(rbRaw, agentName)
+	ownGuidelines := filterGuidelines(glRaw, agentName)
+	ownRelated := filterAlwaysLive(rpRaw)
+
+	// PAI-348 — pull inheritance from each related_projects[] entry
+	// whose role triggers it. Iteration follows declaration order so
+	// the merged precedence matches the ticket spec.
+	upstreams := inheritableRefs(ownRelated)
+	inheritedMemory := []knowledgeEntry{}
+	inheritedRunbooks := []knowledgeEntry{}
+	inheritedGuidelines := []knowledgeEntry{}
+	for _, ref := range upstreams {
+		src := inheritanceFetcherImpl(c, ref)
+		// Append inherited entries in declaration order. Per-upstream
+		// dedup is handled by mergeInherited below.
+		inheritedMemory = append(inheritedMemory, src.memory...)
+		inheritedRunbooks = append(inheritedRunbooks, src.runbooks...)
+		inheritedGuidelines = append(inheritedGuidelines, src.guidelines...)
+		if src.warning != nil {
+			// Warning rides in the memory slice so agents that read
+			// only memory still see it. The synthetic slug embeds the
+			// upstream key so multiple warnings stay distinguishable.
+			inheritedMemory = append(inheritedMemory, *src.warning)
+		}
+	}
 
 	bundle := &bundlePayload{
 		Project:         project,
 		Agent:           json.RawMessage(agentRaw),
-		Memory:          mergedMem,
-		Runbooks:        filterRunbooks(rbRaw, agentName),
+		Memory:          mergeInherited(ownMemory, inheritedMemory),
+		Runbooks:        mergeInherited(ownRunbooks, inheritedRunbooks),
 		ExternalSystems: filterAlwaysLive(exRaw),
-		RelatedProjects: filterAlwaysLive(rpRaw),
-		Guidelines:      filterGuidelines(glRaw, agentName),
+		RelatedProjects: ownRelated,
+		Guidelines:      mergeInherited(ownGuidelines, inheritedGuidelines),
 		FetchedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 

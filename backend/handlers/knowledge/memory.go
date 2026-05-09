@@ -15,6 +15,14 @@
 
 package knowledge
 
+import "errors"
+
+// errInheritNotBool surfaces a mis-typed `inherit` field on memory
+// metadata. PAI-348 makes the flag optional — but when it is set, the
+// JSON value must be a real boolean so the resolver doesn't have to
+// guess what `"true"` (a string) or `1` (a number) means.
+var errInheritNotBool = errors.New("metadata.inherit must be a boolean")
+
 // memoryModule implements PAI-338's `memory` knowledge type — the
 // declarative side of the knowledge plane. Memory entries hold
 // rules learned from incidents, project-state facts, references,
@@ -28,6 +36,13 @@ package knowledge
 // against this module: SELECT * FROM issues WHERE type='memory'
 // AND slug=? AND project_id=?. The slug uniqueness is enforced
 // by the partial UNIQUE INDEX (M96) — no extra check needed here.
+//
+// PAI-348 — `category_metadata.inherit` (bool) controls whether this
+// memory entry is exposed to downstream projects that declare this
+// project via `related_projects[]`. Default `true` (most rules ARE
+// general). The flag is enforced by the bundle resolver
+// (cmd_session_bundle.go) and by the inheritance pull endpoint; no
+// schema change is needed because `category_metadata` is JSON-as-text.
 type memoryModule struct{}
 
 func (memoryModule) Type() string          { return "memory" }
@@ -39,6 +54,15 @@ func (memoryModule) ValidateInput(in Input) error {
 	// no per-type required tail fields for v1; richer constraints
 	// (e.g. memory.type ∈ {feedback,project,reference,user}) ship
 	// with PAI-339 once the editor surface stabilizes.
+	//
+	// PAI-348 — when `inherit` is present, it must be a bool. We
+	// don't require it (default = inherit) so existing entries
+	// round-trip unchanged.
+	if raw, ok := in.Metadata["inherit"]; ok {
+		if _, isBool := raw.(bool); !isBool {
+			return errInheritNotBool
+		}
+	}
 	return nil
 }
 

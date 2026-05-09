@@ -350,12 +350,26 @@ export interface KnowledgeEntry {
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
-  // PAI-347 — reference-count tracking for memory entries. The list
-  // endpoint includes them when present; the editor doesn't expose
-  // them as user-editable fields (they're maintained by bundle
-  // include + auto-suggest paths server-side).
+  // PAI-347 — reference-count tracking for memory entries. Maintained
+  // server-side by bundle-include + auto-suggest paths.
   reference_count?: number
   last_referenced_at?: string | null
+  // PAI-348 — present only on entries that arrived via inheritance
+  // through `paimos session start --bundle full`. The convenience
+  // CRUD endpoints never set this — own entries on the project's
+  // Knowledge tab always have `source` undefined. The Knowledge tab
+  // renders a badge + click-through when present.
+  source?: KnowledgeEntrySource
+}
+
+export interface KnowledgeEntrySource {
+  // 'inherited' = entry was pulled from `from_project` on
+  // `from_instance`. 'warning' = cross-instance inheritance failed;
+  // `message` carries the cause.
+  type: 'inherited' | 'warning'
+  from_project?: string
+  from_instance?: string
+  message?: string
 }
 
 export interface KnowledgeEntryInput {
