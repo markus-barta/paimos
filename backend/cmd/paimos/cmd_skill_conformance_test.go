@@ -14,6 +14,8 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -72,5 +74,30 @@ func TestSkillTestAdapter_UnknownAdapter(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no-such-thing") {
 		t.Fatalf("error should name the missing adapter: %q", err.Error())
+	}
+}
+
+// TestSkillTestAdapter_OpencodeFixtureViaPATH proves the full PAI-332
+// pipeline end-to-end through the user-facing CLI: an external
+// adapter on $PAIMOS_ADAPTER_PATH is discovered, wrapped, and the
+// conformance suite passes. Mirrors what an external adapter author
+// would do to confirm their submission qualifies for registry
+// listing.
+func TestSkillTestAdapter_OpencodeFixtureViaPATH(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("opencode fixture is a POSIX shell script")
+	}
+	fixturesDir, err := filepath.Abs(filepath.Join("adapters", "fixtures"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PAIMOS_ADAPTER_PATH", fixturesDir)
+
+	stdoutS, _, err := executeCLIForTest(t, "skill", "test-adapter", "opencode")
+	if err != nil {
+		t.Fatalf("opencode conformance via PATH should pass: %v\nstdout:\n%s", err, stdoutS)
+	}
+	if !strings.Contains(stdoutS, "all cases passed") {
+		t.Fatalf("expected 'all cases passed', got:\n%s", stdoutS)
 	}
 }

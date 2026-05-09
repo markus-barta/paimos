@@ -1,0 +1,10 @@
+{
+  "protocol_version": "1",
+  "name": "opencode",
+  "version": "0.0.1",
+  "supports": ">=1.0.0 <2.0.0",
+  "description": "(stub) opencode harness skill renderer — demonstrates the PAI-332 protocol works end-to-end against a non-paimos-bundled adapter.",
+  "target_path_template": "{workspace}/.opencode/skills/{slash_command_name}.md",
+  "input_format": "json",
+  "output_format": "markdown"
+}
