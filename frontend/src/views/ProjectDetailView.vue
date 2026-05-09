@@ -66,10 +66,8 @@ import ProjectFooterBar from '@/components/project/ProjectFooterBar.vue'
 // "description") so the prompt reminder fits a stakeholder audience.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
-import {
-  notifySidePanelOpened,
-  onOtherSidePanelOpened,
-} from '@/composables/useSidePanelExclusion'
+// PAI-359: side-panel exclusion machinery dropped with the
+// workspace dock; primaryTab is mutually exclusive by construction.
 
 const { confirm } = useConfirm()
 const PROJECT_STATUS_OPTIONS: MetaOption[] = [
@@ -116,8 +114,10 @@ const customers = ref<Customer[]>([])
 // above the issue tabs which crowded the page even on projects
 // that don't use anchors. Now it's behind a toggle that lives in
 // the same toolbar cluster as Docs / Coop.
-type ProjectWorkspace = 'docs' | 'cooperation' | 'context' | null
-const workspacePanel = ref<ProjectWorkspace>(null)
+// PAI-359: workspacePanel ref + ProjectWorkspace type deleted with
+// the dock. Counts below feed the footer-bar badges (always-mounted
+// sentinels emit @count / @populated regardless of which tab is
+// active — see template).
 const docCount = ref(0)
 const cooperationPopulated = ref(false)
 const contextSummary = ref({ repoCount: 0, hasManifest: false, populated: false })
@@ -176,13 +176,21 @@ function onMenuEdit() { closeOverflow(); openEdit() }
 // Project too (PAI-326/329). The default landing tab is 'issues' to
 // preserve the existing UX — daily users hit /projects/:id and
 // expect the issue list, not a marketing card.
-type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge'
+// PAI-359 — six mutually-exclusive primary tabs. Docs / Coop /
+// Context were workspace-dock toggles in PAI-279; that pattern is
+// gone — they're peer tabs now.
+type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge' | 'docs' | 'coop' | 'context'
+const PROJECT_PRIMARY_TABS: ProjectPrimaryTab[] = [
+  'issues', 'overview', 'knowledge', 'docs', 'coop', 'context',
+]
 // Honor `?tab=knowledge` query param so deep-links from elsewhere
 // (e.g. the IssueDetail "Applicable Memories" panel — PAI-342)
 // land on the right tab without requiring a manual click.
 const initialTab: ProjectPrimaryTab = (() => {
   const t = route.query.tab
-  if (t === 'overview' || t === 'knowledge' || t === 'issues') return t
+  if (typeof t === 'string' && (PROJECT_PRIMARY_TABS as readonly string[]).includes(t)) {
+    return t as ProjectPrimaryTab
+  }
   return 'issues'
 })()
 const primaryTab = ref<ProjectPrimaryTab>(initialTab)
@@ -227,27 +235,18 @@ async function refreshViews() {
   try { allViews.value = await refreshProjectViews() } catch { /* ignore */ }
 }
 
-const contextStatusLabel = computed(() =>
-  contextSummary.value.populated ? 'Configured' : 'Not set up',
-)
+// PAI-359 — workspace-dock state (`workspacePanel`, `toggleWorkspace`,
+// `workspaceSummary`, aux-panel exclusion plumbing) deleted with the
+// dock pattern. Docs / Coop / Context are first-class primaryTab
+// values now; mount their components directly.
 
 function resetWorkspaceState() {
-  workspacePanel.value = null
   docCount.value = 0
   cooperationPopulated.value = false
   contextSummary.value = { repoCount: 0, hasManifest: false, populated: false }
 }
 
-function toggleWorkspace(panel: Exclude<ProjectWorkspace, null>) {
-  workspacePanel.value = workspacePanel.value === panel ? null : panel
-  if (workspacePanel.value !== null) notifySidePanelOpened('aux')
-}
-
-let unbindAuxPanelExclusion: (() => void) | null = null
 onMounted(() => {
-  unbindAuxPanelExclusion = onOtherSidePanelOpened('aux', () => {
-    workspacePanel.value = null
-  })
   document.addEventListener('mousedown', onOverflowOutsideClick)
   document.addEventListener('keydown', onOverflowKey)
   // PAI-265: keep teleported panel anchored to trigger across viewport changes.
@@ -256,8 +255,6 @@ onMounted(() => {
   window.addEventListener('scroll', recomputeOverflowPosition, true)
 })
 onUnmounted(() => {
-  unbindAuxPanelExclusion?.()
-  unbindAuxPanelExclusion = null
   document.removeEventListener('mousedown', onOverflowOutsideClick)
   document.removeEventListener('keydown', onOverflowKey)
   window.removeEventListener('resize', recomputeOverflowPosition)
@@ -269,14 +266,6 @@ onUnmounted(() => {
 function updateContextSummary(payload: { repoCount: number; hasManifest: boolean; populated: boolean }) {
   contextSummary.value = payload
 }
-
-const workspaceSummary = computed(() => ({
-  docs: docCount.value > 0 ? `${docCount.value} repo file${docCount.value === 1 ? '' : 's'}` : 'No docs yet',
-  cooperation: cooperationPopulated.value ? 'Profile configured' : 'Not set up',
-  context: contextSummary.value.populated
-    ? `${contextSummary.value.repoCount} repo${contextSummary.value.repoCount === 1 ? '' : 's'} · ${contextSummary.value.hasManifest ? 'manifest set' : 'manifest empty'}`
-    : 'Not set up',
-}))
 
 // Edit project
 const showEdit  = ref(false)
@@ -833,145 +822,55 @@ watch(
         :initial-memory-slug="initialKnowledgeSlug"
       />
 
-      <section v-if="primaryTab === 'issues'" class="pd-workspaces">
-        <Transition name="pd-workspace-dock">
-          <div v-if="workspacePanel" class="pd-workspace-dock">
-            <div class="pd-workspace-dock__head">
-              <div class="pd-workspace-dock__title">
-                <span class="pd-workspace-dock__eyebrow">Project workspace</span>
-                <strong>
-                  {{
-                    workspacePanel === 'context'
-                      ? 'Project Context'
-                      : workspacePanel === 'docs'
-                        ? 'Documents'
-                        : 'Cooperation'
-                  }}
-                </strong>
-                <span class="pd-workspace-dock__state">
-                  {{
-                    workspacePanel === 'context'
-                      ? contextStatusLabel
-                      : workspacePanel === 'docs'
-                        ? (docCount > 0 ? 'Available' : 'Empty')
-                        : (cooperationPopulated ? 'Configured' : 'Not set up')
-                  }}
-                </span>
-              </div>
-              <div class="pd-workspace-dock__meta">
-                <span class="pd-workspace-dock__pill">
-                  {{
-                    workspacePanel === 'context'
-                      ? `${contextSummary.repoCount} repo${contextSummary.repoCount === 1 ? '' : 's'}`
-                      : workspaceSummary[workspacePanel]
-                  }}
-                </span>
-                <button class="btn btn-ghost btn-sm" @click="workspacePanel = null">
-                  Close
-                </button>
-              </div>
-            </div>
+      <!-- PAI-359 — Docs / Coop / Context as first-class primary
+           tabs. Each renders full-page when its tab is active; the
+           legacy aux-panel dock + workspace rail (PAI-279) is gone.
+           The components emit @count / @populated either way, which
+           keeps the footer-bar badges live whether or not the user
+           is currently on that tab. -->
+      <DocumentsSection
+        v-else-if="primaryTab === 'docs'"
+        scope="project"
+        :scope-id="projectId"
+        :can-write="isAdmin && canEditProject"
+        @count="(n: number) => docCount = n"
+      />
+      <CooperationSection
+        v-else-if="primaryTab === 'coop'"
+        :project-id="projectId"
+        :can-write="isAdmin && canEditProject"
+        @populated="(v: boolean) => cooperationPopulated = v"
+      />
+      <ProjectContextSection
+        v-else-if="primaryTab === 'context'"
+        :project-id="projectId"
+        :can-write="isAdmin && canEditProject"
+        :show-header="false"
+        @populated="(v: boolean) => contextSummary.populated = v"
+        @summary="updateContextSummary"
+      />
 
-            <div class="pd-workspace-dock__body">
-              <template v-if="workspacePanel === 'context'">
-                <div class="pd-context-overview">
-                  <div class="pd-context-overview__card">
-                    <span class="pd-context-overview__label">Overview</span>
-                    <p>
-                      Keep repos and manifest together here. This stays full width,
-                      so issue work can remain central while setup lives in one predictable place.
-                    </p>
-                  </div>
-                  <div class="pd-context-overview__card">
-                    <span class="pd-context-overview__label">Current setup</span>
-                    <p>
-                      {{ contextSummary.repoCount }} linked repo{{ contextSummary.repoCount === 1 ? '' : 's' }}
-                      · {{ contextSummary.hasManifest ? 'manifest present' : 'no manifest yet' }}
-                    </p>
-                  </div>
-                </div>
-                <ProjectContextSection
-                  :project-id="projectId"
-                  :can-write="isAdmin && canEditProject"
-                  :show-header="false"
-                  @populated="(v: boolean) => contextSummary.populated = v"
-                  @summary="updateContextSummary"
-                />
-              </template>
-
-              <DocumentsSection
-                v-else-if="workspacePanel === 'docs'"
-                scope="project"
-                :scope-id="projectId"
-                :can-write="isAdmin && canEditProject"
-                @count="(n: number) => docCount = n"
-              />
-
-              <CooperationSection
-                v-else
-                :project-id="projectId"
-                :can-write="isAdmin && canEditProject"
-                @populated="(v: boolean) => cooperationPopulated = v"
-              />
-            </div>
-          </div>
-        </Transition>
-
-        <div class="pd-workspace-footer">
-          <div class="pd-workspace-rail">
-            <button
-              type="button"
-              :class="['btn', 'btn-ghost', 'btn-sm', { active: workspacePanel === 'docs' }]"
-              :title="workspaceSummary.docs"
-              @click="toggleWorkspace('docs')"
-            >
-              <AppIcon name="file-stack" :size="13" />
-              <span>Docs</span>
-              <span class="pd-workspace-rail__meta">{{ docCount }} file{{ docCount === 1 ? '' : 's' }}</span>
-            </button>
-            <button
-              type="button"
-              :class="['btn', 'btn-ghost', 'btn-sm', { active: workspacePanel === 'cooperation' }]"
-              :title="workspaceSummary.cooperation"
-              @click="toggleWorkspace('cooperation')"
-            >
-              <AppIcon name="handshake" :size="13" />
-              <span>Coop</span>
-              <span class="pd-workspace-rail__meta">{{ cooperationPopulated ? 'configured' : 'empty' }}</span>
-            </button>
-            <button
-              type="button"
-              :class="['btn', 'btn-ghost', 'btn-sm', { active: workspacePanel === 'context' }]"
-              :title="workspaceSummary.context"
-              @click="toggleWorkspace('context')"
-            >
-              <AppIcon name="git-branch" :size="13" />
-              <span>Context</span>
-              <span class="pd-workspace-rail__meta">{{ contextStatusLabel }}</span>
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Always-mounted, visually-hidden sentinels feed the toolbar
-           workspace rail summary without forcing the user to open the
-           workspaces first. -->
+      <!-- Always-mounted, visually-hidden sentinels feed the
+           footer-bar count badges for tabs the user has not yet
+           clicked. They mirror the @count / @populated emits but
+           render with display:none. Skipped for the active tab to
+           avoid double-mount + double-fetch. -->
       <div class="pd-sentinels" aria-hidden="true">
         <DocumentsSection
-          v-if="workspacePanel !== 'docs'"
+          v-if="primaryTab !== 'docs'"
           scope="project"
           :scope-id="projectId"
           :can-write="false"
           @count="(n: number) => docCount = n"
         />
         <CooperationSection
-          v-if="workspacePanel !== 'cooperation'"
+          v-if="primaryTab !== 'coop'"
           :project-id="projectId"
           :can-write="false"
           @populated="(v: boolean) => cooperationPopulated = v"
         />
         <ProjectContextSection
-          v-if="workspacePanel !== 'context'"
+          v-if="primaryTab !== 'context'"
           :project-id="projectId"
           :can-write="false"
           :show-header="false"
@@ -980,15 +879,20 @@ watch(
         />
       </div>
 
-      <!-- PAI-356/-358: bottom-anchored footer bar. The Issues count
-           is the loaded list length so it matches the IssueList
-           header's count exactly (SSOT — no second source of truth);
-           the Knowledge count comes from the server's aggregate. -->
-      <ProjectFooterBar
-        v-model="primaryTab"
-        :open-issues="issues.length"
-        :knowledge-entries="project.counts?.knowledge_entries ?? null"
-      />
+      <!-- PAI-359 — Teleport the footer bar OUTSIDE .view-body so it
+           escapes the overflow:hidden clip and spans the full
+           main-content width. Mounted only while ProjectDetailView is
+           active; clean teardown on route change. -->
+      <Teleport to="#project-footer-slot">
+        <ProjectFooterBar
+          v-model="primaryTab"
+          :open-issues="issues.length"
+          :knowledge-entries="project.counts?.knowledge_entries ?? null"
+          :docs-count="docCount"
+          :context-repos="contextSummary.repoCount"
+          :coop-populated="cooperationPopulated"
+        />
+      </Teleport>
     </template>
   </div>
 
@@ -1460,160 +1364,11 @@ textarea { resize: vertical; min-height: 80px; }
   min-width: 0;
 }
 
-.pd-workspaces {
-  /* PAI-279: tighter padding around the rail strip — was .6rem; the
-     rail itself uses btn-sm vocabulary now and doesn't need much
-     breathing room. */
-  margin-top: auto;
-  padding-top: .35rem;
-}
-
-.pd-workspace-dock {
-  margin-bottom: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-.pd-workspace-dock__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.2rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bp-blue-pale) 42%, white), white);
-  border-bottom: 1px solid color-mix(in srgb, var(--bp-blue-pale) 60%, var(--border));
-}
-
-.pd-workspace-dock__title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.65rem;
-}
-
-.pd-workspace-dock__eyebrow,
-.pd-context-overview__label {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.pd-workspace-dock__state {
-  padding: 0.16rem 0.55rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
-  color: var(--bp-blue-dark);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.pd-workspace-dock__meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  color: var(--text-muted);
-}
-
-.pd-workspace-dock__pill {
-  padding: 0.18rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.9);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.pd-workspace-dock__body {
-  padding: 1rem 1.1rem 1.2rem;
-  background: var(--bg-card);
-}
-
-.pd-context-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
-  gap: 0.85rem;
-  margin-bottom: 1rem;
-}
-
-.pd-context-overview__card {
-  padding: 0.95rem 1rem;
-  border-radius: 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-}
-
-.pd-context-overview__card p {
-  margin-top: 0.35rem;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.pd-workspace-footer {
-  display: flex;
-  flex-direction: column;
-}
-
-/* PAI-279: rail uses the global `.btn .btn-ghost .btn-sm` vocabulary
-   for consistency with every other toggle in the app (e.g. IssueList's
-   `⌥ Tree`, the filter / views buttons). The container only owns
-   spacing between buttons + bottom breathing room above AppFooter. */
-.pd-workspace-rail {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.1rem 0 0.4rem;
-}
-
-/* `.btn-sm.active` matches `IssueList.vue:1264` — keeping the active
-   workspace toggle tied to the dock above with the same brand-blue
-   pale fill the rest of the app uses for active toggles. */
-.btn-sm.active {
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
-  border-color: var(--bp-blue-pale);
-}
-
-.pd-workspace-rail__meta {
-  color: inherit;
-  opacity: .65;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.pd-workspace-dock-enter-active,
-.pd-workspace-dock-leave-active {
-  transition: opacity .18s ease, transform .18s ease;
-}
-
-.pd-workspace-dock-enter-from,
-.pd-workspace-dock-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-@media (max-width: 980px) {
-  .pd-workspace-dock__head {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .pd-context-overview {
-    grid-template-columns: 1fr;
-  }
-
-  .pd-workspace-rail {
-    flex-wrap: wrap;
-  }
-}
+/* PAI-359: pd-workspace-* + pd-context-overview-* + pd-workspace-rail-*
+   styles deleted with the dock surface. The Docs / Coop / Context
+   tabs now render full-page like the other primary tabs; counts
+   feed the footer-bar badges via the always-mounted sentinel
+   components below. */
 
 /* Sentinel components keep reactivity but render no UI. */
 .pd-sentinels { display: none; }

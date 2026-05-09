@@ -226,6 +226,12 @@ onMounted(() => {
         <div :class="['view-body', { 'view-body--self-scroll': route.meta.scrollMode === 'self' }]">
           <slot />
         </div>
+        <!-- PAI-359 — Teleport target for ProjectDetailView's footer bar.
+             Lives OUTSIDE .view-body's overflow:hidden clip so the bar
+             can span the full main-content width without margin tricks.
+             Empty in non-project views; ProjectDetailView is the only
+             current consumer. -->
+        <div id="project-footer-slot" class="project-footer-slot"></div>
       </div>
     </main>
     </div>
@@ -491,6 +497,26 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* PAI-359 — Teleport target for ProjectDetailView's footer bar. Sits
+   below .view-body and uses negative inline margins to escape
+   .main-content's 2rem 2.5rem padding so the bar is full-width
+   relative to the main-content viewport. The slot is empty (and
+   visually invisible) when no project page is mounted. */
+.project-footer-slot {
+  flex-shrink: 0;
+  margin-left: -2.5rem;
+  margin-right: -2.5rem;
+  margin-bottom: -.5rem;
+}
+.main-content:not(:has(.view-body--self-scroll)) .project-footer-slot {
+  /* Page-scroll views (Settings, IssueDetail, …) keep the .main-content
+     bottom padding at 2rem; trim the slot's bottom escape there. */
+  margin-bottom: -2rem;
+}
+.project-footer-slot:empty {
+  display: none;
 }
 
 /* ── 2FA warning ─────────────────────────────────────────────────────────── */

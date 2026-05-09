@@ -1,29 +1,37 @@
 <script setup lang="ts">
-// PAI-356 — Project-page footer bar. Replaces PAI-339's top tab strip
-// with a quiet bottom-anchored switcher. Three tabs (Issues / Overview
-// / Knowledge), counters, sticky-inside-content (NOT viewport-fixed)
-// so it cohabits with the global SidebarFooter without competing for
-// the same chrome slot — see PAI-280.
+// PAI-356 / PAI-359 — Project-page footer bar. Six mutually-exclusive
+// tabs in one continuous row: the three primary content modes
+// (Issues / Overview / Knowledge) plus the three workspace surfaces
+// the legacy aux-panel dock used to host (Docs / Coop / Context).
+// PAI-359 collapses the dock pattern into peer tabs so there's one
+// canonical project-navigation surface, not two stacked rows.
 //
-// Active-state cue is a 2px green TOP-border so the cue points UP
-// toward the content the tab governs (mirrors PAI-339's bottom-border
-// inversion). Counters render as muted badges next to Issues and
-// Knowledge; null counts hide the badge entirely so the bar stays
-// uncluttered while data loads.
+// Counters: numbers for tabs that have a meaningful count (Issues,
+// Knowledge, Docs, Context-as-repo-count); a tiny dot for boolean
+// "populated" state (Coop). null/undefined hides the badge entirely.
 
 import { computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 
-export type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge'
+export type ProjectPrimaryTab =
+  | 'issues'
+  | 'overview'
+  | 'knowledge'
+  | 'docs'
+  | 'coop'
+  | 'context'
 
 const props = defineProps<{
   modelValue: ProjectPrimaryTab
-  // Server-supplied counts from GET /api/projects/:id `counts`.
-  // null = not loaded yet (hide the badge); 0 = loaded but empty
-  // (still show, in muted form, so the user knows the count is zero
-  // rather than missing).
+  // Numeric counters — null hides the badge entirely.
   openIssues?: number | null
   knowledgeEntries?: number | null
+  docsCount?: number | null
+  contextRepos?: number | null
+  // Boolean "populated" state for tabs whose data is non-numeric
+  // (Cooperation = a structured summary, not a list count). When true
+  // the tab renders a small filled dot; when false/null no badge.
+  coopPopulated?: boolean | null
 }>()
 
 const emit = defineEmits<{
@@ -35,12 +43,17 @@ interface TabSpec {
   label: string
   icon: string
   count?: number | null
+  // Render a small filled dot in lieu of a numeric count.
+  dot?: boolean
 }
 
 const tabs = computed<TabSpec[]>(() => [
-  { key: 'issues',    label: 'Issues',    icon: 'layout-list', count: props.openIssues       ?? null },
-  { key: 'overview',  label: 'Overview',  icon: 'house',       count: null                          },
-  { key: 'knowledge', label: 'Knowledge', icon: 'book-open',   count: props.knowledgeEntries ?? null },
+  { key: 'issues',    label: 'Issues',    icon: 'layout-list',    count: props.openIssues       ?? null                  },
+  { key: 'overview',  label: 'Overview',  icon: 'house',          count: null                                            },
+  { key: 'knowledge', label: 'Knowledge', icon: 'book-open',      count: props.knowledgeEntries ?? null                  },
+  { key: 'docs',      label: 'Docs',      icon: 'file-text',      count: props.docsCount        ?? null                  },
+  { key: 'coop',      label: 'Coop',      icon: 'handshake',      dot: props.coopPopulated === true                       },
+  { key: 'context',   label: 'Context',   icon: 'git-branch',     count: props.contextRepos     ?? null                  },
 ])
 
 function select(t: ProjectPrimaryTab) {
@@ -67,6 +80,7 @@ function select(t: ProjectPrimaryTab) {
         class="pfb__count"
         :class="{ 'pfb__count--zero': t.count === 0 }"
       >{{ t.count }}</span>
+      <span v-else-if="t.dot" class="pfb__dot" aria-label="populated"></span>
     </button>
   </nav>
 </template>
@@ -79,19 +93,18 @@ function select(t: ProjectPrimaryTab) {
    matches the app header / subheader rule). Neutral active state —
    no green/blue tint; just a soft surface bg + bold weight, mirroring
    the sidebar nav-item treatment so the chrome reads as one family. */
+/* PAI-359 — the bar renders into a Teleport target inside
+   .main-content (`#project-footer-slot`), which lives OUTSIDE the
+   .view-body--self-scroll's `overflow: hidden` clip. Natural
+   `width: 100%` of .main-content; no negative-margin escape needed.
+   The slot lives below .view-body so the bar pins to the viewport
+   bottom of the project page. */
 .pfb {
   display: flex;
   align-items: stretch;
   gap: 0;
   height: 36px;
-  margin-top: auto;
-  /* AppLayout's .main-content has padding: 2rem 2.5rem; self-scroll
-     views trim bottom to .5rem (AppLayout.vue:473). Escape both with
-     negative margins so the bar spans the full project page width
-     and pins to the viewport bottom — no white gutters at the edges. */
-  margin-left: -2.5rem;
-  margin-right: -2.5rem;
-  margin-bottom: -.5rem;
+  width: 100%;
   padding: 0 2.5rem;
   background: var(--bg-card, var(--bg, #fff));
   border-top: 1px solid var(--border);
@@ -164,6 +177,22 @@ function select(t: ProjectPrimaryTab) {
 
 .pfb__count--zero {
   opacity: .45;
+}
+
+/* Boolean "populated" indicator for tabs with non-numeric state
+   (currently only Coop). Same colour family as the count badges so
+   the chrome stays cohesive; sized to read as a status dot, not a
+   pill. Hides automatically when the prop is false. */
+.pfb__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.pfb__tab--active .pfb__dot {
+  background: var(--text);
 }
 
 /* Mobile — three labelled tabs at 375px fit at ~125px each.

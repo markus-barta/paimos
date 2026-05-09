@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] — 2026-05-09
+
+Footer-bar IA collapse (PAI-359). Six tabs in one continuous full-width row. Breaking UX change vs. v3.0.1.
+
+### Changed (BREAKING UX)
+
+- **PAI-359** — `ProjectFooterBar` extends from 3 to 6 tabs in one row: **Issues / Overview / Knowledge / Docs / Coop / Context**. Same neutral active-tint, same SSOT counts. The legacy `.pd-workspaces` rail (Docs/Coop/Context as slide-in dock toggles, PAI-279) is **deleted**. Users who hit the dock pattern now see Docs/Coop/Context as full-page peer views — clicking Docs replaces the IssueList view rather than opening a panel beside it. Trade-off accepted: the dock was already half-broken (only rendered on the Issues tab); the unified IA is one canonical project-navigation surface.
+- **PAI-359** — Footer bar's full-width clip fixed via `<Teleport to="#project-footer-slot">`. The slot lives in `AppLayout` outside `.view-body--self-scroll`'s `overflow:hidden` so the bar spans the entire `.main-content` width without margin tricks.
+
+### Removed
+
+- `frontend/src/composables/useProjectAuxPanels.ts` — orphaned composable from PAI-279's dock pattern; not consumed outside its own test file.
+- `.pd-workspaces`, `.pd-workspace-dock`, `.pd-workspace-rail`, `.pd-context-overview`, related transitions and media queries (~150 lines of scoped CSS).
+- `useSidePanelExclusion` imports from `ProjectDetailView` — primaryTab is mutually exclusive by construction.
+
+### Notes
+
+- `?tab=docs|coop|context` deep-links resolve correctly against the new tab keys.
+- Counters for Docs / Coop / Context populate via the always-mounted sentinel components (existing `@count` / `@populated` emits, just routed to the footer instead of the rail).
+
 ## [3.0.1] — 2026-05-09
 
 CI-only fix on top of v3.0.0. v3.0.0's tag never produced a Docker image because the dogfood-anchor verifier (`paimos anchors verify`) flagged `PAI-72` as an orphaned anchor pointing at the now-deleted `backend/cmd/paimos/cmd_manifest.go:39`. PAI-72 was the manifest mirror command; the file was removed in PAI-358 along with the rest of the legacy manifest surface, but its entry in `.pmo/anchors.json` survived the deletion. v3.0.1 carries the same code as v3.0.0 plus the index update.
