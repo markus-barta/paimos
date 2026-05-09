@@ -236,6 +236,19 @@ func issueUpdateCmd() *cobra.Command {
 		closeNote     string
 		closeNoteFile string
 		dryRun        bool
+		// PAI-343 — opt-in lesson-capture flags. When --draft-memory
+		// is set on a terminal-status transition, the CLI will create
+		// a memory entry on the project and link it back to the
+		// closing ticket via the same /relations endpoint the UI uses.
+		draftMemory     bool
+		memoryRule      string
+		memoryWhy       string
+		memoryWhyFile   string
+		memoryHow       string
+		memoryHowFile   string
+		memoryType      string
+		memoryTags      string
+		memorySlug      string
 	)
 	c := &cobra.Command{
 		Use:   "update <ref>",
@@ -248,6 +261,17 @@ invoiced / cancelled), passing --close-note or --close-note-file also
 appends a formatted comment so the "why" is captured in the history
 alongside the status change. The two actions aren't atomic at the API
 level, but the failure window is tiny and errors are reported clearly.
+
+PAI-343 — when closing a ticket that taught a lesson, opt into the
+memory-authoring flow by passing --draft-memory along with
+--memory-rule (one-sentence rule), --memory-why-file (cause +
+reasoning), --memory-how-file (when to apply), and optionally
+--memory-type (feedback / project / reference; default feedback) and
+--memory-tags (comma-separated). The CLI then creates a memory entry
+under the ticket's project and links it back to the closing ticket
+the same way the UI does. If the trigger detection endpoint says
+the ticket doesn't qualify, the CLI just prints a one-line hint and
+exits without creating anything.
 
 Use --dry-run to print the payload without sending.`,
 		Args: cobra.ExactArgs(1),
@@ -373,6 +397,24 @@ Use --dry-run to print the payload without sending.`,
 				}
 			}
 
+			// PAI-343 — lesson-capture handling. Two paths:
+			//  - --draft-memory passed: build the memory + relation
+			//    headlessly using --memory-* flag values.
+			//  - terminal status without --draft-memory: ask the trigger
+			//    detection endpoint and print a one-line hint when the
+			//    server says this ticket teaches a lesson. Doesn't block.
+			if status != "" && terminalStatuses[status] {
+				if draftMemory {
+					if err := runDraftMemoryFlow(client, ref, memoryRule,
+						memoryWhy, memoryWhyFile, memoryHow, memoryHowFile,
+						memoryType, memoryTags, memorySlug); err != nil {
+						return reportError(err)
+					}
+				} else if !flagJSON {
+					maybePrintLessonCaptureHint(client, ref)
+				}
+			}
+
 			if flagJSON {
 				return emitJSON(map[string]any{"ok": true, "ref": ref})
 			}
@@ -396,6 +438,18 @@ Use --dry-run to print the payload without sending.`,
 	c.Flags().StringVar(&closeNote, "close-note", "", "single-line close-note (requires --status terminal)")
 	c.Flags().StringVar(&closeNoteFile, "close-note-file", "", "path to close-note file (requires --status terminal)")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "print the payload without sending")
+	// PAI-343 — lesson-capture flags. All optional unless --draft-memory
+	// is passed, in which case --memory-rule is required (the rule is
+	// the memory's title + slug input).
+	c.Flags().BoolVar(&draftMemory, "draft-memory", false, "draft a memory entry from this ticket close (requires --status terminal)")
+	c.Flags().StringVar(&memoryRule, "memory-rule", "", "rule (one sentence) — required with --draft-memory")
+	c.Flags().StringVar(&memoryWhy, "memory-why", "", "why (cause + reasoning) — inline; mutually exclusive with --memory-why-file")
+	c.Flags().StringVar(&memoryWhyFile, "memory-why-file", "", "path to memory why-body (or - for stdin)")
+	c.Flags().StringVar(&memoryHow, "memory-how", "", "how to apply (when to act on this) — inline; mutually exclusive with --memory-how-file")
+	c.Flags().StringVar(&memoryHowFile, "memory-how-file", "", "path to memory how-body (or - for stdin)")
+	c.Flags().StringVar(&memoryType, "memory-type", "feedback", "memory type (feedback / project / reference)")
+	c.Flags().StringVar(&memoryTags, "memory-tags", "", "comma-separated memory tags")
+	c.Flags().StringVar(&memorySlug, "memory-slug", "", "memory slug (auto-suggested from --memory-rule when omitted)")
 	registerEnumCompletions(c, "status", "type", "priority")
 	return c
 }

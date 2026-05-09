@@ -343,6 +343,8 @@ func buildRouter() http.Handler {
 			r.Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
 			// PAI-342 — applicable memories (read-only convenience).
 			r.Get("/issues/{id}/applicable-memories", handlers.ListApplicableMemories)
+			// PAI-343 — lesson-capture trigger detection.
+			r.Get("/issues/{id}/lesson-capture-prompt", handlers.LessonCapturePrompt)
 
 			// Reports
 			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)

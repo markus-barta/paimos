@@ -71,6 +71,8 @@ import IssueMetaGrid from "@/components/issue/IssueMetaGrid.vue";
 import IssueEditSidebar from "@/components/issue/IssueEditSidebar.vue";
 import IssueBillingSummary from "@/components/issue/IssueBillingSummary.vue";
 import IssueCompleteEpicModal from "@/components/issue/IssueCompleteEpicModal.vue";
+import LessonCaptureModal from "@/components/issue/LessonCaptureModal.vue";
+import { getLessonCapturePrompt } from "@/services/lessonCapture";
 import IssueDetailBody from "@/components/issue/IssueDetailBody.vue";
 import IssueDetailFooter from "@/components/issue/IssueDetailFooter.vue";
 import IssueTextEditField from "@/components/issue/IssueTextEditField.vue";
@@ -334,6 +336,9 @@ async function save() {
   }
   saveError.value = "";
   saving.value = true;
+  // Capture prior status BEFORE the save so the post-save hook
+  // (PAI-343 lesson capture) can detect a terminal-state transition.
+  const prevStatus = issue.value?.status ?? "";
   try {
     issue.value = await saveIssueDetail(issueId.value, form.value);
     parentIssue.value = issue.value.parent_id
@@ -351,6 +356,10 @@ async function save() {
       releases.value = [...releases.value, rel].sort((a, b) =>
         a.localeCompare(b),
       );
+    // PAI-343 — post-save trigger check. Runs only when the ticket
+    // actually moved into a terminal state during this save. Failures
+    // are silent — capturing is opt-in and additive.
+    void maybeOfferLessonCapture(prevStatus, issue.value.status);
   } catch (e: unknown) {
     saveError.value = errMsg(e, "Save failed.");
   } finally {
@@ -405,6 +414,43 @@ const completeEpicRef = ref<InstanceType<typeof IssueCompleteEpicModal> | null>(
 function onEpicCompleted(updated: Issue, ch: Issue[]) {
   issue.value = updated;
   children.value = ch;
+}
+
+// ── Lesson capture (PAI-343) ──────────────────────────────────────────────
+//
+// When a status transition lands the ticket in a terminal state and
+// the server-side trigger fires, we surface the lesson-capture
+// modal post-save. The modal is opt-in — declining doesn't roll
+// back the status transition.
+const TERMINAL_STATUSES_FOR_CAPTURE: ReadonlySet<string> = new Set([
+  "done",
+  "delivered",
+  "cancelled",
+]);
+const lessonCaptureOpen = ref(false);
+const lessonCaptureSuggestedName = ref("");
+const lessonCaptureReason = ref("");
+const lessonCaptureTicketKey = ref("");
+
+async function maybeOfferLessonCapture(prevStatus: string, nextStatus: string) {
+  if (prevStatus === nextStatus) return;
+  if (!TERMINAL_STATUSES_FOR_CAPTURE.has(nextStatus)) return;
+  if (!issue.value) return;
+  const prompt = await getLessonCapturePrompt(issue.value.id);
+  if (!prompt.should_prompt) return;
+  lessonCaptureSuggestedName.value = prompt.suggested_name || "";
+  lessonCaptureReason.value = prompt.reason || "";
+  lessonCaptureTicketKey.value =
+    prompt.ticket_key || issue.value.issue_key || "";
+  lessonCaptureOpen.value = true;
+}
+
+function onLessonCaptureClose() {
+  lessonCaptureOpen.value = false;
+}
+
+function onLessonCaptureSaved(_payload: { memoryId: number; slug: string }) {
+  lessonCaptureOpen.value = false;
 }
 
 // ── Inline file paste/drop (ACME-1 / 581 / 583 / 584 / 585) ──────────────
@@ -1522,6 +1568,17 @@ async function cancelEdit() {
     :issue-key="issue?.issue_key ?? ''"
     :children="children"
     @completed="onEpicCompleted"
+  />
+
+  <LessonCaptureModal
+    :open="lessonCaptureOpen"
+    :project-id="issue?.project_id ?? null"
+    :ticket-id="issueId"
+    :ticket-key="lessonCaptureTicketKey"
+    :suggested-name="lessonCaptureSuggestedName"
+    :reason="lessonCaptureReason"
+    @close="onLessonCaptureClose"
+    @saved="onLessonCaptureSaved"
   />
 </template>
 
