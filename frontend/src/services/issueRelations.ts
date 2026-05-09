@@ -1,7 +1,18 @@
 import { api, type RequestOptions } from '@/api/client'
 import type { IssueRelation } from '@/types'
 
-export type IssueRelationType = 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related' | 'sprint' | 'groups'
+export type IssueRelationType =
+  | 'depends_on'
+  | 'impacts'
+  | 'follows_from'
+  | 'blocks'
+  | 'related'
+  | 'sprint'
+  | 'groups'
+  // PAI-342: ticket → memory link. Source is the ticket, target is the
+  // memory issue. The reverse direction surfaces in the same row when
+  // the memory side queries its own /relations endpoint.
+  | 'applies_to_memory'
 
 export function loadIssueRelations(issueId: number): Promise<IssueRelation[]> {
   return api.get<IssueRelation[]>(`/issues/${issueId}/relations`)

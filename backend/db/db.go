@@ -4312,6 +4312,34 @@ func migrate(db *sql.DB) error {
 
 			`PRAGMA foreign_keys=ON`,
 		}},
+
+		// M97 / PAI-342: extend issue_relations.type CHECK with the new
+		// 'applies_to_memory' type. Issue → memory links live as a
+		// single relation row (source = issue, target = memory entry).
+		// The reverse direction (memory → originating tickets) is a
+		// query against the same table, no second row needed.
+		// SQLite can't ALTER a CHECK constraint, so the usual
+		// rename + recreate + copy dance — same pattern as M67.
+		{97, []string{
+			`ALTER TABLE issue_relations RENAME TO issue_relations_old97`,
+			`CREATE TABLE issue_relations (
+				source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				type      TEXT NOT NULL
+				          CHECK(type IN ('groups','sprint','depends_on','impacts',
+				                         'follows_from','blocks','related',
+				                         'applies_to_memory')),
+				rank      INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (source_id, target_id, type)
+			)`,
+			`INSERT OR IGNORE INTO issue_relations
+			 SELECT source_id, target_id, type, rank FROM issue_relations_old97`,
+			`DROP TABLE issue_relations_old97`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_source
+			 ON issue_relations(source_id, type)`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
+			 ON issue_relations(target_id, type)`,
+		}},
 	}
 
 	for _, m := range migrations {

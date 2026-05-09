@@ -411,7 +411,8 @@ export interface IssueRelation {
   // follows_from: source = spin-off, target = predecessor (PAI-89).
   // blocks:       source = blocker, target = blocked (PAI-89).
   // related:      loose "see also" — direction is cosmetic (PAI-89).
-  type: 'groups' | 'sprint' | 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'
+  // applies_to_memory: source = ticket, target = memory entry (PAI-342).
+  type: 'groups' | 'sprint' | 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related' | 'applies_to_memory'
   target_key?: string
   target_title?: string
   // "outgoing" when the issue whose /relations endpoint was called is

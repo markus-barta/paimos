@@ -10,7 +10,7 @@
 // coordinating with this file.
 
 import { computed, ref, watch } from 'vue'
-import type { KnowledgeCategory, KnowledgeEntryInput } from '@/types'
+import type { KnowledgeCategory, KnowledgeEntryInput, IssueRelation } from '@/types'
 import { useMarkdown } from '@/composables/useMarkdown'
 import {
   archivedStatusValue,
@@ -18,6 +18,9 @@ import {
   suggestSlug,
   validateKnowledgeSlug,
 } from '@/services/projectKnowledge'
+import { loadIssueRelations, removeIssueRelation } from '@/services/issueRelations'
+import { useAuthStore } from '@/stores/auth'
+import { useConfirm } from '@/composables/useConfirm'
 
 const props = defineProps<{
   category: KnowledgeCategory
@@ -32,6 +35,13 @@ const props = defineProps<{
   // hasn't manually edited the slug. Existing-entry edits leave the
   // slug alone so renames are explicit, never accidental.
   autosuggestSlug: boolean
+  // PAI-342 — when editing an existing memory entry, the parent passes
+  // the underlying issue id so this editor can render the live
+  // "Originating Tickets" section (issues linked via the
+  // applies_to_memory relation, reverse direction). Optional —
+  // create-mode + non-memory categories pass undefined.
+  entryId?: number
+  projectId?: number
 }>()
 
 const emit = defineEmits<{
@@ -71,6 +81,68 @@ const runbookRelatedAgents = ref(arrayFromMeta(metadata.value, 'related_agents')
 const runbookAgentsInput = ref(runbookRelatedAgents.value.join(', '))
 
 const guidelineRule = ref(stringFromMeta(metadata.value, 'rule', ''))
+
+// ── PAI-342: Originating Tickets (memory only) ──────────────────────
+//
+// Pulls live reverse-direction rows from /api/issues/:memoryId/
+// relations?type=applies_to_memory. The `metadata.originating_tickets`
+// array remains the curated list (free-text keys, may include
+// cross-instance refs); the live list reflects the in-instance graph
+// and supplements it. Both surfaces stay visible — the curated array
+// covers PAI-338's documented contract (cross-instance refs), the
+// live list covers the bidirectional UX PAI-342 promises.
+
+const auth = useAuthStore()
+const { confirm } = useConfirm()
+const linkedTickets = ref<IssueRelation[]>([])
+const linkedTicketsError = ref('')
+
+async function loadOriginatingTickets() {
+  if (props.category !== 'memory' || !props.entryId) {
+    linkedTickets.value = []
+    return
+  }
+  try {
+    const all = await loadIssueRelations(props.entryId)
+    // Reverse direction: the issue endpoint surfaces rows where the
+    // memory is the target side (direction='incoming' from the
+    // memory's perspective). Filter to type='applies_to_memory' so
+    // any other relation types that might land on a memory entry
+    // (parent links, etc.) don't pollute this view.
+    linkedTickets.value = all.filter(
+      (r) => r.type === 'applies_to_memory' && r.direction === 'incoming',
+    )
+  } catch {
+    linkedTickets.value = []
+  }
+}
+
+void loadOriginatingTickets()
+watch(() => props.entryId, () => loadOriginatingTickets())
+
+const canEditLinks = computed(() => auth.user?.role === 'admin')
+
+async function unlinkTicket(rel: IssueRelation) {
+  if (!props.entryId) return
+  if (!await confirm({ message: `Unlink ${rel.target_key ?? 'this ticket'} from this memory?`, confirmLabel: 'Unlink' })) return
+  try {
+    // Mirror the original direction: the underlying row has the
+    // ticket as source and the memory as target, so we POST against
+    // the ticket id (rel.source_id) — not the memory.
+    await removeIssueRelation(rel.source_id, props.entryId, 'applies_to_memory')
+    linkedTickets.value = linkedTickets.value.filter(
+      (r) => !(r.source_id === rel.source_id && r.target_id === rel.target_id && r.type === rel.type),
+    )
+  } catch (e: unknown) {
+    linkedTicketsError.value = e instanceof Error ? e.message : 'Failed to unlink ticket.'
+  }
+}
+
+function ticketRoute(rel: IssueRelation): string {
+  return props.projectId
+    ? `/projects/${props.projectId}/issues/${rel.source_id}`
+    : `/issues/${rel.source_id}`
+}
 
 // Markdown preview toggle — defaults to off in v1 (textarea-only is
 // "good enough" per PAI-339's out-of-scope list) but the toggle keeps
@@ -253,9 +325,33 @@ watch(
           <input v-model="memoryEnvironmentsInput" type="text" placeholder="staging, prod" />
         </div>
         <div class="ke-field">
-          <label>Originating tickets <span class="ke-hint">comma-separated keys</span></label>
+          <label>Originating tickets <span class="ke-hint">comma-separated keys (free-text, cross-instance OK)</span></label>
           <input v-model="memoryTicketsInput" type="text" placeholder="PAI-339, PAI-353" class="ke-mono" />
         </div>
+      </div>
+
+      <!-- PAI-342: Live reverse-direction view of issues linked via the
+           `applies_to_memory` relation. Distinct from the free-text
+           array above — this is the in-instance graph. Only renders
+           for an existing entry (entryId set). -->
+      <div v-if="entryId && linkedTickets.length" class="ke-field">
+        <label>Linked from tickets <span class="ke-hint">live, in-instance</span></label>
+        <div class="ke-ticket-chips">
+          <div v-for="rel in linkedTickets" :key="`${rel.source_id}-${rel.target_id}`" class="ke-ticket-chip">
+            <a :href="ticketRoute(rel)" class="ke-ticket-key">
+              {{ rel.target_key || rel.source_id }}
+            </a>
+            <span v-if="rel.target_title" class="ke-ticket-title">{{ rel.target_title }}</span>
+            <button
+              v-if="canEditLinks"
+              type="button"
+              class="ke-ticket-del"
+              title="Unlink"
+              @click="unlinkTicket(rel)"
+            >×</button>
+          </div>
+        </div>
+        <span v-if="linkedTicketsError" class="ke-field-error">{{ linkedTicketsError }}</span>
       </div>
     </template>
 
@@ -379,6 +475,19 @@ watch(
 .ke-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
 .ke-actions-spacer { flex: 1; }
 .ke-error { color: #b42318; font-size: 12px; }
+
+/* PAI-342: linked-tickets reverse-direction chips. */
+.ke-ticket-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ke-ticket-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  background: var(--surface-2, var(--bg-card)); border: 1px solid var(--border);
+  border-radius: 6px; padding: .2rem .5rem; font-size: 12px;
+}
+.ke-ticket-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: var(--bp-blue); text-decoration: none; }
+.ke-ticket-key:hover { text-decoration: underline; }
+.ke-ticket-title { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ke-ticket-del { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; padding: 0 .15rem; border-radius: 3px; }
+.ke-ticket-del:hover { color: #c0392b; }
 
 /* Mobile: 375px viewport. Stack rows so labels + inputs each get a
    full line; otherwise inputs collapse below their min-content. */

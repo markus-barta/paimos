@@ -365,6 +365,13 @@ func main() {
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/members", handlers.ListIssuesByRelation)
 
+			// PAI-342: applicable memories. Read-only convenience over
+			// issue_relations(type='applies_to_memory') with an optional
+			// `?suggest=1` mode that scores up to 3 candidates the
+			// ticket isn't yet linked to. Mutations reuse the relations
+			// endpoints above with the same type discriminator.
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/applicable-memories", handlers.ListApplicableMemories)
+
 			// Time entries (v2)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)

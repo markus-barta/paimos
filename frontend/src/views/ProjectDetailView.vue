@@ -174,10 +174,28 @@ function onMenuEdit() { closeOverflow(); openEdit() }
 // preserve the existing UX — daily users hit /projects/:id and
 // expect the issue list, not a marketing card.
 type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge'
-const primaryTab = ref<ProjectPrimaryTab>('issues')
+// Honor `?tab=knowledge` query param so deep-links from elsewhere
+// (e.g. the IssueDetail "Applicable Memories" panel — PAI-342)
+// land on the right tab without requiring a manual click.
+const initialTab: ProjectPrimaryTab = (() => {
+  const t = route.query.tab
+  if (t === 'overview' || t === 'knowledge' || t === 'issues') return t
+  return 'issues'
+})()
+const primaryTab = ref<ProjectPrimaryTab>(initialTab)
 function setPrimaryTab(t: ProjectPrimaryTab) {
   primaryTab.value = t
 }
+// PAI-342 — deep-link target for the Knowledge tab. When present
+// (e.g. ?tab=knowledge&memory=feedback_lock_signature), the
+// Knowledge panel auto-selects the memory category and opens the
+// matching slug in edit mode. ProjectKnowledgeTab reads this prop
+// and clears it on first activation so subsequent tab switches
+// don't re-open the editor.
+const initialKnowledgeSlug = computed<string>(() => {
+  const m = route.query.memory
+  return typeof m === 'string' ? m : ''
+})
 
 // ── Admin-default views as tabs ───────────────────────────────────────────────
 
@@ -847,6 +865,7 @@ watch(
         v-else-if="primaryTab === 'knowledge'"
         :project-id="projectId"
         :can-write="isAdmin && canEditProject"
+        :initial-memory-slug="initialKnowledgeSlug"
       />
 
       <section v-if="primaryTab === 'issues'" class="pd-workspaces">

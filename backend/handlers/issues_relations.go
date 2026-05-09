@@ -112,9 +112,13 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 		"groups": true, "sprint": true, "depends_on": true, "impacts": true,
 		// PAI-89: directional types for spin-offs, blockers, and loose "see also".
 		"follows_from": true, "blocks": true, "related": true,
+		// PAI-342: ticket → memory link. The reverse direction (memory →
+		// originating tickets) is a query against this same table, so
+		// adding/removing a single row keeps both views consistent.
+		"applies_to_memory": true,
 	}
 	if !validTypes[body.Type] {
-		jsonError(w, "type must be one of: groups, sprint, depends_on, impacts, follows_from, blocks, related", http.StatusBadRequest)
+		jsonError(w, "type must be one of: groups, sprint, depends_on, impacts, follows_from, blocks, related, applies_to_memory", http.StatusBadRequest)
 		return
 	}
 	if sourceID == body.TargetID {

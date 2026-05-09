@@ -17,6 +17,11 @@ import type { KnowledgeCategory } from '@/types'
 const props = defineProps<{
   projectId: number
   canWrite: boolean
+  // PAI-342 — when an outer route (e.g. an IssueDetail link) opens the
+  // tab with `?memory=:slug`, auto-select the memory category and pass
+  // the slug down so the panel opens it in edit mode. Empty string
+  // means "no deep-link target".
+  initialMemorySlug?: string
 }>()
 
 interface CategoryDef {
@@ -34,7 +39,11 @@ const categories: CategoryDef[] = [
   { key: 'guideline', label: 'Guidelines', icon: 'shield-check', blurb: 'Lightweight normative rules surfaced in agent prompts.' },
 ]
 
-const activeCategory = ref<KnowledgeCategory>('memory')
+const activeCategory = ref<KnowledgeCategory>(
+  // Deep-link to a memory? Make sure the memory tab is the one that
+  // mounts, otherwise the slug-prop never reaches a panel.
+  props.initialMemorySlug ? 'memory' : 'memory',
+)
 const search = ref('')
 // Counts per category, populated by panel @count emits. Showing the
 // number in the tab strip helps users find the populated category
@@ -106,6 +115,7 @@ const activeDef = computed(() => categories.find((c) => c.key === activeCategory
       :category="c.key"
       :search-query="search"
       :can-write="canWrite"
+      :initial-slug="c.key === 'memory' ? (initialMemorySlug ?? '') : ''"
       @count="(n: number) => onCountUpdate(c.key, n)"
     />
   </div>
