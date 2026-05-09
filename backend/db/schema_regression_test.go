@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 100
+const latestSchemaVersion = 101
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -139,6 +139,14 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "issues", "last_referenced_at") {
 		t.Fatal("expected issues.last_referenced_at to exist (PAI-347 / M100)")
+	}
+	// PAI-354 / M101 — agent attribution on mutation_log rows.
+	// session_id has lived here since M83; agent_name is the new arrival.
+	if !columnExists(t, db, "mutation_log", "agent_name") {
+		t.Fatal("expected mutation_log.agent_name to exist (PAI-354 / M101)")
+	}
+	if !columnExists(t, db, "mutation_log", "session_id") {
+		t.Fatal("expected mutation_log.session_id to exist (PAI-354 / M101)")
 	}
 }
 

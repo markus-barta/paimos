@@ -4402,6 +4402,24 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE issues ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0`,
 			`ALTER TABLE issues ADD COLUMN last_referenced_at TEXT`,
 		}},
+
+		// M101 / PAI-354: agent + session attribution on mutation_log
+		// rows. Mirrors M93's split on issue_history — two nullable
+		// TEXT columns, no backfill, existing rows stay NULL. Write
+		// endpoints persist X-Paimos-Agent-Name + X-Paimos-Session-Id
+		// (the latter already lived on this table as `session_id` from
+		// M83, but only via the mutation handler — the new column
+		// `agent_name` is the new arrival). Length cap is enforced
+		// application-side at 64 chars (handlers.agentAttrCap) before
+		// the INSERT; SQLite ALTER TABLE can't add CHECK retroactively.
+		// PAI-209 undo/redo continues to work — the new column is
+		// purely informational.
+		//
+		// NOTE: `session_id` already exists on mutation_log from M83 —
+		// only `agent_name` is added here.
+		{101, []string{
+			`ALTER TABLE mutation_log ADD COLUMN agent_name TEXT`,
+		}},
 	}
 
 	for _, m := range migrations {
