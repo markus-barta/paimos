@@ -160,6 +160,15 @@ function cancelEdit() {
   saveError.value = ''
 }
 
+// PAI-345: after a successful promote, the source row is soft-deleted
+// on the server. Drop the editor and re-load so the list reflects the
+// new state. The promoted entry now lives at user / instance scope —
+// surfacing it from the project panel would be misleading.
+async function onPromoted() {
+  cancelEdit()
+  await load()
+}
+
 async function onSave(payload: KnowledgeEntryInput) {
   saving.value = true
   saveError.value = ''
@@ -399,6 +408,7 @@ onMounted(() => {
             :autosuggest-slug="false"
             @save="onSave"
             @cancel="cancelEdit"
+            @promoted="onPromoted"
           />
         </template>
         <template v-else>
