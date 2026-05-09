@@ -743,3 +743,76 @@ func sameStringSet(a, b []string) bool {
 	}
 	return true
 }
+
+// ── PAI-345: cross-scope memory merge ────────────────────────────
+
+// TestMergeMemoryByScope_PrecedenceAndDedup pins the bundle merge:
+// project > user > instance precedence on slug collision, scope
+// field set on every survivor.
+func TestMergeMemoryByScope_PrecedenceAndDedup(t *testing.T) {
+	project := []knowledgeEntry{
+		{Slug: "imac_rule", Title: "Project iMac"},
+		{Slug: "deploy_creds", Title: "Project deploy creds"},
+	}
+	user := []knowledgeEntry{
+		// Collides with project — must drop in favour of project.
+		{Slug: "imac_rule", Title: "User iMac"},
+		// Unique — survives.
+		{Slug: "no_cat_secrets", Title: "User: no cat secrets"},
+	}
+	instance := []knowledgeEntry{
+		// Collides with user — must drop.
+		{Slug: "no_cat_secrets", Title: "Instance: no cat"},
+		// Unique — survives.
+		{Slug: "use_paimos_cli", Title: "Instance: use paimos CLI"},
+	}
+
+	merged := mergeMemoryByScope(project, user, instance)
+	if len(merged) != 4 {
+		t.Fatalf("expected 4 entries after dedup, got %d", len(merged))
+	}
+
+	byScope := map[string]string{}
+	byTitle := map[string]string{}
+	for _, e := range merged {
+		byScope[e.Slug] = e.Scope
+		byTitle[e.Slug] = e.Title
+	}
+	if byScope["imac_rule"] != "project" {
+		t.Errorf("imac_rule should keep project precedence; got %q", byScope["imac_rule"])
+	}
+	if byTitle["imac_rule"] != "Project iMac" {
+		t.Errorf("imac_rule should retain project body; got %q", byTitle["imac_rule"])
+	}
+	if byScope["deploy_creds"] != "project" {
+		t.Errorf("deploy_creds: %q", byScope["deploy_creds"])
+	}
+	if byScope["no_cat_secrets"] != "user" {
+		t.Errorf("no_cat_secrets should be user-scoped (project absent); got %q", byScope["no_cat_secrets"])
+	}
+	if byTitle["no_cat_secrets"] != "User: no cat secrets" {
+		t.Errorf("no_cat_secrets should keep user body; got %q", byTitle["no_cat_secrets"])
+	}
+	if byScope["use_paimos_cli"] != "instance" {
+		t.Errorf("use_paimos_cli: %q", byScope["use_paimos_cli"])
+	}
+}
+
+// TestMergeMemoryByScope_EmptyInputs ensures the merge handles all-
+// nil / partial inputs without panicking. The bundle resolver feeds
+// nil slices for older servers without the user/instance endpoints.
+func TestMergeMemoryByScope_EmptyInputs(t *testing.T) {
+	if got := mergeMemoryByScope(nil, nil, nil); len(got) != 0 {
+		t.Errorf("nil/nil/nil → expected empty, got %d", len(got))
+	}
+	user := []knowledgeEntry{{Slug: "u1", Title: "u1"}}
+	got := mergeMemoryByScope(nil, user, nil)
+	if len(got) != 1 || got[0].Scope != "user" {
+		t.Errorf("user-only merge: %+v", got)
+	}
+	instance := []knowledgeEntry{{Slug: "i1", Title: "i1"}}
+	got = mergeMemoryByScope(nil, nil, instance)
+	if len(got) != 1 || got[0].Scope != "instance" {
+		t.Errorf("instance-only merge: %+v", got)
+	}
+}

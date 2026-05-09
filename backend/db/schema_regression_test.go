@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 98
+const latestSchemaVersion = 99
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -129,6 +129,10 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	if !columnExists(t, db, "issues", "category_metadata") {
 		t.Fatal("expected issues.category_metadata to exist (PAI-338 / M96)")
 	}
+	// PAI-345 / M99 — user_id column for cross-scope memory.
+	if !columnExists(t, db, "issues", "user_id") {
+		t.Fatal("expected issues.user_id to exist (PAI-345 / M99)")
+	}
 }
 
 func TestSchemaCreatesDatabaseFileInConfiguredDataDir(t *testing.T) {
@@ -179,6 +183,8 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_time_entries_mite_id",
 		// PAI-338 / M96 — slug uniqueness for the knowledge plane.
 		"idx_issues_type_slug_project",
+		// PAI-345 / M99 — user-scoped knowledge lookups.
+		"idx_issues_user_type",
 	} {
 		found, err := SchemaHasIndex(db, index)
 		if err != nil {

@@ -4364,6 +4364,38 @@ func migrate(db *sql.DB) error {
 			`CREATE INDEX IF NOT EXISTS idx_auto_watch_user_project ON auto_watch_subscriptions(user_id, project_id)`,
 			`CREATE INDEX IF NOT EXISTS idx_auto_watch_device ON auto_watch_subscriptions(device_id)`,
 		}},
+
+		// M99 / PAI-345: cross-scope memory promotion. Adds a nullable
+		// `user_id` column on `issues` so knowledge entries (type='memory'
+		// for v1; the column itself is type-agnostic) can be owned by a
+		// user instead of a project. Existing rows: NULL. Combined with
+		// the already-nullable `project_id`, three knowledge scopes fall
+		// out by WHERE clause:
+		//
+		//   project_id NOT NULL, user_id NULL          → project memory
+		//   project_id NULL,     user_id NOT NULL      → user memory
+		//   project_id NULL,     user_id NULL          → instance memory
+		//                                                (admin-only writes)
+		//
+		// The discriminator is enforced application-side (in
+		// handlers/knowledge_user.go and handlers/knowledge_instance.go),
+		// not via CHECK, so PAI-339's editor + PAI-349's bot drafts can
+		// mutate `category_metadata.scope` freely while the WHERE-clause
+		// invariant lives in one place.
+		//
+		// Index `(user_id, type)` keeps "all my user-scope memory"
+		// lookups O(log n) — the bundle resolver hits this on every
+		// `paimos session start --bundle full` call. Partial WHERE keeps
+		// the index small (most issues will never have user_id set).
+		//
+		// Adding the column via plain ALTER is safe in SQLite even for
+		// FKs (see M2/M22/M65 prior art); a full issues recreate would
+		// drag in the M96 child-table dance for no benefit since neither
+		// type CHECK nor status CHECK changes here.
+		{99, []string{
+			`ALTER TABLE issues ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+			`CREATE INDEX IF NOT EXISTS idx_issues_user_type ON issues(user_id, type) WHERE user_id IS NOT NULL`,
+		}},
 	}
 
 	for _, m := range migrations {

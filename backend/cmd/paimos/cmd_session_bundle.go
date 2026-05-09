@@ -78,6 +78,12 @@ func resolveBundleMode(raw string) (bundleMode, error) {
 // it needs — extra fields the server may add later round-trip
 // transparently because we re-encode using a generic map for the
 // `files` and `json` outputs.
+//
+// PAI-345 — the CLI annotates each entry with a `scope` field
+// ("project"|"user"|"instance") so downstream agents can
+// disambiguate cross-scope merges. The server itself doesn't emit
+// this field; the bundle resolver fills it in based on which
+// endpoint the entry came from.
 type knowledgeEntry struct {
 	ID        int64          `json:"id"`
 	ProjectID int64          `json:"project_id"`
@@ -89,6 +95,10 @@ type knowledgeEntry struct {
 	Metadata  map[string]any `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
+	// PAI-345: bundle-resolver-assigned scope discriminator. Empty
+	// when the entry pre-dates the cross-scope changes (treated as
+	// "project" for backwards-compat).
+	Scope string `json:"scope,omitempty"`
 }
 
 // bundlePayload is the canonical in-memory shape the resolver builds.
@@ -370,6 +380,51 @@ func fetchKnowledge(c *Client, projectID int64, alias string) ([]knowledgeEntry,
 	return entries, nil
 }
 
+// fetchScopedMemory pulls user-scope or instance-scope memory off
+// the matching endpoint. Failure is non-fatal: a server that pre-
+// dates PAI-345 returns 404, which we surface as an empty slice so
+// the bundle still renders. The caller decides whether to log.
+func fetchScopedMemory(c *Client, path string) []knowledgeEntry {
+	body, err := c.do("GET", path, nil)
+	if err != nil {
+		return nil
+	}
+	var entries []knowledgeEntry
+	if err := json.Unmarshal(body, &entries); err != nil {
+		return nil
+	}
+	return entries
+}
+
+// mergeMemoryByScope folds project / user / instance memory into a
+// single list with project > user > instance precedence on slug
+// collision. Each entry carries a `Scope` field so agents can tell
+// where a rule came from. Silent dedup: lower-precedence entries
+// with a slug already taken at higher precedence are dropped.
+//
+// The slug is the dedup key even though entries can technically
+// share a body/title across scopes — PAI-345's spec is explicit
+// that a project memory wins on slug collision and lower-precedence
+// duplicates are not surfaced.
+func mergeMemoryByScope(project, user, instance []knowledgeEntry) []knowledgeEntry {
+	out := make([]knowledgeEntry, 0, len(project)+len(user)+len(instance))
+	seen := map[string]bool{}
+	tag := func(list []knowledgeEntry, scope string) {
+		for _, e := range list {
+			if seen[e.Slug] {
+				continue
+			}
+			e.Scope = scope
+			out = append(out, e)
+			seen[e.Slug] = true
+		}
+	}
+	tag(project, "project")
+	tag(user, "user")
+	tag(instance, "instance")
+	return out
+}
+
 // fetchCurrentUserID returns the numeric id of the API-key-bearing
 // user. Failures are non-fatal: PAI-340's user-scope filter falls back
 // to "include all" when the id is unknown so a CI / unauthenticated
@@ -434,10 +489,22 @@ func resolveBundle(c *Client, project projectSummary, agentName string) (*bundle
 
 	currentUserID := fetchCurrentUserID(c)
 
+	// PAI-345 — pull cross-scope memory layers. These are best-effort:
+	// older servers without the new endpoints return 404, which the
+	// fetch helper translates to nil (empty list). The merge keeps
+	// project > user > instance precedence on slug collision.
+	userMemRaw := fetchScopedMemory(c, "/api/users/me/memory")
+	instanceMemRaw := fetchScopedMemory(c, "/api/instance/memory")
+
+	projectMem := filterMemory(memRaw, currentUserID, agentEnvs)
+	userMem := filterMemory(userMemRaw, currentUserID, agentEnvs)
+	instanceMem := filterMemory(instanceMemRaw, currentUserID, agentEnvs)
+	mergedMem := mergeMemoryByScope(projectMem, userMem, instanceMem)
+
 	bundle := &bundlePayload{
 		Project:         project,
 		Agent:           json.RawMessage(agentRaw),
-		Memory:          filterMemory(memRaw, currentUserID, agentEnvs),
+		Memory:          mergedMem,
 		Runbooks:        filterRunbooks(rbRaw, agentName),
 		ExternalSystems: filterAlwaysLive(exRaw),
 		RelatedProjects: filterAlwaysLive(rpRaw),

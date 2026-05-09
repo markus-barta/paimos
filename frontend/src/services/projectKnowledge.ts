@@ -118,6 +118,47 @@ export function deleteKnowledgeEntry(
   );
 }
 
+// ── PAI-345: cross-scope promotion ─────────────────────────────────
+
+// promoteMemory POSTs to /api/memory/:slug/promote so a project /
+// user / instance memory entry can be lifted to a higher scope. The
+// server creates a new row at the destination and soft-deletes the
+// source (history + tags + body preserved) — see knowledge_promote.go.
+//
+// Three destinations are valid:
+//   - "project"  — must include `to_project_id`
+//   - "user"     — current user's cross-project bucket
+//   - "instance" — server-wide; admin-only on the server side
+//
+// `from_project_id` is optional — when omitted the server walks
+// user > instance scope to locate the source. Pass it explicitly when
+// the caller knows the source is in a specific project; the editor
+// always knows that.
+export type MemoryScope = "project" | "user" | "instance";
+
+export interface PromoteMemoryRequest {
+  to: MemoryScope;
+  from_project_id?: number;
+  to_project_id?: number;
+}
+
+export interface PromoteMemoryResponse {
+  ok: boolean;
+  from_scope: MemoryScope;
+  to_scope: MemoryScope;
+  entry: KnowledgeEntry;
+}
+
+export function promoteMemory(
+  slug: string,
+  payload: PromoteMemoryRequest,
+): Promise<PromoteMemoryResponse> {
+  return api.post<PromoteMemoryResponse>(
+    `/memory/${encodeURIComponent(slug)}/promote`,
+    payload,
+  );
+}
+
 // ── derived state helpers ─────────────────────────────────────────
 
 // Status mapping per PAI-346 §"Status values": knowledge entries

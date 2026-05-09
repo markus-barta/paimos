@@ -17,6 +17,8 @@ import {
   activeStatusValue,
   suggestSlug,
   validateKnowledgeSlug,
+  promoteMemory,
+  type MemoryScope,
 } from '@/services/projectKnowledge'
 import { loadIssueRelations, removeIssueRelation } from '@/services/issueRelations'
 import { useAuthStore } from '@/stores/auth'
@@ -47,6 +49,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [payload: KnowledgeEntryInput]
   cancel: []
+  // PAI-345: emitted after a successful promote so the parent can
+  // refresh the list / dismiss the editor (the source row is
+  // soft-deleted, so staying on this view shows a stale entry).
+  promoted: [scope: MemoryScope]
 }>()
 
 const slug = ref(props.initial.slug ?? '')
@@ -183,6 +189,55 @@ const isArchived = computed(() => status.value === archivedStatusValue())
 
 function toggleArchived() {
   status.value = isArchived.value ? activeStatusValue() : archivedStatusValue()
+}
+
+// ── PAI-345: promotion (memory only) ───────────────────────────────
+//
+// "Current scope" detection: project_id > 0 → project (the editor
+// is hosted under /projects/:id, so this is the only branch the UI
+// currently exposes). user / instance scopes are reserved for the
+// dedicated user / instance editor surfaces (not built in v1 — but
+// the server-side machinery exists). The button row greys out the
+// current scope so the user can't pick a no-op promotion.
+const promoting = ref<MemoryScope | null>(null)
+const promoteError = ref('')
+const canPromote = computed(
+  () => props.category === 'memory' && props.currentSlug !== null && (props.projectId ?? 0) > 0,
+)
+const isAdmin = computed(() => auth.user?.role === 'admin')
+const currentScope = computed<MemoryScope>(() => {
+  // Editor is project-rooted in v1. Future: detect user / instance
+  // when the editor is reused on /users/me/memory or /instance/memory.
+  return 'project'
+})
+
+async function onPromote(target: MemoryScope) {
+  if (!canPromote.value || promoting.value) return
+  if (target === currentScope.value) return
+  if (!props.currentSlug) return
+  const label =
+    target === 'project'
+      ? 'project'
+      : target === 'user'
+        ? 'your user-scope memory (visible across all your projects)'
+        : 'instance-scope memory (visible to all users)'
+  if (!await confirm({
+    message: `Promote "${props.currentSlug}" to ${label}? The current entry will be archived.`,
+    confirmLabel: 'Promote',
+  })) return
+  promoting.value = target
+  promoteError.value = ''
+  try {
+    await promoteMemory(props.currentSlug, {
+      to: target,
+      from_project_id: props.projectId,
+    })
+    emit('promoted', target)
+  } catch (e: unknown) {
+    promoteError.value = e instanceof Error ? e.message : 'Promotion failed.'
+  } finally {
+    promoting.value = null
+  }
 }
 
 function buildPayload(): KnowledgeEntryInput {
@@ -430,6 +485,40 @@ watch(
       />
     </div>
 
+    <!-- PAI-345: promote action — memory only, existing entries only.
+         The current scope is greyed (per the ticket's UX note);
+         instance scope is admin-gated server-side, but we also
+         disable it in the UI so non-admins don't get a 403 on
+         click. -->
+    <div v-if="canPromote" class="ke-promote">
+      <span class="ke-promote-label">Promote to:</span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :class="{ active: currentScope === 'project' }"
+        :disabled="currentScope === 'project' || promoting !== null"
+        title="Current scope"
+        @click="onPromote('project')"
+      >Project</button>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :class="{ active: currentScope === 'user' }"
+        :disabled="currentScope === 'user' || promoting !== null"
+        title="Visible across all your projects"
+        @click="onPromote('user')"
+      >{{ promoting === 'user' ? 'Promoting…' : 'User' }}</button>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :class="{ active: currentScope === 'instance' }"
+        :disabled="currentScope === 'instance' || promoting !== null || !isAdmin"
+        :title="isAdmin ? 'Visible to all users on this server' : 'Admin only'"
+        @click="onPromote('instance')"
+      >{{ promoting === 'instance' ? 'Promoting…' : 'Instance' }}</button>
+      <span v-if="promoteError" class="ke-error">{{ promoteError }}</span>
+    </div>
+
     <div class="ke-actions">
       <button
         type="button"
@@ -475,6 +564,11 @@ watch(
 .ke-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
 .ke-actions-spacer { flex: 1; }
 .ke-error { color: #b42318; font-size: 12px; }
+
+/* PAI-345: scope-promotion controls. Reuses the global btn / btn-sm
+   chrome so the row visually matches the active/archived toggle. */
+.ke-promote { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.ke-promote-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 
 /* PAI-342: linked-tickets reverse-direction chips. */
 .ke-ticket-chips { display: flex; flex-wrap: wrap; gap: .35rem; }

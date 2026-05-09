@@ -296,6 +296,30 @@ func main() {
 				// shape (text/plain, 12-char hex hash).
 				r.With(auth.RequireProjectView).Get(rev, handlers.MakeKnowledgeRevHandler(alias))
 			}
+
+			// PAI-345 — cross-scope memory: user-scope and instance-scope
+			// CRUD parallels the project-scope endpoints above. The
+			// discriminator is the WHERE clause inside the handler;
+			// see handlers/knowledge_user.go and knowledge_instance.go.
+			// User memory: any auth'd user can manage their own.
+			r.Get("/users/me/memory", handlers.ListUserMemory)
+			r.Post("/users/me/memory", handlers.CreateUserMemory)
+			r.Get("/users/me/memory/{slug}", handlers.GetUserMemory)
+			r.Put("/users/me/memory/{slug}", handlers.UpdateUserMemory)
+			r.Delete("/users/me/memory/{slug}", handlers.DeleteUserMemory)
+			// Instance memory: read open to all authenticated users,
+			// writes admin-only. Defence-in-depth check inside each
+			// handler keeps the gate even if the middleware is wrong.
+			r.Get("/instance/memory", handlers.ListInstanceMemory)
+			r.With(auth.RequireAdmin).Post("/instance/memory", handlers.CreateInstanceMemory)
+			r.Get("/instance/memory/{slug}", handlers.GetInstanceMemory)
+			r.With(auth.RequireAdmin).Put("/instance/memory/{slug}", handlers.UpdateInstanceMemory)
+			r.With(auth.RequireAdmin).Delete("/instance/memory/{slug}", handlers.DeleteInstanceMemory)
+			// Promotion endpoint — crosses scopes by design, so no
+			// /projects/:id prefix. Auth is per-scope inside the
+			// handler (admin gate fires when promoting to instance).
+			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
+
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
