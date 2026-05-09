@@ -17,6 +17,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -68,6 +69,12 @@ func ListComments(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/issues/{id}/comments  { "body": "..." }
+//
+// PAI-354: the comment insert plus a mutation_log row are written in a
+// single transaction so the X-Paimos-Agent-Name + X-Paimos-Session-Id
+// attribution lands on the same logical event as the row itself. The
+// mutation is recorded with Undoable=false — comments aren't part of
+// the PAI-209 undo stack today, and this hook is purely informational.
 func CreateComment(w http.ResponseWriter, r *http.Request) {
 	issueID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -88,7 +95,15 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 		authorID = &user.ID
 	}
 
-	res, err := db.DB.Exec(`
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("CreateComment: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO comments(issue_id, author_id, body) VALUES(?, ?, ?)
 	`, issueID, authorID, body.Body)
 	if err != nil {
@@ -97,6 +112,35 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       authorID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.comment.create"),
+		SubjectType:  "comment",
+		SubjectID:    id,
+		InverseOp: InverseOp{
+			Method: http.MethodDelete,
+			Path:   fmt.Sprintf("/comments/%d", id),
+		},
+		BeforeState: nil,
+		AfterState:  map[string]any{"id": id, "issue_id": issueID, "body": body.Body},
+		// Undo of comment-add is intentionally not wired into PAI-209
+		// today — attribution lands on the row regardless.
+		Undoable: false,
+	}); err != nil {
+		log.Printf("CreateComment: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("CreateComment: commit: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	var c Comment
 	db.DB.QueryRow(`

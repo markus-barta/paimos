@@ -322,6 +322,7 @@ func promoteMemoryTx(r *http.Request, mod knowledge.Module, srcID int64, srcScop
 	// /issues/:id route so PAI-209's undo machinery just works.
 	reqID := requestIDFromRequest(r)
 	sessID := sessionIDFromRequest(r)
+	agentName := agentNameFromRequest(r)
 	var mutUserID *int64 = &user.ID
 
 	dstAfter, err := fetchIssueMutationSnapshotTx(tx, newID)
@@ -332,6 +333,7 @@ func promoteMemoryTx(r *http.Request, mod knowledge.Module, srcID int64, srcScop
 		RequestID:    reqID,
 		UserID:       mutUserID,
 		SessionID:    sessID,
+		AgentName:    agentName,
 		MutationType: mutationTypeForRequest(r, "issue.create"),
 		SubjectType:  "issue",
 		SubjectID:    newID,
@@ -359,6 +361,7 @@ func promoteMemoryTx(r *http.Request, mod knowledge.Module, srcID int64, srcScop
 		RequestID:    reqID,
 		UserID:       mutUserID,
 		SessionID:    sessID,
+		AgentName:    agentName,
 		MutationType: mutationTypeForRequest(r, "issue.delete"),
 		SubjectType:  "issue",
 		SubjectID:    srcID,
