@@ -62,6 +62,7 @@ import { useUndoStore } from "@/stores/undo";
 import IssueTimeEntries from "@/components/issue/IssueTimeEntries.vue";
 import IssueHistory from "@/components/issue/IssueHistory.vue";
 import IssueRelations from "@/components/issue/IssueRelations.vue";
+import IssueApplicableMemories from "@/components/issue/IssueApplicableMemories.vue";
 import IssueAttachments from "@/components/issue/IssueAttachments.vue";
 import IssueComments from "@/components/issue/IssueComments.vue";
 import IssueAnchors from "@/components/issue/IssueAnchors.vue";
@@ -1464,6 +1465,19 @@ async function cancelEdit() {
       :issue-id="issueId"
       :project-id="effectiveProjectId"
       :project-issues="projectIssues"
+    />
+
+    <!-- PAI-342: Applicable memories. Same gate as IssueRelations —
+         knowledge entries don't link to other knowledge entries here;
+         only ticket/task/epic surfaces the section. -->
+    <IssueApplicableMemories
+      v-if="
+        issue.type === 'ticket' ||
+        issue.type === 'task' ||
+        issue.type === 'epic'
+      "
+      :issue-id="issueId"
+      :project-id="effectiveProjectId"
     />
 
     <IssueAnchors

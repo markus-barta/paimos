@@ -40,6 +40,12 @@ const props = defineProps<{
   // filters layer on top.
   searchQuery?: string
   canWrite: boolean
+  // PAI-342 — when set, after the initial load the panel auto-opens
+  // the matching slug in edit mode (or read-only view if the user
+  // can't edit). Empty / no-match falls through to the default list
+  // view. Consumed once and reset to '' so subsequent re-renders
+  // don't keep re-opening the editor.
+  initialSlug?: string
 }>()
 
 const emit = defineEmits<{
@@ -100,6 +106,11 @@ function emptyDraft(): KnowledgeEntryInput {
   }
 }
 
+// Tracks whether we've already consumed the initialSlug deep-link.
+// Without this, every re-load (e.g. after save) would re-open the
+// editor and clobber the user's intent.
+const initialSlugConsumed = ref(false)
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -109,6 +120,16 @@ async function load() {
     loadError.value = errMsg(e, 'Failed to load entries.')
   } finally {
     loading.value = false
+  }
+  // PAI-342 — open the deep-linked slug in edit mode if the parent
+  // routed us here from an outside link. Runs exactly once per
+  // mount, after the entries land so the lookup is reliable.
+  if (!initialSlugConsumed.value && props.initialSlug) {
+    const target = entries.value.find((e) => e.slug === props.initialSlug)
+    if (target) {
+      startEdit(target)
+    }
+    initialSlugConsumed.value = true
   }
 }
 
