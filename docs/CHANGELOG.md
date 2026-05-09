@@ -5,15 +5,64 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.8.0] — Unreleased
+## [2.8.0] — 2026-05-09
 
-Three-pillar agent metadata cycle. The work spans three sibling epics:
+Three-pillar agent metadata cycle. The work spans three sibling epics — caller-session attribution (who did what), skill scaffolding from project metadata (who can do what), and the knowledge plane (what they need to know). Together they move project metadata to be the durable upstream of any agent harness or machine: local files become a cache, paimos becomes SSOT.
 
-- [PAI-323](https://pm.barta.cm/projects/6/issues/PAI-323) — caller-session attribution (who did what).
-- [PAI-328](https://pm.barta.cm/projects/6/issues/PAI-328) — skill scaffolding from project metadata (who can do what).
-- [PAI-337](https://pm.barta.cm/projects/6/issues/PAI-337) — knowledge plane: memory, runbooks, references, guidelines (what they need to know).
+Per the foundational decision in [PAI-346](https://pm.barta.cm/projects/6/issues/PAI-346), the knowledge plane is implemented by extending the existing `type` enum on `issues` rather than as separate tables. Memory entries inherit history snapshots, comments, tags, FTS, parent-child, soft-delete, and undo for free. Roughly 1/3 the implementation work the original spec called for.
 
-Together they move project metadata to be the durable upstream of any agent harness or machine — local files become a cache, paimos becomes SSOT.
+### Added — [PAI-323](https://pm.barta.cm/projects/6/issues/PAI-323) epic (caller-session attribution)
+
+- [PAI-324](https://pm.barta.cm/projects/6/issues/PAI-324) — `agent_name` + `session_id` columns on `issue_history` (M93). Every issue write reads `X-Paimos-Agent-Name` / `X-Paimos-Session-Id` headers and persists them on the snapshot. History panel renders a sub-line under "changed by" when either is set.
+- [PAI-325](https://pm.barta.cm/projects/6/issues/PAI-325) — paimos CLI auto-forwards `PAIMOS_AGENT_NAME` / `PAIMOS_SESSION_ID` env vars (or `--agent-name` / `--session-id` flags) on every write. `paimos doctor` shows current attribution state with source provenance.
+- [PAI-326](https://pm.barta.cm/projects/6/issues/PAI-326) — declarable `agents[]` per project (M94). CRUD endpoints + Edit Project modal panel. Each agent: name, description, slash command, lane tags, metadata.
+- [PAI-327](https://pm.barta.cm/projects/6/issues/PAI-327) — `paimos session start --project --agent` mints a session UUID, validates the agent name, exports env vars. Companion `session show` / `session end` shipped.
+- [PAI-354](https://pm.barta.cm/projects/6/issues/PAI-354) — attribution extended to comment-add / tag-add / relation-add via `mutation_log` (M101). Per-mutation feed becomes the authoritative attribution surface; history stays the snapshot view.
+
+### Added — [PAI-328](https://pm.barta.cm/projects/6/issues/PAI-328) epic (skill scaffolding from project metadata)
+
+- [PAI-329](https://pm.barta.cm/projects/6/issues/PAI-329) — extended `project_agents` schema with body / bootstrap_steps / non_negotiable_rules (M95). New project-level `project_environments` + `project_deploy_recipes` tables. Canonical agent artifact at `GET /api/projects/:id/agents/:name.json` + debug `.md` endpoint.
+- [PAI-330](https://pm.barta.cm/projects/6/issues/PAI-330) — `paimos skill render --harness claude-code` with adapter dispatch. claude-code reference adapter ships in-tree at `backend/cmd/paimos/adapters/claudecode/`. `--check` drift detection (exit 0/1/2). `paimos skill list-adapters` enumerates registered adapters.
+- [PAI-331](https://pm.barta.cm/projects/6/issues/PAI-331) — generic `paimos sync` module + Resource interface + Registry. `paimos sync init/pull/watch/check`. Server SSE at `/api/projects/:id/agents/events` + `.rev` polling fallback. `auto_watch_subscriptions` table (M98). Settings → Account "Auto-watch sync" panel with per-(device, project) toggle.
+- [PAI-332](https://pm.barta.cm/projects/6/issues/PAI-332) — adapter SDK formalized: JSON manifest format with `protocol_version: "1"`, execution contract (render / describe / validate verbs, exit codes), Bosun-style SemVer, `$PAIMOS_ADAPTER_PATH` discovery. `paimos skill test-adapter` conformance suite. Public registry at `GET /api/registry/adapters`. Spec doc at `docs/adapter-protocol.md`.
+
+### Added — [PAI-337](https://pm.barta.cm/projects/6/issues/PAI-337) epic (knowledge plane)
+
+- [PAI-338](https://pm.barta.cm/projects/6/issues/PAI-338) — knowledge schema (M96): `type` enum extended with `memory | runbook | external_system | related_project | guideline`; `status` enum extended with `archived | proposed`; `slug` + `category_metadata` columns. Five thin convenience endpoints under `/api/projects/:id/{memory|runbooks|external-systems|related-projects|guidelines}`. Default-hide of knowledge types from project issue list.
+- [PAI-339](https://pm.barta.cm/projects/6/issues/PAI-339) — workspace UI redesign: project page tabs (Issues / Overview / Knowledge). Knowledge tab with filter / search / sort / bulk-archive across all 5 categories. Inline markdown editor.
+- [PAI-340](https://pm.barta.cm/projects/6/issues/PAI-340) — `paimos session start --bundle full` exports memory + runbooks + external_systems + related_projects + guidelines. `--format env|json|files`. Local cache manifest with rev-based invalidation. `--refresh` forces re-fetch.
+- [PAI-341](https://pm.barta.cm/projects/6/issues/PAI-341) — knowledge sync plugs into PAI-331's generic module: 5 Resource implementations + `Publish<Kind>Changed` helpers + per-kind `.rev` endpoints.
+- [PAI-342](https://pm.barta.cm/projects/6/issues/PAI-342) — bidirectional ticket↔memory linking via `issue_relations` (M97). Server-side auto-suggest scoring on `GET /api/issues/:id/applicable-memories?suggest=1`. UI on issue detail + memory editor.
+- [PAI-343](https://pm.barta.cm/projects/6/issues/PAI-343) — lesson capture at ticket-close. Trigger detection on `GET /api/issues/:id/lesson-capture-prompt`. UI modal post-save. CLI `--draft-memory` flag for headless capture.
+- [PAI-345](https://pm.barta.cm/projects/6/issues/PAI-345) — cross-scope memory promotion. `users.user_id` column on issues (M99). `/api/users/me/memory` + `/api/instance/memory` CRUD. `POST /api/memory/:slug/promote`. Bundle merge order: project > user > instance.
+- [PAI-347](https://pm.barta.cm/projects/6/issues/PAI-347) — confidence + decay (M100). `reference_count` + `last_referenced_at` columns. Bundle excludes low confidence by default; `--include-low` opts in. `GET /api/projects/:id/memory/stale` returns archive proposals.
+- [PAI-348](https://pm.barta.cm/projects/6/issues/PAI-348) — memory inheritance from `related_projects[]`. Bundle folds inherited memory / runbooks / guidelines from upstream projects (roles `upstream-tool` / `philosophy` / `infra`) with project-precedence on slug collision. Cross-instance fetch with graceful degradation.
+- [PAI-349](https://pm.barta.cm/projects/6/issues/PAI-349) — bot-authored memory drafts. `paimos memory propose` verb. `proposed` status with Knowledge tab inbox + accept / edit / reject. Bundle excludes proposed by default; `--include-proposed` opts in. Per-session rate limit (default 5 / 24h, env-overridable).
+- [PAI-352](https://pm.barta.cm/projects/6/issues/PAI-352) — `paimos onboard --project --agent` produces a human-readable briefing (md / html). `--check` drift mode. Reuses the bundle data.
+- [PAI-353](https://pm.barta.cm/projects/6/issues/PAI-353) — knowledge writes flow through hooks that mint `issue_history` + `mutation_log` rows. Knowledge edits inherit PAI-324 attribution + PAI-209 undo for free.
+
+### Migrations
+
+Nine schema migrations run on first startup. All additive; existing data rolls forward unchanged.
+
+- **M93** — `issue_history.agent_name` + `session_id` (PAI-324)
+- **M94** — `project_agents` table (PAI-326)
+- **M95** — `project_agents` extension columns + `project_environments` + `project_deploy_recipes` (PAI-329)
+- **M96** — `issues` recreate to extend type CHECK + status CHECK + add `slug` + `category_metadata` (PAI-338, gated by PAI-346); also recreates `issue_anchors` and `ai_calls` to dodge the SQLite FK-rewrite bug for tables created after the prior issues recreate
+- **M97** — `issue_relations.type` extended with `applies_to_memory` (PAI-342)
+- **M98** — `auto_watch_subscriptions` table for per-(device, project) sync toggle (PAI-331)
+- **M99** — `issues.user_id` + partial index for cross-scope memory (PAI-345)
+- **M100** — `issues.reference_count` + `last_referenced_at` (PAI-347)
+- **M101** — `mutation_log.agent_name` + `session_id` (PAI-354)
+
+### Deferred to next cycle
+
+Filed but not in v2.8.0:
+
+- [PAI-333](https://pm.barta.cm/projects/6/issues/PAI-333) — extract claude-code adapter to its own repo
+- [PAI-344](https://pm.barta.cm/projects/6/issues/PAI-344) — BON26 migration script (gated by UI QA)
+- [PAI-350](https://pm.barta.cm/projects/6/issues/PAI-350) — knowledge graph view (UI discovery)
+- [PAI-351](https://pm.barta.cm/projects/6/issues/PAI-351) — memory dependency graph (UI discovery)
 
 ## [2.7.3] — 2026-05-07
 
