@@ -38,15 +38,6 @@
         "symbol": null
       }
     ],
-    "PAI-72": [
-      {
-        "file": "backend/cmd/paimos/cmd_manifest.go",
-        "line": 39,
-        "label": "manifest mirror command",
-        "confidence": "declared",
-        "symbol": null
-      }
-    ],
     "PAI-79": [
       {
         "file": "backend/handlers/project_context.go",

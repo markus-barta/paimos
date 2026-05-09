@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] — 2026-05-09
+
+CI-only fix on top of v3.0.0. v3.0.0's tag never produced a Docker image because the dogfood-anchor verifier (`paimos anchors verify`) flagged `PAI-72` as an orphaned anchor pointing at the now-deleted `backend/cmd/paimos/cmd_manifest.go:39`. PAI-72 was the manifest mirror command; the file was removed in PAI-358 along with the rest of the legacy manifest surface, but its entry in `.pmo/anchors.json` survived the deletion. v3.0.1 carries the same code as v3.0.0 plus the index update.
+
+### Changed
+
+- Removed PAI-72's entry from `.pmo/anchors.json`. The manifest mirror CLI verb (`paimos manifest pull`) was deleted in PAI-358; the anchor is permanently dangling.
+
 ## [3.0.0] — 2026-05-09
 
 Major-version bump for the **breaking** removal of the legacy project_manifests surface (PAI-358), bundled with v2.9.1's footer-bar polish (count SSOT, full-width chrome, neutral active state).
