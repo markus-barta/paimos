@@ -127,7 +127,14 @@ func MakeCreateHandler(alias string) http.HandlerFunc {
 			writeError(w, "slug already exists for this type", http.StatusConflict)
 			return
 		}
+		// PAI-349 — typed propose errors carry their own HTTP status
+		// (rate limit → 429, opt-out → 503). Surface the message verbatim
+		// so operators see the actionable guidance.
 		if err != nil {
+			if coded, ok := err.(httpCodedError); ok {
+				writeError(w, err.Error(), coded.HTTPStatus())
+				return
+			}
 			writeError(w, "insert failed", http.StatusInternalServerError)
 			return
 		}
