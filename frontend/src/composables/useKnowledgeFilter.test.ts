@@ -157,6 +157,26 @@ describe('filterKnowledge', () => {
     expect(result.map((e) => e.slug)).toEqual(['c', 'a'])
   })
 
+  // PAI-349 — proposed-only mode + default-hide of proposed entries.
+  it('hides proposed entries by default', () => {
+    const items = [
+      entry({ slug: 'active', status: 'backlog' }),
+      entry({ slug: 'draft', status: 'proposed' }),
+    ]
+    expect(filterKnowledge(items, { category: 'memory' }).map((e) => e.slug)).toEqual(['active'])
+  })
+
+  it('shows only proposed entries when showProposedOnly is set', () => {
+    const items = [
+      entry({ slug: 'active', status: 'backlog' }),
+      entry({ slug: 'draft1', status: 'proposed' }),
+      entry({ slug: 'draft2', status: 'proposed' }),
+      entry({ slug: 'archived', status: 'cancelled' }),
+    ]
+    const result = filterKnowledge(items, { category: 'memory', showProposedOnly: true })
+    expect(result.map((e) => e.slug).sort()).toEqual(['draft1', 'draft2'])
+  })
+
   it('handles 500 entries comfortably (smoke perf test)', () => {
     const items: KnowledgeEntry[] = []
     for (let i = 0; i < 500; i += 1) {
