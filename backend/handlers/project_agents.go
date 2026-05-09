@@ -133,6 +133,8 @@ func CreateProjectAgent(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)
 		return
 	}
+	// PAI-331: notify any active sync watchers.
+	PublishAgentChanged(projectID, agent.Name, "")
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, agent)
 }
@@ -205,6 +207,13 @@ func UpdateProjectAgent(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found after update", http.StatusInternalServerError)
 		return
 	}
+	// PAI-331: notify any active sync watchers. If the rename happened
+	// (currentName != body.Name), publish for both names — old watchers
+	// may need to drop their stale file.
+	PublishAgentChanged(projectID, body.Name, "")
+	if currentName != body.Name {
+		PublishAgentChanged(projectID, currentName, "")
+	}
 	jsonOK(w, agent)
 }
 
@@ -232,6 +241,8 @@ func DeleteProjectAgent(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "agent not found", http.StatusNotFound)
 		return
 	}
+	// PAI-331: notify any active sync watchers.
+	PublishAgentChanged(projectID, name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

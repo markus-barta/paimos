@@ -181,6 +181,16 @@ func main() {
 			r.Post("/auth/api-keys", handlers.CreateAPIKey)
 			r.Delete("/auth/api-keys/{id}", handlers.DeleteAPIKey)
 
+			// PAI-331 — auto-watch sync subscriptions (per-user,
+			// per-(device, project) toggle). The browser UI hits these;
+			// the CLI manages its row implicitly via the SSE handshake.
+			// {deviceID} is opaque text; {projectID} is numeric. Routes
+			// stay under /auth/* because the resource is "this user's
+			// preferences", same as the api-keys neighborhood.
+			r.Get("/auth/auto-watch", handlers.ListAutoWatch)
+			r.Put("/auth/auto-watch/{deviceID}/{projectID}", handlers.UpsertAutoWatch)
+			r.Delete("/auth/auto-watch/{deviceID}/{projectID}", handlers.DeleteAutoWatch)
+
 			// moved inside the auth group. Any authed role
 			// (including external/portal users) may fetch these — they
 			// are non-sensitive but there's no good reason for them to
@@ -240,6 +250,16 @@ func main() {
 			// rendering. Read-only, view-gated.
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.json", handlers.GetProjectAgentArtifact)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.md", handlers.GetProjectAgentArtifactMarkdown)
+			// PAI-331 — auto-watch sync: SSE event stream + cheap-poll
+			// .rev fallback. The events route is per-project and the
+			// route param `id` is the project id (chi's URL parser
+			// matches the same pattern as the .json/.md siblings). The
+			// .rev path mirrors the .json shape so polling clients
+			// reuse their cached agent_name; the response is plain
+			// text (the 12-char rev hash) so a curl loop can compare
+			// without a JSON parser.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
 			// PAI-329 — project-level inventories (environments,
 			// deploy recipes). repos already exists at /repos.
 			r.With(auth.RequireProjectView).Get("/projects/{id}/environments", handlers.ListProjectEnvironments)
