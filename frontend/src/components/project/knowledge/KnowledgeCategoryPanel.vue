@@ -271,6 +271,70 @@ function applicableMemorySlugs(entry: KnowledgeEntry): string[] {
   return arr.filter((s): s is string => typeof s === 'string')
 }
 
+// PAI-348 — render an "↗ inherited from X" badge on entries that
+// carry a `source` annotation. The CRUD endpoints never set it on the
+// project's own Knowledge tab — entries with `source` only show up
+// when this view is rendered against a bundle payload (e.g. as a
+// future overlay). The component is forward-compatible so the badge
+// is wired in once and works as soon as a bundle-fed surface is added.
+//
+// Click-through behaviour:
+//   - Same-instance source: navigate to the source project's
+//     Knowledge tab (in-app router link via window.location to avoid
+//     coupling to a specific router instance).
+//   - Cross-instance source: open the source instance's project URL
+//     in a new tab — agents can keep their working tab while
+//     inspecting the upstream.
+function inheritedSourceLabel(entry: KnowledgeEntry): string {
+  const source = entry.source
+  if (!source || source.type !== 'inherited') return ''
+  const project = source.from_project ?? '?'
+  return `↗ inherited from ${project}`
+}
+
+function inheritedSourceTooltip(entry: KnowledgeEntry): string {
+  const source = entry.source
+  if (!source) return ''
+  if (source.type === 'warning') return source.message ?? 'inheritance failed'
+  const project = source.from_project ?? '?'
+  const instance = source.from_instance ?? ''
+  return instance ? `${project} on ${instance}` : project
+}
+
+function isCrossInstance(entry: KnowledgeEntry): boolean {
+  const inst = entry.source?.from_instance
+  if (!inst) return false
+  // Compare to the current origin — same hostname = same-instance.
+  // window.location is unavailable during SSR / unit tests; both fall
+  // through to "treat as cross" which is the safer default (opens in
+  // a new tab — never silently navigates the user off a tab).
+  if (typeof window === 'undefined' || !window.location) return true
+  try {
+    const origin = window.location.origin
+    return new URL(inst).origin !== origin
+  } catch {
+    return true
+  }
+}
+
+function inheritedHref(entry: KnowledgeEntry): string {
+  const source = entry.source
+  if (!source) return ''
+  // The downstream Knowledge tab needs the upstream's project key —
+  // we don't have its numeric id here. Use the cross-instance form
+  // (e.g. https://pm.barta.cm/projects/PAI/knowledge) and let the
+  // upstream route resolve key→id. Same-instance click-through uses
+  // an in-app path via the project key; the route layer handles the
+  // lookup.
+  const project = source.from_project ?? ''
+  if (!project) return ''
+  if (isCrossInstance(entry)) {
+    const base = (source.from_instance ?? '').replace(/\/+$/, '')
+    return `${base}/projects/${encodeURIComponent(project)}/knowledge`
+  }
+  return `/projects/${encodeURIComponent(project)}/knowledge`
+}
+
 const hasMemoryFilters = computed(() => props.category === 'memory')
 const hasConfidenceSort = computed(() => props.category === 'memory')
 
@@ -420,6 +484,26 @@ onMounted(() => {
               >
                 {{ entry.metadata.confidence }} confidence
               </span>
+              <!-- PAI-348 — inherited / warning badge. Clicking the
+                   inherited badge navigates to the source project's
+                   Knowledge tab; cross-instance opens in a new tab so
+                   the user keeps their current shell. The warning
+                   variant is non-clickable — the failure message is
+                   surfaced via title=. -->
+              <a
+                v-if="entry.source?.type === 'inherited'"
+                class="kp-pill kp-pill--inherited"
+                :href="inheritedHref(entry)"
+                :target="isCrossInstance(entry) ? '_blank' : undefined"
+                :rel="isCrossInstance(entry) ? 'noopener noreferrer' : undefined"
+                :title="inheritedSourceTooltip(entry)"
+                @click.stop
+              >{{ inheritedSourceLabel(entry) }}</a>
+              <span
+                v-else-if="entry.source?.type === 'warning'"
+                class="kp-pill kp-pill--warning"
+                :title="inheritedSourceTooltip(entry)"
+              >⚠ inheritance failed</span>
             </div>
             <div class="kp-row-title">{{ entry.title }}</div>
             <div v-if="entry.body" class="kp-row-snippet">{{ entry.body.slice(0, 200) }}{{ entry.body.length > 200 ? '…' : '' }}</div>
@@ -485,6 +569,9 @@ onMounted(() => {
 .kp-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12px; color: var(--text); }
 .kp-pill { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: 0 .5rem; font-size: 10px; color: var(--text-muted); line-height: 1.55; }
 .kp-pill--archived { background: var(--bg); color: #b45309; border-color: #fcd9a3; }
+.kp-pill--inherited { background: var(--bp-blue-pale, #eef4ff); color: var(--bp-blue-dark, #1d4ed8); border-color: var(--bp-blue, #3b82f6); text-decoration: none; cursor: pointer; }
+.kp-pill--inherited:hover { background: var(--bp-blue, #3b82f6); color: #fff; }
+.kp-pill--warning { background: #fef3f2; color: #b42318; border-color: #fecdca; }
 .kp-pill--ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .kp-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .kp-row-snippet { font-size: 12px; color: var(--text-muted); white-space: pre-wrap; line-height: 1.45; }
