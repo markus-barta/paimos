@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.2] — 2026-05-09
+
+CI-only fix on top of v2.8.1. v2.8.1's tag never produced a Docker image because of a third pre-existing CI gate: `gosec` flagged 24 new SAST findings on the v2.8.0 cycle's file-handling and SQL-concat patterns (G202 / G204 / G301 / G304 / G306 / G703). All are line-shift drift from accepted patterns plus a few new-but-equivalent ones from PAI-330's adapter exec, PAI-340's cache writer, and PAI-354's mutation_log queries. v2.8.2 carries the same code as v2.8.1 plus the baseline refresh.
+
+### Changed
+
+- Refreshed `.gosec-baseline.txt` to absorb the v2.8.0 cycle's new file-write / file-read / SQL-concat findings (110 → 134 entries). Same pattern as v2.7.0→v2.7.1 and v2.7.2→v2.7.3.
+
 ## [2.8.1] — 2026-05-09
 
 CI-only fix on top of v2.8.0. v2.8.0's tag never produced a Docker image because of two pre-existing CI failures unrelated to the cycle's feature work: govulncheck flagged Go stdlib vulns published after v2.7.3 (`GO-2026-4971` in `net@go1.25.9`, `GO-2026-4918` in `net/http@go1.25.9` — both fixed in `go1.25.10`), and `TestBatchUpdate_AllScalarFields` flaked under concurrent test load with `SQLITE_BUSY` on the WAL PRAGMA. Both are addressed at the workflow layer; v2.8.1 carries the same code as v2.8.0 plus the workflow update.

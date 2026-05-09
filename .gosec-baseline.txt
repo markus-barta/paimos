@@ -20,6 +20,7 @@ G124	MEDIUM	HIGH	auth/totp.go	277	http.Cookie missing or has insecure Secure, Ht
 G202	MEDIUM	HIGH	handlers/ai_papertrail.go	341-366	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/ai_papertrail.go	533-556	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/ai_prompts.go	258	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/applicable_memories.go	420-423	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/contacts.go	332	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/contacts.go	50-55	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/crm/handlers.go	448	SQL string concatenation
@@ -31,19 +32,26 @@ G202	MEDIUM	HIGH	handlers/issues.go	303-312	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues.go	343-354	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	217	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	97	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/issues_write.go	741	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	325	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	539-545	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	548-555	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues_write.go	742	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/memory_references.go	132-138	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	358	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	572-578	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	581-588	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	828	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	117-133	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/tags.go	276-282	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/tags.go	314-320	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	370-376	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	408-414	SQL string concatenation
+G204	MEDIUM	HIGH	cmd/paimos/adapters/external.go	147	Subprocess launched with a potential tainted input or cmd arguments
 G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	107	Subprocess launched with variable
 G301	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	280	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	86	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1057	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1115	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1154	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	cmd/paimos/cmd_skill.go	496	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	301	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	db/db.go	63	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	221	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	325	Expect directory permissions to be 0750 or less
@@ -51,14 +59,25 @@ G301	MEDIUM	HIGH	handlers/dev_testreports_service.go	189	Expect directory permis
 G301	MEDIUM	HIGH	handlers/logo.go	77	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/profile.go	170	Expect directory permissions to be 0750 or less
 G304	MEDIUM	HIGH	cmd/paimos-mcp/mcpclient/client.go	61	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/adapters/conformance.go	274	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/adapters/discovery.go	156	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/adapters/manifest.go	266	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	232	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	292	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_apply.go	239	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_apply.go	62	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_issue_write.go	45	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	300	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_onboard.go	887	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_schema.go	98	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1084	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_skill.go	514	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/cmd_sync.go	542	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/config.go	75	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/sync/knowledge_resource.go	218	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/sync/knowledge_resource.go	330	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	172	Potential file inclusion via variable
+G304	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	249	Potential file inclusion via variable
 G304	MEDIUM	HIGH	handlers/branding.go	135	Potential file inclusion via variable
 G304	MEDIUM	HIGH	handlers/branding.go	94	Potential file inclusion via variable
 G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	49	Potential file inclusion via variable
@@ -69,6 +88,11 @@ G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	154	Expect WriteFile permissions to 
 G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	317	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	93	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	96	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1066	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1128	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1159	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/cmd_skill.go	500	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	305	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/branding.go	238	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/branding.go	341	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	192	Expect WriteFile permissions to be 0600 or less
@@ -97,9 +121,9 @@ G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	176	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	573	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	673	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	684	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	685	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	785	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	796	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis
