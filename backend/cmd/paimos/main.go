@@ -127,6 +127,9 @@ Get started:
 	cmd.AddCommand(sessionCmd())
 	// PAI-330: skill render with adapter dispatch.
 	cmd.AddCommand(skillCmd())
+	// PAI-331: generic sync verbs (init/pull/watch/check) over the
+	// resource registry. PAI-341 will register additional kinds.
+	cmd.AddCommand(syncCmd())
 
 	// If no subcommand is given, Cobra's default is to print help with
 	// exit 0. The AC wants exit 2 for that case (standard convention).
