@@ -5,6 +5,15 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.1] — 2026-05-09
+
+CI-only fix on top of v2.8.0. v2.8.0's tag never produced a Docker image because of two pre-existing CI failures unrelated to the cycle's feature work: govulncheck flagged Go stdlib vulns published after v2.7.3 (`GO-2026-4971` in `net@go1.25.9`, `GO-2026-4918` in `net/http@go1.25.9` — both fixed in `go1.25.10`), and `TestBatchUpdate_AllScalarFields` flaked under concurrent test load with `SQLITE_BUSY` on the WAL PRAGMA. Both are addressed at the workflow layer; v2.8.1 carries the same code as v2.8.0 plus the workflow update.
+
+### Changed
+
+- `check-latest: true` on both `setup-go` steps in `.github/workflows/ci.yml` so the runner pulls the latest 1.25.x patch every run. Resolves both govulncheck findings without a manual workflow bump on each new stdlib advisory.
+- `-p 1` on the backend `go test` invocation, serializing per-package execution. Eliminates the SQLITE_BUSY flake when the handlers and db packages set up their in-memory test DBs concurrently.
+
 ## [2.8.0] — 2026-05-09
 
 Three-pillar agent metadata cycle. The work spans three sibling epics — caller-session attribution (who did what), skill scaffolding from project metadata (who can do what), and the knowledge plane (what they need to know). Together they move project metadata to be the durable upstream of any agent harness or machine: local files become a cache, paimos becomes SSOT.

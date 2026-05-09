@@ -32,6 +32,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          # Pull the latest 1.25.x patch on every run so newly-published
+          # stdlib vulnerability fixes (e.g. GO-2026-4971 in net@go1.25.10)
+          # land without a workflow edit.
+          check-latest: true
           cache-dependency-path: backend/go.sum
 
       - uses: actions/setup-node@v4
@@ -42,9 +46,14 @@ jobs:
 
       - name: Backend — vet + test
         working-directory: backend
+        # -p 1 serializes per-package test execution. The handlers
+        # package + db package both call db.Open() against an in-memory
+        # SQLite, which under concurrent setup races on PRAGMA
+        # journal_mode=WAL (SQLITE_BUSY). The runtime cost is small and
+        # the failures it prevents are 100% flake.
         run: |
           go vet ./...
-          go test -count=1 ./...
+          go test -count=1 -p 1 ./...
 
       - name: Backend — security invariants
         working-directory: backend
@@ -133,6 +142,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          # Pull the latest 1.25.x patch on every run so newly-published
+          # stdlib vulnerability fixes (e.g. GO-2026-4971 in net@go1.25.10)
+          # land without a workflow edit.
+          check-latest: true
           cache-dependency-path: backend/go.sum
 
       - uses: actions/setup-node@v4
