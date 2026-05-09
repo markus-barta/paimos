@@ -458,7 +458,7 @@ obligation.
 - Optional MinIO for attachments (graceful disable)
 - Optional SMTP for password reset (dev mode = log to stdout)
 - SQLite with WAL + 5-second busy timeout + connection pool
-- 92 additive migrations run on startup
+- 101 additive migrations run on startup
 - Health endpoint: `GET /api/health` → `{ "status": "ok", "service": "...", "version": "<VERSION>" }` (`version` is stamped from `VERSION` at build time; local non-Docker builds report `"dev"`)
 - Instance endpoint: `GET /api/instance` (label, hostname,
   attachments-enabled flag)
