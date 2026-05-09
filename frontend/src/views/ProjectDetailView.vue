@@ -58,6 +58,9 @@ import ProjectInventoriesSection from '@/components/project/ProjectInventoriesSe
 // via the ⋯ menu; Agents lives inside Edit Project (PAI-326/329).
 import ProjectKnowledgeTab from '@/components/project/knowledge/ProjectKnowledgeTab.vue'
 import ProjectOverviewTab from '@/components/project/knowledge/ProjectOverviewTab.vue'
+// PAI-356 — bottom-anchored footer bar replaces the top tab strip
+// (Issues / Overview / Knowledge). Same identities, quieter chrome.
+import ProjectFooterBar from '@/components/project/ProjectFooterBar.vue'
 // PAI-146 expansion: AI optimize on the project description.
 // project_description is its own field name (not aliased to
 // "description") so the prompt reminder fits a stakeholder audience.
@@ -777,48 +780,10 @@ watch(
            wasted space on projects that don't use anchors yet.
            The Context toggle in the IssueList toolbar opens it. -->
 
-      <!-- PAI-339: primary project tabs — Issues (existing default),
-           Overview (description + state callouts), Knowledge (the
-           five categories). Sits above the existing view-tab strip
-           so the issue-list filtering stays where users expect it. -->
-      <nav class="tab-nav pd-primary-tabs" role="tablist">
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: primaryTab === 'issues' }"
-          data-label="Issues"
-          role="tab"
-          :aria-selected="primaryTab === 'issues'"
-          @click="setPrimaryTab('issues')"
-        >
-          <AppIcon name="layout-list" :size="12" />
-          <span>Issues</span>
-        </button>
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: primaryTab === 'overview' }"
-          data-label="Overview"
-          role="tab"
-          :aria-selected="primaryTab === 'overview'"
-          @click="setPrimaryTab('overview')"
-        >
-          <AppIcon name="house" :size="12" />
-          <span>Overview</span>
-        </button>
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: primaryTab === 'knowledge' }"
-          data-label="Knowledge"
-          role="tab"
-          :aria-selected="primaryTab === 'knowledge'"
-          @click="setPrimaryTab('knowledge')"
-        >
-          <AppIcon name="book-open" :size="12" />
-          <span>Knowledge</span>
-        </button>
-      </nav>
+      <!-- PAI-356 supersedes PAI-339's top tab strip. The three-item
+           switcher (Issues / Overview / Knowledge) now lives in
+           <ProjectFooterBar> at the bottom of the page, freeing the
+           top of the content area for the work itself. -->
 
       <!-- Issues tab (existing UX preserved verbatim) ───────────────── -->
       <template v-if="primaryTab === 'issues'">
@@ -1014,6 +979,16 @@ watch(
           @summary="updateContextSummary"
         />
       </div>
+
+      <!-- PAI-356: bottom-anchored footer bar. Sits after every
+           tab's content (and below pd-workspaces / pd-sentinels)
+           so it always pins to the bottom of the project page
+           regardless of which primary tab is active. -->
+      <ProjectFooterBar
+        v-model="primaryTab"
+        :open-issues="project.counts?.open_issues ?? null"
+        :knowledge-entries="project.counts?.knowledge_entries ?? null"
+      />
     </template>
   </div>
 
@@ -1368,18 +1343,9 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 /* ── Tabs ───────────────────────────────────────────────────────────────────── */
-/* PAI-339: primary tabs (Issues/Overview/Knowledge) sit above the
-   existing view-tab strip. Slightly heavier visual weight to read
-   as the page-level switch — bigger left/right padding + the icon
-   left of the label. */
-.pd-primary-tabs {
-  margin-bottom: .85rem;
-}
-.pd-primary-tabs .tab-btn {
-  font-size: 14px;
-  padding: .55rem 1.1rem;
-  gap: .35rem;
-}
+/* PAI-356 — primary tabs moved to ProjectFooterBar; the .pd-primary-tabs
+   styles that lived here have been removed. Sub-tabs (view filters)
+   continue to use .tab-nav / .tab-btn below. */
 .tab-nav {
   display: flex; gap: 0; margin-bottom: 1.25rem;
   border-bottom: 2px solid var(--border);

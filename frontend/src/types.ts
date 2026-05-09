@@ -217,6 +217,19 @@ export interface Project {
   effective_rate_hourly?: number | null
   effective_rate_lp?: number | null
   rate_inherited?: boolean
+  // PAI-356: detail-only aggregate. Returned by GET /api/projects/:id
+  // for the footer-bar badges (open issues + knowledge entries).
+  // Absent on list responses; treat as null when undefined.
+  counts?: ProjectCounts
+}
+
+// PAI-356 — counts surfaced on the project detail response. Both
+// fields are non-negative ints; null/undefined means the count
+// hasn't been loaded yet (e.g. during initial mount before the
+// detail GET completes).
+export interface ProjectCounts {
+  open_issues: number
+  knowledge_entries: number
 }
 
 // PAI-326 + PAI-329. ProjectAgent declares an agent that works a

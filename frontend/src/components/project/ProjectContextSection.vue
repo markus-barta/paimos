@@ -135,6 +135,16 @@ onMounted(load)
       </div>
 
       <div class="context-card">
+        <!-- PAI-356/-357: the manifest editor's content (Manifest /
+             Guardrails / Glossary / Dev / Ops) is migrating into the
+             knowledge plane as memory / runbook / guideline entries.
+             The badge signals "this surface is on its way out" without
+             yet breaking access to the legacy data — PAI-358 deletes
+             the editor after the migration window. -->
+        <div v-if="hasManifestArea" class="legacy-banner" role="note">
+          <strong>Legacy</strong>
+          <span>This area is migrating to the project's Knowledge tab — see PAI-357.</span>
+        </div>
         <ProjectManifestTabs
           :project-id="projectId"
           :can-write="canWrite"
@@ -155,6 +165,27 @@ onMounted(load)
 .card-head h3 { margin: 0 0 .2rem; font-size: 15px; }
 .card-head p { margin: 0; color: var(--text-muted); font-size: 12px; }
 .context-empty { color: var(--text-muted); font-size: 13px; }
+/* PAI-356/-357 — soft-deprecation banner above the manifest editor.
+   Visible only when content exists (so empty-state cards aren't
+   distracted by it). Yellow/amber to read as "heads up", not red
+   "broken". */
+.legacy-banner {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .5rem .7rem;
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+}
+.legacy-banner strong {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: 11px;
+}
 .context-error { color: #b42318; background: #fef3f2; border: 1px solid #fecdca; border-radius: 10px; padding: .7rem .85rem; font-size: 13px; }
 .context-ok { color: #166534; background: #ecfdf3; border: 1px solid #abefc6; border-radius: 10px; padding: .7rem .85rem; font-size: 13px; }
 .repo-list { display: flex; flex-direction: column; gap: .7rem; }

@@ -173,12 +173,27 @@ func CreateProject(w http.ResponseWriter, r *http.Request) {
 // the full project state in a single round-trip. The Project model
 // itself stays unchanged so list endpoints (which return many rows)
 // don't grow unbounded.
+//
+// PAI-356 adds the `counts` aggregate so the project-page footer bar
+// can render badges next to "Issues" and "Knowledge" without firing
+// extra GETs. Cheap to compute (one indexed scan over `issues`).
 type projectDetailResponse struct {
 	*models.Project
 	Agents        []models.ProjectAgent        `json:"agents"`
 	Repos         []models.ProjectRepo         `json:"repos"`
 	Environments  []models.ProjectEnvironment  `json:"environments"`
 	DeployRecipes []models.ProjectDeployRecipe `json:"deploy_recipes"`
+	Counts        projectCounts                `json:"counts"`
+}
+
+// projectCounts is the PAI-356 aggregate. `OpenIssues` excludes
+// knowledge entries (they live in the same table since PAI-346 but
+// shouldn't show up in the issue counter); `KnowledgeEntries` counts
+// the five knowledge types together excluding cancelled rows. Both
+// fields are non-negative; absence is encoded as 0.
+type projectCounts struct {
+	OpenIssues       int `json:"open_issues"`
+	KnowledgeEntries int `json:"knowledge_entries"`
 }
 
 func GetProject(w http.ResponseWriter, r *http.Request) {
@@ -218,12 +233,14 @@ func GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	counts, _ := loadProjectCounts(id)
 	jsonOK(w, projectDetailResponse{
 		Project:       p,
 		Agents:        agents,
 		Repos:         repos,
 		Environments:  envs,
 		DeployRecipes: recipes,
+		Counts:        counts,
 	})
 }
 
@@ -334,13 +351,37 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 	repos, _ := listProjectReposData(id)
 	envs, _ := loadProjectEnvironments(id)
 	recipes, _ := loadProjectDeployRecipes(id)
+	counts, _ := loadProjectCounts(id)
 	jsonOK(w, projectDetailResponse{
 		Project:       p,
 		Agents:        agents,
 		Repos:         repos,
 		Environments:  envs,
 		DeployRecipes: recipes,
+		Counts:        counts,
 	})
+}
+
+// loadProjectCounts returns the PAI-356 footer-bar counts for a
+// single project. Knowledge types are listed inline rather than
+// pulled from `knowledge.AllTypes()` to avoid an import cycle and
+// because the SQL planner inlines the literal IN clause anyway.
+func loadProjectCounts(projectID int64) (projectCounts, error) {
+	var c projectCounts
+	err := db.DB.QueryRow(`
+		SELECT
+		  COUNT(CASE
+		          WHEN status NOT IN ('done','delivered','cancelled')
+		           AND type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		         THEN 1 END),
+		  COUNT(CASE
+		          WHEN type IN ('memory','runbook','external_system','related_project','guideline')
+		           AND status != 'cancelled'
+		         THEN 1 END)
+		FROM issues
+		WHERE project_id = ? AND deleted_at IS NULL
+	`, projectID).Scan(&c.OpenIssues, &c.KnowledgeEntries)
+	return c, err
 }
 
 // DeleteProject soft-deletes: sets status to 'deleted'. Hidden from UI, restorable via DB.
