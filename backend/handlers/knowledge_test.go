@@ -41,16 +41,18 @@ import (
 )
 
 type knowledgeEntry struct {
-	ID        int64                  `json:"id"`
-	ProjectID int64                  `json:"project_id"`
-	Type      string                 `json:"type"`
-	Slug      string                 `json:"slug"`
-	Title     string                 `json:"title"`
-	Body      string                 `json:"body"`
-	Status    string                 `json:"status"`
-	Metadata  map[string]interface{} `json:"metadata"`
-	CreatedAt string                 `json:"created_at"`
-	UpdatedAt string                 `json:"updated_at"`
+	ID               int64                  `json:"id"`
+	ProjectID        int64                  `json:"project_id"`
+	Type             string                 `json:"type"`
+	Slug             string                 `json:"slug"`
+	Title            string                 `json:"title"`
+	Body             string                 `json:"body"`
+	Status           string                 `json:"status"`
+	Metadata         map[string]interface{} `json:"metadata"`
+	CreatedAt        string                 `json:"created_at"`
+	UpdatedAt        string                 `json:"updated_at"`
+	ReferenceCount   int64                  `json:"reference_count"`
+	LastReferencedAt string                 `json:"last_referenced_at,omitempty"`
 }
 
 type issueListItem struct {
@@ -361,4 +363,66 @@ func typesOf(list []issueListItem) []string {
 		out[i] = item.Type
 	}
 	return out
+}
+
+// PAI-347 — confidence selector persists + reads back from
+// category_metadata. Existing memory without an explicit confidence
+// is treated as medium on read by the bundle filter and the stale
+// proposal logic; the round-trip itself doesn't backfill the field
+// (the editor handles that on next save), so the test asserts only
+// what's actually persisted.
+func TestKnowledge_ConfidencePersistsAndRoundTrips(t *testing.T) {
+	ts := newTestServer(t)
+	projectID := createTestProject(t, ts, "PAI-347 confidence", "C347")
+
+	for _, conf := range []string{"high", "medium", "low"} {
+		t.Run(conf, func(t *testing.T) {
+			slug := "rule_" + conf
+			createResp := ts.post(t, knowledgeURL(projectID, "memory"), ts.adminCookie, map[string]interface{}{
+				"slug":     slug,
+				"title":    "Rule " + conf,
+				"body":     "Some rule.",
+				"metadata": map[string]interface{}{"confidence": conf},
+			})
+			assertStatus(t, createResp, http.StatusCreated)
+			var created knowledgeEntry
+			decode(t, createResp, &created)
+			if got := created.Metadata["confidence"]; got != conf {
+				t.Errorf("create round-trip: confidence=%v, want %q", got, conf)
+			}
+
+			// Reads pull the same value back.
+			getResp := ts.get(t, knowledgeEntryURL(projectID, "memory", slug), ts.adminCookie)
+			assertStatus(t, getResp, http.StatusOK)
+			var got knowledgeEntry
+			decode(t, getResp, &got)
+			if v := got.Metadata["confidence"]; v != conf {
+				t.Errorf("get-by-slug confidence=%v, want %q", v, conf)
+			}
+			// New decay-tracking columns surface on the response shape
+			// (zero by default — the bundle / suggest paths are the
+			// only writers and neither has fired in this test).
+			if got.ReferenceCount != 0 {
+				t.Errorf("reference_count=%d, want 0 for fresh entry", got.ReferenceCount)
+			}
+		})
+	}
+
+	// Existing memory without confidence: nothing is persisted on
+	// creation, but reads should still succeed and the metadata map
+	// just lacks the field. The "missing → medium" rule is enforced
+	// by downstream consumers (filter, stale, bundle), not by the
+	// raw round-trip.
+	createResp := ts.post(t, knowledgeURL(projectID, "memory"), ts.adminCookie, map[string]interface{}{
+		"slug":     "no_confidence_field",
+		"title":    "No confidence",
+		"body":     "x",
+		"metadata": map[string]interface{}{},
+	})
+	assertStatus(t, createResp, http.StatusCreated)
+	var created knowledgeEntry
+	decode(t, createResp, &created)
+	if _, ok := created.Metadata["confidence"]; ok {
+		t.Errorf("expected no confidence in metadata when not provided, got %v", created.Metadata)
+	}
 }
