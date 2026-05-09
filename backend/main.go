@@ -392,6 +392,12 @@ func main() {
 			// endpoints above with the same type discriminator.
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/applicable-memories", handlers.ListApplicableMemories)
 
+			// PAI-343: lesson-capture trigger detection. Asked by the UI
+			// (and the `paimos issue update --draft-memory` CLI flag)
+			// when a ticket transitions to a terminal status, so the
+			// trigger logic stays in one place. Read-only.
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/lesson-capture-prompt", handlers.LessonCapturePrompt)
+
 			// Time entries (v2)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
