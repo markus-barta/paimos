@@ -168,7 +168,15 @@ func createKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 	// rules look at them too — a no-op for the common case but cheap.
 	EvaluateSystemTags(id)
 
-	return knowledge.LoadOneByID(id, mod)
+	out, err := knowledge.LoadOneByID(id, mod)
+	if err != nil {
+		return out, err
+	}
+	// PAI-341 — fan out an SSE event so any active `paimos sync watch`
+	// subscriber can re-pull the new entry. Best-effort: the broker
+	// never blocks the request path.
+	publishKnowledgeChange(projectID, mod.Type(), out.Slug, knowledgeRevForOutput(out))
+	return out, nil
 }
 
 // updateKnowledgeEntry mutates an existing knowledge entry, then
@@ -262,7 +270,15 @@ func updateKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 	}
 	EvaluateSystemTags(existingID)
 
-	return knowledge.LoadOneByID(existingID, mod)
+	out, err := knowledge.LoadOneByID(existingID, mod)
+	if err != nil {
+		return out, err
+	}
+	// PAI-341 — see createKnowledgeEntry. UPDATE invalidates the cached
+	// rev so subscribers re-pull. Use the new slug (post-rename) so the
+	// event addresses the row's current identifier.
+	publishKnowledgeChange(projectID, mod.Type(), out.Slug, knowledgeRevForOutput(out))
+	return out, nil
 }
 
 // deleteKnowledgeEntry soft-deletes a knowledge entry the same way
@@ -356,6 +372,10 @@ func deleteKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 	if snap := getIssueByID(existingID); snap != nil {
 		saveSnapshot(snap, user, r)
 	}
+	// PAI-341 — fan out a delete-shaped change. Subscribers can decide
+	// to re-pull (the slug now 404s) or drop the local cache file. The
+	// rev is left empty because no live row remains to hash.
+	publishKnowledgeChange(projectID, mod.Type(), slug, "")
 	return n, nil
 }
 
