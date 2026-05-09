@@ -17,12 +17,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/models"
 )
@@ -165,6 +167,15 @@ func DeleteTag(w http.ResponseWriter, r *http.Request) {
 
 // ── Tag associations ─────────────────────────────────────────────────────────
 
+// PAI-354: tag attach/detach now records a mutation_log row carrying
+// X-Paimos-Agent-Name + X-Paimos-Session-Id so the per-mutation
+// attribution feed (PAI-209's mutation_log) can surface "which agent
+// attached/removed this tag, in which session?". The recordMutation
+// call is non-undoable — the existing endpoint is idempotent
+// (INSERT OR IGNORE) and the existing UI flow doesn't expect a
+// reversible op for tag toggles, so attribution is the only goal
+// here. Wrapping the INSERT/DELETE in a transaction keeps the row
+// and the audit-trail row atomic.
 func AddTagToIssue(w http.ResponseWriter, r *http.Request) {
 	issueID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -183,10 +194,50 @@ func AddTagToIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "system tags cannot be added manually", http.StatusForbidden)
 		return
 	}
-	if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_tags(issue_id,tag_id) VALUES(?,?)`,
+
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("AddTagToIssue: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(), `INSERT OR IGNORE INTO issue_tags(issue_id,tag_id) VALUES(?,?)`,
 		issueID, body.TagID); err != nil {
 		log.Printf("AddTagToIssue: issue_id=%d tag_id=%d err=%v", issueID, body.TagID, err)
 		jsonError(w, "failed to attach tag", http.StatusInternalServerError)
+		return
+	}
+
+	var userID *int64
+	if user := auth.GetUser(r); user != nil {
+		userID = &user.ID
+	}
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.tag.add"),
+		SubjectType:  "issue_tag",
+		SubjectID:    issueID,
+		InverseOp: InverseOp{
+			Method: http.MethodDelete,
+			Path:   fmt.Sprintf("/issues/%d/tags/%d", issueID, body.TagID),
+		},
+		BeforeState: nil,
+		AfterState:  map[string]any{"issue_id": issueID, "tag_id": body.TagID},
+		Undoable:    false,
+	}); err != nil {
+		log.Printf("AddTagToIssue: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("AddTagToIssue: commit: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -208,8 +259,51 @@ func RemoveTagFromIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "system tags cannot be removed manually", http.StatusForbidden)
 		return
 	}
-	if _, err := db.DB.Exec(`DELETE FROM issue_tags WHERE issue_id=? AND tag_id=?`, issueID, tagID); err != nil {
+
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("RemoveTagFromIssue: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(), `DELETE FROM issue_tags WHERE issue_id=? AND tag_id=?`, issueID, tagID); err != nil {
 		log.Printf("RemoveTagFromIssue: issue=%d tag=%d: %v", issueID, tagID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	var userID *int64
+	if user := auth.GetUser(r); user != nil {
+		userID = &user.ID
+	}
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.tag.remove"),
+		SubjectType:  "issue_tag",
+		SubjectID:    issueID,
+		InverseOp: InverseOp{
+			Method: http.MethodPost,
+			Path:   fmt.Sprintf("/issues/%d/tags", issueID),
+			Body: map[string]any{
+				"tag_id": tagID,
+			},
+		},
+		BeforeState: map[string]any{"issue_id": issueID, "tag_id": tagID},
+		AfterState:  nil,
+		Undoable:    false,
+	}); err != nil {
+		log.Printf("RemoveTagFromIssue: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("RemoveTagFromIssue: commit: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}

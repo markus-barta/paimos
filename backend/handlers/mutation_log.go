@@ -36,6 +36,7 @@ type mutationRecordArgs struct {
 	RequestID    string
 	UserID       *int64
 	SessionID    string
+	AgentName    string
 	MutationType string
 	SubjectType  string
 	SubjectID    int64
@@ -153,7 +154,27 @@ func mutationTypeForRequest(r *http.Request, base string) string {
 }
 
 func sessionIDFromRequest(r *http.Request) string {
-	return strings.TrimSpace(r.Header.Get(SessionHeader))
+	v := strings.TrimSpace(r.Header.Get(SessionHeader))
+	if len(v) > agentAttrCap {
+		v = v[:agentAttrCap]
+	}
+	return v
+}
+
+// agentNameFromRequest pulls the X-Paimos-Agent-Name header off the
+// request, trims whitespace, and caps the result at agentAttrCap (64
+// chars). Empty values become the empty string so recordMutation can
+// store SQL NULL via nullableString. PAI-354 — the per-mutation
+// attribution counterpart to issue_history's snapshot attribution.
+func agentNameFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	v := strings.TrimSpace(r.Header.Get(AgentNameHeader))
+	if len(v) > agentAttrCap {
+		v = v[:agentAttrCap]
+	}
+	return v
 }
 
 func recordMutation(ctx context.Context, tx *sql.Tx, args mutationRecordArgs) (int64, error) {
@@ -183,14 +204,26 @@ func recordMutation(ctx context.Context, tx *sql.Tx, args mutationRecordArgs) (i
 	if args.Undoable && args.UserID != nil && *args.UserID > 0 {
 		onUserStack = 1
 	}
+	// PAI-354: agent_name is an additional attribution column on
+	// mutation_log (added in M101). session_id has lived here since
+	// M83 — both are application-side capped at agentAttrCap before
+	// the INSERT. Empty values persist as SQL NULL.
+	sessionVal := args.SessionID
+	if len(sessionVal) > agentAttrCap {
+		sessionVal = sessionVal[:agentAttrCap]
+	}
+	agentVal := args.AgentName
+	if len(agentVal) > agentAttrCap {
+		agentVal = agentVal[:agentAttrCap]
+	}
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO mutation_log(
-			request_id, user_id, session_id, mutation_type, subject_type, subject_id,
+			request_id, user_id, session_id, agent_name, mutation_type, subject_type, subject_id,
 			batch_id, parent_log_id,
 			inverse_op, before_state, after_state, before_hash, after_hash, undoable, on_user_stack
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`,
-		args.RequestID, args.UserID, nullableString(args.SessionID), args.MutationType, args.SubjectType, args.SubjectID,
+		args.RequestID, args.UserID, nullableString(sessionVal), nullableString(agentVal), args.MutationType, args.SubjectType, args.SubjectID,
 		nullableString(args.BatchID), args.ParentLogID,
 		string(inverseJSON), string(beforeJSON), string(afterJSON), beforeHash, afterHash, undoable, onUserStack,
 	)

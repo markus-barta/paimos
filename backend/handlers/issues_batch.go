@@ -423,6 +423,7 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 	batchID := newAIRequestID()
 	reqID := requestIDFromRequest(r)
 	sessionID := sessionIDFromRequest(r)
+	agentName := agentNameFromRequest(r)
 	mutationType := mutationTypeForRequest(r, "issue.update")
 	var actorID *int64
 	if user := auth.GetUser(r); user != nil {
@@ -452,6 +453,7 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 			BatchID:      batchID,
 			UserID:       actorID,
 			SessionID:    sessionID,
+			AgentName:    agentName,
 			MutationType: mutationType,
 			SubjectType:  "issue",
 			SubjectID:    rw.id,

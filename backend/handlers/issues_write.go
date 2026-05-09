@@ -431,6 +431,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		RequestID:    requestIDFromRequest(r),
 		UserID:       userID,
 		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
 		MutationType: mutationTypeForRequest(r, "issue.update"),
 		SubjectType:  "issue",
 		SubjectID:    id,
