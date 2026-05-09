@@ -158,7 +158,9 @@ Exit codes (with --check):
 			// short-circuit by passing an empty raw agent through.
 			var bundle *bundlePayload
 			if bundleAgent != "" {
-				bundle, err = resolveBundle(client, projectSummary{ID: projectID, Key: projectKey}, bundleAgent, includeLow)
+				// includeProposed=false: onboarding briefings show
+				// the curated reading list, not pending bot drafts.
+				bundle, err = resolveBundle(client, projectSummary{ID: projectID, Key: projectKey}, bundleAgent, includeLow, false)
 				if err != nil {
 					return reportError(err)
 				}
