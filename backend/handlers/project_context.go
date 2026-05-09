@@ -219,47 +219,10 @@ func ListIssueAnchors(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, out)
 }
 
-func GetProjectManifest(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := projectIDFromRequest(r)
-	if !ok {
-		jsonError(w, "invalid project id", http.StatusBadRequest)
-		return
-	}
-	manifest, err := loadProjectManifest(projectID)
-	if err != nil {
-		jsonError(w, "query failed", http.StatusInternalServerError)
-		return
-	}
-	jsonOK(w, manifest)
-}
-
-func PutProjectManifest(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := projectIDFromRequest(r)
-	if !ok {
-		jsonError(w, "invalid project id", http.StatusBadRequest)
-		return
-	}
-	var body struct {
-		Data any `json:"data"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
-		return
-	}
-	data := body.Data
-	user := auth.GetUser(r)
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
-	var updatedBy *int64
-	if user != nil {
-		updatedBy = &user.ID
-	}
-	manifest, err := saveProjectManifest(projectID, data, updatedBy, now)
-	if err != nil {
-		jsonError(w, "save failed", http.StatusInternalServerError)
-		return
-	}
-	jsonOK(w, manifest)
-}
+// PAI-358: GetProjectManifest / PutProjectManifest deleted along with
+// the project_manifests table. The legacy taxonomy is fully replaced
+// by the PAI-338 knowledge plane; surviving usage was migrated by
+// PAI-357 before this deletion landed.
 
 func ListProjectEntityRelations(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
@@ -478,21 +441,9 @@ func deleteEntityRelation(projectID int64, sourceType string, sourceID int64, ta
 	`, projectID, sourceType, sourceID, targetType, targetID, edgeType)
 }
 
-func upsertManifestContextRelations(projectID int64, data any) {
-	obj, ok := data.(map[string]any)
-	if !ok {
-		return
-	}
-	if repos, ok := obj["repos"].([]any); ok {
-		for _, item := range repos {
-			if m, ok := item.(map[string]any); ok {
-				if idf, ok := m["id"].(float64); ok && idf > 0 {
-					upsertEntityRelation(projectID, "project", projectID, "repo", int64(idf), "project_uses_repo", "declared", "")
-				}
-			}
-		}
-	}
-}
+// PAI-358: upsertManifestContextRelations deleted with the manifest
+// table. Repo relations now flow through the explicit project_repos
+// CRUD endpoints, not the manifest blob.
 
 func nodeKey(typ string, id int64) string { return fmt.Sprintf("%s:%d", typ, id) }
 

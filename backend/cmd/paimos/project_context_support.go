@@ -35,10 +35,7 @@ type projectRepoRecord struct {
 	Label         string `json:"label"`
 }
 
-type projectManifestRecord struct {
-	ProjectID int64 `json:"project_id"`
-	Data      any   `json:"data"`
-}
+// PAI-358: projectManifestRecord deleted with the manifest endpoint.
 
 func resolveProjectID(client *Client, ref string) (int64, error) {
 	ref = strings.TrimSpace(ref)
@@ -76,17 +73,7 @@ func loadProjectRepos(client *Client, projectID int64) ([]projectRepoRecord, err
 	return repos, nil
 }
 
-func loadProjectManifestRecord(client *Client, projectID int64) (*projectManifestRecord, error) {
-	body, err := client.do("GET", fmt.Sprintf("/api/projects/%d/manifest", projectID), nil)
-	if err != nil {
-		return nil, err
-	}
-	var manifest projectManifestRecord
-	if err := json.Unmarshal(body, &manifest); err != nil {
-		return nil, fmt.Errorf("decode manifest: %w", err)
-	}
-	return &manifest, nil
-}
+// PAI-358: loadProjectManifestRecord deleted with the manifest endpoint.
 
 func repoRootFrom(path string) (string, error) {
 	if strings.TrimSpace(path) != "" {

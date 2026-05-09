@@ -117,7 +117,7 @@ Get started:
 	cmd.AddCommand(authCmd())
 	cmd.AddCommand(projectCmd())
 	cmd.AddCommand(anchorsCmd())
-	cmd.AddCommand(manifestCmd())
+	// PAI-358: manifestCmd removed with the project_manifests table.
 	cmd.AddCommand(issueCmd())
 	cmd.AddCommand(relationCmd())
 	cmd.AddCommand(schemaCmd())
@@ -134,8 +134,8 @@ Get started:
 	// PAI-331: generic sync verbs (init/pull/watch/check) over the
 	// resource registry. PAI-341 will register additional kinds.
 	cmd.AddCommand(syncCmd())
-	// PAI-357: paimos migrate verbs (manifest-to-knowledge).
-	cmd.AddCommand(migrateCmd())
+	// PAI-358: migrateCmd removed; the only verb (manifest-to-knowledge)
+	// is meaningless now that the project_manifests table is gone.
 
 	// If no subcommand is given, Cobra's default is to print help with
 	// exit 0. The AC wants exit 2 for that case (standard convention).

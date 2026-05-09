@@ -4420,6 +4420,42 @@ func migrate(db *sql.DB) error {
 		{101, []string{
 			`ALTER TABLE mutation_log ADD COLUMN agent_name TEXT`,
 		}},
+
+		// M102 / PAI-358: drop the legacy `project_manifests` table.
+		// PAI-356 moved primary navigation to the footer bar, PAI-357
+		// migrated content into the knowledge plane, and this
+		// migration deletes the now-unused storage. PAI-29's blob
+		// taxonomy (manifest / _guardrails / _glossary / _dev / _ops)
+		// is fully superseded by the PAI-338 knowledge plane.
+		//
+		// Pre-flight: a TEMP TRIGGER fires RAISE(ABORT) if any project
+		// still has non-empty `manifest_json` lacking a `_migrated_at`
+		// marker. Operators upgrading from v2.9.x with legacy data
+		// must run `paimos migrate manifest-to-knowledge --project KEY`
+		// against each populated project on v2.9.1 first; the migration
+		// then runs cleanly. The trigger uses INSERT-on-marker rather
+		// than DDL-time evaluation because SQLite triggers don't fire
+		// on DROP — the marker INSERT is what gates the rest of the
+		// migration body.
+		{102, []string{
+			`CREATE TEMPORARY TABLE _pai358_marker(x INTEGER)`,
+			`CREATE TEMPORARY TRIGGER _pai358_check
+			   BEFORE INSERT ON _pai358_marker
+			   WHEN EXISTS (
+			     SELECT 1 FROM project_manifests
+			     WHERE manifest_json IS NOT NULL
+			       AND manifest_json != ''
+			       AND manifest_json != '{}'
+			       AND json_extract(manifest_json, '$._migrated_at') IS NULL
+			   )
+			   BEGIN
+			     SELECT RAISE(ABORT, 'PAI-358: project_manifests has unmigrated content; on v2.9.1 run paimos migrate manifest-to-knowledge --project KEY for each populated project, then redeploy');
+			   END`,
+			`INSERT INTO _pai358_marker VALUES (1)`,
+			`DROP TRIGGER _pai358_check`,
+			`DROP TABLE _pai358_marker`,
+			`DROP TABLE project_manifests`,
+		}},
 	}
 
 	for _, m := range migrations {

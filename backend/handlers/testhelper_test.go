@@ -233,9 +233,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
 			// PAI-349 — proposed-memory stale list.
 			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/proposed/stale", handlers.ListStaleProposedMemory)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
-			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
-			r.With(auth.RequireAdmin, auth.RequireProjectEdit).Post("/projects/{id}/migrate-manifest-to-knowledge", handlers.MigrateManifestToKnowledge)
+			// PAI-358: manifest endpoints removed.
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/graph/blast-radius", handlers.BlastRadius)

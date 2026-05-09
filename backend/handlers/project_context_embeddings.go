@@ -3,9 +3,7 @@ package handlers
 import (
 	"bytes"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -149,15 +147,13 @@ func collectProjectRetrievalDocs(projectID int64) ([]retrievalDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	manifestDocs, err := collectProjectManifestDocs(projectID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]retrievalDoc, 0, len(issues)+len(anchors)+len(symbols)+len(manifestDocs))
+	// PAI-358: collectProjectManifestDocs removed with the
+	// project_manifests table. NFR/ADR retrieval now flows through
+	// the regular issue path (knowledge entries are issues).
+	out := make([]retrievalDoc, 0, len(issues)+len(anchors)+len(symbols))
 	out = append(out, issues...)
 	out = append(out, anchors...)
 	out = append(out, symbols...)
-	out = append(out, manifestDocs...)
 	return out, nil
 }
 
@@ -249,75 +245,7 @@ func collectProjectAnchorDocs(projectID int64) ([]retrievalDoc, error) {
 	return out, rows.Err()
 }
 
-func collectProjectManifestDocs(projectID int64) ([]retrievalDoc, error) {
-	var raw string
-	err := db.DB.QueryRow(`SELECT manifest_json FROM project_manifests WHERE project_id=?`, projectID).Scan(&raw)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var data map[string]any
-	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		data = map[string]any{}
-	}
-	out := []retrievalDoc{{
-		EntityType: "manifest",
-		EntityID:   projectID,
-		Title:      "Project manifest",
-		Content:    flattenContextText(data),
-		Hit: map[string]any{
-			"entity_type":   "manifest",
-			"entity_id":     projectID,
-			"title":         "Project manifest",
-			"snippet":       "Structured project context",
-			"project_id":    projectID,
-			"expanded_from": nil,
-		},
-	}}
-	if list, ok := data["nfrs"].([]any); ok {
-		for idx, item := range list {
-			title := manifestEntryTitle("NFR", idx, item)
-			out = append(out, retrievalDoc{
-				EntityType: "nfr",
-				EntityID:   int64(idx + 1),
-				Title:      title,
-				Content:    flattenContextText(item),
-				Hit: map[string]any{
-					"entity_type":   "nfr",
-					"entity_id":     int64(idx + 1),
-					"title":         title,
-					"snippet":       title,
-					"project_id":    projectID,
-					"section_key":   fmt.Sprintf("nfr:%d", idx+1),
-					"expanded_from": nil,
-				},
-			})
-		}
-	}
-	if list, ok := data["adrs"].([]any); ok {
-		for idx, item := range list {
-			title := manifestEntryTitle("ADR", idx, item)
-			out = append(out, retrievalDoc{
-				EntityType: "adr",
-				EntityID:   int64(idx + 1),
-				Title:      title,
-				Content:    flattenContextText(item),
-				Hit: map[string]any{
-					"entity_type":   "adr",
-					"entity_id":     int64(idx + 1),
-					"title":         title,
-					"snippet":       title,
-					"project_id":    projectID,
-					"section_key":   fmt.Sprintf("adr:%d", idx+1),
-					"expanded_from": nil,
-				},
-			})
-		}
-	}
-	return out, nil
-}
+// PAI-358: collectProjectManifestDocs deleted with the manifest blob.
 
 func collectProjectSymbolDocs(projectID int64) ([]retrievalDoc, error) {
 	rows, err := db.DB.Query(`

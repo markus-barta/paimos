@@ -980,13 +980,13 @@ watch(
         />
       </div>
 
-      <!-- PAI-356: bottom-anchored footer bar. Sits after every
-           tab's content (and below pd-workspaces / pd-sentinels)
-           so it always pins to the bottom of the project page
-           regardless of which primary tab is active. -->
+      <!-- PAI-356/-358: bottom-anchored footer bar. The Issues count
+           is the loaded list length so it matches the IssueList
+           header's count exactly (SSOT — no second source of truth);
+           the Knowledge count comes from the server's aggregate. -->
       <ProjectFooterBar
         v-model="primaryTab"
-        :open-issues="project.counts?.open_issues ?? null"
+        :open-issues="issues.length"
         :knowledge-entries="project.counts?.knowledge_entries ?? null"
       />
     </template>

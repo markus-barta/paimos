@@ -37,16 +37,15 @@ G202	MEDIUM	HIGH	handlers/memory_references.go	132-138	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	358	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	572-578	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	581-588	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/project_context.go	828	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/project_context.go	779	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	117-133	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	370-376	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	408-414	SQL string concatenation
 G204	MEDIUM	HIGH	cmd/paimos/adapters/external.go	147	Subprocess launched with a potential tainted input or cmd arguments
-G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	107	Subprocess launched with variable
+G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	94	Subprocess launched with variable
 G301	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	280	Expect directory permissions to be 0750 or less
-G301	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	86	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1057	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1115	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1154	Expect directory permissions to be 0750 or less
@@ -67,7 +66,6 @@ G304	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	292	Potential file inclusion via vari
 G304	MEDIUM	HIGH	cmd/paimos/cmd_apply.go	239	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_apply.go	62	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_issue_write.go	45	Potential file inclusion via variable
-G304	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	300	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_onboard.go	887	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_schema.go	98	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1084	Potential file inclusion via variable
@@ -84,10 +82,6 @@ G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	49	Potential file inclusion
 G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	77	Potential file inclusion via variable
 G304	MEDIUM	HIGH	secretvault/vault.go	142	Potential file inclusion via variable
 G306	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	288	Expect WriteFile permissions to be 0600 or less
-G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	154	Expect WriteFile permissions to be 0600 or less
-G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	317	Expect WriteFile permissions to be 0600 or less
-G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	93	Expect WriteFile permissions to be 0600 or less
-G306	MEDIUM	HIGH	cmd/paimos/cmd_manifest.go	96	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1066	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1128	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1159	Expect WriteFile permissions to be 0600 or less
@@ -110,7 +104,6 @@ G701	HIGH	HIGH	handlers/issues_list.go	100	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	221	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
-G703	HIGH	HIGH	cmd/paimos/cmd_manifest.go	317	Path traversal via taint analysis
 G703	HIGH	HIGH	db/db.go	63	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
@@ -121,9 +114,9 @@ G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	176	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	690	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	790	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	801	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	687	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	787	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	798	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis

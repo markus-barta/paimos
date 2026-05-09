@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 101
+const latestSchemaVersion = 102
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -67,7 +67,8 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	for _, table := range []string{
 		"project_repos",
 		"issue_anchors",
-		"project_manifests",
+		// PAI-358: project_manifests dropped in M102 — the manifest
+		// editor surface was retired with the v3.0 footer bar redesign.
 		"project_context_index",
 		"entity_relations",
 		"entity_embeddings",
@@ -86,6 +87,9 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if tableExists(t, db, "user_project_access") {
 		t.Fatal("user_project_access should be removed after migration 65")
+	}
+	if tableExists(t, db, "project_manifests") {
+		t.Fatal("project_manifests should be removed after migration 102 (PAI-358)")
 	}
 	if !columnExists(t, db, "ai_prompts", "placement") {
 		t.Fatal("expected ai_prompts.placement to exist")

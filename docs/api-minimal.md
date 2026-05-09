@@ -45,8 +45,8 @@ GET    /projects/:id/repos
 POST   /projects/:id/repos          {url, default_branch, label, sort_order}
 PUT    /projects/:id/repos/:repoId  partial update
 DELETE /projects/:id/repos/:repoId
-GET    /projects/:id/manifest
-PUT    /projects/:id/manifest       {data}
+# PAI-358 (v3.0): /projects/:id/manifest endpoints removed; legacy
+# taxonomy fully replaced by the PAI-338 knowledge plane.
 POST   /projects/:id/anchors        {repo_id, schema_version, repo_revision, generated_at, anchors}
 GET    /projects/:id/graph          ?root=issue:42&depth=2
 GET    /projects/:id/graph/blast-radius ?issue=PAI-79&depth=3
@@ -198,13 +198,15 @@ GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix
 
 ## Agent Context
 
-`/projects/:id/repos`, `/projects/:id/manifest`, `/projects/:id/anchors`,
+`/projects/:id/repos`, `/projects/:id/anchors`,
 `/projects/:id/graph`, `/projects/:id/retrieve`, and `/issues/:id/anchors`
-form the project-context layer for agents:
+form the project-context layer for agents. Knowledge entries (memory,
+runbook, external_system, related_project, guideline) live as issues
+under PAI-338 and are queried via the regular issue endpoints + the
+per-type convenience endpoints under `/projects/:id/{memory|runbooks|
+external-systems|related-projects|guidelines}`.
 
 - `repos` declares the mirrored/source repositories a project uses.
-- `manifest` stores structured truth such as stack, commands, services,
-  owners, NFRs, and ADR references.
 - `anchors` ingests machine-generated issue-to-file locations per repo.
 - anchors may include derived `symbol` metadata for the nearest enclosing
   function / method / class / type when the repo-side scanner can parse it.

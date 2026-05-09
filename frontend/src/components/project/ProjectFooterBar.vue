@@ -72,19 +72,27 @@ function select(t: ProjectPrimaryTab) {
 </template>
 
 <style scoped>
-/* PAI-356 — "editor status strip" aesthetic. Quiet, always-there,
-   never demanding. The bar anchors to the bottom of the project-page
-   flex column (`.pd-page` is `flex:1; min-height:0`) via the parent
-   wrapper's `margin-top: auto`, so it sits below the IssueList /
-   Overview / Knowledge content without competing for the global
-   chrome slot owned by SidebarFooter (PAI-280 invariant). */
+/* PAI-356 / PAI-358 — "editor status strip" aesthetic, refined per
+   v3.0 feedback. Spans the full project-page width by negating the
+   page padding (parent .pd-page applies horizontal padding for the
+   content; the bar escapes it via negative inline margin so it
+   matches the app header / subheader rule). Neutral active state —
+   no green/blue tint; just a soft surface bg + bold weight, mirroring
+   the sidebar nav-item treatment so the chrome reads as one family. */
 .pfb {
   display: flex;
   align-items: stretch;
   gap: 0;
-  height: 40px;
+  height: 36px;
   margin-top: auto;
-  padding: 0 .25rem;
+  /* AppLayout's .main-content has padding: 2rem 2.5rem; self-scroll
+     views trim bottom to .5rem (AppLayout.vue:473). Escape both with
+     negative margins so the bar spans the full project page width
+     and pins to the viewport bottom — no white gutters at the edges. */
+  margin-left: -2.5rem;
+  margin-right: -2.5rem;
+  margin-bottom: -.5rem;
+  padding: 0 2.5rem;
   background: var(--bg-card, var(--bg, #fff));
   border-top: 1px solid var(--border);
 }
@@ -94,7 +102,7 @@ function select(t: ProjectPrimaryTab) {
   display: inline-flex;
   align-items: center;
   gap: .4rem;
-  padding: 0 .9rem;
+  padding: 0 .85rem;
   height: 100%;
   font-family: inherit;
   font-size: 13px;
@@ -102,18 +110,13 @@ function select(t: ProjectPrimaryTab) {
   color: var(--text-muted);
   background: none;
   border: 0;
-  border-top: 2px solid transparent;
   cursor: pointer;
-  transition: color .15s, border-color .15s, background-color .15s;
-  /* The 2px top-border is the active-state marker. Reserve the same
-     2px even when inactive so toggling doesn't shift the label one
-     pixel up — the strip should feel rock-steady. */
-  margin-top: -1px; /* reach over the bar's top border so active marker sits on the seam */
+  transition: color .12s, background-color .12s;
 }
 
 .pfb__tab:hover {
   color: var(--text);
-  background: var(--surface-2, transparent);
+  background: var(--surface-2, var(--bg));
 }
 
 .pfb__tab:focus-visible {
@@ -122,14 +125,16 @@ function select(t: ProjectPrimaryTab) {
 }
 
 .pfb__tab--active {
-  color: var(--bp-green, var(--bp-blue));
-  border-top-color: var(--bp-green, var(--bp-blue));
+  color: var(--text);
   font-weight: 600;
+  /* Soft tint matching the sidebar's nav-item.active. Same family of
+     highlights as the rest of the chrome; no fresh accent color. */
+  background: color-mix(in srgb, var(--bp-blue) 12%, transparent);
 }
 
 .pfb__icon {
   flex-shrink: 0;
-  opacity: .85;
+  opacity: .8;
 }
 
 .pfb__tab--active .pfb__icon {
@@ -140,27 +145,25 @@ function select(t: ProjectPrimaryTab) {
   white-space: nowrap;
 }
 
+/* Count is informational, not decorative. Same muted treatment for
+   active and inactive — the active state is the bg tint, not the
+   badge color. Avoids the "why is this blue?" reaction. */
 .pfb__count {
   display: inline-block;
   min-width: 1.25rem;
   padding: 0 .4rem;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.5;
   color: var(--text-muted);
-  background: var(--surface-2);
+  background: var(--surface-2, var(--bg));
   border-radius: 10px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .pfb__count--zero {
-  opacity: .5;
-}
-
-.pfb__tab--active .pfb__count {
-  color: #fff;
-  background: var(--bp-green, var(--bp-blue));
-  opacity: 1;
+  opacity: .45;
 }
 
 /* Mobile — three labelled tabs at 375px fit at ~125px each.

@@ -58,22 +58,9 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	})
 	assertStatus(t, linkResp, http.StatusCreated)
 
-	manifestResp := ts.put(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/manifest", ts.adminCookie, map[string]any{
-		"data": map[string]any{
-			"stack":    map[string]any{"languages": []string{"Go", "TypeScript"}},
-			"commands": map[string]any{"build": "make build", "test": "make test"},
-			"nfrs": []map[string]any{{
-				"title":       "Latency budget",
-				"description": "Interactive paths should stay under 200ms p95.",
-			}},
-			"adrs": []map[string]any{{
-				"title":   "Context indexing",
-				"status":  "accepted",
-				"summary": "Use a dedicated lexical index for anchors and manifest context.",
-			}},
-		},
-	})
-	assertStatus(t, manifestResp, http.StatusOK)
+	// PAI-358: PUT /manifest deleted with the project_manifests table.
+	// NFR/ADR retrieval that this test used to assert on now flows via
+	// the knowledge-plane (PAI-338) issue path, not the manifest blob.
 
 	anchorResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/anchors", ts.adminCookie, map[string]any{
 		"repo_id":        repo.ID,
@@ -181,60 +168,9 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 		t.Fatalf("retrieve missing anchor hit: %#v", anchorSearch.Hits)
 	}
 
-	manifestSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
-		"q": "latency budget",
-		"k": 10,
-	})
-	assertStatus(t, manifestSearchResp, http.StatusOK)
-	var manifestSearch struct {
-		Hits []map[string]any `json:"hits"`
-	}
-	decode(t, manifestSearchResp, &manifestSearch)
-	foundManifestSection := false
-	for _, hit := range manifestSearch.Hits {
-		if hit["entity_type"] == "nfr" {
-			foundManifestSection = true
-			break
-		}
-	}
-	if !foundManifestSection {
-		t.Fatalf("retrieve missing nfr hit: %#v", manifestSearch.Hits)
-	}
-
-	adrSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
-		"q": "accepted lexical index",
-		"k": 10,
-	})
-	assertStatus(t, adrSearchResp, http.StatusOK)
-	var adrSearch struct {
-		Hits []map[string]any `json:"hits"`
-	}
-	decode(t, adrSearchResp, &adrSearch)
-	foundADR := false
-	for _, hit := range adrSearch.Hits {
-		if hit["entity_type"] == "adr" {
-			foundADR = true
-			break
-		}
-	}
-	if !foundADR {
-		t.Fatalf("retrieve missing adr hit: %#v", adrSearch.Hits)
-	}
-	foundVectorSource := false
-	for _, hit := range adrSearch.Hits {
-		if hit["entity_type"] == "adr" {
-			if rawSources, ok := hit["sources"].([]any); ok {
-				for _, src := range rawSources {
-					if s, ok := src.(string); ok && s == "vector" {
-						foundVectorSource = true
-					}
-				}
-			}
-		}
-	}
-	if !foundVectorSource {
-		t.Fatalf("retrieve missing vector source on adr hit: %#v", adrSearch.Hits)
-	}
+	// PAI-358: NFR/ADR manifest retrieval assertions removed with the
+	// manifest table. These payloads are now first-class knowledge
+	// entries (memory/runbook/guideline) and exercised by knowledge_test.go.
 
 	symbolSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
 		"q": "RetrieveProjectContext function",

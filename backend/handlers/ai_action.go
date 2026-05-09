@@ -183,17 +183,8 @@ var allowedActionFields = map[string]bool{
 	"customer_notes":          true,
 	"cooperation_sla_details": true,
 	"cooperation_notes":       true,
-	// Project-manifest structuring actions (PAI-252 follow-up): the
-	// frontend tab editor passes the slice key as the field so the
-	// audit trail records which slice the user was editing. The
-	// structure_* handlers themselves don't read the field — the
-	// action key picks the prompt — but the allow-list still has to
-	// recognise these strings or the dispatcher rejects the request.
-	"manifest_json":   true,
-	"guardrails_json": true,
-	"glossary_json":   true,
-	"dev_json":        true,
-	"ops_json":        true,
+	// PAI-358: manifest_json / guardrails_json / glossary_json /
+	// dev_json / ops_json removed with the legacy manifest editor.
 	// Some actions don't have a single target field (e.g. find_parent,
 	// detect_duplicates) — they pass field="" and handle context
 	// themselves. The dispatcher treats empty field as "skip the

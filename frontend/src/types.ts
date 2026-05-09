@@ -404,12 +404,7 @@ export interface ProjectRepo {
   updated_at: string
 }
 
-export interface ProjectManifest {
-  project_id: number
-  data: Record<string, any>
-  updated_at?: string
-  updated_by?: number | null
-}
+// PAI-358: ProjectManifest type deleted with the manifest table.
 
 export interface IssueAnchor {
   id: number

@@ -5,6 +5,29 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] — 2026-05-09
+
+Major-version bump for the **breaking** removal of the legacy project_manifests surface (PAI-358), bundled with v2.9.1's footer-bar polish (count SSOT, full-width chrome, neutral active state).
+
+### Removed (BREAKING)
+
+- **PAI-358** — Legacy `project_manifests` table dropped via M102. Pre-flight assertion in M102 fails closed if any project still has non-empty manifest content lacking a `_migrated_at` marker; operators upgrading from v2.9.x with legacy data must run `paimos migrate manifest-to-knowledge --project KEY` against each populated project on v2.9.1 first.
+- **PAI-358** — Endpoints `GET /api/projects/:id/manifest`, `PUT /api/projects/:id/manifest`, and `POST /api/projects/:id/migrate-manifest-to-knowledge` (the v2.9 transition helper) are gone.
+- **PAI-358** — `paimos manifest pull` and `paimos migrate manifest-to-knowledge` CLI verbs removed.
+- **PAI-358** — Frontend: `ProjectManifestTabs.vue` and the manifest editor in `ProjectContextSection.vue` deleted; `ProjectContextSection` now only owns the repo list. The `ProjectManifest` TS type is gone.
+- **PAI-358** — AI actions `structure_manifest`, `structure_guardrails`, `structure_glossary`, `structure_dev`, `structure_ops` removed (no host).
+
+### Changed
+
+- **PAI-356/-358 polish** — Project footer bar now shows the same Issues count as the IssueList header (SSOT against the loaded list, not a separate `open_issues` aggregate). Bar spans the full project-page width by escaping the `.main-content` padding (no more white gutters at the edges). Active-tab styling moved from accent-color text + green/blue badges to a neutral `color-mix(--bp-blue 12%)` tint that matches the sidebar's `nav-item.active` family — no fresh accents, just the existing chrome highlight.
+
+### Migration notes
+
+Upgrade path from v2.9.1:
+1. On v2.9.1, run `paimos migrate manifest-to-knowledge --project KEY` for every project with populated manifest content. Idempotent + dry-run-able.
+2. Upgrade to v3.0.0. M102's pre-flight asserts that every populated manifest carries a `_migrated_at` marker; the migration aborts loudly otherwise.
+3. The legacy editor and the migration helper are both gone in v3.0.0 — there is no second chance to migrate after upgrading.
+
 ## [2.9.1] — 2026-05-09
 
 CI-only fix on top of v2.9.0. v2.9.0's tag never produced a Docker image because the gosec baseline gate flagged 3 line-shifted G703 findings in `backend/main.go` (the new `/migrate-manifest-to-knowledge` route at line 332 shifted three pre-existing path-traversal taints by 5 lines each). v2.9.1 carries the same code as v2.9.0 plus the refreshed baseline.

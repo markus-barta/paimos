@@ -43,44 +43,10 @@ func listProjectReposData(projectID int64) ([]models.ProjectRepo, error) {
 	return out, nil
 }
 
-func saveProjectManifest(projectID int64, data any, updatedBy *int64, now string) (models.ProjectManifest, error) {
-	raw, err := normalizeManifestJSON(data)
-	if err != nil {
-		return models.ProjectManifest{}, err
-	}
-	var uid any
-	if updatedBy != nil {
-		uid = *updatedBy
-	}
-	if _, err := db.DB.Exec(`
-		INSERT INTO project_manifests(project_id, manifest_json, updated_at, updated_by)
-		VALUES(?,?,?,?)
-		ON CONFLICT(project_id) DO UPDATE SET
-			manifest_json = excluded.manifest_json,
-			updated_at = excluded.updated_at,
-			updated_by = excluded.updated_by
-	`, projectID, string(raw), now, uid); err != nil {
-		return models.ProjectManifest{}, err
-	}
-	upsertManifestContextRelations(projectID, data)
-	var decoded any
-	_ = json.Unmarshal(raw, &decoded)
-	return models.ProjectManifest{ProjectID: projectID, Data: decoded, UpdatedAt: now, UpdatedBy: updatedBy}, nil
-}
-
-func normalizeManifestJSON(data any) ([]byte, error) {
-	if data == nil {
-		data = map[string]any{}
-	}
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-	if len(raw) == 0 || string(raw) == "null" {
-		raw = []byte(`{}`)
-	}
-	return raw, nil
-}
+// PAI-358: saveProjectManifest, normalizeManifestJSON, and
+// loadProjectManifest were deleted along with the project_manifests
+// table. Knowledge content lives in the issues table (PAI-346); the
+// retrieval and embedding paths below operate on those rows directly.
 
 func retrieveProjectContextHits(projectID int64, q string, k int) ([]map[string]any, map[string]any, error) {
 	if err := syncProjectContextSearchIndex(projectID); err != nil {
@@ -396,9 +362,10 @@ func syncProjectContextSearchIndex(projectID int64) error {
 	if err := insertProjectAnchorSearchDocs(tx, projectID); err != nil {
 		return err
 	}
-	if err := insertProjectManifestSearchDocs(tx, projectID); err != nil {
-		return err
-	}
+	// PAI-358: insertProjectManifestSearchDocs removed with the
+	// project_manifests table. Knowledge entries (memory / runbook /
+	// guideline / external_system / related_project) are searchable
+	// via the issue search_index FTS — no per-blob fan-out needed.
 	return tx.Commit()
 }
 
@@ -474,48 +441,9 @@ func insertProjectAnchorSearchDocs(tx *sql.Tx, projectID int64) error {
 	return rows.Err()
 }
 
-func insertProjectManifestSearchDocs(tx *sql.Tx, projectID int64) error {
-	var raw string
-	if err := tx.QueryRow(`SELECT manifest_json FROM project_manifests WHERE project_id=?`, projectID).Scan(&raw); err != nil {
-		if err == sql.ErrNoRows {
-			return nil
-		}
-		return err
-	}
-	var data map[string]any
-	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		data = map[string]any{}
-	}
-	if err := insertProjectContextDoc(tx, projectID, "manifest", fmt.Sprintf("manifest:%d", projectID), "Project manifest", flattenContextText(data), map[string]any{
-		"project_id":  projectID,
-		"section_key": "manifest",
-	}); err != nil {
-		return err
-	}
-	if list, ok := data["nfrs"].([]any); ok {
-		for idx, item := range list {
-			title := manifestEntryTitle("NFR", idx, item)
-			if err := insertProjectContextDoc(tx, projectID, "nfr", fmt.Sprintf("nfr:%d:%d", projectID, idx+1), title, flattenContextText(item), map[string]any{
-				"project_id":  projectID,
-				"section_key": fmt.Sprintf("nfr:%d", idx+1),
-			}); err != nil {
-				return err
-			}
-		}
-	}
-	if list, ok := data["adrs"].([]any); ok {
-		for idx, item := range list {
-			title := manifestEntryTitle("ADR", idx, item)
-			if err := insertProjectContextDoc(tx, projectID, "adr", fmt.Sprintf("adr:%d:%d", projectID, idx+1), title, flattenContextText(item), map[string]any{
-				"project_id":  projectID,
-				"section_key": fmt.Sprintf("adr:%d", idx+1),
-			}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
+// PAI-358: insertProjectManifestSearchDocs deleted along with the
+// project_manifests table. NFR/ADR documents now live as knowledge
+// entries (PAI-338) and are indexed via the canonical issue path.
 
 func insertProjectContextDoc(tx *sql.Tx, projectID int64, entityType, entityKey, title, content string, metadata map[string]any) error {
 	rawMeta := "{}"
@@ -570,19 +498,7 @@ func flattenContextText(v any) string {
 	return strings.Join(parts, " ")
 }
 
-func manifestEntryTitle(prefix string, idx int, item any) string {
-	if obj, ok := item.(map[string]any); ok {
-		for _, key := range []string{"title", "name", "id", "key"} {
-			if s, ok := obj[key].(string); ok && strings.TrimSpace(s) != "" {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-		return strings.TrimSpace(s)
-	}
-	return fmt.Sprintf("%s %d", prefix, idx+1)
-}
+// PAI-358: manifestEntryTitle deleted with the manifest blob.
 
 func replaceProjectAnchors(projectID int64, body anchorIngestRequest) (map[string]any, *userError) {
 	if body.RepoID == 0 {
@@ -709,28 +625,6 @@ func replaceProjectAnchors(projectID int64, body anchorIngestRequest) (map[strin
 	}, nil
 }
 
-func loadProjectManifest(projectID int64) (models.ProjectManifest, error) {
-	var raw string
-	var updatedAt string
-	var updatedBy sql.NullInt64
-	err := db.DB.QueryRow(`
-		SELECT manifest_json, updated_at, updated_by
-		FROM project_manifests
-		WHERE project_id=?
-	`, projectID).Scan(&raw, &updatedAt, &updatedBy)
-	if err == sql.ErrNoRows {
-		return models.ProjectManifest{ProjectID: projectID, Data: map[string]any{}}, nil
-	}
-	if err != nil {
-		return models.ProjectManifest{}, err
-	}
-	var data any
-	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		data = map[string]any{}
-	}
-	var uid *int64
-	if updatedBy.Valid {
-		uid = &updatedBy.Int64
-	}
-	return models.ProjectManifest{ProjectID: projectID, Data: data, UpdatedAt: updatedAt, UpdatedBy: uid}, nil
-}
+// PAI-358: loadProjectManifest deleted with the project_manifests
+// table. The legacy taxonomy is fully replaced by the PAI-338
+// knowledge plane.
