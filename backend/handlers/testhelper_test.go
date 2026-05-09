@@ -284,6 +284,13 @@ func buildRouter() http.Handler {
 			r.Post("/auth/api-keys", handlers.CreateAPIKey)
 			r.Delete("/auth/api-keys/{id}", handlers.DeleteAPIKey)
 
+			// PAI-331 — auto-watch sync subscriptions + SSE endpoint.
+			r.Get("/auth/auto-watch", handlers.ListAutoWatch)
+			r.Put("/auth/auto-watch/{deviceID}/{projectID}", handlers.UpsertAutoWatch)
+			r.Delete("/auth/auto-watch/{deviceID}/{projectID}", handlers.DeleteAutoWatch)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
+
 			// Branding write endpoints — mirrors main.go. GET is in the
 			// public group above; writes are admin-gated.
 			r.With(auth.RequireAdmin).Put("/branding", handlers.PutBranding)

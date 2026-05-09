@@ -227,6 +227,78 @@ async function revokeAPIKey(id: number) {
 }
 async function copyKey(key: string) { await navigator.clipboard.writeText(key) }
 
+// ── Auto-watch sync (PAI-331) ───────────────────────────────────────────────
+// Per-(device, project) toggle. The CLI (`paimos sync watch`) registers
+// a row implicitly on its SSE handshake; the user manages enable/disable
+// + cleanup of stale device entries here. Default is OFF — the table
+// only ever shows rows the user (or a CLI on this account) created.
+interface AutoWatchRow {
+  device_id: string
+  project_id: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+interface ProjectListItem { id: number; key: string; name: string }
+const autoWatchRows = ref<AutoWatchRow[]>([])
+const autoWatchProjects = ref<Record<number, ProjectListItem>>({})
+const autoWatchError = ref('')
+const autoWatchLoading = ref(false)
+
+async function loadAutoWatch() {
+  autoWatchError.value = ''
+  autoWatchLoading.value = true
+  try {
+    const rows = await api.get<AutoWatchRow[]>('/auth/auto-watch')
+    autoWatchRows.value = rows
+    if (rows.length > 0) {
+      // Resolve project keys for the rows we got back. One bulk fetch
+      // is fine — projects list is short and already cached server-side.
+      const projects = await api.get<ProjectListItem[]>('/projects')
+      const byID: Record<number, ProjectListItem> = {}
+      for (const p of projects) byID[p.id] = p
+      autoWatchProjects.value = byID
+    }
+  } catch (e: unknown) {
+    autoWatchError.value = errMsg(e, 'Failed to load auto-watch subscriptions.')
+  } finally { autoWatchLoading.value = false }
+}
+
+async function toggleAutoWatch(row: AutoWatchRow) {
+  autoWatchError.value = ''
+  const next = !row.enabled
+  try {
+    const updated = await api.put<AutoWatchRow>(
+      `/auth/auto-watch/${encodeURIComponent(row.device_id)}/${row.project_id}`,
+      { enabled: next })
+    row.enabled = updated.enabled
+    row.updated_at = updated.updated_at
+  } catch (e: unknown) {
+    autoWatchError.value = errMsg(e, 'Failed to toggle auto-watch.')
+  }
+}
+
+async function deleteAutoWatch(row: AutoWatchRow) {
+  if (!await confirm({
+    message: `Remove auto-watch for ${row.device_id} on this project? The CLI watcher on that device will see its stream close.`,
+    confirmLabel: 'Remove',
+    danger: true,
+  })) return
+  try {
+    await api.delete(`/auth/auto-watch/${encodeURIComponent(row.device_id)}/${row.project_id}`)
+    autoWatchRows.value = autoWatchRows.value.filter(
+      r => !(r.device_id === row.device_id && r.project_id === row.project_id))
+  } catch (e: unknown) {
+    autoWatchError.value = errMsg(e, 'Failed to remove subscription.')
+  }
+}
+
+function projectLabel(id: number): string {
+  const p = autoWatchProjects.value[id]
+  if (!p) return `#${id}`
+  return p.key ? `${p.key} — ${p.name}` : p.name
+}
+
 watch(() => route.query.focus, focusIssueAutoRefreshPreference, { immediate: true })
 
 onBeforeUnmount(() => {
@@ -238,6 +310,7 @@ async function init() {
   initProfileForm()
   await loadTOTPStatus()
   await loadAPIKeys()
+  await loadAutoWatch()
 }
 init()
 </script>
@@ -554,6 +627,53 @@ init()
       </table>
     </div>
     <p v-else-if="!newKeyResult" class="empty-hint">No API keys yet.</p>
+  </div>
+
+  <!-- PAI-331: auto-watch sync panel. One row per (device, project)
+       the user has registered via `paimos sync watch`. The CLI does
+       not currently write rows for unused devices, so this list stays
+       short by construction. -->
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Auto-watch sync</h2>
+      <p class="section-desc">
+        Per-(device, project) toggle for the <code class="icode">paimos sync watch</code>
+        engine. Default <strong>OFF</strong>. Toggling OFF closes the device's active SSE
+        connection; the CLI watcher logs the disconnect and stops re-rendering until
+        you flip it back on.
+      </p>
+    </div>
+    <div v-if="autoWatchError" class="form-error" style="margin-bottom:.5rem">{{ autoWatchError }}</div>
+    <div v-if="autoWatchLoading" class="empty-hint">Loading…</div>
+    <div v-else-if="autoWatchRows.length > 0" class="card" style="padding:0;overflow:hidden;margin-top:.25rem">
+      <table class="settings-table">
+        <thead><tr><th>Device</th><th>Project</th><th>Updated</th><th>Auto-watch</th><th></th></tr></thead>
+        <tbody>
+          <tr v-for="row in autoWatchRows" :key="row.device_id + '/' + row.project_id">
+            <td><code class="icode">{{ row.device_id }}</code></td>
+            <td>{{ projectLabel(row.project_id) }}</td>
+            <td class="muted">{{ row.updated_at ? row.updated_at.slice(0,16) : '—' }}</td>
+            <td>
+              <button
+                type="button"
+                :class="['toggle-btn', { 'toggle-btn--on': row.enabled }]"
+                :aria-pressed="row.enabled"
+                @click="toggleAutoWatch(row)"
+              >
+                <span class="toggle-thumb" />
+              </button>
+            </td>
+            <td class="actions-cell">
+              <button class="btn btn-ghost btn-sm danger" @click="deleteAutoWatch(row)">Remove</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p v-else class="empty-hint">
+      No registered devices yet. Run <code class="icode">paimos sync watch --project &lt;key&gt;</code>
+      to enrol this device.
+    </p>
   </div>
 
   <div class="section">

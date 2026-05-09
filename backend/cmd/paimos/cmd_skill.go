@@ -68,6 +68,89 @@ carry a paimos-managed header line so PAI-331 can detect drift.`,
 	}
 	c.AddCommand(skillRenderCmd())
 	c.AddCommand(skillListAdaptersCmd())
+	// PAI-331: thin convenience wrappers over `paimos sync`. Both verb
+	// namespaces work: `paimos sync init --kind=skill` is the canonical
+	// form, `paimos skill init` is the muscle-memory shortcut for users
+	// already in the skill verb namespace.
+	c.AddCommand(skillInitCmd())
+	c.AddCommand(skillPullCmd())
+	c.AddCommand(skillWatchCmd())
+	c.AddCommand(skillCheckCmd())
+	return c
+}
+
+// skillInitCmd is `paimos skill init` — convenience wrapper for
+// `paimos sync init --kind=skill`.
+func skillInitCmd() *cobra.Command {
+	var (
+		projectRef    string
+		workspaceRoot string
+	)
+	c := &cobra.Command{
+		Use:   "init",
+		Short: "Pull every agent's rendered skill file once (alias for `paimos sync init --kind=skill`)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSyncMulti(projectRef, workspaceRoot, "skill", "", false)
+		},
+	}
+	c.Flags().StringVar(&projectRef, "project", "", "project key or numeric id")
+	c.Flags().StringVar(&workspaceRoot, "workspace", "", "workspace root (default cwd)")
+	return c
+}
+
+// skillPullCmd is `paimos skill pull`.
+func skillPullCmd() *cobra.Command {
+	var (
+		projectRef    string
+		workspaceRoot string
+		name          string
+	)
+	c := &cobra.Command{
+		Use:   "pull",
+		Short: "Refresh skill files (alias for `paimos sync pull --kind=skill`)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSyncMulti(projectRef, workspaceRoot, "skill", strings.TrimSpace(name), false)
+		},
+	}
+	c.Flags().StringVar(&projectRef, "project", "", "project key or numeric id")
+	c.Flags().StringVar(&workspaceRoot, "workspace", "", "workspace root (default cwd)")
+	c.Flags().StringVar(&name, "agent", "", "single agent name (omit for all)")
+	return c
+}
+
+// skillWatchCmd is `paimos skill watch`.
+func skillWatchCmd() *cobra.Command {
+	var (
+		projectRef    string
+		workspaceRoot string
+	)
+	c := &cobra.Command{
+		Use:   "watch",
+		Short: "Subscribe to agent changes, re-render on event (alias for `paimos sync watch --kind=skill`)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSyncWatch(projectRef, workspaceRoot, "skill")
+		},
+	}
+	c.Flags().StringVar(&projectRef, "project", "", "project key or numeric id")
+	c.Flags().StringVar(&workspaceRoot, "workspace", "", "workspace root (default cwd)")
+	return c
+}
+
+// skillCheckCmd is `paimos skill check`.
+func skillCheckCmd() *cobra.Command {
+	var (
+		projectRef    string
+		workspaceRoot string
+	)
+	c := &cobra.Command{
+		Use:   "check",
+		Short: "Compare local skill files against canonical (alias for `paimos sync check --kind=skill`)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSyncCheck(projectRef, workspaceRoot, "skill")
+		},
+	}
+	c.Flags().StringVar(&projectRef, "project", "", "project key or numeric id")
+	c.Flags().StringVar(&workspaceRoot, "workspace", "", "workspace root (default cwd)")
 	return c
 }
 

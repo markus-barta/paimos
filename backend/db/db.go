@@ -4340,6 +4340,30 @@ func migrate(db *sql.DB) error {
 			`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
 			 ON issue_relations(target_id, type)`,
 		}},
+
+		// M98 / PAI-331: per-(user, device, project) auto-watch
+		// subscriptions for the sync engine. Default OFF — a freshly
+		// minted (device, project) tuple does NOT auto-receive SSE
+		// updates. The user explicitly opts in via the Settings >
+		// Account "auto-watch sync" panel; toggling OFF
+		// invalidates the device's active SSE connection server-side.
+		//
+		// PAI-341 (knowledge-plane sync) reuses this table verbatim:
+		// one (user, device, project) row covers ALL kinds for that
+		// triple.
+		{98, []string{
+			`CREATE TABLE IF NOT EXISTS auto_watch_subscriptions (
+				user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				device_id   TEXT NOT NULL,
+				project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				enabled     INTEGER NOT NULL DEFAULT 0,
+				created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+				PRIMARY KEY (user_id, device_id, project_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_auto_watch_user_project ON auto_watch_subscriptions(user_id, project_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_auto_watch_device ON auto_watch_subscriptions(device_id)`,
+		}},
 	}
 
 	for _, m := range migrations {
