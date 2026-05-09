@@ -48,6 +48,9 @@ const fakeArtifactJSON = `{
 // "ACME" (id 7). Returns a server scoped to the test.
 func startFakeArtifactAPI(t *testing.T) *httptest.Server {
 	t.Helper()
+	// Isolate the test from any real $PAIMOS_ADAPTER_PATH on the
+	// developer's box. Hermetic tests don't pick up local installs.
+	t.Setenv("PAIMOS_ADAPTER_PATH", "")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {

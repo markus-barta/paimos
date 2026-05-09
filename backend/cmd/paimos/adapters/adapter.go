@@ -31,7 +31,10 @@
 // truncation, per the ticket's acceptance criteria.
 package adapters
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // RenderResult is what an adapter returns from Render(). Content is the
 // final file body (the dispatcher injects the drift-detection header
@@ -49,10 +52,9 @@ type RenderResult struct {
 	SuggestedPath string
 }
 
-// Adapter is the surface a harness adapter implements. The interface
-// mirrors the informal contract from PAI-330's ticket; PAI-332 will
-// formalise it as the public SDK boundary, but the shape should not
-// change in incompatible ways.
+// Adapter is the surface a harness adapter implements. PAI-332
+// formalises it as the public SDK boundary; the shape will not change
+// in incompatible ways within protocol_version "1".
 type Adapter interface {
 	// Name is the registry key (matches --harness).
 	Name() string
@@ -72,6 +74,41 @@ type Adapter interface {
 
 	// Describe is a one-line CLI help string.
 	Describe() string
+}
+
+// ManifestProvider is an optional Adapter extension: adapters that
+// expose a full v1 Manifest (PAI-332) implement this so paimos can
+// list, serve, and conformance-test them uniformly. The bundled
+// claude-code reference adapter implements it; external binary
+// adapters expose the same shape via `paimos-adapter-<name> describe`.
+type ManifestProvider interface {
+	Manifest() Manifest
+}
+
+// ManifestOf returns the formal v1 manifest for an adapter, falling
+// back to a synthesised one when the adapter has not opted in. The
+// fallback ensures every adapter is uniformly describable from
+// outside, which `list-adapters --json` and the public registry both
+// depend on.
+func ManifestOf(a Adapter) Manifest {
+	if mp, ok := a.(ManifestProvider); ok {
+		m := mp.Manifest()
+		if strings.TrimSpace(m.Name) == "" {
+			m.Name = a.Name()
+		}
+		if strings.TrimSpace(m.ProtocolVersion) == "" {
+			m.ProtocolVersion = ProtocolVersion
+		}
+		return m
+	}
+	return Manifest{
+		ProtocolVersion: ProtocolVersion,
+		Name:            a.Name(),
+		Version:         a.Version(),
+		Supports:        a.Supports(),
+		Description:     a.Describe(),
+		InputFormat:     "json",
+	}
 }
 
 // Registry is the in-memory map of adapter-name → adapter. The CLI

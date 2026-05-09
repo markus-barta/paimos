@@ -1,0 +1,46 @@
+{
+  "protocol_version": "1",
+  "generated_by": "paimos",
+  "doc": "PAI-332 public adapter registry. External adapters register here via PR. To be listed an adapter must (a) ship a paimos-adapter.json manifest, (b) pass `paimos skill test-adapter <name>` against its declared supports range, and (c) link to a maintained source repo. The registry is a static JSON file in v1; a separate registry service is a future-PAI follow-up.",
+  "adapters": [
+    {
+      "manifest": {
+        "protocol_version": "1",
+        "name": "claude-code",
+        "version": "1.0.0",
+        "supports": ">=1.0.0 <2.0.0",
+        "description": "Claude Code skill markdown adapter — writes to .claude/commands/<slash>.md",
+        "target_path_template": "{workspace}/.claude/commands/{slash_command_name}.md",
+        "input_format": "json",
+        "output_format": "markdown"
+      },
+      "homepage": "https://github.com/markus-barta/paimos-app",
+      "source": "bundled",
+      "maintainer": "paimos",
+      "conformance": {
+        "passes": true,
+        "last_verified": "2026-05-08"
+      }
+    },
+    {
+      "manifest": {
+        "protocol_version": "1",
+        "name": "opencode",
+        "version": "0.0.1",
+        "supports": ">=1.0.0 <2.0.0",
+        "description": "(stub) opencode harness skill renderer — demonstrates the protocol works end-to-end against a non-paimos-bundled adapter.",
+        "target_path_template": "{workspace}/.opencode/skills/{slash_command_name}.md",
+        "input_format": "json",
+        "output_format": "markdown"
+      },
+      "homepage": "https://github.com/example/paimos-adapter-opencode",
+      "source": "external",
+      "maintainer": "(unclaimed)",
+      "conformance": {
+        "passes": false,
+        "last_verified": "",
+        "note": "stub entry; not yet conformance-tested"
+      }
+    }
+  ]
+}

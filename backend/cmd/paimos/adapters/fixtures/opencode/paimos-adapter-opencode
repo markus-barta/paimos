@@ -1,0 +1,66 @@
+#!/bin/sh
+# PAIMOS — Your Professional & Personal AI Project OS
+# Copyright (C) 2026 Markus Barta <markus@barta.com>
+# Licensed under AGPL-3.0 (see project LICENSE).
+#
+# PAI-332 — opencode external adapter stub.
+#
+# This is a working v1 reference of an out-of-tree paimos adapter.
+# It speaks the PAI-332 contract literally:
+#
+#   render --input -    : stdin canonical JSON, stdout rendered file
+#   describe            : stdout: paimos-adapter.json verbatim
+#   validate --input -  : exit 0 iff the input has agent.name set
+#
+# Used by the conformance suite (test fixtures) and the
+# adapter-protocol.md "Writing your first adapter" walkthrough.
+
+set -e
+
+# Resolve manifest path next to this script — describe just `cat`s it.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MANIFEST="$SCRIPT_DIR/paimos-adapter.json"
+
+case "$1" in
+  describe)
+    cat "$MANIFEST"
+    ;;
+  validate)
+    # Read stdin once; check it contains an agent.name field.
+    body="$(cat)"
+    case "$body" in
+      *'"name"'*)
+        exit 0
+        ;;
+      *)
+        echo "opencode: input missing agent.name" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  render)
+    body="$(cat)"
+    # Extract project key + agent name with the simplest possible
+    # pattern — the conformance suite's representative artifact has
+    # them at known top-level paths. Real adapters would use jq;
+    # keeping this dep-free so the fixture runs on any POSIX shell.
+    project_key="$(printf '%s' "$body" | sed -n 's/.*"project"[^}]*"key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+    agent_name="$(printf '%s' "$body" | sed -n 's/.*"agent"[^}]*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+    project_key="${project_key:-unknown}"
+    agent_name="${agent_name:-unknown}"
+
+    cat <<EOF
+# opencode skill: $agent_name (project $project_key)
+
+This file was rendered by the opencode adapter stub. It demonstrates
+that paimos can dispatch to a non-bundled adapter via the PAI-332
+protocol.
+
+Replace this stub with a real opencode-shaped renderer.
+EOF
+    ;;
+  *)
+    echo "opencode: unknown verb '$1' (expected: render | describe | validate)" >&2
+    exit 64
+    ;;
+esac

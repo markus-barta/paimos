@@ -54,6 +54,41 @@ func registerBuiltIns(reg *adapters.Registry) {
 	reg.Register(claudecode.New())
 }
 
+// adapterDiscoveryFn is the package-level hook for $PAIMOS_ADAPTER_PATH
+// discovery. Tests can substitute a no-op or fixture-driven discovery
+// without touching real env state. Production calls
+// adapters.DiscoverAdapters("", logger).
+var adapterDiscoveryFn = func() ([]adapters.DiscoveredAdapter, error) {
+	return adapters.DiscoverAdapters("", func(format string, a ...any) {
+		fmt.Fprintf(stderr, "paimos: "+format+"\n", a...)
+	})
+}
+
+// registerDiscoveredAdapters wraps each $PAIMOS_ADAPTER_PATH-found
+// manifest as an ExternalAdapter and registers it. External entries
+// shadow built-ins of the same name (the user installed a custom
+// version on purpose); --harness-from-file shadows discovery
+// (per-invocation override). Discovery errors are logged but not
+// fatal — a single bad adapter must not break `skill render`.
+func registerDiscoveredAdapters(reg *adapters.Registry) {
+	if adapterDiscoveryFn == nil {
+		return
+	}
+	found, err := adapterDiscoveryFn()
+	if err != nil {
+		fmt.Fprintf(stderr, "paimos: adapter discovery: %v\n", err)
+		return
+	}
+	for _, d := range found {
+		ext, err := adapters.NewExternalAdapter(d)
+		if err != nil {
+			fmt.Fprintf(stderr, "paimos: skip discovered adapter %q: %v\n", d.Manifest.Name, err)
+			continue
+		}
+		reg.Register(ext)
+	}
+}
+
 func skillCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "skill",
@@ -68,6 +103,7 @@ carry a paimos-managed header line so PAI-331 can detect drift.`,
 	}
 	c.AddCommand(skillRenderCmd())
 	c.AddCommand(skillListAdaptersCmd())
+	c.AddCommand(skillTestAdapterCmd())
 	// PAI-331: thin convenience wrappers over `paimos sync`. Both verb
 	// namespaces work: `paimos sync init --kind=skill` is the canonical
 	// form, `paimos skill init` is the muscle-memory shortcut for users
@@ -220,6 +256,7 @@ The rendered file is prefixed with a paimos drift-detection header
 			// override (which wins by virtue of map last-write).
 			reg := adapters.NewRegistry()
 			builtInAdaptersFn(reg)
+			registerDiscoveredAdapters(reg)
 			if strings.TrimSpace(harnessFile) != "" {
 				m, err := adapters.LoadManifestAdapter(harnessFile)
 				if err != nil {
@@ -290,6 +327,7 @@ func skillListAdaptersCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reg := adapters.NewRegistry()
 			builtInAdaptersFn(reg)
+			registerDiscoveredAdapters(reg)
 			if strings.TrimSpace(harnessFile) != "" {
 				m, err := adapters.LoadManifestAdapter(harnessFile)
 				if err != nil {
@@ -299,14 +337,13 @@ func skillListAdaptersCmd() *cobra.Command {
 			}
 			items := reg.List()
 			if flagJSON {
-				out := make([]map[string]any, 0, len(items))
+				// Emit the formal v1 manifest shape (PAI-332). Older
+				// `describe` / `supports` keys remain present in the
+				// canonical manifest; consumers should prefer the
+				// PAI-332 canonical names.
+				out := make([]adapters.Manifest, 0, len(items))
 				for _, a := range items {
-					out = append(out, map[string]any{
-						"name":     a.Name(),
-						"version":  a.Version(),
-						"supports": a.Supports(),
-						"describe": a.Describe(),
-					})
+					out = append(out, adapters.ManifestOf(a))
 				}
 				b, _ := json.Marshal(out)
 				fmt.Fprintln(stdout, string(b))
@@ -325,6 +362,104 @@ func skillListAdaptersCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&harnessFile, "harness-from-file", "", "also include an ad-hoc adapter loaded from a manifest")
+	return c
+}
+
+// skillTestAdapterCmd is `paimos skill test-adapter <name>` — runs the
+// PAI-332 conformance suite against a registered adapter. Exit 0 when
+// every case passes; exit 1 otherwise. Used as the gating check for
+// listing in the public registry endpoint.
+func skillTestAdapterCmd() *cobra.Command {
+	var (
+		harnessFile string
+		snapshot    string
+	)
+	c := &cobra.Command{
+		Use:   "test-adapter <name>",
+		Short: "Run the PAI-332 conformance suite against an adapter",
+		Long: `test-adapter runs an adapter through the PAI-332 conformance suite:
+manifest sanity, supports-range boundary probes, representative-render
+non-empty, and (for external adapters) describe-matches-manifest.
+
+A passing run is the criterion for an adapter to be listed in the
+public registry endpoint (GET /api/registry/adapters).
+
+When --snapshot is supplied (or an expected_output.txt fixture sits
+next to a discovered manifest) the suite also asserts byte-equality
+against the rendered output.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := strings.TrimSpace(args[0])
+			if name == "" {
+				return &usageError{msg: "<name> is required"}
+			}
+			reg := adapters.NewRegistry()
+			builtInAdaptersFn(reg)
+			discovered := []adapters.DiscoveredAdapter{}
+			if adapterDiscoveryFn != nil {
+				if got, err := adapterDiscoveryFn(); err == nil {
+					discovered = got
+					for _, d := range got {
+						ext, err := adapters.NewExternalAdapter(d)
+						if err == nil {
+							reg.Register(ext)
+						}
+					}
+				}
+			}
+			if strings.TrimSpace(harnessFile) != "" {
+				m, err := adapters.LoadManifestAdapter(harnessFile)
+				if err != nil {
+					return err
+				}
+				reg.Register(m)
+			}
+
+			a, err := reg.Get(name)
+			if err != nil {
+				return err
+			}
+			opts := adapters.ConformanceOptions{
+				SnapshotOverride: strings.TrimSpace(snapshot),
+			}
+			for _, d := range discovered {
+				if d.Manifest.Name == name {
+					opts.ManifestPath = d.ManifestPath
+					break
+				}
+			}
+			report := adapters.RunConformance(a, opts)
+
+			if flagJSON {
+				b, _ := json.MarshalIndent(report, "", "  ")
+				fmt.Fprintln(stdout, string(b))
+			} else {
+				fmt.Fprintf(stdout, "conformance report for adapter %q:\n", report.Adapter)
+				for _, c := range report.Cases {
+					status := "PASS"
+					if !c.Pass {
+						status = "FAIL"
+					}
+					fmt.Fprintf(stdout, "  [%s] %s", status, c.Name)
+					if c.Message != "" {
+						fmt.Fprintf(stdout, " — %s", c.Message)
+					}
+					fmt.Fprintln(stdout)
+				}
+				if report.AllPassed() {
+					fmt.Fprintln(stdout, "all cases passed")
+				} else {
+					fmt.Fprintf(stdout, "%d case(s) failed\n", report.FailureCount())
+				}
+			}
+			if !report.AllPassed() {
+				return &checkExitCode{code: 1}
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&harnessFile, "harness-from-file", "", "also include an ad-hoc adapter loaded from a manifest")
+	c.Flags().StringVar(&snapshot, "snapshot", "", "path to expected-output fixture for byte-equality check")
 	return c
 }
 

@@ -123,6 +123,10 @@ func main() {
 		r.Get("/health", healthHandler)          // (a) Docker + CI
 		r.Get("/branding", handlers.GetBranding) // (b) login page logo + colors
 		r.Get("/schema", handlers.GetAPISchema)  // (c) CLI / MCP discovery (PAI-87)
+		// PAI-332: public adapter registry. CLI / external tooling
+		// browses the published adapter list without an account so
+		// adapter authors can self-link from their own README.
+		r.Get("/registry/adapters", handlers.GetAdapterRegistry)
 		// PAI-119: published OpenAPI 3.1 contract. Public so external
 		// clients can discover the API without an account.
 		r.Get("/openapi.json", handlers.GetOpenAPI)
