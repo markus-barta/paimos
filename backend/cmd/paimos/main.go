@@ -127,6 +127,8 @@ Get started:
 	cmd.AddCommand(sessionCmd())
 	// PAI-330: skill render with adapter dispatch.
 	cmd.AddCommand(skillCmd())
+	// PAI-352: paimos onboard — human-readable briefing renderer.
+	cmd.AddCommand(onboardCmd())
 	// PAI-331: generic sync verbs (init/pull/watch/check) over the
 	// resource registry. PAI-341 will register additional kinds.
 	cmd.AddCommand(syncCmd())
