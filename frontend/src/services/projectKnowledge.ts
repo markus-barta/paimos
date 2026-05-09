@@ -192,14 +192,22 @@ export function bumpMemoryReferences(
 
 // Status mapping per PAI-346 §"Status values": knowledge entries
 // reuse the existing issue status enum but the UI renders them as
-// "active" / "archived". Anything except `cancelled` is considered
-// active for v1 (proposed lands with PAI-349). Centralised here so
-// every component reads + writes the same labels.
+// "active" / "archived" / "proposed". Anything except `cancelled` /
+// `proposed` is considered active. Centralised here so every component
+// reads + writes the same labels.
 const ARCHIVED_STATUS = "cancelled";
 const ACTIVE_STATUS = "backlog";
+// PAI-349 — bot-authored memory drafts pending operator review.
+const PROPOSED_STATUS = "proposed";
 
 export function isArchived(entry: KnowledgeEntry): boolean {
   return entry.status === ARCHIVED_STATUS;
+}
+
+// PAI-349 — surfaces the "Proposed" filter chip + accept/edit/reject
+// flow. Only memory entries can be in this state for v1.
+export function isProposed(entry: KnowledgeEntry): boolean {
+  return entry.status === PROPOSED_STATUS;
 }
 
 export function archivedStatusValue(): string {
@@ -208,4 +216,66 @@ export function archivedStatusValue(): string {
 
 export function activeStatusValue(): string {
   return ACTIVE_STATUS;
+}
+
+export function proposedStatusValue(): string {
+  return PROPOSED_STATUS;
+}
+
+// ── PAI-349 — proposed memory drafts ──────────────────────────────
+
+/**
+ * Accept a proposed memory entry — flips status to active. Equivalent
+ * to PUTting status='backlog' on the existing knowledge endpoint.
+ */
+export async function acceptProposedMemory(
+  projectId: number,
+  entry: KnowledgeEntry,
+): Promise<KnowledgeEntry> {
+  return updateKnowledgeEntry(projectId, "memory", entry.slug, {
+    slug: entry.slug,
+    title: entry.title,
+    body: entry.body,
+    status: ACTIVE_STATUS,
+    metadata: entry.metadata,
+  });
+}
+
+/**
+ * Reject a proposed memory entry — sets status to archived and stamps
+ * `category_metadata.archived_reason='rejected'` so reviewers can
+ * filter / audit later.
+ */
+export async function rejectProposedMemory(
+  projectId: number,
+  entry: KnowledgeEntry,
+): Promise<KnowledgeEntry> {
+  const meta = { ...(entry.metadata ?? {}) } as Record<string, unknown>;
+  meta["archived_reason"] = "rejected";
+  return updateKnowledgeEntry(projectId, "memory", entry.slug, {
+    slug: entry.slug,
+    title: entry.title,
+    body: entry.body,
+    status: ARCHIVED_STATUS,
+    metadata: meta,
+  });
+}
+
+/** Stale proposed memory drafts (untouched ≥ N days). */
+export interface StaleProposedMemoryProposal extends KnowledgeEntry {
+  days_since_update: number;
+}
+
+/**
+ * Fetch the project's stale proposed-memory drafts. Server returns
+ * candidates only — the operator drives the actual archive transition.
+ */
+export function listStaleProposedMemory(
+  projectId: number,
+  days?: number,
+): Promise<StaleProposedMemoryProposal[]> {
+  const qs = days && days > 0 ? `?days=${days}` : "";
+  return api.get<StaleProposedMemoryProposal[]>(
+    `/projects/${projectId}/memory/proposed/stale${qs}`,
+  );
 }

@@ -14,7 +14,7 @@
 // to update.
 
 import type { KnowledgeCategory, KnowledgeEntry } from "@/types";
-import { isArchived } from "@/services/projectKnowledge";
+import { isArchived, isProposed } from "@/services/projectKnowledge";
 
 export type KnowledgeSortMode = "recency" | "alpha" | "confidence";
 
@@ -30,6 +30,11 @@ export interface KnowledgeFilterOptions {
   // proposal list separately and passes the id-set down here so the
   // existing pipeline still owns search + archive + env filters).
   staleIds?: Set<number>;
+  // PAI-349 — when true, the filter narrows to status='proposed'
+  // entries (bot-authored drafts pending operator review). When false
+  // (default), proposed entries are hidden so the active list isn't
+  // polluted with drafts. Only meaningful for the memory category.
+  showProposedOnly?: boolean;
 }
 
 /**
@@ -65,6 +70,14 @@ export function filterKnowledge(
   const filtered = entries.filter((e) => {
     if (opts.staleIds && opts.staleIds.size > 0) {
       if (!opts.staleIds.has(e.id)) return false;
+    }
+    // PAI-349 — proposed-mode is a narrow filter: ONLY proposed
+    // entries are shown. The default mode hides proposed entries so
+    // the active list stays clean.
+    if (opts.showProposedOnly) {
+      if (!isProposed(e)) return false;
+    } else {
+      if (isProposed(e)) return false;
     }
     if (!showArchived && isArchived(e)) return false;
     if (opts.category === "memory" && memoryType !== "all") {
