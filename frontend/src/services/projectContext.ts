@@ -25,3 +25,33 @@ export function removeProjectContextRepo(projectId: number, repoId: number): Pro
 export function saveProjectContextManifest(projectId: number, data: Record<string, unknown>): Promise<ProjectManifest> {
   return api.put<ProjectManifest>(`/projects/${projectId}/manifest`, { data })
 }
+
+// PAI-357 — server-side mapping result. Each item is one planned
+// (dry-run) or performed (apply) write; conflict items carry a
+// `reason` string.
+export interface ManifestMigrationItem {
+  kind: 'memory' | 'runbook' | 'guideline' | 'agent_body' | string
+  slug?: string
+  agent_name?: string
+  title: string
+  source: string
+  reason?: string
+}
+
+export interface ManifestMigrationResult {
+  dry_run: boolean
+  created: ManifestMigrationItem[]
+  skipped: ManifestMigrationItem[]
+  conflicts: ManifestMigrationItem[]
+  migrated_at?: string
+}
+
+export function migrateManifestToKnowledge(
+  projectId: number,
+  opts: { dryRun?: boolean; force?: boolean } = {},
+): Promise<ManifestMigrationResult> {
+  return api.post<ManifestMigrationResult>(
+    `/projects/${projectId}/migrate-manifest-to-knowledge`,
+    { dry_run: !!opts.dryRun, force: !!opts.force },
+  )
+}

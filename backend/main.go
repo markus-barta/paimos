@@ -330,6 +330,11 @@ func main() {
 			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/proposed/stale", handlers.ListStaleProposedMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
+			// PAI-357 — admin-only manifest → knowledge-plane migration.
+			// Idempotent + dry-run-able + force-able. The legacy
+			// manifest editor stays mounted until PAI-358's deletion
+			// window expires.
+			r.With(auth.RequireAdmin, auth.RequireProjectEdit).Post("/projects/{id}/migrate-manifest-to-knowledge", handlers.MigrateManifestToKnowledge)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/graph/blast-radius", handlers.BlastRadius)
