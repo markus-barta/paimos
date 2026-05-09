@@ -296,6 +296,10 @@ func main() {
 				// shape (text/plain, 12-char hex hash).
 				r.With(auth.RequireProjectView).Get(rev, handlers.MakeKnowledgeRevHandler(alias))
 			}
+			// PAI-347 — memory reference-count tracking + decay-based
+			// archive proposals.
+			r.With(auth.RequireProjectView).Post("/projects/{id}/memory/references", handlers.BumpMemoryReferences)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)

@@ -163,6 +163,17 @@ func buildSuggestions(issueID int64) ([]ApplicableMemory, error) {
 	if len(scored) > 3 {
 		scored = scored[:3]
 	}
+	// PAI-347 — every memory we surface as a candidate counts as a
+	// fresh reference for decay purposes. The bump is best-effort: a
+	// failure here must not break the suggest response (the user-
+	// visible payload is far more important than the counter).
+	if len(scored) > 0 {
+		ids := make([]int64, 0, len(scored))
+		for _, s := range scored {
+			ids = append(ids, s.ID)
+		}
+		_, _ = bumpMemoryReferenceCounts(db.DB, ctx.projectID, ids)
+	}
 	return scored, nil
 }
 
