@@ -76,7 +76,7 @@ func TestFilterMemory_ScopeAndEnvironment(t *testing.T) {
 			Metadata: map[string]any{"scope": "user-on-this-project"}},
 	}
 
-	got := filterMemory(entries, currentUserID, agentEnvs)
+	got := filterMemory(entries, currentUserID, agentEnvs, true)
 	gotSlugs := []string{}
 	for _, e := range got {
 		gotSlugs = append(gotSlugs, e.Slug)
@@ -100,9 +100,43 @@ func TestFilterMemory_NoAgentEnvironments(t *testing.T) {
 				"applies_to_environments": []any{"prod"},
 			}},
 	}
-	got := filterMemory(entries, 0, nil)
+	got := filterMemory(entries, 0, nil, true)
 	if len(got) != 2 {
 		t.Fatalf("expected both entries with no agent envs, got %d (%v)", len(got), got)
+	}
+}
+
+// TestFilterMemory_ConfidenceGate (PAI-347) — `low` is excluded by
+// default; `--include-low` flips the gate. Missing / unknown
+// confidence is treated as medium (backwards-compat).
+func TestFilterMemory_ConfidenceGate(t *testing.T) {
+	entries := []knowledgeEntry{
+		{Slug: "high-rule", Title: "high", Status: "backlog",
+			Metadata: map[string]any{"confidence": "high"}},
+		{Slug: "med-rule", Title: "med", Status: "backlog",
+			Metadata: map[string]any{"confidence": "medium"}},
+		{Slug: "low-rule", Title: "low", Status: "backlog",
+			Metadata: map[string]any{"confidence": "low"}},
+		// Missing confidence — defaults to medium.
+		{Slug: "no-confidence", Title: "no", Status: "backlog",
+			Metadata: map[string]any{}},
+	}
+
+	// Default gate (includeLow=false) drops only "low-rule".
+	got := filterMemory(entries, 0, nil, false)
+	gotSlugs := []string{}
+	for _, e := range got {
+		gotSlugs = append(gotSlugs, e.Slug)
+	}
+	want := []string{"high-rule", "med-rule", "no-confidence"}
+	if !sameStringSet(gotSlugs, want) {
+		t.Fatalf("default gate: got %v, want %v", gotSlugs, want)
+	}
+
+	// includeLow=true keeps everything.
+	got = filterMemory(entries, 0, nil, true)
+	if len(got) != 4 {
+		t.Fatalf("includeLow: got %d entries, want 4", len(got))
 	}
 }
 

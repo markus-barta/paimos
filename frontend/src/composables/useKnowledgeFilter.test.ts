@@ -86,7 +86,9 @@ describe('filterKnowledge', () => {
     expect(filterKnowledge(items, { category: 'memory', sort: 'alpha' }).map((e) => e.slug)).toEqual(['a', 'm', 'z'])
   })
 
-  it('sorts memory by confidence (high → medium → low), missing = medium', () => {
+  it('sorts memory by confidence (high → medium → low → unscored)', () => {
+    // PAI-347 — explicit unscored bucket so users can spot
+    // uncalibrated entries at the bottom of the list.
     const items = [
       entry({ slug: 'low_one', metadata: { confidence: 'low' } }),
       entry({ slug: 'no_meta' }),
@@ -94,11 +96,40 @@ describe('filterKnowledge', () => {
       entry({ slug: 'medium_one', metadata: { confidence: 'medium' } }),
     ]
     const order = filterKnowledge(items, { category: 'memory', sort: 'confidence' }).map((e) => e.slug)
-    expect(order[0]).toBe('high_one')
-    expect(order[order.length - 1]).toBe('low_one')
-    // Missing-meta and explicit-medium are tied (both rank 1) — both
-    // sit between high and low.
-    expect(order.slice(1, 3).sort()).toEqual(['medium_one', 'no_meta'])
+    expect(order).toEqual(['high_one', 'medium_one', 'low_one', 'no_meta'])
+  })
+
+  it('uses last_referenced_at DESC as the confidence sort tiebreak (PAI-347)', () => {
+    const items = [
+      entry({ id: 1, slug: 'med_recent', metadata: { confidence: 'medium' }, last_referenced_at: '2026-05-08 10:00:00', updated_at: '2026-04-01' }),
+      entry({ id: 2, slug: 'med_old', metadata: { confidence: 'medium' }, last_referenced_at: '2026-01-01 00:00:00', updated_at: '2026-04-15' }),
+      entry({ id: 3, slug: 'med_never', metadata: { confidence: 'medium' }, updated_at: '2026-04-30' }),
+    ]
+    const order = filterKnowledge(items, { category: 'memory', sort: 'confidence' }).map((e) => e.slug)
+    // recent → old → never (all medium so confidence rank ties).
+    expect(order).toEqual(['med_recent', 'med_old', 'med_never'])
+  })
+
+  it('confidence sort tiebreak falls back to updated_at when last_referenced_at is missing on both', () => {
+    const items = [
+      entry({ id: 1, slug: 'a', metadata: { confidence: 'medium' }, updated_at: '2026-04-01' }),
+      entry({ id: 2, slug: 'b', metadata: { confidence: 'medium' }, updated_at: '2026-05-01' }),
+    ]
+    const order = filterKnowledge(items, { category: 'memory', sort: 'confidence' }).map((e) => e.slug)
+    expect(order).toEqual(['b', 'a'])
+  })
+
+  it('staleIds restricts the result to the provided id-set (PAI-347)', () => {
+    const items = [
+      entry({ id: 1, slug: 'a' }),
+      entry({ id: 2, slug: 'b' }),
+      entry({ id: 3, slug: 'c' }),
+    ]
+    const order = filterKnowledge(items, {
+      category: 'memory',
+      staleIds: new Set([1, 3]),
+    }).map((e) => e.slug)
+    expect(order.sort()).toEqual(['a', 'c'])
   })
 
   it('falls through to recency for confidence sort on non-memory', () => {

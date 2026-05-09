@@ -92,17 +92,28 @@ type Input struct {
 // return. It deliberately mirrors Input so round-trips are
 // symmetric, with the addition of read-only fields the server
 // owns (id, project_id, type, timestamps).
+//
+// PAI-347 — `ReferenceCount` and `LastReferencedAt` are decay-
+// tracking fields surfaced for memory entries. They're maintained
+// server-side (bundle include + auto-suggest) and round-trip
+// through the convenience endpoints so the UI can sort + filter
+// on them. Default 0 / "" for non-memory rows so the JSON shape
+// stays uniform across types; the fields are still serialised
+// (omitempty applies to LastReferencedAt only since 0 is a
+// meaningful "never referenced" value for the counter).
 type Output struct {
-	ID        int64          `json:"id"`
-	ProjectID int64          `json:"project_id"`
-	Type      string         `json:"type"`
-	Slug      string         `json:"slug"`
-	Title     string         `json:"title"`
-	Body      string         `json:"body"`
-	Status    string         `json:"status"`
-	Metadata  map[string]any `json:"metadata"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	ID               int64          `json:"id"`
+	ProjectID        int64          `json:"project_id"`
+	Type             string         `json:"type"`
+	Slug             string         `json:"slug"`
+	Title            string         `json:"title"`
+	Body             string         `json:"body"`
+	Status           string         `json:"status"`
+	Metadata         map[string]any `json:"metadata"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	ReferenceCount   int64          `json:"reference_count"`
+	LastReferencedAt string         `json:"last_referenced_at,omitempty"`
 }
 
 // Module is the per-type contract. Each of memory / runbook /

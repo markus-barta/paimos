@@ -227,6 +227,10 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Put("/instance/memory/{slug}", handlers.UpdateInstanceMemory)
 			r.With(auth.RequireAdmin).Delete("/instance/memory/{slug}", handlers.DeleteInstanceMemory)
 			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
+
+			// PAI-347 — memory reference-count tracking + decay.
+			r.With(auth.RequireProjectView).Post("/projects/{id}/memory/references", handlers.BumpMemoryReferences)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)

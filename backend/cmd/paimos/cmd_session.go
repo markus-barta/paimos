@@ -230,6 +230,9 @@ func sessionStartCmd() *cobra.Command {
 		bundleStr  string
 		refresh    bool
 		cacheDir   string
+		// PAI-347 — opt-in flag to include `low` confidence memories
+		// in the bundle. Default-off keeps the bundle compact.
+		includeLow bool
 	)
 	c := &cobra.Command{
 		Use:   "start",
@@ -340,7 +343,7 @@ Bundle modes (PAI-340):
 				}
 			}
 
-			bundle, err := resolveBundle(client, project, agentName)
+			bundle, err := resolveBundle(client, project, agentName, includeLow)
 			if err != nil {
 				return reportError(err)
 			}
@@ -367,6 +370,9 @@ Bundle modes (PAI-340):
 	c.Flags().StringVar(&bundleStr, "bundle", "", "bundle mode: minimal (default; PAI-327 behaviour) or full (PAI-340)")
 	c.Flags().BoolVar(&refresh, "refresh", false, "force re-fetch even when a manifest exists in the cache")
 	c.Flags().StringVar(&cacheDir, "cache-dir", "", "cache directory root (default: ./.paimos/cache)")
+	// PAI-347 — confidence gate. Default-off (skip low-confidence
+	// memories); opt in to include them.
+	c.Flags().BoolVar(&includeLow, "include-low", false, "include low-confidence memories in --bundle full (default: skip)")
 	// `--export` and `--json` aren't strictly mutually-exclusive at the
 	// flag layer — resolveSessionFormat handles precedence — so the
 	// --bundle / --format extension layers over them cleanly.

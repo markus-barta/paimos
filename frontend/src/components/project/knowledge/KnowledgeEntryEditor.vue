@@ -70,6 +70,13 @@ const metadata = ref<Record<string, unknown>>({ ...(props.initial.metadata ?? {}
 const memoryType = ref(stringFromMeta(metadata.value, 'type', 'project'))
 const memoryScope = ref(stringFromMeta(metadata.value, 'scope', 'project'))
 const memoryConfidence = ref(stringFromMeta(metadata.value, 'confidence', 'medium'))
+
+// PAI-347: confidence tooltip — explains the three levels so authors
+// pick deliberately. Surfaced on the label icon + the select itself.
+const confidenceTooltip =
+  'high = applied multiple times with no exception\n' +
+  'medium = solid rule with known edge cases\n' +
+  'low = working hypothesis'
 const memoryEnvironments = ref(arrayFromMeta(metadata.value, 'applies_to_environments'))
 const memoryOriginatingTickets = ref(arrayFromMeta(metadata.value, 'originating_tickets'))
 const memoryEnvironmentsInput = ref(memoryEnvironments.value.join(', '))
@@ -366,8 +373,15 @@ watch(
           </select>
         </div>
         <div class="ke-field">
-          <label>Confidence</label>
-          <select v-model="memoryConfidence">
+          <label>
+            Confidence
+            <span
+              class="ke-info"
+              :title="confidenceTooltip"
+              aria-label="Confidence definitions"
+            >&#9432;</span>
+          </label>
+          <select v-model="memoryConfidence" :title="confidenceTooltip">
             <option value="high">high</option>
             <option value="medium">medium</option>
             <option value="low">low</option>
@@ -552,6 +566,7 @@ watch(
 .ke-field input, .ke-field select, .ke-field textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; padding: .45rem .55rem; box-sizing: border-box; }
 .ke-field-error { color: #b42318; font-size: 11px; }
 .ke-hint { color: var(--text-muted); font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.ke-info { color: var(--text-muted); font-weight: 400; font-size: 12px; cursor: help; margin-left: .25rem; }
 .ke-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .ke-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 200px; resize: vertical; }
 .ke-body-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }

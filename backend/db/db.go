@@ -4382,19 +4382,25 @@ func migrate(db *sql.DB) error {
 		// not via CHECK, so PAI-339's editor + PAI-349's bot drafts can
 		// mutate `category_metadata.scope` freely while the WHERE-clause
 		// invariant lives in one place.
-		//
-		// Index `(user_id, type)` keeps "all my user-scope memory"
-		// lookups O(log n) — the bundle resolver hits this on every
-		// `paimos session start --bundle full` call. Partial WHERE keeps
-		// the index small (most issues will never have user_id set).
-		//
-		// Adding the column via plain ALTER is safe in SQLite even for
-		// FKs (see M2/M22/M65 prior art); a full issues recreate would
-		// drag in the M96 child-table dance for no benefit since neither
-		// type CHECK nor status CHECK changes here.
 		{99, []string{
 			`ALTER TABLE issues ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
 			`CREATE INDEX IF NOT EXISTS idx_issues_user_type ON issues(user_id, type) WHERE user_id IS NOT NULL`,
+		}},
+
+		// M100 / PAI-347: memory reference-count tracking. Two cheap
+		// nullable column additions on the issues table — applied to
+		// every row but only meaningful for rows where type='memory'.
+		// The counter increments each time a memory is included in a
+		// `paimos session start --bundle full` resolve (PAI-340) or
+		// surfaces as an auto-suggest candidate (PAI-342); the
+		// timestamp is the wall-clock of the most recent reference.
+		// Both default to 0 / NULL — existing memory entries pre-date
+		// the tracking and are treated as "freshly referenced" by the
+		// stale-proposal logic so the day this lands doesn't generate
+		// a flood of bogus archive proposals (see /memory/stale handler).
+		{100, []string{
+			`ALTER TABLE issues ADD COLUMN reference_count INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE issues ADD COLUMN last_referenced_at TEXT`,
 		}},
 	}
 

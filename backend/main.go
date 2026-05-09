@@ -320,6 +320,10 @@ func main() {
 			// handler (admin gate fires when promoting to instance).
 			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
 
+			// PAI-347 — memory reference-count tracking + decay-based
+			// archive proposals.
+			r.With(auth.RequireProjectView).Post("/projects/{id}/memory/references", handlers.BumpMemoryReferences)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/manifest", handlers.GetProjectManifest)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/manifest", handlers.PutProjectManifest)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)

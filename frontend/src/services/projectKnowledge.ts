@@ -124,16 +124,6 @@ export function deleteKnowledgeEntry(
 // user / instance memory entry can be lifted to a higher scope. The
 // server creates a new row at the destination and soft-deletes the
 // source (history + tags + body preserved) — see knowledge_promote.go.
-//
-// Three destinations are valid:
-//   - "project"  — must include `to_project_id`
-//   - "user"     — current user's cross-project bucket
-//   - "instance" — server-wide; admin-only on the server side
-//
-// `from_project_id` is optional — when omitted the server walks
-// user > instance scope to locate the source. Pass it explicitly when
-// the caller knows the source is in a specific project; the editor
-// always knows that.
 export type MemoryScope = "project" | "user" | "instance";
 
 export interface PromoteMemoryRequest {
@@ -156,6 +146,45 @@ export function promoteMemory(
   return api.post<PromoteMemoryResponse>(
     `/memory/${encodeURIComponent(slug)}/promote`,
     payload,
+  );
+}
+
+// ── PAI-347 — decay-based archive proposals ───────────────────────
+
+export interface StaleMemoryProposal extends KnowledgeEntry {
+  confidence: string;
+  reference_count: number;
+  last_referenced_at?: string;
+  days_since_reference: number;
+}
+
+/**
+ * Fetch the project's stale-memory archive proposals. Three server-
+ * side conditions: no recent reference + confidence ≤ medium + no
+ * in-flight originating ticket.
+ */
+export function listStaleMemory(
+  projectId: number,
+  days?: number,
+): Promise<StaleMemoryProposal[]> {
+  const qs = days && days > 0 ? `?days=${days}` : "";
+  return api.get<StaleMemoryProposal[]>(
+    `/projects/${projectId}/memory/stale${qs}`,
+  );
+}
+
+/**
+ * Reset the decay clock for a list of memory ids. Bumps the same
+ * reference_count counter the bundle resolver bumps.
+ */
+export function bumpMemoryReferences(
+  projectId: number,
+  memoryIds: number[],
+  source = "ui",
+): Promise<{ updated: number }> {
+  return api.post<{ updated: number }>(
+    `/projects/${projectId}/memory/references`,
+    { ids: memoryIds, source },
   );
 }
 

@@ -236,7 +236,11 @@ func hasAnyOverlap(a, b []string) bool {
 //  4. When the entry declares `applies_to_environments` AND the agent
 //     declares one or more environments, require at least one overlap.
 //     Either side empty / unset = no filtering.
-func filterMemory(entries []knowledgeEntry, currentUserID int64, agentEnvs []string) []knowledgeEntry {
+//  5. PAI-347: drop entries with confidence == "low" unless `includeLow`
+//     is set. Missing / unknown confidence is treated as "medium" per
+//     the ticket's backwards-compat rule, so existing memory
+//     (no explicit confidence) continues to flow through.
+func filterMemory(entries []knowledgeEntry, currentUserID int64, agentEnvs []string, includeLow bool) []knowledgeEntry {
 	out := make([]knowledgeEntry, 0, len(entries))
 	for _, e := range entries {
 		if !isLiveEntry(e) {
@@ -256,9 +260,41 @@ func filterMemory(entries []knowledgeEntry, currentUserID int64, agentEnvs []str
 				continue
 			}
 		}
+
+		// PAI-347 — confidence gate. Default exclusion of `low`
+		// memories keeps the bundle compact for fresh sessions; the
+		// caller flips `--include-low` when debugging or onboarding
+		// a project where every working hypothesis matters.
+		if !includeLow {
+			conf := memoryConfidenceFrom(e.Metadata)
+			if conf == "low" {
+				continue
+			}
+		}
+
 		out = append(out, e)
 	}
 	return out
+}
+
+// memoryConfidenceFrom mirrors the backend's confidenceFromMeta —
+// missing / unknown values fall back to "medium" so the default
+// bundle pipeline includes existing pre-PAI-347 memory entries
+// (which have no explicit confidence) by default.
+func memoryConfidenceFrom(meta map[string]any) string {
+	if meta == nil {
+		return "medium"
+	}
+	if raw, ok := meta["confidence"]; ok {
+		if s, ok := raw.(string); ok {
+			s = strings.TrimSpace(strings.ToLower(s))
+			switch s {
+			case "high", "medium", "low":
+				return s
+			}
+		}
+	}
+	return "medium"
 }
 
 // memoryUserMatches checks whether a user-scoped memory entry belongs
@@ -450,7 +486,12 @@ func fetchCurrentUserID(c *Client) int64 {
 // filters, and returns the assembled payload. The resolver does not
 // touch the cache — that's the caller's responsibility (env / files
 // formats persist; json prints to stdout).
-func resolveBundle(c *Client, project projectSummary, agentName string) (*bundlePayload, error) {
+//
+// `includeLow` (PAI-347) flips the confidence gate: by default `low`
+// memories are excluded; pass true to opt them back in. The decision
+// is plumbed all the way through here (rather than at the CLI flag
+// layer) so the helper test surface can pin both paths.
+func resolveBundle(c *Client, project projectSummary, agentName string, includeLow bool) (*bundlePayload, error) {
 	// Agent artifact is canonical (PAI-329); we keep the full JSON so
 	// every field the server emits round-trips into the bundle.
 	agentRaw, err := c.do("GET",
@@ -496,9 +537,9 @@ func resolveBundle(c *Client, project projectSummary, agentName string) (*bundle
 	userMemRaw := fetchScopedMemory(c, "/api/users/me/memory")
 	instanceMemRaw := fetchScopedMemory(c, "/api/instance/memory")
 
-	projectMem := filterMemory(memRaw, currentUserID, agentEnvs)
-	userMem := filterMemory(userMemRaw, currentUserID, agentEnvs)
-	instanceMem := filterMemory(instanceMemRaw, currentUserID, agentEnvs)
+	projectMem := filterMemory(memRaw, currentUserID, agentEnvs, includeLow)
+	userMem := filterMemory(userMemRaw, currentUserID, agentEnvs, includeLow)
+	instanceMem := filterMemory(instanceMemRaw, currentUserID, agentEnvs, includeLow)
 	mergedMem := mergeMemoryByScope(projectMem, userMem, instanceMem)
 
 	bundle := &bundlePayload{
@@ -511,7 +552,43 @@ func resolveBundle(c *Client, project projectSummary, agentName string) (*bundle
 		Guidelines:      filterGuidelines(glRaw, agentName),
 		FetchedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
+
+	// PAI-347 — bump reference_count + last_referenced_at on every
+	// memory entry that survived filtering. Best-effort: a transient
+	// failure here must not break the bundle output (the user-visible
+	// payload is far more important than the counter).
+	if len(bundle.Memory) > 0 {
+		_ = bumpMemoryReferences(c, project.ID, bundle.Memory)
+	}
 	return bundle, nil
+}
+
+// bumpMemoryReferences POSTs the included memory ids to the
+// `/memory/references` endpoint so the server can update the
+// reference_count + last_referenced_at columns. The endpoint is
+// idempotent enough — a partial / dropped request just under-counts
+// for this run, which is preferable to blocking the bundle on a
+// counter-update failure.
+func bumpMemoryReferences(c *Client, projectID int64, entries []knowledgeEntry) error {
+	if c == nil || projectID <= 0 || len(entries) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(entries))
+	for _, e := range entries {
+		if e.ID > 0 {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	body := map[string]any{
+		"ids":    ids,
+		"source": "bundle",
+	}
+	_, err := c.do("POST",
+		fmt.Sprintf("/api/projects/%d/memory/references", projectID), body)
+	return err
 }
 
 // cacheManifest is the on-disk JSON written under

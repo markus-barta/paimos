@@ -25,6 +25,11 @@ export interface KnowledgeFilterOptions {
   showArchived?: boolean;
   environment?: string;
   sort?: KnowledgeSortMode;
+  // PAI-347 — when true, the filter only returns memory entries the
+  // server flagged as stale (the parent component fetches the
+  // proposal list separately and passes the id-set down here so the
+  // existing pipeline still owns search + archive + env filters).
+  staleIds?: Set<number>;
 }
 
 /**
@@ -58,6 +63,9 @@ export function filterKnowledge(
   const sort = opts.sort ?? "recency";
 
   const filtered = entries.filter((e) => {
+    if (opts.staleIds && opts.staleIds.size > 0) {
+      if (!opts.staleIds.has(e.id)) return false;
+    }
     if (!showArchived && isArchived(e)) return false;
     if (opts.category === "memory" && memoryType !== "all") {
       const t = (e.metadata?.["type"] as string | undefined) ?? "";
@@ -82,11 +90,26 @@ export function filterKnowledge(
       return a.slug.localeCompare(b.slug);
     }
     if (sort === "confidence" && opts.category === "memory") {
+      // PAI-347 ordering: high → medium → low → unscored, with
+      // last_referenced_at DESC as the tiebreaker (then updated_at
+      // DESC as a safety net for entries the bundle path hasn't
+      // yet bumped). "unscored" is anything not in the canonical
+      // {high, medium, low} set — kept as its own bucket so users
+      // can spot uncalibrated entries at the bottom.
       const order = (e: KnowledgeEntry): number => {
-        const v = (e.metadata?.["confidence"] as string | undefined) ?? "medium";
-        return v === "high" ? 0 : v === "medium" ? 1 : 2;
+        const v = (e.metadata?.["confidence"] as string | undefined) ?? "";
+        if (v === "high") return 0;
+        if (v === "medium") return 1;
+        if (v === "low") return 2;
+        return 3;
       };
-      return order(a) - order(b);
+      const ordA = order(a);
+      const ordB = order(b);
+      if (ordA !== ordB) return ordA - ordB;
+      const refA = (a.last_referenced_at ?? "") || "";
+      const refB = (b.last_referenced_at ?? "") || "";
+      if (refA !== refB) return refB.localeCompare(refA);
+      return b.updated_at.localeCompare(a.updated_at);
     }
     return b.updated_at.localeCompare(a.updated_at);
   });
