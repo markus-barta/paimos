@@ -54,6 +54,41 @@ func registerBuiltIns(reg *adapters.Registry) {
 	reg.Register(claudecode.New())
 }
 
+// adapterDiscoveryFn is the package-level hook for $PAIMOS_ADAPTER_PATH
+// discovery. Tests can substitute a no-op or fixture-driven discovery
+// without touching real env state. Production calls
+// adapters.DiscoverAdapters("", logger).
+var adapterDiscoveryFn = func() ([]adapters.DiscoveredAdapter, error) {
+	return adapters.DiscoverAdapters("", func(format string, a ...any) {
+		fmt.Fprintf(stderr, "paimos: "+format+"\n", a...)
+	})
+}
+
+// registerDiscoveredAdapters wraps each $PAIMOS_ADAPTER_PATH-found
+// manifest as an ExternalAdapter and registers it. External entries
+// shadow built-ins of the same name (the user installed a custom
+// version on purpose); --harness-from-file shadows discovery
+// (per-invocation override). Discovery errors are logged but not
+// fatal — a single bad adapter must not break `skill render`.
+func registerDiscoveredAdapters(reg *adapters.Registry) {
+	if adapterDiscoveryFn == nil {
+		return
+	}
+	found, err := adapterDiscoveryFn()
+	if err != nil {
+		fmt.Fprintf(stderr, "paimos: adapter discovery: %v\n", err)
+		return
+	}
+	for _, d := range found {
+		ext, err := adapters.NewExternalAdapter(d)
+		if err != nil {
+			fmt.Fprintf(stderr, "paimos: skip discovered adapter %q: %v\n", d.Manifest.Name, err)
+			continue
+		}
+		reg.Register(ext)
+	}
+}
+
 func skillCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "skill",
@@ -220,6 +255,7 @@ The rendered file is prefixed with a paimos drift-detection header
 			// override (which wins by virtue of map last-write).
 			reg := adapters.NewRegistry()
 			builtInAdaptersFn(reg)
+			registerDiscoveredAdapters(reg)
 			if strings.TrimSpace(harnessFile) != "" {
 				m, err := adapters.LoadManifestAdapter(harnessFile)
 				if err != nil {
@@ -290,6 +326,7 @@ func skillListAdaptersCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reg := adapters.NewRegistry()
 			builtInAdaptersFn(reg)
+			registerDiscoveredAdapters(reg)
 			if strings.TrimSpace(harnessFile) != "" {
 				m, err := adapters.LoadManifestAdapter(harnessFile)
 				if err != nil {
