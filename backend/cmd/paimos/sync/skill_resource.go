@@ -173,7 +173,7 @@ func (s *SkillResource) syncOne(c SyncClient, projectID int64, projectKey, works
 		action = "unchanged"
 	}
 	if action == "wrote" {
-		if err := writeFileAtomic(target, rendered); err != nil {
+		if err := WriteFileAtomic(target, rendered); err != nil {
 			return SyncedItem{}, err
 		}
 	}
@@ -181,7 +181,7 @@ func (s *SkillResource) syncOne(c SyncClient, projectID int64, projectKey, works
 		Kind:   s.Kind(),
 		Name:   name,
 		Path:   target,
-		Rev:    extractRevFromHeader(rendered),
+		Rev:    ExtractRevFromHeader(rendered),
 		Action: action,
 	}, nil
 }
@@ -244,7 +244,7 @@ func (s *SkillResource) Check(
 			Kind: s.Kind(),
 			Name: name,
 			Path: target,
-			Rev:  extractRevFromHeader(rendered),
+			Rev:  ExtractRevFromHeader(rendered),
 		}
 		existing, readErr := os.ReadFile(target)
 		switch {
@@ -264,11 +264,15 @@ func (s *SkillResource) Check(
 	return out, nil
 }
 
-// extractRevFromHeader pulls the rev string out of a rendered body's
+// ExtractRevFromHeader pulls the rev string out of a rendered body's
 // canonical header line. Returns "" if the header is malformed (we
 // don't fail the operation — the rev is purely diagnostic in
 // SyncedItem / CheckRecord).
-func extractRevFromHeader(body []byte) string {
+//
+// PAI-341 promoted this from package-private to exported so the
+// knowledge-plane Resources (memory_resource.go, runbook_resource.go, …)
+// can reuse the same parsing logic.
+func ExtractRevFromHeader(body []byte) string {
 	s := string(body)
 	if !adapters.HasHeader(s) {
 		return ""
@@ -286,10 +290,14 @@ func extractRevFromHeader(body []byte) string {
 	return tail[:end]
 }
 
-// writeFileAtomic creates parent dirs and writes to a tmpfile then
+// WriteFileAtomic creates parent dirs and writes to a tmpfile then
 // renames into place. Mirrors cmd_skill.go's writeRendered so behaviour
 // is consistent between the two surfaces.
-func writeFileAtomic(path string, body []byte) error {
+//
+// PAI-341 promoted this from package-private to exported so the
+// knowledge-plane Resources (memory_resource.go, runbook_resource.go, …)
+// can reuse the same atomic-write helper without duplication.
+func WriteFileAtomic(path string, body []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}

@@ -137,8 +137,10 @@ func (h *httpSyncClient) Stream(ctx context.Context, path string, onEvent func(s
 var syncRegistryFn = buildDefaultSyncRegistry
 
 // buildDefaultSyncRegistry constructs the default Registry: the skill
-// resource bound to the claude-code adapter. PAI-341 will extend this
-// with memory/runbook/etc. resources.
+// resource bound to the claude-code adapter, plus the five PAI-341
+// knowledge-plane Resources (memory, runbook, external_system,
+// related_project, guideline). The registry order doesn't matter —
+// `paimos sync init` iterates Registry.List() which sorts by Kind().
 func buildDefaultSyncRegistry() (*sync.Registry, error) {
 	reg := adapters.NewRegistry()
 	builtInAdaptersFn(reg)
@@ -149,6 +151,14 @@ func buildDefaultSyncRegistry() (*sync.Registry, error) {
 	}
 	r := sync.NewRegistry()
 	r.Register(skillRes)
+	// PAI-341 — knowledge plane. Each kind plugs into the same verbs
+	// (init/pull/watch/check) and SSE event types via the shared
+	// knowledgeResource implementation.
+	r.Register(sync.NewMemoryResource())
+	r.Register(sync.NewRunbookResource())
+	r.Register(sync.NewExternalSystemResource())
+	r.Register(sync.NewRelatedProjectResource())
+	r.Register(sync.NewGuidelineResource())
 	return r, nil
 }
 
