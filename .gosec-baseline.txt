@@ -121,9 +121,9 @@ G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	176	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	685	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	785	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	796	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	690	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	790	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	801	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis

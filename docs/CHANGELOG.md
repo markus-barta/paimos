@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.1] — 2026-05-09
+
+CI-only fix on top of v2.9.0. v2.9.0's tag never produced a Docker image because the gosec baseline gate flagged 3 line-shifted G703 findings in `backend/main.go` (the new `/migrate-manifest-to-knowledge` route at line 332 shifted three pre-existing path-traversal taints by 5 lines each). v2.9.1 carries the same code as v2.9.0 plus the refreshed baseline.
+
+### Changed
+
+- Refreshed `.gosec-baseline.txt` to absorb three line-shifted G703 findings in `main.go`. No new SAST exposure — same code, new line numbers. Same pattern as v2.7.0→v2.7.1 and v2.8.1→v2.8.2.
+
 ## [2.9.0] — 2026-05-09
 
 Post-ship redesign on top of v2.8.x. Two tickets close out the v2.8 cycle's UX feedback loop: the project-page primary tab strip moves from top to bottom, and the legacy `project_manifests.data` blob gains a deterministic migration path into the PAI-338 knowledge plane.
