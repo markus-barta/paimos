@@ -38,8 +38,10 @@ func TestResolveSessionFormat(t *testing.T) {
 		{name: "trim --format whitespace", format: "  env  ", want: sessionFormatEnv},
 		{name: "--json alone → json", localJSON: true, want: sessionFormatJSON},
 		{name: "global --json picks json too", globalJSON: true, want: sessionFormatJSON},
-		{name: "invalid --format errors", format: "files", wantErr: true, errContains: "invalid --format"},
-		{name: "invalid --format with garbage", format: "yaml", wantErr: true, errContains: "expected env or json"},
+		// PAI-340: `files` is now a valid format too.
+		{name: "explicit --format files wins", format: "files", want: sessionFormatFiles},
+		{name: "case-insensitive --format FILES", format: "FILES", want: sessionFormatFiles},
+		{name: "invalid --format with garbage", format: "yaml", wantErr: true, errContains: "expected env, json, or files"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
