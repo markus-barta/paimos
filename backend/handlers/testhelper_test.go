@@ -331,6 +331,8 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
 			r.Get("/issues/{id}/members", handlers.ListIssuesByRelation)
 			r.Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
+			// PAI-342 — applicable memories (read-only convenience).
+			r.Get("/issues/{id}/applicable-memories", handlers.ListApplicableMemories)
 
 			// Reports
 			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
