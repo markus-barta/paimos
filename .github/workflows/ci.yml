@@ -5,14 +5,6 @@ name: ci
 #   - `latest` on main
 #   - `1.2.3` on tag `v1.2.3` (semver, v-prefix stripped)
 #   - `sha-abcdef0` on every push (short commit SHA for pinning)
-#
-# PAI-366: runners migrated to Blacksmith for ~3-4× CPU + persistent
-# cache. Drop-in replacement for `ubuntu-latest`; revert is a one-line
-# `runs-on:` swap if Blacksmith has an outage. The 4vcpu SKU is the
-# sweet spot for our `-p 1`-serialized Go tests (more CPU doesn't
-# parallelise the bottleneck) plus the parallelisable buildx + npm
-# steps. Blacksmith app must be installed on the repo for these
-# runners to dispatch — see PAI-366 ticket for setup steps.
 
 on:
   push:
@@ -38,7 +30,7 @@ jobs:
     # then the tag). Saves ~5 min per release. PRs and main-branch
     # pushes still run the full pipeline.
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -134,7 +126,7 @@ jobs:
   security-scan:
     # PAI-365: skip on tag pushes — same reasoning as `test` above.
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -200,7 +192,7 @@ jobs:
       needs.test.result != 'failure' &&
       needs['security-scan'].result != 'failure'
     needs: [test, security-scan]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
