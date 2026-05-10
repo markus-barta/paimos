@@ -5,6 +5,25 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-05-10
+
+Knowledge tab redesign (PAI-360). Unified list with type filter chips replaces the 5-pill sub-nav.
+
+### Changed (BREAKING UX)
+
+- **PAI-360** — Knowledge tab is now ONE unified list. The five-category pill sub-nav (Memory / Runbooks / External Systems / Related Projects / Guidelines) is **deleted**. Type is a *filter*, not a navigation primitive: a single scrollable list shows all entries interleaved by recency, with toggleable filter chips on top (click = toggle, shift-click = solo). Each row has a small left-side type badge with subtle type-coding.
+- **PAI-360** — Search box queries title/slug/body across all currently-filtered types. Add Entry button has a dropdown picking the category before opening the editor.
+- **PAI-360** — Editor opens in-place (list collapses, editor takes the panel area) with a Back button. Deep-link `?tab=knowledge&memory=:slug` preserved — the unified view auto-applies the `memory` chip filter and pre-opens the matching slug.
+
+### Removed
+
+- `frontend/src/components/project/knowledge/ProjectKnowledgeTab.vue` (205 lines)
+- `frontend/src/components/project/knowledge/KnowledgeCategoryPanel.vue` (827 lines)
+
+### Added
+
+- `frontend/src/components/project/knowledge/ProjectKnowledgeUnified.vue` (~570 lines including styles).
+
 ## [3.0.2] — 2026-05-09
 
 Footer-bar IA collapse (PAI-359). Six tabs in one continuous full-width row. Breaking UX change vs. v3.0.1.

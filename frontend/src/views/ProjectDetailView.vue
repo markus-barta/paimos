@@ -56,7 +56,10 @@ import ProjectInventoriesSection from '@/components/project/ProjectInventoriesSe
 // PAI-339: project page primary tab structure (Overview / Issues /
 // Knowledge). Settings is the existing "Edit project" modal reached
 // via the ⋯ menu; Agents lives inside Edit Project (PAI-326/329).
-import ProjectKnowledgeTab from '@/components/project/knowledge/ProjectKnowledgeTab.vue'
+// PAI-360 — unified Knowledge tab (single list + type filter chips)
+// supersedes the PAI-339 ProjectKnowledgeTab + KnowledgeCategoryPanel
+// pill-row pattern.
+import ProjectKnowledgeUnified from '@/components/project/knowledge/ProjectKnowledgeUnified.vue'
 import ProjectOverviewTab from '@/components/project/knowledge/ProjectOverviewTab.vue'
 // PAI-356 — bottom-anchored footer bar replaces the top tab strip
 // (Issues / Overview / Knowledge). Same identities, quieter chrome.
@@ -814,8 +817,8 @@ watch(
         :issues="issues"
       />
 
-      <!-- Knowledge tab — five-category sub-nav, search, CRUD ──────── -->
-      <ProjectKnowledgeTab
+      <!-- Knowledge tab — PAI-360 unified list with type filter chips. -->
+      <ProjectKnowledgeUnified
         v-else-if="primaryTab === 'knowledge'"
         :project-id="projectId"
         :can-write="isAdmin && canEditProject"
