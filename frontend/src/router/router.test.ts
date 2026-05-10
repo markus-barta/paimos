@@ -3,16 +3,17 @@ import { describe, expect, it } from 'vitest'
 import router from './index'
 
 describe('router meta', () => {
-  // PAI-274: IssueList table relies on AppLayout's `.view-body--self-scroll`
-  // variant to keep the sticky thead + frozen columns working. If this
-  // meta drifts on any route that embeds IssueList, the regression returns
-  // silently — past fixes were repeatedly papered over without a check,
-  // hence this guard. Extend the array below whenever a new route gains
-  // an internally-scrolling list (search results, custom views, …).
+  // PAI-274 / PAI-361: IssueList table relies on AppLayout's
+  // `.main-content--self-scroll` variant to keep the sticky thead +
+  // frozen columns working. If this meta drifts on any route that
+  // embeds IssueList, the regression returns silently — past fixes
+  // were repeatedly papered over without a check, hence this guard.
+  // Extend the array below whenever a new route gains an
+  // internally-scrolling list (search results, custom views, …).
   const SELF_SCROLL_ROUTES = ['/issues', '/projects/:id']
 
   it.each(SELF_SCROLL_ROUTES)(
-    'sets scrollMode=self on %s so AppLayout flex-bounds .view-body',
+    'sets scrollMode=self on %s so AppLayout flex-bounds .main-content',
     (path) => {
       const r = router.getRoutes().find((r) => r.path === path)
       expect(r, `expected ${path} route to be registered`).toBeDefined()

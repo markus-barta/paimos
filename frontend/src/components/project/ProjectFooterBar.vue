@@ -93,19 +93,19 @@ function select(t: ProjectPrimaryTab) {
    matches the app header / subheader rule). Neutral active state —
    no green/blue tint; just a soft surface bg + bold weight, mirroring
    the sidebar nav-item treatment so the chrome reads as one family. */
-/* PAI-359 — the bar renders into a Teleport target inside
-   .main-content (`#project-footer-slot`), which lives OUTSIDE the
-   .view-body--self-scroll's `overflow: hidden` clip. Natural
-   `width: 100%` of .main-content; no negative-margin escape needed.
-   The slot lives below .view-body so the bar pins to the viewport
-   bottom of the project page. */
+/* PAI-359 / PAI-361 — bottom chrome strip. Renders into the
+   `#project-footer-slot` Teleport target which is a peer of
+   .app-header under <main>, so the bar naturally spans the full
+   main width with no margin escape. Interior padding matches
+   .main-content's 1.25rem (20px) edge so the leftmost tab label
+   aligns with the page-content gutter. */
 .pfb {
   display: flex;
   align-items: stretch;
   gap: 0;
   height: 36px;
   width: 100%;
-  padding: 0 2.5rem;
+  padding: 0 1.25rem;
   background: var(--bg-card, var(--bg, #fff));
   border-top: 1px solid var(--border);
 }

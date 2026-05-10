@@ -5,6 +5,23 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — 2026-05-10
+
+Layout structure cleanup (PAI-361). Three coordinated changes inside `<main>`: uniform 20px padding, drop the redundant `.view-body` wrapper, move the footer slot to be a peer of `AppHeader`.
+
+### Changed
+
+- **PAI-361** — `.main-content` padding is now uniform `1.25rem` (20px) on all four sides. The previous `2rem 2.5rem` (with a `:has()` override dropping bottom to `.5rem` for self-scroll views) collapses into one rule. Mobile breakpoint stays uniform at `1rem` (16px).
+- **PAI-361** — `.view-body` and `.view-body--self-scroll` wrappers deleted. The `<slot />` is now a direct child of `.main-content`. Self-scroll routes (`/issues`, `/projects/:id`) toggle a class `.main-content--self-scroll` on `.main-content` itself which swaps `overflow-y: auto` for `overflow: hidden`. Each self-scroll route's root (`.pd-page`, `.issues-view-root`) already declares `flex: 1; min-height: 0` and owns the flex contract directly.
+- **PAI-361** — `#project-footer-slot` moved out of `.main-content` to be a peer of `<AppHeader>` under `<main>`. The slot now naturally pins to the viewport bottom of `<main>` and spans the full main width without margin tricks. The `:has()` selector cascade and the negative-margin escape (`-2.5rem -2.5rem -.5rem`) are gone.
+- **PAI-361** — `ProjectFooterBar`'s interior padding drops from `0 2.5rem` to `0 1.25rem` so the leftmost tab label aligns with the new 20px page-content gutter.
+
+### Notes
+
+- `<main>`'s flex column now reads cleanly: `<AppHeader>` (top chrome) / `.main-content` (flex:1, padded content) / `#project-footer-slot` (bottom chrome). Top and bottom chrome are structural peers.
+- No visual regressions on `/`, `/projects/:id`, `/issues`, `/settings` (smoke-tested locally; SPA build clean; 193 frontend tests pass).
+- IssueList sticky thead + frozen columns still work — table-wrap remains the bounded scroll viewport.
+
 ## [3.1.0] — 2026-05-10
 
 Knowledge tab redesign (PAI-360). Unified list with type filter chips replaces the 5-pill sub-nav.

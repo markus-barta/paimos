@@ -882,10 +882,10 @@ watch(
         />
       </div>
 
-      <!-- PAI-359 — Teleport the footer bar OUTSIDE .view-body so it
-           escapes the overflow:hidden clip and spans the full
-           main-content width. Mounted only while ProjectDetailView is
-           active; clean teardown on route change. -->
+      <!-- PAI-359 / PAI-361 — Teleport the footer bar into the
+           bottom-chrome slot under <main> (peer of AppHeader).
+           Spans the full main width by default; mounted only while
+           ProjectDetailView is active; clean teardown on route change. -->
       <Teleport to="#project-footer-slot">
         <ProjectFooterBar
           v-model="primaryTab"
@@ -1357,7 +1357,7 @@ textarea { resize: vertical; min-height: 80px; }
 .pd-page {
   display: flex;
   flex-direction: column;
-  /* PAI-274: participate in AppLayout's `.view-body--self-scroll` flex chain
+  /* PAI-274 / PAI-361: participate in AppLayout's `.main-content--self-scroll` flex chain
      so IssueList's table-wrap (flex:1; min-height:0; overflow:auto) actually
      has a bounded scrolling viewport — restoring sticky thead + frozen
      columns inside this view. `min-height:100%` was the old page-scroll

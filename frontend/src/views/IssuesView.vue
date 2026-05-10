@@ -332,7 +332,7 @@ function onDeleted(id: number) {
 </template>
 
 <style scoped>
-/* PAI-274: participate in AppLayout's `.view-body--self-scroll` flex chain
+/* PAI-274 / PAI-361: participate in AppLayout's `.main-content--self-scroll` flex chain
    so IssueList's table-wrap (flex:1; min-height:0; overflow:auto) actually
    has a bounded scrolling viewport — restoring sticky thead + frozen
    columns. The `<template v-else>` fragment below collapses two flex

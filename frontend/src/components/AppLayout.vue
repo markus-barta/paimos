@@ -216,23 +216,31 @@ onMounted(() => {
     </aside>
 
     <main class="main" :style="mainStyle">
+      <!-- ── Top chrome ─────────────────────────────────────── -->
       <AppHeader ref="appHeaderRef" />
 
-      <div class="main-content">
+      <!-- ── Page content ──────────────────────────────────────
+           PAI-361 layout cleanup: route component is a direct child
+           of .main-content (no .view-body wrapper). Self-scroll
+           routes (/issues, /projects/:id) toggle a class that
+           replaces overflow-y:auto with overflow:hidden, providing
+           the bounded flex viewport their inner table-wrap needs.
+           Each self-scroll route's root already declares
+           `flex: 1; min-height: 0` (.pd-page, .issues-view-root). -->
+      <div :class="['main-content', { 'main-content--self-scroll': route.meta.scrollMode === 'self' }]">
         <div v-if="show2FAWarning" class="totp-warning" role="alert">
           <span class="totp-warning-pulse" aria-hidden="true"></span>
           <span class="totp-warning-label">Two-factor authentication is not enabled. <button class="totp-warning-link" type="button" @click="goTo2FASetup">Set it up now</button> to secure your account.</span>
         </div>
-        <div :class="['view-body', { 'view-body--self-scroll': route.meta.scrollMode === 'self' }]">
-          <slot />
-        </div>
-        <!-- PAI-359 — Teleport target for ProjectDetailView's footer bar.
-             Lives OUTSIDE .view-body's overflow:hidden clip so the bar
-             can span the full main-content width without margin tricks.
-             Empty in non-project views; ProjectDetailView is the only
-             current consumer. -->
-        <div id="project-footer-slot" class="project-footer-slot"></div>
+        <slot />
       </div>
+
+      <!-- ── Bottom chrome ─────────────────────────────────────
+           PAI-361: footer slot is a peer of AppHeader, not nested
+           inside .main-content. Mirrors the structural symmetry of
+           top/bottom chrome. Empty :display:none on non-project
+           views. ProjectDetailView teleports into it. -->
+      <div id="project-footer-slot" class="project-footer-slot"></div>
     </main>
     </div>
   </div>
@@ -461,8 +469,12 @@ onMounted(() => {
   container-name: appchrome;
 }
 
+/* PAI-361 layout cleanup — uniform 20px padding on all four sides,
+   single source of truth. The previous 2rem/2.5rem mix + `.5rem`
+   bottom override + `:has()` carve-outs collapse into one rule.
+   Self-scroll variant only swaps the overflow behavior. */
 .main-content {
-  padding: 2rem 2.5rem;
+  padding: 1.25rem;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -470,50 +482,24 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-/* PAI-281: self-scroll views are bounded by the flex viewport — anything
-   below their bottom-anchored element (workspace rail, table-wrap) is
-   dead space. Trim main-content's bottom padding so the rail anchors
-   visually to the viewport edge. Page-scroll views (Settings, IssueDetail,
-   Customers, Dashboard) keep the generous 2rem bottom for content-end
-   breathing room. */
-.main-content:has(.view-body--self-scroll) {
-  padding-bottom: .5rem;
-}
-/* PAI-274: by default, .view-body sizes to its natural content height
-   so tall page-scroll views (Settings, IssueDetail, …) let
-   .main-content own the scroll. Views that own their internal scroll
-   (IssueList table with sticky thead + frozen columns) opt into the
-   .view-body--self-scroll variant via route.meta.scrollMode === 'self'.
-   That re-establishes a flex-bounded box with overflow: hidden so
-   children that declare `flex: 1; min-height: 0; overflow: auto`
-   (e.g. .issue-table-wrap) actually have a viewport to be the
-   scrolling ancestor of. */
-.view-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.view-body--self-scroll {
-  flex: 1;
-  min-height: 0;
+/* PAI-274 / PAI-361: self-scroll views (e.g. /issues, /projects/:id)
+   own their internal scroll. .main-content becomes a bounded flex
+   viewport so a deep child (IssueList's table-wrap with
+   `flex:1; min-height:0; overflow:auto`) has a scrolling ancestor.
+   Each self-scroll route's root component already declares
+   `flex: 1; min-height: 0` so it fills this bounded box exactly. */
+.main-content--self-scroll {
   overflow: hidden;
 }
 
-/* PAI-359 — Teleport target for ProjectDetailView's footer bar. Sits
-   below .view-body and uses negative inline margins to escape
-   .main-content's 2rem 2.5rem padding so the bar is full-width
-   relative to the main-content viewport. The slot is empty (and
-   visually invisible) when no project page is mounted. */
+/* PAI-361 — bottom chrome slot, peer of AppHeader. Sits at the
+   bottom of <main> at natural height; ProjectDetailView teleports
+   <ProjectFooterBar> into it. No negative-margin escape — the slot
+   is outside .main-content's padded box now, so the bar spans the
+   full main width by default. `:empty { display: none }` keeps
+   non-project views from rendering a 36px ghost strip. */
 .project-footer-slot {
   flex-shrink: 0;
-  margin-left: -2.5rem;
-  margin-right: -2.5rem;
-  margin-bottom: -.5rem;
-}
-.main-content:not(:has(.view-body--self-scroll)) .project-footer-slot {
-  /* Page-scroll views (Settings, IssueDetail, …) keep the .main-content
-     bottom padding at 2rem; trim the slot's bottom escape there. */
-  margin-bottom: -2rem;
 }
 .project-footer-slot:empty {
   display: none;
@@ -540,8 +526,10 @@ onMounted(() => {
   50%       { background: #e8a317; box-shadow: 0 0 0 5px rgba(192,57,43,0); }
 }
 @media (max-width: 900px) {
+  /* Mobile: claw back 4px on each axis so a 375px viewport keeps a
+     sensible content width. Still uniform on all four sides. */
   .main-content {
-    padding: 1.25rem 1rem;
+    padding: 1rem;
   }
   .totp-warning { flex-wrap: wrap; gap: .5rem; }
 }
