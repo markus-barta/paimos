@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.2] — 2026-05-10
+
+Search-pill polish (PAI-363). Three small follow-ups on PAI-362.
+
+### Changed
+
+- **PAI-363** — Scope pill now shows `^⇥` (Ctrl+Tab) instead of bare `⇥`. Both glyphs render in their own spans so each can be optically centered against the label baseline (`^` lands high in its em-box, `⇥` slightly lower; per-glyph `transform` aligns them).
+- **PAI-363** — Tooltip on the pill: "Press Control+Tab to switch to {Global|this project}".
+- **PAI-363** — Keybinding rewired: `Ctrl+Tab` (from anywhere inside the search field, regardless of palette visibility) toggles project ↔ global scope. Plain `Tab` is no longer captured — native focus movement returns.
+
 ## [3.2.1] — 2026-05-10
 
 Search header polish (PAI-362). Cosmetic patch on top of v3.2.0.

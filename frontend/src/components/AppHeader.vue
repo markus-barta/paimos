@@ -54,8 +54,8 @@ const searchScopeIcon = computed(() =>
 );
 const searchScopeTitle = computed(() =>
   search.scope === "project"
-    ? "Searching this project. Press Tab to switch to Global."
-    : "Searching all projects. Press Tab to switch to this project.",
+    ? "Searching this project. Press Control+Tab to switch to Global."
+    : "Searching all projects. Press Control+Tab to switch to this project.",
 );
 const undoStackCount = computed(
   () => undo.undoRows.length + undo.redoRows.length + undo.historyRows.length,
@@ -93,11 +93,16 @@ function onInput() {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  // PAI-363: Ctrl+Tab toggles search scope (project ↔ global) from
+  // anywhere inside the search input, regardless of palette
+  // visibility. Plain Tab is reserved for browser-native focus
+  // movement; Shift modifier ignored so Ctrl+Shift+Tab is left
+  // alone for browser tab navigation.
   if (
     e.key === "Tab" &&
+    e.ctrlKey &&
     !e.shiftKey &&
-    search.hasProjectContext &&
-    paletteVisible.value
+    search.hasProjectContext
   ) {
     e.preventDefault();
     search.toggleScope();
@@ -389,7 +394,7 @@ defineExpose({
                 v-if="search.scope === 'project'"
                 class="ah-search-scope-tab"
                 aria-hidden="true"
-              >⇥</span>
+              ><span class="ah-search-scope-tab__mod">^</span><span class="ah-search-scope-tab__key">⇥</span></span>
             </button>
           </div>
         </Transition>
@@ -590,20 +595,37 @@ defineExpose({
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* PAI-362: tab-key glyph (⇥ U+21E5) replaces the X icon. The pill is
-   not a "remove" affordance — it's a "press Tab to switch scope"
-   hint, which the X falsely implied. Rendered as text so it scales
-   with the label and respects font weight. */
+/* PAI-362 / PAI-363: keybinding hint `^⇥` (Ctrl+Tab) replaces the
+   X icon. The pill is not a "remove" affordance — it's a "press
+   Control+Tab to switch scope" hint. Rendered in two spans so we
+   can vertically center each glyph independently — `^` (U+005E) and
+   `⇥` (U+21E5) have different em-box vertical metrics in most
+   fonts; aligning them to the line-height center via inline-flex +
+   line-height:1 keeps them sitting on the same visual axis as the
+   project-key label, regardless of how the system font lays out
+   each codepoint. */
 .ah-search-scope-tab {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  height: 100%;
+  padding: 0 0.15rem;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 13px;
   font-weight: 500;
   opacity: 0.72;
-  padding: 0 0.15rem;
-  /* Optical alignment — the glyph sits slightly above its em-box
-     center; nudge down so it visually centers with the label. */
-  transform: translateY(0.5px);
+  line-height: 1;
+}
+.ah-search-scope-tab__mod {
+  font-size: 12px;
+  /* `^` sits high in its em-box in most fonts; nudge down so its
+     visual midline matches the label baseline. */
+  line-height: 1;
+  transform: translateY(-1px);
+}
+.ah-search-scope-tab__key {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .ah-search-clear {
