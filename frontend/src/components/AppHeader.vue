@@ -53,9 +53,12 @@ const searchScopeIcon = computed(() =>
   search.scope === "project" ? "folder" : "globe",
 );
 const searchScopeTitle = computed(() =>
+  // PAI-364: Ctrl+Tab is intercepted by browsers (cycles tabs);
+  // Ctrl+^ replaces it. On US layouts the glyph is Ctrl+Shift+6,
+  // on German/EU layouts ^ is a dedicated key.
   search.scope === "project"
-    ? "Searching this project. Press Control+Tab to switch to Global."
-    : "Searching all projects. Press Control+Tab to switch to this project.",
+    ? "Searching this project. Press Ctrl+^ to switch search context."
+    : "Searching all projects. Press Ctrl+^ to switch search context.",
 );
 const undoStackCount = computed(
   () => undo.undoRows.length + undo.redoRows.length + undo.historyRows.length,
@@ -93,17 +96,21 @@ function onInput() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  // PAI-363: Ctrl+Tab toggles search scope (project ↔ global) from
+  // PAI-364: Ctrl+^ toggles search scope (project ↔ global) from
   // anywhere inside the search input, regardless of palette
-  // visibility. Plain Tab is reserved for browser-native focus
-  // movement; Shift modifier ignored so Ctrl+Shift+Tab is left
-  // alone for browser tab navigation.
-  if (
-    e.key === "Tab" &&
+  // visibility. Replaces Ctrl+Tab (PAI-363) which the browser
+  // captures everywhere for native tab cycling.
+  //
+  // Layouts: on US QWERTY, `^` lives on Shift+6, so Ctrl+^ arrives
+  // as `key:'^', ctrlKey:true, shiftKey:true`. On German QWERTZ, `^`
+  // is a dedicated key (top-left), arriving as `code:'Backquote',
+  // key:'^'` (or 'Dead' if the dead-key composition kicks in before
+  // the modifier is observed). Match both signals to cover the
+  // common keyboards without locking in a single layout.
+  const isCtrlCaret =
     e.ctrlKey &&
-    !e.shiftKey &&
-    search.hasProjectContext
-  ) {
+    (e.key === "^" || (e.code === "Backquote" && !e.altKey));
+  if (isCtrlCaret && search.hasProjectContext) {
     e.preventDefault();
     search.toggleScope();
     return;
@@ -390,12 +397,17 @@ defineExpose({
             >
               <AppIcon :name="searchScopeIcon" :size="11" />
               <span class="ah-search-scope-label">{{ searchScopeLabel }}</span>
-              <span
-                v-if="search.scope === 'project'"
-                class="ah-search-scope-tab"
-                aria-hidden="true"
-              ><span class="ah-search-scope-tab__mod">^</span><span class="ah-search-scope-tab__key">⇥</span></span>
             </button>
+            <!-- PAI-364: keybinding hint as a sibling of the pill,
+                 muted-gray and smaller. Lives outside the pill chrome
+                 so the pill itself stays a single semantic affordance
+                 (toggle scope) and the hint reads as ambient help. -->
+            <kbd
+              v-if="search.hasProjectContext && search.scope === 'project'"
+              class="ah-search-scope-hint"
+              :title="searchScopeTitle"
+              aria-hidden="true"
+            >Ctrl+^</kbd>
           </div>
         </Transition>
       </div>
@@ -595,37 +607,27 @@ defineExpose({
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* PAI-362 / PAI-363: keybinding hint `^⇥` (Ctrl+Tab) replaces the
-   X icon. The pill is not a "remove" affordance — it's a "press
-   Control+Tab to switch scope" hint. Rendered in two spans so we
-   can vertically center each glyph independently — `^` (U+005E) and
-   `⇥` (U+21E5) have different em-box vertical metrics in most
-   fonts; aligning them to the line-height center via inline-flex +
-   line-height:1 keeps them sitting on the same visual axis as the
-   project-key label, regardless of how the system font lays out
-   each codepoint. */
-.ah-search-scope-tab {
+/* PAI-364: keybinding hint moves OUT of the pill into a sibling
+   <kbd> element. Muted gray, smaller text, vertically centered to
+   the pill via the row's `align-items: center`. The pill itself
+   stays a single-purpose affordance (icon + project key); the hint
+   reads as ambient "ctrl+^ toggles this" help. */
+.ah-search-scope-hint {
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.05rem;
-  height: 100%;
-  padding: 0 0.15rem;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
   font-weight: 500;
-  opacity: 0.72;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
   line-height: 1;
-}
-.ah-search-scope-tab__mod {
-  font-size: 12px;
-  /* `^` sits high in its em-box in most fonts; nudge down so its
-     visual midline matches the label baseline. */
-  line-height: 1;
-  transform: translateY(-1px);
-}
-.ah-search-scope-tab__key {
-  font-size: 13px;
-  line-height: 1;
+  white-space: nowrap;
+  /* Subtle outline so the hint reads as a key combo, not just text.
+     Lower-key than the pill chrome so the hierarchy stays "pill
+     primary, hint secondary". */
+  padding: 0.15rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 22%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-muted) 4%, transparent);
 }
 
 .ah-search-clear {

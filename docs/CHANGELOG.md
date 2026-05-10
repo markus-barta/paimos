@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.3] — 2026-05-10
+
+Search-scope keybinding fix (PAI-364). Replaces Ctrl+Tab (browser-intercepted everywhere) with Ctrl+^ and moves the hint outside the pill.
+
+### Changed
+
+- **PAI-364** — Scope-toggle keybinding switches from `Ctrl+Tab` to `Ctrl+^`. Browsers capture Ctrl+Tab for native tab cycling before JS sees the event; Ctrl+^ is layout-portable (US Ctrl+Shift+6, German Ctrl+^ direct) and not reserved by any platform.
+- **PAI-364** — Keybinding hint moves OUT of the pill into a sibling `<kbd>Ctrl+^</kbd>` element, muted-gray, smaller font, vertically centered to the pill. The pill goes back to a clean `<folder> PAI` (single-purpose toggle affordance); the hint reads as ambient help.
+- **PAI-364** — `onKeydown` detects `Ctrl+^` via `e.ctrlKey && (e.key === '^' || e.code === 'Backquote')` so both US-layout-via-Shift+6 and German-layout-direct-key signals are caught. The German dead-key fallback uses `e.code === 'Backquote'` since `key` may arrive as `'Dead'` before composition resolves.
+
 ## [3.2.2] — 2026-05-10
 
 Search-pill polish (PAI-363). Three small follow-ups on PAI-362.
