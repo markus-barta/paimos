@@ -25,6 +25,11 @@ permissions:
 
 jobs:
   test:
+    # PAI-365: skip on tag pushes — the tag commit was already gated
+    # by the main-branch run (release.sh always pushes main first,
+    # then the tag). Saves ~5 min per release. PRs and main-branch
+    # pushes still run the full pipeline.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -119,6 +124,8 @@ jobs:
           npm test
 
   security-scan:
+    # PAI-365: skip on tag pushes — same reasoning as `test` above.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -172,7 +179,18 @@ jobs:
           npm audit --omit=dev --audit-level=high
 
   docker:
-    if: github.event_name == 'push'
+    # PAI-365: docker job runs on push events (main + tag).
+    # `always() && != 'failure'` lets docker run when test/security
+    # were SKIPPED on tag pushes (PAI-365 dedupe), but still gates on
+    # SUCCESS for main-branch pushes where they actually executed.
+    # Equivalent to: "needs passed OR were intentionally skipped".
+    # `needs['security-scan']` uses bracket-notation because the job
+    # ID contains a `-`; dot-notation would parse as subtraction.
+    if: |
+      github.event_name == 'push' &&
+      always() &&
+      needs.test.result != 'failure' &&
+      needs['security-scan'].result != 'failure'
     needs: [test, security-scan]
     runs-on: ubuntu-latest
     steps:
