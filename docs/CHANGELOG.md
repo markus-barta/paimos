@@ -5,6 +5,14 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] — 2026-05-10
+
+Search header polish (PAI-362). Cosmetic patch on top of v3.2.0.
+
+### Changed
+
+- **PAI-362** — The search-context pill moves out of the search input and sits as a sibling chip to the right of it. The "Project:" caption is gone (the folder icon + standalone position already convey scope). The `×` icon is replaced with the tab-key glyph `⇥` since the pill toggles scope (Tab key already wired) rather than removes it. Right-padding hack on `.ah-search-input` for `has-scope` is dropped; pill height matches input at 32px so the row reads as two parallel chips.
+
 ## [3.2.0] — 2026-05-10
 
 Layout structure cleanup (PAI-361). Three coordinated changes inside `<main>`: uniform 20px padding, drop the redundant `.view-body` wrapper, move the footer slot to be a peer of `AppHeader`.

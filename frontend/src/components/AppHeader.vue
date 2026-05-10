@@ -42,8 +42,12 @@ const isSearchListRoute = computed(
   () => route.path === "/issues" || /^\/projects\/\d+$/.test(route.path),
 );
 const searchScopeLabel = computed(() => {
+  // PAI-362: pill content is icon + project key + tab glyph. The
+  // "Project: " caption is gone — the icon already conveys "this is
+  // a project scope" and the pill's standalone position to the right
+  // of the search field clarifies it isn't part of the query.
   if (search.scope === "global") return "Global";
-  return search.projectKey ? `Project: ${search.projectKey}` : "Project";
+  return search.projectKey || "Project";
 });
 const searchScopeIcon = computed(() =>
   search.scope === "project" ? "folder" : "globe",
@@ -323,34 +327,54 @@ defineExpose({
               />
             </button>
           </div>
-          <div
-            v-else
-            ref="searchWrap"
-            key="search"
-            :class="[
-              'ah-search-wrap',
-              {
-                focused: searchFocused,
-                active: hasQuery,
-                'has-scope': search.hasProjectContext,
-                'has-clear': !!search.query,
-              },
-            ]"
-          >
-            <AppIcon name="search" :size="13" class="ah-search-icon" />
-            <input
-              ref="topbarInput"
-              v-model="search.query"
-              type="search"
-              class="ah-search-input"
-              placeholder="Search issues… (/ or ⌘K)"
-              autocomplete="off"
-              spellcheck="false"
-              @focus="onFocus"
-              @blur="onBlur"
-              @input="onInput"
-              @keydown="onKeydown"
-            />
+          <!-- PAI-362: scope pill is a SIBLING of the search field,
+               not nested inside it. The pill's standalone position to
+               the right of the input visually separates "what scope
+               am I in" from "what am I typing", and frees the
+               input's right-padding so the clear button is the only
+               thing that lives inside the rounded chrome. -->
+          <div v-else key="search" class="ah-search-row">
+            <div
+              ref="searchWrap"
+              :class="[
+                'ah-search-wrap',
+                {
+                  focused: searchFocused,
+                  active: hasQuery,
+                  'has-clear': !!search.query,
+                },
+              ]"
+            >
+              <AppIcon name="search" :size="13" class="ah-search-icon" />
+              <input
+                ref="topbarInput"
+                v-model="search.query"
+                type="search"
+                class="ah-search-input"
+                placeholder="Search issues… (/ or ⌘K)"
+                autocomplete="off"
+                spellcheck="false"
+                @focus="onFocus"
+                @blur="onBlur"
+                @input="onInput"
+                @keydown="onKeydown"
+              />
+              <button
+                v-if="search.query"
+                class="ah-search-clear"
+                title="Clear search"
+                @mousedown.prevent="clear"
+              >
+                <AppIcon name="x" :size="12" :stroke-width="2.5" />
+              </button>
+              <SearchPalette
+                ref="paletteRef"
+                :visible="paletteVisible"
+                :anchor="searchWrap"
+                @navigate="onPaletteNavigate"
+                @close="onPaletteClose"
+              />
+            </div>
             <button
               v-if="search.hasProjectContext"
               class="ah-search-scope"
@@ -361,29 +385,12 @@ defineExpose({
             >
               <AppIcon :name="searchScopeIcon" :size="11" />
               <span class="ah-search-scope-label">{{ searchScopeLabel }}</span>
-              <AppIcon
+              <span
                 v-if="search.scope === 'project'"
-                name="x"
-                :size="10"
-                :stroke-width="2.4"
-                class="ah-search-scope-x"
-              />
+                class="ah-search-scope-tab"
+                aria-hidden="true"
+              >⇥</span>
             </button>
-            <button
-              v-if="search.query"
-              class="ah-search-clear"
-              title="Clear search"
-              @mousedown.prevent="clear"
-            >
-              <AppIcon name="x" :size="12" :stroke-width="2.5" />
-            </button>
-            <SearchPalette
-              ref="paletteRef"
-              :visible="paletteVisible"
-              :anchor="searchWrap"
-              @navigate="onPaletteNavigate"
-              @close="onPaletteClose"
-            />
           </div>
         </Transition>
       </div>
@@ -472,6 +479,13 @@ defineExpose({
   width: 100%;
 }
 
+.ah-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 .ah-search-wrap,
 .ah-refresh-prompt {
   width: 280px;
@@ -492,6 +506,7 @@ defineExpose({
   display: flex;
   align-items: center;
   transition: width 0.18s ease, max-width 0.18s ease;
+  flex: 0 0 auto;
 }
 .ah-search-wrap.focused {
   width: 380px;
@@ -526,12 +541,8 @@ defineExpose({
   border-color: var(--bp-blue);
   background: var(--bg-card);
 }
-.ah-search-wrap.has-scope .ah-search-input {
-  padding-right: 118px;
-}
-.ah-search-wrap.has-scope.has-clear .ah-search-input {
-  padding-right: 142px;
-}
+/* PAI-362: scope pill moved outside the input, so the only right-edge
+   resident is the clear button — keep the standard 28px right pad. */
 .ah-search-wrap.focused .ah-search-input {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 15%, transparent);
 }
@@ -539,22 +550,25 @@ defineExpose({
   display: none;
 }
 
+/* PAI-362: scope pill stands alone to the right of the search field,
+   not absolutely-positioned inside the input. Same pill chrome as
+   before; height matches the input (32px) so the row reads as two
+   parallel chips rather than one nested inside the other. */
 .ah-search-scope {
-  position: absolute;
-  right: 8px;
-  height: 22px;
-  max-width: 104px;
+  height: 32px;
+  max-width: 140px;
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
   min-width: 0;
-  padding: 0 0.45rem;
+  flex: 0 0 auto;
+  padding: 0 0.7rem;
   border: 1px solid color-mix(in srgb, var(--bp-blue) 18%, var(--border));
-  border-radius: 999px;
+  border-radius: 20px;
   background: color-mix(in srgb, var(--bp-blue) 7%, var(--bg-card));
   color: color-mix(in srgb, var(--bp-blue-dark) 82%, var(--text));
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   line-height: 1;
   cursor: pointer;
@@ -562,9 +576,6 @@ defineExpose({
     background 0.15s,
     border-color 0.15s,
     color 0.15s;
-}
-.ah-search-wrap.has-clear .ah-search-scope {
-  right: 30px;
 }
 .ah-search-scope:hover,
 .ah-search-scope:focus-visible {
@@ -579,9 +590,20 @@ defineExpose({
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ah-search-scope-x {
+/* PAI-362: tab-key glyph (⇥ U+21E5) replaces the X icon. The pill is
+   not a "remove" affordance — it's a "press Tab to switch scope"
+   hint, which the X falsely implied. Rendered as text so it scales
+   with the label and respects font weight. */
+.ah-search-scope-tab {
   flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 500;
   opacity: 0.72;
+  padding: 0 0.15rem;
+  /* Optical alignment — the glyph sits slightly above its em-box
+     center; nudge down so it visually centers with the label. */
+  transform: translateY(0.5px);
 }
 
 .ah-search-clear {
