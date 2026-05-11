@@ -215,6 +215,14 @@ func Middleware(next http.Handler) http.Handler {
 			if t, err := IssueCSRFForSession(w, cookie.Value); err == nil {
 				rec.csrfTok = t
 			}
+		} else if _, err := r.Cookie(CSRFCookieName); err == http.ErrNoCookie {
+			// PAI-370: DB has a token but the browser doesn't carry one.
+			// Pre-fix the CSRF cookie was browser-session-only while the
+			// session cookie persisted 90 days, so any browser restart
+			// stranded the user with 403s on every POST. Re-set the
+			// cookie with the EXISTING DB token (don't rotate — that
+			// would invalidate in-flight requests on other tabs).
+			SetCSRFCookie(w, rec.csrfTok)
 		}
 		ctx := context.WithValue(r.Context(), UserKey, rec.user)
 		ctx = WithAccessCache(ctx)

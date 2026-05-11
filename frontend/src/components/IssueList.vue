@@ -318,6 +318,7 @@ const viewFormDesc    = ref('')
 const viewFormShared  = ref(false)
 const viewFormAdmin   = ref(false)
 const viewFormLoading = ref(false)
+const viewFormError   = ref('')
 
 function openSaveView() {
   viewModalMode.value  = 'save'
@@ -326,6 +327,7 @@ function openSaveView() {
   viewFormDesc.value   = ''
   viewFormShared.value = false
   viewFormAdmin.value  = false
+  viewFormError.value  = ''
   viewsPanelOpen.value = false
   viewModalOpen.value  = true
 }
@@ -337,6 +339,7 @@ function openEditView(v: SavedView) {
   viewFormDesc.value   = v.description
   viewFormShared.value = v.is_shared
   viewFormAdmin.value  = v.is_admin_default
+  viewFormError.value  = ''
   viewsPanelOpen.value = false
   viewModalOpen.value  = true
 }
@@ -346,6 +349,7 @@ function currentColumnsJSON(): string { return colsToJSON() }
 async function submitViewForm() {
   if (!viewFormTitle.value.trim()) return
   viewFormLoading.value = true
+  viewFormError.value   = ''
   try {
     if (viewModalMode.value === 'save') {
       const v = await createView({
@@ -366,6 +370,8 @@ async function submitViewForm() {
       })
     }
     viewModalOpen.value = false
+  } catch (e) {
+    viewFormError.value = errMsg(e, 'Failed to save view.')
   } finally {
     viewFormLoading.value = false
   }
@@ -1274,6 +1280,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
             <span>Basics — pinned in Basics section for all users</span>
           </label>
         </div>
+        <div v-if="viewFormError" class="form-error" role="alert">{{ viewFormError }}</div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" @click="viewModalOpen = false">Cancel</button>
           <button type="submit" class="btn btn-primary" :disabled="viewFormLoading || !viewFormTitle.trim()">

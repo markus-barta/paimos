@@ -53,6 +53,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/markus-barta/paimos/backend/db"
 )
@@ -111,13 +112,20 @@ func NewCSRFToken() (string, error) {
 }
 
 // SetCSRFCookie writes the non-HttpOnly CSRF cookie that the SPA reads.
-// Lifetime tracks the session cookie. Callers MUST also set the matching
-// session row column.
+// Lifetime mirrors the session cookie's absolute lifetime so the cookie
+// survives browser restarts the same way the session itself does.
+// Callers MUST also set the matching session row column.
+//
+// PAI-370: previously this had no Expires/MaxAge, so it was a session
+// cookie (gone on browser close) while the session cookie persisted for
+// 90 days. The mismatch broke every POST after a browser restart with
+// `csrf_token_mismatch` because `got` was empty.
 func SetCSRFCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     CSRFCookieName,
 		Value:    token,
 		Path:     "/",
+		Expires:  time.Now().Add(sessionAbsoluteLifetime),
 		// Intentionally NOT HttpOnly — the SPA must read this from JS.
 		HttpOnly: false,
 		Secure:   cookieSecure,
