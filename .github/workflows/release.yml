@@ -306,8 +306,13 @@ jobs:
             dist/*.tar.gz
             dist/sha256sums.txt
           generate_release_notes: true
-          # Point releases/latest at this one (default true; explicit
-          # so a future maintainer doesn't unset it accidentally).
-          make_latest: 'true'
+          # Mark RC / beta / alpha / dev tags as pre-releases so they
+          # don't take over /releases/latest. GitHub doesn't auto-detect
+          # the convention — caught in v3.2.4-rc2 which became "Latest"
+          # alongside the proper v3.2.3.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          # `make_latest` and `prerelease: true` are mutually exclusive;
+          # 'legacy' = repo's default behavior (newest non-prerelease wins).
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
