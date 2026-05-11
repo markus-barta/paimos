@@ -196,9 +196,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          IDENTITY="Developer ID Application: BYTEPOETS GmbH"
+          # Auto-detect the imported Developer ID Application identity
+          # rather than hardcoding the team name. Keeps the workflow
+          # portable across cert renewals and team changes (PAI-99).
           echo "→ available signing identities:"
           security find-identity -v -p codesigning
+          IDENTITY=$(security find-identity -v -p codesigning \
+            | grep "Developer ID Application" \
+            | head -1 \
+            | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "❌ no 'Developer ID Application' identity in keychain — cert import must have silently failed"
+            exit 1
+          fi
+          echo "→ using identity: $IDENTITY"
 
           for binary in paimos paimos-mcp; do
             DIR="dist/${binary}_darwin_universal"
