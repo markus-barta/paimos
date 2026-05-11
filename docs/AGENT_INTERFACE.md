@@ -8,7 +8,38 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 2. **`paimos-mcp` facade** — JSON-RPC over stdio for MCP clients (Claude Desktop). Wraps a curated subset of the CLI as tools.
 3. **REST API** — the ground truth. Everything else is a layer on top. See [`api-minimal.md`](api-minimal.md).
 
-Most day-to-day agent work should go through the CLI.
+## Which surface should I use?
+
+**TL;DR — one-line decision rule:**
+
+> Pick the one with the **fewest layers between intent and PAIMOS** that still gives you typed errors and multi-line inputs. For most agents, that's the CLI.
+
+### Decision tree
+
+- **You are a human chatting with Claude Desktop / Cursor / similar interactive MCP client** → **MCP**. Lowest friction; Claude discovers verbs automatically and types arguments for you. Token cost doesn't matter when you're talking.
+- **You are an agent doing work in a shell** (Claude Code session, a bash script, a CI job) → **CLI**. Lower latency per call than MCP (no LLM round-trip to encode/decode the tool call), cleaner error shapes than raw HTTP, file-based markdown inputs avoid shell-quote foot-guns, and you can compose with `jq` / `xargs` / pipes.
+- **You need an endpoint the CLI doesn't wrap, or you're debugging "what does the wire actually look like"** → **REST**. Otherwise, file a ticket against PAI to add the CLI verb — the whole point of PAI-85 was that ergonomics belong in the CLI.
+- **You are writing bulk operations** (create-many, batch-update, declarative state across many issues) → **CLI** with `apply` / `batch-update`. MCP exposes one-at-a-time verbs by design (context budget); REST works but is verbose.
+
+### Comparison matrix
+
+| Dimension | MCP (Claude → tool) | `paimos` CLI (via shell) | `curl` / REST |
+|---|---|---|---|
+| **Latency per call** | slowest — LLM tool encode/decode + HTTP | fast — process spawn + HTTP | fastest — HTTP only |
+| **Token cost in chat context** | highest — tool schemas in context, JSON returns through LLM | low — Bash output is plain text | low |
+| **Discoverability** | best — typed tool schemas the LLM reads automatically | good — `paimos --help` per verb | poor — must read OpenAPI |
+| **Multi-line markdown input** | works (JSON-encoded) | best — `--description-file`, `--ac-file`, etc. | painful — shell-quote hell |
+| **Bulk ops** | slow — one call per item by design | best — `apply` YAML, `batch-update` | medium — scriptable but verbose |
+| **Error messages** | typed, good | best — paimos CLI normalises shapes | rawest — HTTP status + JSON |
+| **Shareable in scripts / CI** | no — only inside an MCP client | yes | yes |
+| **Best when** | interactive chat in Claude Desktop / Cursor | agent in a shell, CI jobs, bulk work | one-off debug, endpoint without CLI cover |
+
+### Rules for LLMs reading this doc
+
+1. **In a chat client (Claude Desktop, Cursor)** — call the MCP tools. They show up as `paimos-ppm.*` / `paimos-pmo.*` namespaces; use the namespace that matches the instance the user wants.
+2. **In a shell session (Claude Code, bash agent, CI)** — shell out to `paimos`. Same machine, same OS-keyring auth, lower token cost, and you can pipe `--json` output into `jq` for follow-up work.
+3. **Reach for `curl` only** when (a) the CLI lacks the verb, or (b) you're explicitly debugging HTTP-level behavior. If you find yourself reaching for `curl` more than rarely in normal work, file a CLI gap as a ticket.
+4. **Never mix surfaces in a single task** — if you start with the CLI, finish with the CLI. Swapping mid-flow means duplicated auth setup, inconsistent error handling, and harder reproduction when something fails.
 
 > **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
 > See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
