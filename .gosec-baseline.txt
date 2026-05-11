@@ -51,7 +51,7 @@ G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1115	Expect directory permissi
 G301	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1154	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/cmd_skill.go	496	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	301	Expect directory permissions to be 0750 or less
-G301	MEDIUM	HIGH	db/db.go	63	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	db/db.go	68	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	221	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	325	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/dev_testreports_service.go	189	Expect directory permissions to be 0750 or less
@@ -104,7 +104,7 @@ G701	HIGH	HIGH	handlers/issues_list.go	100	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	221	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
-G703	HIGH	HIGH	db/db.go	63	Path traversal via taint analysis
+G703	HIGH	HIGH	db/db.go	68	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	243	Path traversal via taint analysis
