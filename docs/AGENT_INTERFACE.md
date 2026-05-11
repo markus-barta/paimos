@@ -38,8 +38,12 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 1. **In a chat client (Claude Desktop, Cursor)** — call the MCP tools. They show up as `paimos-ppm.*` / `paimos-pmo.*` namespaces; use the namespace that matches the instance the user wants.
 2. **In a shell session (Claude Code, bash agent, CI)** — shell out to `paimos`. Same machine, same OS-keyring auth, lower token cost, and you can pipe `--json` output into `jq` for follow-up work.
-3. **Reach for `curl` only** when (a) the CLI lacks the verb, or (b) you're explicitly debugging HTTP-level behavior. If you find yourself reaching for `curl` more than rarely in normal work, file a CLI gap as a ticket.
+3. **Reach for `curl` only** when (a) the CLI lacks the verb, or (b) you're explicitly debugging HTTP-level behavior. If you find yourself reaching for `curl` more than rarely in normal work, file a CLI gap as a child of [PAI-373](https://pm.barta.cm/issues/PAI-373).
 4. **Never mix surfaces in a single task** — if you start with the CLI, finish with the CLI. Swapping mid-flow means duplicated auth setup, inconsistent error handling, and harder reproduction when something fails.
+
+### Caveat — current CLI coverage gaps
+
+The CLI today covers issue-CRUD, relations (add only), tags (assignment only), apply, anchors, sync, skills, sessions, project-context. **It does NOT yet cover** time entries, attachments, free-text search, tag management (create/edit/delete), batch issue create, sprints, issue forensics (history/activity), memory CRUD, knowledge plane, comment delete, or issue lifecycle (clone/archive/restore). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
 
 > **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
 > See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
@@ -423,9 +427,25 @@ PAIMOS deliberately makes the "what happens when X breaks" contract explicit so 
 Most of the time you won't need to. Reach for the REST API directly when:
 
 - You're writing code in a language where Go's `paimos` CLI isn't convenient (even then, shelling out is often faster than pulling in an HTTP client).
-- You need an endpoint the CLI doesn't wrap yet (e.g. time entries, attachments, acceptance reports — see [`api-minimal.md`](api-minimal.md)).
+- You need an endpoint the CLI doesn't wrap yet (see "Known CLI gaps" below).
 
-If a pattern feels awkward via CLI but natural via REST — **file a ticket**. The whole point of the PAI-85 epic is that agent-facing ergonomics belong in the CLI.
+If a pattern feels awkward via CLI but natural via REST — **file a ticket** under [PAI-373](https://pm.barta.cm/issues/PAI-373) (the agent-CLI surface-gap epic) or as a sibling of PAI-85. The whole point of those epics is that agent-facing ergonomics belong in the CLI.
+
+### Known CLI gaps (post-v3.2.4 audit, tracked under PAI-373)
+
+The CLI today covers issue-CRUD strongly; ~80–100 of the ~217 REST endpoints are agent-relevant and not yet exposed. The tier-1 misses you'll hit on day-2 agent work:
+
+| Domain | Status | Tracked under |
+|---|---|---|
+| **Time entries** — start/stop/list/edit | ❌ no CLI; `curl` `/api/time-entries/*` | [PAI-374](https://pm.barta.cm/issues/PAI-374) |
+| **Attachments** — upload + link | ❌ no CLI; multipart `curl` `/api/attachments` then `PATCH /api/attachments/link` | [PAI-375](https://pm.barta.cm/issues/PAI-375) |
+| **Search** — free-text issue lookup | ❌ no CLI; `curl` `/api/search?q=...` | [PAI-376](https://pm.barta.cm/issues/PAI-376) |
+| **Tag management** — list/create/update/delete tags themselves (assignment is in CLI) | ❌ no CLI; `curl` `/api/tags`, `/api/projects/{id}/tags` | [PAI-377](https://pm.barta.cm/issues/PAI-377) |
+| **Batch issue create** — atomic create-many | ❓ check `paimos apply` first; if not, file via `curl /api/projects/{key}/issues/batch` | [PAI-378](https://pm.barta.cm/issues/PAI-378) |
+
+Tier-2 misses (issue forensics, sprints, memory CRUD, relations list/remove, knowledge plane, comment delete, issue lifecycle clone/archive/restore) are tracked in PAI-373's body.
+
+If you find yourself reaching for `curl` outside this list, that's a new gap — file it as a child of PAI-373.
 
 ---
 
