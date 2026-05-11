@@ -6,7 +6,7 @@ G120	MEDIUM	HIGH	handlers/csv.go	266	Unbounded form parsing in HTTP handlers can
 G120	MEDIUM	HIGH	handlers/dev_testreports_service.go	105	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/documents.go	152	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/logo.go	43	Unbounded form parsing in HTTP handlers can cause memory exhaustion
-G120	MEDIUM	HIGH	handlers/profile.go	133	Unbounded form parsing in HTTP handlers can cause memory exhaustion
+G120	MEDIUM	HIGH	handlers/profile.go	145	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G124	MEDIUM	HIGH	auth/auth.go	185	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/auth.go	232	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/auth.go	409	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
@@ -56,7 +56,7 @@ G301	MEDIUM	HIGH	handlers/branding.go	221	Expect directory permissions to be 075
 G301	MEDIUM	HIGH	handlers/branding.go	325	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/dev_testreports_service.go	189	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/logo.go	77	Expect directory permissions to be 0750 or less
-G301	MEDIUM	HIGH	handlers/profile.go	170	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/profile.go	182	Expect directory permissions to be 0750 or less
 G304	MEDIUM	HIGH	cmd/paimos-mcp/mcpclient/client.go	61	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/adapters/conformance.go	274	Potential file inclusion via variable
 G304	MEDIUM	HIGH	cmd/paimos/adapters/discovery.go	156	Potential file inclusion via variable
@@ -93,7 +93,7 @@ G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	192	Expect WriteFile permis
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	196	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	203	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/logo.go	87	Expect WriteFile permissions to be 0600 or less
-G306	MEDIUM	HIGH	handlers/profile.go	176	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/profile.go	188	Expect WriteFile permissions to be 0600 or less
 G701	HIGH	HIGH	handlers/ai_papertrail.go	337	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/ai_papertrail.go	367	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/ai_papertrail.go	557	SQL injection via taint analysis
@@ -113,7 +113,7 @@ G703	HIGH	HIGH	handlers/branding.go	415	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
-G703	HIGH	HIGH	handlers/profile.go	176	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
 G703	HIGH	HIGH	main.go	687	Path traversal via taint analysis
 G703	HIGH	HIGH	main.go	787	Path traversal via taint analysis
 G703	HIGH	HIGH	main.go	798	Path traversal via taint analysis
