@@ -86,12 +86,84 @@ also builds from source declaratively.
 
 ---
 
-## After install
+## After install — first-use checklist
 
 ```bash
 paimos --version    # 3.2.4
-paimos auth login   # interactive — writes ~/.paimos/config.yaml
-paimos issue list --help
 ```
 
-For the full agent-driving guide see [Agent Interface Guide](AGENT_INTERFACE.md).
+### 1. Log in
+
+```bash
+paimos auth login
+# Instance URL [https://pm.barta.cm]: <your PAIMOS host>
+# API key (input hidden): <paste a key you generated in Settings → API Keys>
+# ✓ logged in as <you> at <url>
+#   saved to ~/.paimos/config.yaml as instance "default"
+#   api key stored in OS keyring (service "paimos-cli", account "default")
+```
+
+The instance URL goes to `~/.paimos/config.yaml` (mode `0600`). The
+API key goes to your **OS keyring** — Keychain on macOS, Secret
+Service / KWallet on Linux, Credential Manager on Windows — under
+service `paimos-cli`, account `<instance-name>`. It is never written
+to disk in plaintext.
+
+### 2. Try a read-only command
+
+```bash
+paimos issue list --project PAI --limit 5
+paimos issue get PAI-1
+```
+
+If those work, the CLI is wired up correctly.
+
+### 3. Common patterns
+
+```bash
+# Multi-line markdown — no shell-quoted-JSON foot-gun
+paimos issue create --project PAI --type ticket \
+  --title "Refactor auth middleware" \
+  --description-file /tmp/desc.md \
+  --ac-file /tmp/ac.md
+
+# Idempotent status transitions — safe to re-run
+paimos issue ensure-status PAI-83 done
+
+# Update + comment in one atomic-ish step
+paimos issue update PAI-83 --status done \
+  --comment-file /tmp/closing-note.md
+
+# Machine-readable output for shell pipelines
+paimos --json issue list --project PAI --status backlog
+```
+
+### Multi-instance / headless
+
+```bash
+# Multiple PAIMOS instances
+paimos auth login --name ppm       --url https://pm.barta.cm
+paimos auth login --name bytepoets --url https://pm.bytepoets.com
+paimos --instance ppm issue list   # switch per-command
+
+# CI / containers (no OS keyring available)
+export PAIMOS_API_KEY="paimos_<your-key>"
+paimos issue list --project PAI
+
+# Fully bypass config + keyring (temporary agent credentials)
+PAIMOS_URL=https://pm.barta.cm \
+PAIMOS_API_KEY=paimos_<your-key> \
+  paimos issue list --project PAI
+```
+
+---
+
+## Deeper guides
+
+The above covers install + auth + the everyday verbs. For the full
+agent-driving surface (bulk operations, declarative `apply` YAML, MCP
+integration with Claude Desktop, REST fall-back patterns), see:
+
+- [docs/AGENT_INTERFACE.md](AGENT_INTERFACE.md) — the comprehensive CLI guide
+- [docs/AGENT_INTEGRATION.md](AGENT_INTEGRATION.md) — REST integration patterns
+- [docs/api-minimal.md](api-minimal.md) — REST reference

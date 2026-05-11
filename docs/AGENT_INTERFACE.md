@@ -20,6 +20,32 @@ Most day-to-day agent work should go through the CLI.
 
 ### Install
 
+**macOS (recommended) — signed + notarized universal binary, no Gatekeeper dance:**
+
+```sh
+# paimos CLI
+curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
+  | tar xz -C /usr/local/bin paimos
+
+# paimos-mcp (MCP server for Claude Desktop etc.)
+curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos-mcp_darwin_universal.tar.gz \
+  | tar xz -C /usr/local/bin paimos-mcp
+```
+
+The binary is codesigned under "Developer ID Application: Markus Barta (P66J39QV6V)" and notarized by Apple — first run with internet pulls the notarization ticket; no `xattr -dr com.apple.quarantine`, no System Settings approval. See [docs/INSTALL.md](INSTALL.md) for signature/checksum verification.
+
+**Linux:**
+
+```sh
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_linux_${ARCH}.tar.gz \
+  | tar xz -C /usr/local/bin paimos
+curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos-mcp_linux_${ARCH}.tar.gz \
+  | tar xz -C /usr/local/bin paimos-mcp
+```
+
+**Build from source (Go 1.25+ required, no signed binary needed):**
+
 ```sh
 go install github.com/markus-barta/paimos/backend/cmd/paimos@latest
 go install github.com/markus-barta/paimos/backend/cmd/paimos-mcp@latest
