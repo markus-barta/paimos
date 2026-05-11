@@ -29,13 +29,18 @@ import (
 )
 
 func init() {
-	// RegisterConnectionHook fires on every new connection in the pool.
-	// This is the correct way to set per-connection SQLite pragmas — a one-shot
-	// PRAGMA exec at startup only covers a single connection.
+	// RegisterConnectionHook fires on every new connection in the pool —
+	// the right place for genuinely per-connection pragmas. NOT the right
+	// place for `journal_mode=WAL`, even though it's effectively idempotent
+	// once the DB is already in WAL: each invocation still has to commit
+	// the schema change, which briefly takes an exclusive lock and races
+	// any concurrent transaction on another pool connection. The symptom
+	// was PAI-369 — TestBatchUpdate_AllScalarFields flaking with
+	// `pragma "PRAGMA journal_mode=WAL": database is locked (5) (SQLITE_BUSY)`
+	// at ~10–15% rate. WAL is now set once at Open(); see below.
 	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, _ string) error {
 		ctx := context.Background()
 		for _, pragma := range []string{
-			"PRAGMA journal_mode=WAL",
 			"PRAGMA busy_timeout=5000",
 			"PRAGMA foreign_keys=ON",
 		} {
@@ -72,10 +77,20 @@ func Open() error {
 
 	// WAL mode allows concurrent readers; writers are serialized by SQLite
 	// internally. busy_timeout prevents immediate SQLITE_BUSY errors under
-	// write contention — connections wait up to 5s before failing.
-	// (These are also set per-connection via the hook above.)
+	// write contention — connections wait up to 5s before failing
+	// (busy_timeout is set per-connection via the hook above).
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
+
+	// PAI-369: set WAL once at file open. journal_mode is a database-level
+	// pragma persisted in the file header; setting it per-connection (in
+	// the hook) raced concurrent transactions and caused intermittent
+	// SQLITE_BUSY in CI. One exec here, then every subsequent connection
+	// inherits the file's WAL mode without touching it. Test mode below
+	// can still flip to MEMORY for speed.
+	if _, err := db.ExecContext(context.Background(), "PRAGMA journal_mode=WAL"); err != nil {
+		return fmt.Errorf("enable WAL: %w", err)
+	}
 
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("ping db: %w", err)
