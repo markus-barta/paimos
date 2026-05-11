@@ -4456,6 +4456,18 @@ func migrate(db *sql.DB) error {
 			`DROP TABLE _pai358_marker`,
 			`DROP TABLE project_manifests`,
 		}},
+
+		// M103 / PAI-368: per-user search-scope shortcut. Replaces the
+		// previously hard-coded Ctrl+^ binding (which was unreachable on
+		// some keyboard layouts/OS combos). Stored as a JSON blob with
+		// modifier flags + KeyboardEvent.code so matching is layout-stable
+		// for the user who recorded it. Empty string = disabled (no
+		// shortcut). Default '' rather than the legacy chord because we
+		// don't know which keyboard a given user has — the Settings UI
+		// guides them to record one.
+		{103, []string{
+			`ALTER TABLE users ADD COLUMN search_scope_shortcut TEXT NOT NULL DEFAULT ''`,
+		}},
 	}
 
 	for _, m := range migrations {

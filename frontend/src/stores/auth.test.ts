@@ -53,6 +53,7 @@ function fakeUser(): User {
     preview_hover_delay: 300,
     issue_auto_refresh_enabled: true,
     issue_auto_refresh_interval_seconds: 60,
+    search_scope_shortcut: '',
     last_login_at: null,
     accruals_stats_enabled: false,
     accruals_extra_statuses: '',

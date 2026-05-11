@@ -9,6 +9,7 @@ import { useSearchStore } from "@/stores/search";
 import { useUndoStore } from "@/stores/undo";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 import { useAuthStore } from "@/stores/auth";
+import { parseShortcut, matchesShortcut } from "@/composables/searchScopeShortcut";
 import type { Project } from "@/types";
 
 const route = useRoute();
@@ -52,13 +53,22 @@ const searchScopeLabel = computed(() => {
 const searchScopeIcon = computed(() =>
   search.scope === "project" ? "folder" : "globe",
 );
+// PAI-368: shortcut is now per-user (Settings → Account). Tooltip
+// shows the configured chord, or guides the user to set one when
+// disabled. Falls back to a stable string so the tooltip always
+// renders without flicker.
+const scopeShortcutChord = computed(() =>
+  parseShortcut(auth.user?.search_scope_shortcut),
+);
+const scopeShortcutHint = computed(() => {
+  const chord = scopeShortcutChord.value;
+  if (!chord) return "Set a shortcut in Settings → Account to switch via keyboard.";
+  return `Press ${chord.label} to switch search context.`;
+});
 const searchScopeTitle = computed(() =>
-  // PAI-364: Ctrl+Tab is intercepted by browsers (cycles tabs);
-  // Ctrl+^ replaces it. On US layouts the glyph is Ctrl+Shift+6,
-  // on German/EU layouts ^ is a dedicated key.
   search.scope === "project"
-    ? "Searching this project. Press Ctrl+^ to switch search context."
-    : "Searching all projects. Press Ctrl+^ to switch search context.",
+    ? `Searching this project. ${scopeShortcutHint.value}`
+    : `Searching all projects. ${scopeShortcutHint.value}`,
 );
 const undoStackCount = computed(
   () => undo.undoRows.length + undo.redoRows.length + undo.historyRows.length,
@@ -96,21 +106,15 @@ function onInput() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  // PAI-364: Ctrl+^ toggles search scope (project ↔ global) from
-  // anywhere inside the search input, regardless of palette
-  // visibility. Replaces Ctrl+Tab (PAI-363) which the browser
-  // captures everywhere for native tab cycling.
-  //
-  // Layouts: on US QWERTY, `^` lives on Shift+6, so Ctrl+^ arrives
-  // as `key:'^', ctrlKey:true, shiftKey:true`. On German QWERTZ, `^`
-  // is a dedicated key (top-left), arriving as `code:'Backquote',
-  // key:'^'` (or 'Dead' if the dead-key composition kicks in before
-  // the modifier is observed). Match both signals to cover the
-  // common keyboards without locking in a single layout.
-  const isCtrlCaret =
-    e.ctrlKey &&
-    (e.key === "^" || (e.code === "Backquote" && !e.altKey));
-  if (isCtrlCaret && search.hasProjectContext) {
+  // PAI-368: per-user search-scope shortcut. Replaces the previously
+  // hard-coded Ctrl+^ binding (PAI-364) which was unreachable on some
+  // layouts. The user records their own chord in Settings → Account;
+  // we match the captured `code` + modifiers exactly. When no shortcut
+  // is set the binding is simply disabled (the pill is still clickable).
+  if (
+    search.hasProjectContext &&
+    matchesShortcut(e, scopeShortcutChord.value)
+  ) {
     e.preventDefault();
     search.toggleScope();
     return;
@@ -398,16 +402,6 @@ defineExpose({
               <AppIcon :name="searchScopeIcon" :size="11" />
               <span class="ah-search-scope-label">{{ searchScopeLabel }}</span>
             </button>
-            <!-- PAI-364: keybinding hint as a sibling of the pill,
-                 muted-gray and smaller. Lives outside the pill chrome
-                 so the pill itself stays a single semantic affordance
-                 (toggle scope) and the hint reads as ambient help. -->
-            <kbd
-              v-if="search.hasProjectContext && search.scope === 'project'"
-              class="ah-search-scope-hint"
-              :title="searchScopeTitle"
-              aria-hidden="true"
-            >Ctrl+^</kbd>
           </div>
         </Transition>
       </div>
@@ -607,29 +601,6 @@ defineExpose({
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* PAI-364: keybinding hint moves OUT of the pill into a sibling
-   <kbd> element. Muted gray, smaller text, vertically centered to
-   the pill via the row's `align-items: center`. The pill itself
-   stays a single-purpose affordance (icon + project key); the hint
-   reads as ambient "ctrl+^ toggles this" help. */
-.ah-search-scope-hint {
-  flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
-  letter-spacing: 0.01em;
-  line-height: 1;
-  white-space: nowrap;
-  /* Subtle outline so the hint reads as a key combo, not just text.
-     Lower-key than the pill chrome so the hierarchy stays "pill
-     primary, hint secondary". */
-  padding: 0.15rem 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 22%, transparent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--text-muted) 4%, transparent);
-}
-
 .ah-search-clear {
   position: absolute;
   right: 8px;

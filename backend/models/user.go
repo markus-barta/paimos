@@ -48,6 +48,9 @@ type User struct {
 	// Issue list auto-refresh preferences (migration 88)
 	IssueAutoRefreshEnabled         bool `json:"issue_auto_refresh_enabled"`
 	IssueAutoRefreshIntervalSeconds int  `json:"issue_auto_refresh_interval_seconds"`
+	// PAI-368 / M103: per-user search-scope shortcut. JSON blob (see
+	// handlers/profile.go validation) or empty string when disabled.
+	SearchScopeShortcut string `json:"search_scope_shortcut"`
 	// Last login timestamp (migration 54)
 	LastLoginAt *string `json:"last_login_at"`
 	// 2FA status — populated by admin list/update endpoints

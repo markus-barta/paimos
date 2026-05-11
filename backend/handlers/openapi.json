@@ -61,6 +61,7 @@
           "timezone": { "type": "string" },
           "issue_auto_refresh_enabled": { "type": "boolean" },
           "issue_auto_refresh_interval_seconds": { "type": "integer", "minimum": 10, "default": 60 },
+          "search_scope_shortcut": { "type": "string", "description": "JSON {ctrl,shift,alt,meta,code,key,label} or empty string when disabled. Must include Ctrl/Alt/Meta when set." },
           "created_at": { "type": "string", "format": "date-time" },
           "last_login_at": { "type": "string", "format": "date-time", "nullable": true }
         }

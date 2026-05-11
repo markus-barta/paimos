@@ -52,10 +52,21 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		IssueAutoRefreshSeconds *int    `json:"issue_auto_refresh_interval_seconds"`
 		AccrualsStatsEnabled    *bool   `json:"accruals_stats_enabled"`
 		AccrualsExtraStatuses   *string `json:"accruals_extra_statuses"`
+		SearchScopeShortcut     *string `json:"search_scope_shortcut"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
 		return
+	}
+	// PAI-368: search-scope shortcut. Empty string disables. Otherwise
+	// must be a JSON object with `code` and at least one true modifier
+	// among ctrl/alt/meta — shift-only chords collide with normal typing.
+	// 256-byte cap is generous for {ctrl,shift,alt,meta,code,key,label}.
+	if body.SearchScopeShortcut != nil {
+		if err := validateSearchScopeShortcut(*body.SearchScopeShortcut); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	// Accruals fields are admin-only — silently drop for non-admins
 	if user.Role != "admin" {
@@ -110,9 +121,10 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			issue_auto_refresh_enabled = COALESCE(?, issue_auto_refresh_enabled),
 			issue_auto_refresh_interval_seconds = COALESCE(?, issue_auto_refresh_interval_seconds),
 			accruals_stats_enabled  = COALESCE(?, accruals_stats_enabled),
-			accruals_extra_statuses = COALESCE(?, accruals_extra_statuses)
+			accruals_extra_statuses = COALESCE(?, accruals_extra_statuses),
+			search_scope_shortcut   = COALESCE(?, search_scope_shortcut)
 		WHERE id = ?
-	`, body.FirstName, body.LastName, body.Email, mdDefault, monoFields, body.RecentProjectsLimit, body.RecentTimersLimit, body.Timezone, altTable, altDetail, body.Locale, body.PreviewHoverDelay, issueAutoRefreshEnabled, body.IssueAutoRefreshSeconds, accrualsEnabled, body.AccrualsExtraStatuses, user.ID)
+	`, body.FirstName, body.LastName, body.Email, mdDefault, monoFields, body.RecentProjectsLimit, body.RecentTimersLimit, body.Timezone, altTable, altDetail, body.Locale, body.PreviewHoverDelay, issueAutoRefreshEnabled, body.IssueAutoRefreshSeconds, accrualsEnabled, body.AccrualsExtraStatuses, body.SearchScopeShortcut, user.ID)
 	if err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
@@ -222,6 +234,38 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// validateSearchScopeShortcut accepts an empty string ("disabled") or a
+// JSON object describing one keyboard chord. The frontend records the
+// chord live (KeyboardEvent → {ctrl,shift,alt,meta,code,key,label}); we
+// only validate the shape so a malformed value can't quietly persist
+// and confuse the matcher later. Shift-only chords are rejected — they
+// collide with normal typing inside the search input.
+func validateSearchScopeShortcut(s string) error {
+	if s == "" {
+		return nil
+	}
+	if len(s) > 256 {
+		return fmt.Errorf("search_scope_shortcut: too long (max 256 bytes)")
+	}
+	var c struct {
+		Ctrl  bool   `json:"ctrl"`
+		Shift bool   `json:"shift"`
+		Alt   bool   `json:"alt"`
+		Meta  bool   `json:"meta"`
+		Code  string `json:"code"`
+	}
+	if err := json.Unmarshal([]byte(s), &c); err != nil {
+		return fmt.Errorf("search_scope_shortcut: not valid JSON")
+	}
+	if c.Code == "" {
+		return fmt.Errorf("search_scope_shortcut: code is required")
+	}
+	if !(c.Ctrl || c.Alt || c.Meta) {
+		return fmt.Errorf("search_scope_shortcut: must include Ctrl, Alt, or Meta (Cmd)")
+	}
+	return nil
 }
 
 func getDataDir() string {

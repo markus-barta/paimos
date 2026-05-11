@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, csrfHeaders, errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
+import {
+  parseShortcut,
+  serializeShortcut,
+  captureChord,
+  type ShortcutChord,
+} from '@/composables/searchScopeShortcut'
 import AppModal from '@/components/AppModal.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
@@ -30,6 +36,7 @@ const profileForm = ref({
   show_alt_unit_table: false,
   show_alt_unit_detail: false,
   accruals_stats_enabled: false,
+  search_scope_shortcut: '',
 })
 const profileSaving = ref(false)
 const profileError  = ref('')
@@ -81,7 +88,53 @@ function initProfileForm() {
     show_alt_unit_table: auth.user.show_alt_unit_table ?? false,
     show_alt_unit_detail: auth.user.show_alt_unit_detail ?? false,
     accruals_stats_enabled: auth.user.accruals_stats_enabled ?? false,
+    search_scope_shortcut: auth.user.search_scope_shortcut ?? '',
   }
+}
+
+// PAI-368: search-scope shortcut capture. The user clicks "Record",
+// the next valid chord they press becomes the binding. Esc cancels.
+// Backend stores '' to mean disabled — same when no chord recorded.
+const recordingShortcut = ref(false)
+const recordingError = ref('')
+const searchShortcutChord = computed<ShortcutChord | null>(() =>
+  parseShortcut(profileForm.value.search_scope_shortcut),
+)
+const searchShortcutLabel = computed(() => searchShortcutChord.value?.label || 'Disabled')
+
+function startRecordShortcut() {
+  recordingShortcut.value = true
+  recordingError.value = ''
+}
+
+function onRecordKeydown(e: KeyboardEvent) {
+  if (!recordingShortcut.value) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.key === 'Escape') {
+    recordingShortcut.value = false
+    recordingError.value = ''
+    return
+  }
+  const chord = captureChord(e)
+  if (!chord) {
+    // Lone modifier — keep listening. Show a hint only if the user
+    // hits a non-modifier key with no real modifier (Shift alone).
+    const isModifierOnly = e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt' || e.key === 'Meta'
+    if (!isModifierOnly) {
+      recordingError.value = 'Hold Ctrl, Alt, or Cmd while pressing the key.'
+    }
+    return
+  }
+  profileForm.value.search_scope_shortcut = serializeShortcut(chord)
+  recordingShortcut.value = false
+  recordingError.value = ''
+}
+
+function clearShortcut() {
+  profileForm.value.search_scope_shortcut = ''
+  recordingShortcut.value = false
+  recordingError.value = ''
 }
 
 async function saveProfile() {
@@ -509,6 +562,32 @@ init()
           </select>
         </div>
 
+        <div class="field">
+          <label>
+            Search-scope shortcut
+            <span class="label-hint">— click Record, then press the key combination you want (Ctrl/Alt/Cmd required). Toggles between project and global search from inside the search input. Esc cancels recording.</span>
+          </label>
+          <div class="shortcut-record-row">
+            <button
+              type="button"
+              :class="['btn', 'btn-sm', 'shortcut-record-btn', { 'shortcut-record-btn--active': recordingShortcut }]"
+              @click="startRecordShortcut"
+              @keydown="onRecordKeydown"
+              @blur="recordingShortcut = false"
+            >
+              <kbd v-if="!recordingShortcut" class="shortcut-record-display">{{ searchShortcutLabel }}</kbd>
+              <span v-else class="shortcut-record-prompt">Press keys…</span>
+            </button>
+            <button
+              v-if="profileForm.search_scope_shortcut"
+              type="button"
+              class="btn btn-ghost btn-sm"
+              @click="clearShortcut"
+            >Clear</button>
+          </div>
+          <div v-if="recordingError" class="form-error" style="margin-top:.4rem">{{ recordingError }}</div>
+        </div>
+
         <div v-if="auth.user?.role === 'admin'" class="section-divider" style="grid-column:1/-1">Reports</div>
 
         <div v-if="auth.user?.role === 'admin'" class="pref-toggle-row" style="grid-column:1/-1">
@@ -848,4 +927,37 @@ init()
   display: block;
 }
 .toggle-btn--on .toggle-thumb { transform: translateX(16px); }
+
+/* PAI-368: search-scope shortcut recorder. The button is the recording
+   surface — clicking gives it focus, then any keydown is captured.
+   --active state pulses the border so the user sees they're recording. */
+.shortcut-record-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.shortcut-record-btn {
+  min-width: 180px;
+  justify-content: flex-start;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+.shortcut-record-btn--active {
+  border-color: var(--bp-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 18%, transparent);
+}
+.shortcut-record-display {
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+.shortcut-record-prompt {
+  color: var(--text-muted);
+  font-style: italic;
+}
 </style>

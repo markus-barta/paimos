@@ -55,6 +55,9 @@ export interface User {
   // Issue list auto-refresh preferences (migration 88)
   issue_auto_refresh_enabled: boolean
   issue_auto_refresh_interval_seconds: number
+  // PAI-368 / M103: search-scope shortcut (JSON or '' = disabled).
+  // See useSearchScopeShortcut for parse + matcher.
+  search_scope_shortcut: string
   // Last login timestamp (migration 54)
   last_login_at: string | null
   // Accruals report preferences (migration 62) — admin-only feature

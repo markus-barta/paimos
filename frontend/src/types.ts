@@ -574,6 +574,8 @@ export interface User {
   preview_hover_delay: number
   issue_auto_refresh_enabled: boolean
   issue_auto_refresh_interval_seconds: number
+  // PAI-368 / M103: search-scope shortcut (JSON blob; '' = disabled).
+  search_scope_shortcut: string
   last_login_at: string | null
   created_at: string
   totp_enabled: boolean
