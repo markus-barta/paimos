@@ -5,6 +5,33 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.4] — 2026-05-11
+
+Signed macOS CLI release workflow (PAI-99), per-user search-scope shortcut (PAI-368), CSRF cookie persistence (PAI-370), SQLite WAL test-flake fix (PAI-369), and Account-tab autosave (PAI-371).
+
+### Added
+
+- **PAI-99** — Signed + notarized macOS CLI releases. Every `v*` tag push now produces signed universal binaries for `paimos` and `paimos-mcp` attached to the GitHub Release, alongside Linux `amd64` / `arm64` tarballs and `sha256sums.txt`. Each asset uploads twice (versioned + unversioned alias) so `releases/latest/download/<name>` works in the install one-liner. New `.github/workflows/release.yml`. Pre-release tags (anything containing a hyphen, e.g. `-rc1`) are auto-marked and don't take over `/releases/latest/`.
+- **PAI-99** — `docs/INSTALL.md` with `curl | tar` one-liners for macOS (signed) and Linux, signature/checksum verification, and a build-from-source pointer. README install section points at the signed binary first.
+- **PAI-368** — Per-user search-scope shortcut. Settings → Account has a click-to-record button that captures any `Ctrl/Alt/Cmd` chord; the App header's matcher reads it from `users.search_scope_shortcut` (new column, M103). Empty string = disabled. Replaces the hard-coded `Ctrl+^` (PAI-364) which was unreachable on some layouts.
+
+### Changed
+
+- **PAI-368** — Header's keybinding hint `<kbd>Ctrl+^</kbd>` next to the scope pill is gone — the chord is now per-user, so a fixed glyph would mislead. The pill's tooltip surfaces the configured chord (or guides the user to set one in Settings).
+- **PAI-371** — Account-tab settings autosave with a 600 ms debounce. Replaces the "Save Profile" button + form-error/ok-banner pair with a subtle inline "Saving… / Saved / <error>" indicator. Sequence guard discards stale responses; `onBeforeUnmount` flushes pending saves so navigating away mid-debounce doesn't lose changes.
+
+### Fixed
+
+- **PAI-369** — `PRAGMA journal_mode=WAL` moved out of the per-connection init hook in `backend/db/db.go` and set once at `Open()` instead. The hook ran the pragma on every new pool connection; each invocation briefly took an exclusive lock on the DB header and raced concurrent transactions, throwing `SQLITE_BUSY` in ~10–15% of CI runs (`TestBatchUpdate_AllScalarFields`). `journal_mode` is a database-level setting persisted in the file header, so subsequent connections inherit it without touching the pragma.
+- **PAI-370** — CSRF cookie now persists for the full session-cookie lifetime (90 days) instead of being a browser-session cookie. Pre-fix, closing and reopening the browser left users logged in but with `X-CSRF-Token` blank on every POST → all mutations 403'd silently. Middleware additionally re-issues the CSRF cookie when a valid session arrives without one, so already-broken sessions heal on the next request without forcing a logout.
+- **PAI-370** — `Save View` dialog now catches API errors and surfaces them inline. The previous `try { ... } finally { ... }` (no `catch`) let failures propagate silently, leaving the modal open with no feedback — that's how PAI-370's CSRF bug stayed invisible.
+- **PAI-371** — `search_scope_shortcut` is now persisted across `GET /api/auth/me` (was reading back as empty even though the DB had the value). The users-table projection in `backend/auth/auth.go` (used by `MeHandler` / login / session middleware) is a twin of `backend/handlers/user_helpers.go`; PAI-368 updated only the handler twin. Both are now in lock-step.
+
+### Notes
+
+- Both PAIMOS instances (ppm + PMO) were running PAI-368 / 369 / 370 via per-commit sha images before the cut. PAI-371's auth.go twin fix means re-deploying to the v3.2.4 image is required for the search-scope shortcut to actually persist end-to-end.
+- The macOS release workflow is signed under "Developer ID Application: Markus Barta (P66J39QV6V)" (personal Apple Developer account) — chosen so paimos's signing-cert revocation blast radius is isolated from any future bytepoets-distributed binaries.
+
 ## [3.2.3] — 2026-05-10
 
 Search-scope keybinding fix (PAI-364). Replaces Ctrl+Tab (browser-intercepted everywhere) with Ctrl+^ and moves the hint outside the pill.
