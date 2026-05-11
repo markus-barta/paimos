@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, csrfHeaders, errMsg } from '@/api/client'
 import { MAX_IMAGE_SIZE } from '@/utils/constants'
@@ -38,9 +38,19 @@ const profileForm = ref({
   accruals_stats_enabled: false,
   search_scope_shortcut: '',
 })
-const profileSaving = ref(false)
-const profileError  = ref('')
-const profileOk     = ref(false)
+// PAI-371: autosave replaces the explicit "Save Profile" button. The
+// watcher debounces field changes (~600ms) and PATCHes the whole form.
+// A sequence guard discards stale responses if a newer save started
+// while one was in flight; we use last-write-wins via the latest
+// scheduled timer rather than per-field cancellation because the API
+// already does COALESCE-style partial updates.
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+const saveStatus = ref<SaveStatus>('idle')
+const saveError  = ref('')
+let autoSaveTimer: number | null = null
+let autoSaveSeq = 0
+let suppressAutoSave = true   // true during initial hydration so the
+                              // watch doesn't fire on the populate
 
 const avatarUploading = ref(false)
 const avatarError     = ref('')
@@ -72,7 +82,14 @@ function focusIssueAutoRefreshPreference() {
 }
 
 function initProfileForm() {
-  if (!auth.user) return
+  // PAI-371: suppress the autosave watcher while we populate from
+  // auth.user, then re-enable on the next tick (after Vue flushes the
+  // assignment into the reactive system).
+  suppressAutoSave = true
+  if (!auth.user) {
+    void nextTick(() => { suppressAutoSave = false })
+    return
+  }
   profileForm.value = {
     first_name:       auth.user.first_name ?? '',
     last_name:        auth.user.last_name  ?? '',
@@ -90,7 +107,63 @@ function initProfileForm() {
     accruals_stats_enabled: auth.user.accruals_stats_enabled ?? false,
     search_scope_shortcut: auth.user.search_scope_shortcut ?? '',
   }
+  void nextTick(() => { suppressAutoSave = false })
 }
+
+function scheduleAutoSave() {
+  if (autoSaveTimer !== null) window.clearTimeout(autoSaveTimer)
+  autoSaveTimer = window.setTimeout(() => {
+    autoSaveTimer = null
+    void autoSave()
+  }, 600)
+}
+
+let savedToastTimer: number | null = null
+
+async function autoSave() {
+  saveStatus.value = 'saving'
+  saveError.value  = ''
+  const seq = ++autoSaveSeq
+  try {
+    normalizeIssueAutoRefreshSeconds()
+    const updated = await api.patch<typeof auth.user>('/auth/me', profileForm.value)
+    if (seq !== autoSaveSeq) return  // a newer save started — ignore stale response
+    auth.user = updated as any
+    saveStatus.value = 'saved'
+    if (savedToastTimer !== null) window.clearTimeout(savedToastTimer)
+    savedToastTimer = window.setTimeout(() => {
+      if (saveStatus.value === 'saved') saveStatus.value = 'idle'
+    }, 1800)
+  } catch (e: unknown) {
+    if (seq !== autoSaveSeq) return
+    saveStatus.value = 'error'
+    saveError.value  = errMsg(e, 'Auto-save failed.')
+  }
+}
+
+// Watch the entire form. Any nested change re-arms the debounce timer.
+watch(profileForm, () => {
+  if (suppressAutoSave) return
+  scheduleAutoSave()
+}, { deep: true })
+
+onMounted(() => {
+  // After the component mounts, allow the user's edits through.
+  // initProfileForm itself flips suppressAutoSave back on next tick;
+  // this is a belt-and-suspenders guard for cases where init was
+  // skipped (no auth.user yet at construct time).
+  void nextTick(() => { suppressAutoSave = false })
+})
+
+onBeforeUnmount(() => {
+  // Flush a pending save synchronously so the user doesn't lose a
+  // change in flight when navigating away.
+  if (autoSaveTimer !== null) {
+    window.clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+    void autoSave()
+  }
+})
 
 // PAI-368: search-scope shortcut capture. The user clicks "Record",
 // the next valid chord they press becomes the binding. Esc cancels.
@@ -137,18 +210,8 @@ function clearShortcut() {
   recordingError.value = ''
 }
 
-async function saveProfile() {
-  profileError.value = ''; profileOk.value = false
-  profileSaving.value = true
-  try {
-    normalizeIssueAutoRefreshSeconds()
-    const updated = await api.patch<typeof auth.user>('/auth/me', profileForm.value)
-    auth.user = updated as any
-    profileOk.value = true
-  } catch (e: unknown) {
-    profileError.value = errMsg(e, 'Failed to save profile.')
-  } finally { profileSaving.value = false }
-}
+// PAI-371: explicit saveProfile removed — autoSave above handles all
+// field changes. The Save Profile button in the template is gone with it.
 
 async function uploadAvatar(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -622,12 +685,19 @@ init()
 
         </div><!-- /prefs-grid -->
 
-        <div v-if="profileError" class="form-error">{{ profileError }}</div>
-        <div v-if="profileOk" class="ok-banner">Profile saved.</div>
-        <div class="form-actions">
-          <button class="btn btn-primary btn-sm" :disabled="profileSaving" @click="saveProfile">
-            {{ profileSaving ? 'Saving…' : 'Save profile' }}
-          </button>
+        <!-- PAI-371: changes autosave (debounced ~600ms). Status replaces
+             the explicit Save Profile button. Idle state renders nothing
+             so the section reads cleanly when the user isn't editing. -->
+        <div v-if="saveStatus !== 'idle'" class="autosave-status" :data-status="saveStatus">
+          <template v-if="saveStatus === 'saving'">
+            <span class="autosave-dot autosave-dot--saving" /> Saving…
+          </template>
+          <template v-else-if="saveStatus === 'saved'">
+            <span class="autosave-dot autosave-dot--saved" /> Saved
+          </template>
+          <template v-else-if="saveStatus === 'error'">
+            <span class="autosave-dot autosave-dot--error" /> {{ saveError }}
+          </template>
         </div>
       </div>
     </div>
@@ -959,5 +1029,44 @@ init()
 .shortcut-record-prompt {
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* PAI-371: autosave status indicator. Replaces the explicit Save
+   Profile button + form-error/ok-banner pair. Subtle by default;
+   error variant draws attention. */
+.autosave-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: .3rem 0;
+  margin-top: .25rem;
+  transition: color .2s;
+}
+.autosave-status[data-status="error"] {
+  color: var(--bp-red, #c4302b);
+}
+.autosave-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex: 0 0 auto;
+}
+.autosave-dot--saving {
+  background: var(--bp-blue);
+  animation: autosave-pulse 1s ease-in-out infinite;
+}
+.autosave-dot--saved {
+  background: #22c55e;
+}
+.autosave-dot--error {
+  background: var(--bp-red, #c4302b);
+}
+@keyframes autosave-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
 }
 </style>
