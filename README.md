@@ -189,8 +189,15 @@ to read first.)
 → [REST integration patterns](docs/AGENT_INTEGRATION.md) (HTTP-only agents)  
 → [REST reference](docs/api-minimal.md)
 
+**Install** (see [docs/INSTALL.md](docs/INSTALL.md) for signed macOS,
+Linux tarball, checksum verification, and Nix paths):
+
 ```bash
-# Install both binaries (Go 1.25+)
+# macOS — signed + notarized universal binary
+curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
+  | tar xz -C /usr/local/bin paimos
+
+# or build from source (Go 1.25+)
 go install github.com/markus-barta/paimos/backend/cmd/paimos@latest
 go install github.com/markus-barta/paimos/backend/cmd/paimos-mcp@latest
 

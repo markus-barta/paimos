@@ -1,0 +1,302 @@
+name: release
+
+# PAI-99: signed + notarized macOS CLI release. Triggered by the same
+# `v*` tag pushes that ci.yml already uses for the docker image, so a
+# single `scripts/release.sh patch` produces the docker image AND the
+# CLI tarballs in parallel.
+#
+# Artifacts attached to every GitHub Release (versioned + alias):
+#   paimos_<ver>_darwin_universal.tar.gz       paimos_darwin_universal.tar.gz
+#   paimos_<ver>_linux_amd64.tar.gz            paimos_linux_amd64.tar.gz
+#   paimos_<ver>_linux_arm64.tar.gz            paimos_linux_arm64.tar.gz
+#   paimos-mcp_<ver>_darwin_universal.tar.gz   paimos-mcp_darwin_universal.tar.gz
+#   paimos-mcp_<ver>_linux_amd64.tar.gz        paimos-mcp_linux_amd64.tar.gz
+#   paimos-mcp_<ver>_linux_arm64.tar.gz        paimos-mcp_linux_arm64.tar.gz
+#   sha256sums.txt
+#
+# The unversioned aliases let `releases/latest/download/<name>` work
+# in the docs one-liner. Bytes are identical to the versioned form, so
+# the checksum file lists only the versioned names.
+#
+# CGO is REQUIRED — the CLI binds tree-sitter for anchor symbol
+# parsing (cmd/paimos/anchor_symbols.go). That forces:
+#   - linux/amd64 builds on ubuntu-latest (native)
+#   - linux/arm64 builds on ubuntu-24.04-arm (native; free for public repos)
+#   - darwin universal builds on macos-latest (native arm64 + amd64
+#     cross via Xcode clang's multi-arch driver: `CC="clang -arch x86_64"`)
+#
+# Required repo secrets (mirror from bp-esc — see scripts/release/):
+#   APPLE_CERTIFICATE             base64 of the .p12
+#   APPLE_CERTIFICATE_PASSWORD    .p12 password
+#   APPLE_ID                      Apple Developer login email
+#   APPLE_PASSWORD                app-specific password (notarytool auth)
+#   APPLE_TEAM_ID                 10-char Apple team id
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # softprops/action-gh-release needs this to attach files
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Linux: matrix over (amd64, arm64) — each on a native runner so CGO
+  # works without cross-toolchain plumbing. Splits into 2 parallel
+  # ~2-min jobs instead of 1 cross-compiling job.
+  # ─────────────────────────────────────────────────────────────────────
+  linux:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build linux/${{ matrix.arch }}
+        working-directory: backend
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '1'
+          GOOS: linux
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist
+          for binary in paimos paimos-mcp; do
+            echo "→ build $binary linux/$ARCH"
+            GOARCH=$ARCH go build \
+              -trimpath \
+              -ldflags="-s -w -buildid= -X main.Version=$VER" \
+              -o "../dist/${binary}_linux_${ARCH}/${binary}" \
+              ./cmd/$binary
+            tar czf "../dist/${binary}_${VER}_linux_${ARCH}.tar.gz" \
+              -C "../dist/${binary}_linux_${ARCH}" "${binary}"
+            cp "../dist/${binary}_${VER}_linux_${ARCH}.tar.gz" \
+               "../dist/${binary}_linux_${ARCH}.tar.gz"
+          done
+
+      - name: Upload linux/${{ matrix.arch }} tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-tarballs
+          path: dist/*linux_${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────
+  # macOS: build amd64 + arm64 → lipo into universal → codesign →
+  # notarize → tarball. macos-latest is arm64 (M-series) — amd64 is
+  # cross-compiled via Apple's clang multi-arch driver. CGO works for
+  # both targets without extra setup because Xcode ships both SDKs.
+  #
+  # stapler caveat: bare Mach-O executables CAN'T be stapled (only
+  # bundles can). Notarization is recorded server-side; spctl checks
+  # it on first run with internet. Acceptable for a CLI — same shape
+  # as gh, jq, etc. Documented in docs/INSTALL.md.
+  # ─────────────────────────────────────────────────────────────────────
+  darwin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build darwin universal binaries
+        working-directory: backend
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+          CGO_ENABLED: '1'
+          GOOS: darwin
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist
+          for binary in paimos paimos-mcp; do
+            for arch in amd64 arm64; do
+              echo "→ build $binary darwin/$arch"
+              # CC override is the multi-arch trick: macos-latest is
+              # arm64, but Apple's clang accepts -arch x86_64 to emit
+              # an amd64 Mach-O without a separate cross-toolchain.
+              if [ "$arch" = "amd64" ]; then
+                CGO_CC="clang -arch x86_64"
+              else
+                CGO_CC="clang -arch arm64"
+              fi
+              CC="$CGO_CC" \
+              GOARCH=$arch go build \
+                -trimpath \
+                -ldflags="-s -w -buildid= -X main.Version=$VER" \
+                -o "../dist/${binary}-${arch}" \
+                ./cmd/$binary
+            done
+            echo "→ lipo $binary universal"
+            mkdir -p "../dist/${binary}_darwin_universal"
+            lipo -create \
+              "../dist/${binary}-amd64" \
+              "../dist/${binary}-arm64" \
+              -output "../dist/${binary}_darwin_universal/${binary}"
+            file "../dist/${binary}_darwin_universal/${binary}"
+          done
+
+      - name: Verify Apple secrets are present
+        env:
+          APPLE_CERTIFICATE:          ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID:                   ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD:             ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID:              ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for n in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD \
+                   APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!n}" ]; then missing+=("$n"); fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "❌ missing required Apple secrets: ${missing[*]}"
+            echo "   Mirror them from bp-esc — see scripts/release/README.md"
+            exit 1
+          fi
+          echo "✓ all 5 Apple secrets present"
+
+      - name: Import Apple certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Codesign + notarize each darwin universal binary
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          IDENTITY="Developer ID Application: BYTEPOETS GmbH"
+          echo "→ available signing identities:"
+          security find-identity -v -p codesigning
+
+          for binary in paimos paimos-mcp; do
+            DIR="dist/${binary}_darwin_universal"
+            BIN="$DIR/${binary}"
+
+            echo "→ codesign $binary"
+            codesign --force --sign "$IDENTITY" \
+              --options runtime \
+              --timestamp \
+              "$BIN"
+
+            echo "→ verify codesign"
+            codesign --verify --verbose=2 "$BIN"
+
+            echo "→ zip for notarytool"
+            ZIP="dist/${binary}_notarize.zip"
+            ditto -c -k --keepParent "$BIN" "$ZIP"
+
+            echo "→ submit to Apple notary service (synchronous, ~1-5 min)"
+            SUBMIT_OUTPUT=$(xcrun notarytool submit "$ZIP" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait 2>&1)
+            echo "$SUBMIT_OUTPUT"
+
+            # Pull the submission id so we can fetch the rejection log
+            # if Apple says no — without this, "status: Invalid" is
+            # opaque and you can't tell what's wrong.
+            SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | awk '/^  id: / { print $2; exit }')
+            if echo "$SUBMIT_OUTPUT" | grep -q "status: Invalid"; then
+              echo "❌ notarization rejected; full log follows"
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
+              exit 1
+            fi
+            if ! echo "$SUBMIT_OUTPUT" | grep -q "status: Accepted"; then
+              echo "❌ notarization neither Accepted nor Invalid — bailing"
+              exit 1
+            fi
+
+            # No stapler on bare Mach-O — first-run with internet picks
+            # up the ticket from Apple's servers.
+            rm -f "$ZIP"
+
+            echo "→ tarball $binary (versioned + unversioned alias)"
+            tar czf "dist/${binary}_${VER}_darwin_universal.tar.gz" \
+              -C "$DIR" "$binary"
+            cp "dist/${binary}_${VER}_darwin_universal.tar.gz" \
+               "dist/${binary}_darwin_universal.tar.gz"
+          done
+
+      - name: Upload darwin tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-tarballs
+          path: dist/*darwin_universal.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Collect, hash, and publish.
+  # ─────────────────────────────────────────────────────────────────────
+  release:
+    needs: [linux, darwin]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate sha256sums.txt
+        working-directory: dist
+        env:
+          VER: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ls -lh
+          # Hash only the versioned filenames — the unversioned aliases
+          # are byte-identical convenience copies for /releases/latest/
+          # download URLs, so listing both would just be noise.
+          # ${VER#v} strips the v prefix.
+          sha256sum *_${VER#v}_*.tar.gz | sort > sha256sums.txt
+          echo "→ checksums:"
+          cat sha256sums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/sha256sums.txt
+          generate_release_notes: true
+          # Point releases/latest at this one (default true; explicit
+          # so a future maintainer doesn't unset it accidentally).
+          make_latest: 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
