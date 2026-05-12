@@ -1,9 +1,9 @@
 # Adding a CRM Provider
 
 PAIMOS owns its own customer data model (PAI-28). External CRMs
-(HubSpot, Pipedrive, Salesforce, Attio, …) are **optional** sync
-sources, plugged in through a small Go interface. This page is the
-developer guide for adding a new in-tree provider.
+(HubSpot, Pipedrive, Salesforce, Attio, ...) are **optional** sync
+sources, plugged in through a small Go interface or the HTTP sidecar
+provider. This page is the developer guide for adding either shape.
 
 > **Audience:** self-hosted PAIMOS maintainers and contributors who
 > want to wire a CRM that doesn't ship in upstream. If you just want
@@ -222,23 +222,51 @@ and a few table-driven calls.
 
 ---
 
-## 7. Future: HTTP-based external providers
+## 7. HTTP sidecar providers
 
-The current plugin layer is in-process Go. Adding a provider requires
-recompiling PAIMOS — fine for the maintainer's own use and for any
-self-hosted Go-friendly user.
+PAIMOS also ships a built-in `http` provider for non-Go integrations.
+Instead of recompiling PAIMOS, run a small sidecar service in any
+language and configure it in Integrations → CRM with:
 
-For non-Go users, [PAI-108] is filed as deferred: an HTTP contract
-that lets a sidecar service plug in over the wire, via a single
-in-tree `http` provider that speaks the same JSON shape as this
-interface but transports it across HTTP. It's deliberately deferred
-until the in-process layer + at least one production provider
-(HubSpot, [PAI-56]) have soak time, so the contract is informed by a
-real implementation rather than designed in a vacuum.
+- `base_url`: the sidecar root URL
+- `hmac_secret`: the shared signing secret, encrypted at rest
+- `timeout_seconds`: optional per-request timeout
 
-If you have a use case that pushes us to start sooner, please open an
-issue with the workflow you need so we can validate the contract
-sketch against it.
+The sidecar contract is documented in
+[`CRM_HTTP_CONTRACT.md`](CRM_HTTP_CONTRACT.md), with a Draft 2020-12
+schema in [`schemas/crm-http-v1.json`](schemas/crm-http-v1.json).
+The contract covers:
+
+- signed connection test metadata: `GET /v1/schema`
+- customer import: `POST /v1/import`
+- customer re-sync: `POST /v1/sync`
+- remote search: `POST /v1/search`
+- CRM deep links: `GET /v1/deep-link?id=...`
+
+Requests are authenticated with
+`X-Paimos-Timestamp` and `X-Paimos-Signature`, where the signature is
+`hex(HMAC-SHA256(secret, timestamp + "\n" + raw_body))`. Sidecars
+should reject timestamps outside a ±300 second window and compare
+signatures in constant time.
+
+A runnable minimal sidecar lives in
+[`../examples/crm-http-sidecar/server.py`](../examples/crm-http-sidecar/server.py):
+
+```bash
+PAIMOS_CRM_HMAC_SECRET=dev-secret python3 examples/crm-http-sidecar/server.py
+```
+
+Then configure the HTTP CRM provider with:
+
+```text
+base_url: http://127.0.0.1:8089
+hmac_secret: dev-secret
+```
+
+The current PAIMOS provider config model is keyed by provider id, so
+v1 supports one configured HTTP sidecar per deployment. Multiple named
+HTTP sidecars and inbound CRM push/webhooks are separate future
+tickets.
 
 [PAI-56]:  https://pm.barta.cm/projects/PAI/issues/PAI-56
 [PAI-108]: https://pm.barta.cm/projects/PAI/issues/PAI-108

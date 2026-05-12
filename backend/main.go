@@ -40,6 +40,7 @@ import (
 	// CRM provider plugins. Blank-import each provider so its init()
 	// registers it with the crm package's registry. Adding a new
 	// provider = one line here + one new subpackage under crm/.
+	_ "github.com/markus-barta/paimos/backend/handlers/crm/http"
 	_ "github.com/markus-barta/paimos/backend/handlers/crm/hubspot"
 )
 
@@ -208,7 +209,7 @@ func main() {
 		// Portal (external + admin)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
-			r.Use(auth.CSRFMiddleware) // PAI-113
+			r.Use(auth.CSRFMiddleware)         // PAI-113
 			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.RequirePortalAccess)
 
@@ -228,7 +229,7 @@ func main() {
 		// Internal (admin + member; blocked for external)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
-			r.Use(auth.CSRFMiddleware) // PAI-113
+			r.Use(auth.CSRFMiddleware)         // PAI-113
 			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.BlockExternal)
 

@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paimos.example/schemas/crm-http-v1.json",
+  "title": "PAIMOS CRM HTTP sidecar v1",
+  "type": "object",
+  "$defs": {
+    "schema_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "const": "crm-http-v1" },
+        "name": { "type": "string" },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["import", "sync", "search", "deep_link"]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "import_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sync_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_id"],
+      "properties": {
+        "external_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "search_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "limit"],
+      "properties": {
+        "query": { "type": "string", "minLength": 1 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 50 }
+      }
+    },
+    "deep_link_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "contact_import": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "is_primary": { "type": "boolean" },
+        "external_id": { "type": "string" },
+        "external_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "customer_import": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "external_id"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "contact_name": { "type": "string" },
+        "contact_email": { "type": "string" },
+        "address": { "type": "string" },
+        "country": { "type": "string" },
+        "industry": { "type": "string" },
+        "website": { "type": "string" },
+        "domain": { "type": "string" },
+        "vat_id": { "type": "string" },
+        "employee_count": { "type": "integer" },
+        "annual_revenue_cents": { "type": "integer" },
+        "description": { "type": "string" },
+        "phone": { "type": "string" },
+        "visit_address_street": { "type": "string" },
+        "visit_address_zip": { "type": "string" },
+        "external_id": { "type": "string", "minLength": 1 },
+        "external_url": { "type": "string", "format": "uri" },
+        "contacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contact_import" }
+        }
+      }
+    },
+    "partial_update": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "contact_name": { "type": ["string", "null"] },
+        "contact_email": { "type": ["string", "null"] },
+        "address": { "type": ["string", "null"] },
+        "country": { "type": ["string", "null"] },
+        "industry": { "type": ["string", "null"] },
+        "website": { "type": ["string", "null"] },
+        "domain": { "type": ["string", "null"] },
+        "vat_id": { "type": ["string", "null"] },
+        "employee_count": { "type": ["integer", "null"] },
+        "annual_revenue_cents": { "type": ["integer", "null"] },
+        "description": { "type": ["string", "null"] },
+        "phone": { "type": ["string", "null"] },
+        "visit_address_street": { "type": ["string", "null"] },
+        "visit_address_zip": { "type": ["string", "null"] },
+        "external_url": { "type": ["string", "null"], "format": "uri" },
+        "contacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contact_import" }
+        }
+      }
+    },
+    "search_hit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_id", "name"],
+      "properties": {
+        "external_id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "industry": { "type": "string" },
+        "address": { "type": "string" },
+        "external_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "search_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hits"],
+      "properties": {
+        "hits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/search_hit" }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/schema_response" },
+    { "$ref": "#/$defs/import_request" },
+    { "$ref": "#/$defs/sync_request" },
+    { "$ref": "#/$defs/search_request" },
+    { "$ref": "#/$defs/deep_link_response" },
+    { "$ref": "#/$defs/customer_import" },
+    { "$ref": "#/$defs/partial_update" },
+    { "$ref": "#/$defs/search_response" }
+  ]
+}
