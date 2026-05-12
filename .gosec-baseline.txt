@@ -7,10 +7,10 @@ G120	MEDIUM	HIGH	handlers/dev_testreports_service.go	105	Unbounded form parsing 
 G120	MEDIUM	HIGH	handlers/documents.go	152	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/logo.go	43	Unbounded form parsing in HTTP handlers can cause memory exhaustion
 G120	MEDIUM	HIGH	handlers/profile.go	145	Unbounded form parsing in HTTP handlers can cause memory exhaustion
-G124	MEDIUM	HIGH	auth/auth.go	185	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-G124	MEDIUM	HIGH	auth/auth.go	240	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-G124	MEDIUM	HIGH	auth/auth.go	418	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-G124	MEDIUM	HIGH	auth/auth.go	454	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	190	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	249	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	427	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
+G124	MEDIUM	HIGH	auth/auth.go	463	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/csrf.go	124	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/csrf.go	140	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/oidc.go	167	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
@@ -114,9 +114,9 @@ G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	687	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	787	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	798	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	692	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	792	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	803	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis
