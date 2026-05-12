@@ -98,6 +98,19 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if anchors[0]["deep_link"] == nil || anchors[0]["deep_link"] == "" {
 		t.Fatalf("deep_link missing: %#v", anchors[0])
 	}
+	projectAnchorsResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/anchors", ts.adminCookie)
+	assertStatus(t, projectAnchorsResp, http.StatusOK)
+	var projectAnchors []map[string]any
+	decode(t, projectAnchorsResp, &projectAnchors)
+	if len(projectAnchors) != 1 {
+		t.Fatalf("project anchors: got %d want 1", len(projectAnchors))
+	}
+	if projectAnchors[0]["issue_key"] != issue.IssueKey {
+		t.Fatalf("project anchor issue_key=%v, want %s", projectAnchors[0]["issue_key"], issue.IssueKey)
+	}
+	if projectAnchors[0]["repo_label"] != "app" {
+		t.Fatalf("project anchor repo_label=%v, want app", projectAnchors[0]["repo_label"])
+	}
 
 	graphResp := ts.get(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/graph?root=issue:"+strconv.FormatInt(issue.ID, 10)+"&depth=2", ts.adminCookie)
 	assertStatus(t, graphResp, http.StatusOK)

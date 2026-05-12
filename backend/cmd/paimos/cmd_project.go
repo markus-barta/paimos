@@ -10,6 +10,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -21,6 +23,11 @@ func projectCmd() *cobra.Command {
 		Short: "Operate on projects",
 	}
 	c.AddCommand(projectListCmd())
+	c.AddCommand(projectShowCmd())
+	c.AddCommand(projectReposCmd())
+	c.AddCommand(projectReleasesCmd())
+	c.AddCommand(projectAnchorsCmd())
+	c.AddCommand(projectTagsCmd())
 	c.AddCommand(projectCreateCmd())
 	return c
 }
@@ -148,6 +155,210 @@ func projectListCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&includeArchived, "archived", false, "include archived projects")
 	return c
+}
+
+func projectShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <key|id>",
+		Short: "Fetch a single project by key or numeric id",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := instanceClient()
+			if err != nil {
+				return err
+			}
+			projectID, err := resolveProjectRefToID(client, args[0])
+			if err != nil {
+				return reportError(err)
+			}
+			body, err := client.do("GET", fmt.Sprintf("/api/projects/%d", projectID), nil)
+			if err != nil {
+				return reportError(err)
+			}
+			if flagJSON {
+				fmt.Fprintln(stdout, strings.TrimSpace(string(body)))
+				return nil
+			}
+			var project map[string]any
+			if err := json.Unmarshal(body, &project); err != nil {
+				return fmt.Errorf("decode project: %w", err)
+			}
+			renderProjectPretty(project)
+			return nil
+		},
+	}
+}
+
+func projectReposCmd() *cobra.Command {
+	return projectResourceCmd(
+		"repos <key|id>",
+		"List project repositories",
+		"repos",
+		renderProjectReposPretty,
+	)
+}
+
+func projectReleasesCmd() *cobra.Command {
+	return projectResourceCmd(
+		"releases <key|id>",
+		"List project releases",
+		"releases",
+		func(body []byte) error { return renderStringArrayPretty(body, "releases") },
+	)
+}
+
+func projectAnchorsCmd() *cobra.Command {
+	return projectResourceCmd(
+		"anchors <key|id>",
+		"List project anchors",
+		"anchors",
+		renderProjectAnchorsPretty,
+	)
+}
+
+func projectTagsCmd() *cobra.Command {
+	return projectResourceCmd(
+		"tags <key|id>",
+		"List project tags",
+		"tags",
+		func(body []byte) error {
+			var tags []cliTag
+			if err := json.Unmarshal(body, &tags); err != nil {
+				return fmt.Errorf("decode tags: %w", err)
+			}
+			renderTagsPretty(tags)
+			return nil
+		},
+	)
+}
+
+func projectResourceCmd(use, short, suffix string, render func([]byte) error) *cobra.Command {
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := instanceClient()
+			if err != nil {
+				return err
+			}
+			projectID, err := resolveProjectRefToID(client, args[0])
+			if err != nil {
+				return reportError(err)
+			}
+			body, err := client.do("GET", fmt.Sprintf("/api/projects/%d/%s", projectID, url.PathEscape(suffix)), nil)
+			if err != nil {
+				return reportError(err)
+			}
+			if flagJSON {
+				fmt.Fprintln(stdout, strings.TrimSpace(string(body)))
+				return nil
+			}
+			return render(body)
+		},
+	}
+}
+
+func renderProjectPretty(project map[string]any) {
+	key, _ := project["key"].(string)
+	name, _ := project["name"].(string)
+	status, _ := project["status"].(string)
+	fmt.Fprintf(stdout, "%s  %s\n", key, name)
+	if id, ok := project["id"].(float64); ok {
+		fmt.Fprintf(stdout, "  id:     %.0f\n", id)
+	}
+	fmt.Fprintf(stdout, "  status: %s\n", status)
+	if customer, _ := project["customer_name"].(string); customer != "" {
+		fmt.Fprintf(stdout, "  customer: %s\n", customer)
+	}
+	if owner, ok := project["product_owner"].(float64); ok && owner > 0 {
+		fmt.Fprintf(stdout, "  product_owner: %.0f\n", owner)
+	}
+	if counts, ok := project["counts"].(map[string]any); ok {
+		openIssues, _ := counts["open_issues"].(float64)
+		knowledgeEntries, _ := counts["knowledge_entries"].(float64)
+		fmt.Fprintf(stdout, "  counts: %.0f open issues, %.0f knowledge entries\n", openIssues, knowledgeEntries)
+	}
+	if repos, ok := project["repos"].([]any); ok {
+		fmt.Fprintf(stdout, "  repos:  %d\n", len(repos))
+	}
+}
+
+func renderProjectReposPretty(body []byte) error {
+	var repos []map[string]any
+	if err := json.Unmarshal(body, &repos); err != nil {
+		return fmt.Errorf("decode repos: %w", err)
+	}
+	if len(repos) == 0 {
+		fmt.Fprintln(stdout, "(no repos)")
+		return nil
+	}
+	fmt.Fprintln(stdout, "LABEL         BRANCH        URL")
+	for _, repo := range repos {
+		label, _ := repo["label"].(string)
+		branch, _ := repo["default_branch"].(string)
+		repoURL, _ := repo["url"].(string)
+		fmt.Fprintf(stdout, "%-13s %-13s %s\n", defaultCLIString(label, "-"), defaultCLIString(branch, "-"), repoURL)
+	}
+	return nil
+}
+
+func renderProjectAnchorsPretty(body []byte) error {
+	var anchors []map[string]any
+	if err := json.Unmarshal(body, &anchors); err != nil {
+		return fmt.Errorf("decode anchors: %w", err)
+	}
+	if len(anchors) == 0 {
+		fmt.Fprintln(stdout, "(no anchors)")
+		return nil
+	}
+	fmt.Fprintln(stdout, "ISSUE         REPO          LOCATION                       LABEL")
+	for _, anchor := range anchors {
+		issueKey, _ := anchor["issue_key"].(string)
+		if issueKey == "" {
+			if issueID, ok := anchor["issue_id"].(float64); ok {
+				issueKey = "#" + strconv.FormatInt(int64(issueID), 10)
+			}
+		}
+		repoLabel, _ := anchor["repo_label"].(string)
+		filePath, _ := anchor["file_path"].(string)
+		line, _ := anchor["line"].(float64)
+		label, _ := anchor["label"].(string)
+		location := filePath
+		if line > 0 {
+			location = fmt.Sprintf("%s:%.0f", filePath, line)
+		}
+		if len(location) > 30 {
+			location = location[:29] + "…"
+		}
+		if len(label) > 50 {
+			label = label[:49] + "…"
+		}
+		fmt.Fprintf(stdout, "%-13s %-13s %-30s %s\n", issueKey, defaultCLIString(repoLabel, "-"), location, label)
+	}
+	return nil
+}
+
+func renderStringArrayPretty(body []byte, label string) error {
+	var values []string
+	if err := json.Unmarshal(body, &values); err != nil {
+		return fmt.Errorf("decode %s: %w", label, err)
+	}
+	if len(values) == 0 {
+		fmt.Fprintf(stdout, "(no %s)\n", label)
+		return nil
+	}
+	for _, value := range values {
+		fmt.Fprintln(stdout, value)
+	}
+	return nil
+}
+
+func defaultCLIString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 // instanceClient resolves the active instance and builds a client.

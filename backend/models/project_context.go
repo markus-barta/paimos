@@ -57,29 +57,29 @@ type AgentRule struct {
 // (PAI-329). Shared across agents so all rendered artifacts reference
 // the same canonical truth.
 type ProjectEnvironment struct {
-	ID         int64  `json:"id"`
-	ProjectID  int64  `json:"project_id"`
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	HostAlias  string `json:"host_alias"`
-	HostIP     string `json:"host_ip"`
-	SortOrder  int    `json:"sort_order"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	HostAlias string `json:"host_alias"`
+	HostIP    string `json:"host_ip"`
+	SortOrder int    `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // ProjectDeployRecipe is a named, reusable deployment command (PAI-329).
 // Agents reference recipes by name (via agents[].metadata or body
 // references) rather than copy-pasting the command text.
 type ProjectDeployRecipe struct {
-	ID         int64  `json:"id"`
-	ProjectID  int64  `json:"project_id"`
-	Name       string `json:"name"`
-	Command    string `json:"command"`
-	Summary    string `json:"summary"`
-	SortOrder  int    `json:"sort_order"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
+	Command   string `json:"command"`
+	Summary   string `json:"summary"`
+	SortOrder int    `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type ProjectRepo struct {
@@ -97,6 +97,7 @@ type IssueAnchor struct {
 	ID            int64   `json:"id"`
 	ProjectID     int64   `json:"project_id"`
 	IssueID       int64   `json:"issue_id"`
+	IssueKey      string  `json:"issue_key,omitempty"`
 	RepoID        int64   `json:"repo_id"`
 	RepoLabel     string  `json:"repo_label"`
 	RepoURL       string  `json:"repo_url"`
@@ -116,10 +117,10 @@ type IssueAnchor struct {
 }
 
 type ProjectManifest struct {
-	ProjectID  int64  `json:"project_id"`
-	Data       any    `json:"data"`
-	UpdatedAt  string `json:"updated_at"`
-	UpdatedBy  *int64 `json:"updated_by"`
+	ProjectID int64  `json:"project_id"`
+	Data      any    `json:"data"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy *int64 `json:"updated_by"`
 }
 
 type EntityRelation struct {

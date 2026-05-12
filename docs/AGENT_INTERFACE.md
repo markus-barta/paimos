@@ -253,6 +253,25 @@ paimos --json search "undo history" --project PAI \
 Pretty output is an issue table. `--json` returns the server's full search
 payload, including projects, users, tags, and `has_more`.
 
+### Project metadata
+
+Use `paimos project ...` for project-scoped workspace facts instead of
+hand-rolled API calls. Every command accepts a project key or numeric id.
+
+```sh
+paimos project show PAI
+paimos project repos PAI
+paimos project releases PAI
+paimos project anchors PAI
+paimos project tags PAI
+
+paimos --json project repos PAI | jq '.[] | {label, url, default_branch}'
+```
+
+`project show` returns the full project detail payload. The narrower
+subcommands expose the common agent lookup surfaces directly: linked repos,
+release labels, code anchors, and project taxonomy tags.
+
 ### Tag workflows
 
 There are two separate tag flows:

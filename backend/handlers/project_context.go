@@ -174,6 +174,64 @@ func IngestProjectAnchors(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, result)
 }
 
+func ListProjectAnchors(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	rows, err := db.DB.Query(`
+		SELECT a.id, a.project_id, a.issue_id,
+		       COALESCE(p.key, ''), i.issue_number,
+		       a.repo_id, COALESCE(pr.label, ''), pr.url, pr.default_branch,
+		       a.file_path, a.line, a.label, a.confidence, a.symbol_json,
+		       a.schema_version, a.repo_revision, a.generated_at,
+		       a.hidden, a.stale, a.updated_at
+		FROM issue_anchors a
+		JOIN project_repos pr ON pr.id = a.repo_id
+		JOIN issues i ON i.id = a.issue_id
+		LEFT JOIN projects p ON p.id = i.project_id
+		WHERE a.project_id = ?
+		ORDER BY pr.sort_order ASC, pr.id ASC, i.issue_number ASC, a.file_path ASC, a.line ASC
+	`, projectID)
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	out := []models.IssueAnchor{}
+	for rows.Next() {
+		var a models.IssueAnchor
+		var hidden, stale int
+		var projectKey string
+		var issueNumber int
+		if err := rows.Scan(
+			&a.ID, &a.ProjectID, &a.IssueID,
+			&projectKey, &issueNumber,
+			&a.RepoID, &a.RepoLabel, &a.RepoURL, &a.DefaultBranch,
+			&a.FilePath, &a.Line, &a.Label, &a.Confidence, &a.SymbolJSON,
+			&a.SchemaVersion, &a.RepoRevision, &a.GeneratedAt,
+			&hidden, &stale, &a.UpdatedAt,
+		); err != nil {
+			jsonError(w, "scan failed", http.StatusInternalServerError)
+			return
+		}
+		if projectKey != "" && issueNumber > 0 {
+			a.IssueKey = fmt.Sprintf("%s-%d", projectKey, issueNumber)
+		}
+		if a.RepoLabel == "" {
+			a.RepoLabel = deriveRepoLabel(a.RepoURL)
+		}
+		a.Hidden = hidden == 1
+		a.Stale = stale == 1
+		if link := buildRepoDeepLink(a.RepoURL, a.RepoRevision, a.DefaultBranch, a.FilePath, a.Line); link != "" {
+			a.DeepLink = &link
+		}
+		out = append(out, a)
+	}
+	jsonOK(w, out)
+}
+
 func ListIssueAnchors(w http.ResponseWriter, r *http.Request) {
 	issueID, ok := resolveIssueIDFromRequest(r)
 	if !ok {

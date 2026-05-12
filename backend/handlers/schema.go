@@ -33,11 +33,13 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.2.1 (PAI-275): added discoverable repo/release/anchor/tag entities
+// for project workspace metadata CLI consumers.
 // 1.2.0 (PAI-379): added the top-level `scopes` block so agents can
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.2.0"
+const SchemaVersion = "1.2.1"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -104,6 +106,22 @@ var Schema = SchemaPayload{
 		"project": {
 			Required: []string{"name", "key"},
 			Optional: []string{"description"},
+		},
+		"repo": {
+			Required: []string{"url"},
+			Optional: []string{"label", "default_branch", "sort_order"},
+		},
+		"release": {
+			Required: []string{"label"},
+			Optional: []string{},
+		},
+		"anchor": {
+			Required: []string{"issue_key", "repo_id", "file_path", "line"},
+			Optional: []string{"label", "confidence", "symbol_json", "schema_version", "repo_revision"},
+		},
+		"tag": {
+			Required: []string{"name"},
+			Optional: []string{"color", "description"},
 		},
 		"relation": {
 			Required: []string{"target_id", "type"},

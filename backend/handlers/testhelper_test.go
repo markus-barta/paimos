@@ -183,6 +183,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/repos", handlers.CreateProjectRepo)
 			r.With(auth.RequireProjectEdit).Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
 			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/anchors", handlers.ListProjectAnchors)
 			// PAI-326 — declarable agents. Mirrors main.go auth.
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents", handlers.ListProjectAgents)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/agents", handlers.CreateProjectAgent)
