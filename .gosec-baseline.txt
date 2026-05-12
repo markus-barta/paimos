@@ -34,15 +34,15 @@ G202	MEDIUM	HIGH	handlers/issues_list.go	217	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	97	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_write.go	742	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/memory_references.go	132-138	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	358	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	572-578	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	581-588	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/project_context.go	779	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	393	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	803-809	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	812-819	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/project_context.go	782	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	117-133	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/tags.go	370-376	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/tags.go	408-414	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	446-452	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	484-490	SQL string concatenation
 G204	MEDIUM	HIGH	cmd/paimos/adapters/external.go	147	Subprocess launched with a potential tainted input or cmd arguments
 G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	94	Subprocess launched with variable
 G301	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	280	Expect directory permissions to be 0750 or less
@@ -114,9 +114,9 @@ G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	692	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	792	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	803	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	693	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	793	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	804	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis
