@@ -5,6 +5,15 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.5] — 2026-05-12
+
+Patch polish for header search editing and undo activity context.
+
+### Fixed
+
+- Header search preserves literal trailing spaces while syncing the active route, so deleting the second word in a query such as `flaky sec` leaves `flaky ` ready for the next word instead of collapsing to `flaky`.
+- Undo activity labels now derive the user-facing issue key from `projects.key + issue_number` and append a short title preview, replacing raw fallback labels such as `Issue 1674` with context like `PAI-381 - QA: cleanup push...`.
+
 ## [3.2.4] — 2026-05-11
 
 Signed macOS CLI release workflow (PAI-99), per-user search-scope shortcut (PAI-368), CSRF cookie persistence (PAI-370), SQLite WAL test-flake fix (PAI-369), and Account-tab autosave (PAI-371).
