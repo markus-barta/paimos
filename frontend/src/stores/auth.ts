@@ -27,6 +27,7 @@ export interface User {
   id: number
   username: string
   role: 'admin' | 'member' | 'external' | 'super_admin'
+  status: 'active' | 'inactive' | 'deleted'
   created_at: string
   // Profile fields (migration 25)
   nickname:    string
@@ -89,6 +90,13 @@ export interface MeResponse {
   user: User
   access: AccessResponse
   via_dev_login?: boolean
+  impersonation?: ImpersonationState | null
+}
+
+export interface ImpersonationState {
+  active: boolean
+  actor: User
+  target: User
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -108,6 +116,16 @@ export const useAuthStore = defineStore('auth', () => {
   // AppLayout. Always false in production frontend builds talking to a
   // production backend — the backend simply never sets the field.
   const viaDevLogin = ref(false)
+  const impersonation = ref<ImpersonationState | null>(null)
+
+  function hydrateSession(resp: MeResponse) {
+    user.value = resp.user
+    hydrateAccess(resp.access)
+    viaDevLogin.value = !!resp.via_dev_login
+    impersonation.value = resp.impersonation?.active ? resp.impersonation : null
+    if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
+    setDisplayTimezone(user.value?.timezone)
+  }
 
   function hydrateAccess(access: AccessResponse | undefined | null) {
     const m = new Map<number, AccessLevel>()
@@ -139,17 +157,14 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchMe() {
     try {
       const resp = await api.get<MeResponse>('/auth/me')
-      user.value = resp.user
-      hydrateAccess(resp.access)
-      viaDevLogin.value = !!resp.via_dev_login
-      if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
-      setDisplayTimezone(user.value?.timezone)
+      hydrateSession(resp)
       await fetchTOTPStatus()
     } catch {
       user.value = null
       allProjects.value = false
       accessibleProjects.value = new Map()
       viaDevLogin.value = false
+      impersonation.value = null
       totpEnabled.value = false
       totpChecked.value = false
     } finally {
@@ -159,10 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(username: string, password: string) {
     const resp = await api.post<MeResponse>('/auth/login', { username, password })
-    user.value = resp.user
-    hydrateAccess(resp.access)
-    viaDevLogin.value = !!resp.via_dev_login
-    if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
+    hydrateSession(resp)
     checked.value = true
     // PAI-320: a fresh login means the next epoch we see is the new
     // baseline — don't let a leftover from before logout retrigger
@@ -180,6 +192,7 @@ export const useAuthStore = defineStore('auth', () => {
   // PAI-322: also broadcast across tabs.
   function setUser(u: User) {
     user.value = u
+    impersonation.value = null
     checked.value = true
     announceSessionRestored()
   }
@@ -212,6 +225,7 @@ export const useAuthStore = defineStore('auth', () => {
     allProjects.value = false
     accessibleProjects.value = new Map()
     viaDevLogin.value = false
+    impersonation.value = null
     totpEnabled.value = false
     totpChecked.value = false
     checked.value = true
@@ -229,10 +243,20 @@ export const useAuthStore = defineStore('auth', () => {
   async function refreshMe() {
     try {
       const resp = await api.get<MeResponse>('/auth/me')
-      user.value = resp.user
-      hydrateAccess(resp.access)
-      viaDevLogin.value = !!resp.via_dev_login
+      hydrateSession(resp)
     } catch { /* ignore */ }
+  }
+
+  async function startImpersonation(userId: number) {
+    await api.post('/auth/impersonation/start', { user_id: userId })
+    await refreshMe()
+    await fetchTOTPStatus(true)
+  }
+
+  async function stopImpersonation() {
+    await api.post('/auth/impersonation/end', {})
+    await refreshMe()
+    await fetchTOTPStatus(true)
   }
 
   // PAI-320: server-pushed permissions invalidation. The middleware
@@ -274,6 +298,7 @@ export const useAuthStore = defineStore('auth', () => {
     accessibleProjects,
     allProjects,
     viaDevLogin,
+    impersonation,
     fetchMe,
     login,
     setUser,
@@ -286,5 +311,7 @@ export const useAuthStore = defineStore('auth', () => {
     setTOTPEnabled,
     logout,
     refreshMe,
+    startImpersonation,
+    stopImpersonation,
   }
 })

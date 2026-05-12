@@ -35,6 +35,7 @@ function fakeUser(): User {
     id: 1,
     username: 'mba',
     role: 'admin',
+    status: 'active',
     created_at: '2026-01-01T00:00:00Z',
     nickname: '',
     first_name: '',

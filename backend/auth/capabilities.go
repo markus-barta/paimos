@@ -27,6 +27,9 @@ const (
 	CapabilitySuperAdminAuditRead  = "security.super_admin_audit.read"
 	CapabilityTimeEntriesWriteAny  = "time_entries.write_any_user"
 	CapabilityUsersGrantSuperAdmin = "users.grant_super_admin"
+	CapabilityImpersonationStart   = "auth.impersonation.start"
+	CapabilityImpersonationEnd     = "auth.impersonation.end"
+	CapabilityImpersonationAction  = "auth.impersonation.action"
 )
 
 // Capability describes a single action that can be performed within a

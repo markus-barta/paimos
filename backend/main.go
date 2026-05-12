@@ -171,6 +171,8 @@ func main() {
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
 			r.Post("/auth/password", auth.ChangePassword)
+			r.Post("/auth/impersonation/start", handlers.StartImpersonation)
+			r.Post("/auth/impersonation/end", handlers.EndImpersonation)
 			r.Patch("/auth/me", handlers.UpdateProfile)
 			r.Post("/auth/avatar", handlers.UploadAvatar)
 			r.Delete("/auth/avatar", handlers.DeleteAvatar)

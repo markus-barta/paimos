@@ -34,6 +34,9 @@ const capabilityOptions = [
   { value: '', label: 'All capabilities' },
   { value: 'time_entries.write_any_user', label: 'Time entries: any user' },
   { value: 'users.grant_super_admin', label: 'Super-admin grants' },
+  { value: 'auth.impersonation.start', label: 'Impersonation starts' },
+  { value: 'auth.impersonation.end', label: 'Impersonation ends' },
+  { value: 'auth.impersonation.action', label: 'Impersonated actions' },
   { value: 'security.super_admin_audit.read', label: 'Audit feed reads' },
 ]
 
@@ -68,7 +71,7 @@ function formatDate(value: string): string {
 function detailsSummary(row: SuperAdminAuditRow): string {
   const details = row.details ?? {}
   const parts: string[] = []
-  for (const key of ['time_entry_id', 'issue_id', 'old_role', 'new_role']) {
+  for (const key of ['time_entry_id', 'issue_id', 'old_role', 'new_role', 'target_role', 'status_code']) {
     const value = details[key]
     if (value !== undefined && value !== null && value !== '') parts.push(`${key}: ${value}`)
   }

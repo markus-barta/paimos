@@ -233,11 +233,20 @@ func Middleware(next http.Handler) http.Handler {
 		ctx = WithAccessCache(ctx)
 		ctx = withSessionAuth(ctx, rec.csrfTok)
 		ctx = withDevLoginFlag(ctx, rec.viaDevLogin)
+		ctx = withSessionID(ctx, rec.sessionID)
+		ctx = withImpersonation(ctx, rec.actor, rec.user, rec.impersonating)
 		// PAI-379: browser sessions are never narrowed; attach the
 		// all-scopes set so RequireScope is a uniform downstream check
 		// regardless of auth method.
 		ctx = WithScopes(ctx, ScopeSet{ScopeAll: {}})
-		next.ServeHTTP(w, r.WithContext(ctx))
+		req := r.WithContext(ctx)
+		if rec.impersonating {
+			rw := &impersonationAuditResponseWriter{ResponseWriter: w}
+			next.ServeHTTP(rw, req)
+			recordImpersonatedActionAudit(req, rec, rw.status, requestIDForImpersonationAudit(req, rw.Header()))
+			return
+		}
+		next.ServeHTTP(w, req)
 	})
 }
 
@@ -290,6 +299,10 @@ END`
 const userSuperAdminSelectExpr = `CASE WHEN ` + userRoleSelectExpr + ` = 'super_admin' OR u.is_super_admin = 1 THEN 1 ELSE 0 END`
 const userSelectCols = `u.id, u.username, ` + userRoleSelectExpr + `, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.issue_auto_refresh_enabled, u.issue_auto_refresh_interval_seconds, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses, ` + userSuperAdminSelectExpr + `, u.search_scope_shortcut`
 
+func userSelectColsFor(alias string) string {
+	return strings.ReplaceAll(userSelectCols, "u.", alias+".")
+}
+
 // sessionRecord is the full row needed to make slide / cap / surface
 // decisions in Middleware. Times are parsed from the SQLite TEXT
 // columns; a zero time means the column was empty (pre-migration row
@@ -297,8 +310,11 @@ const userSelectCols = `u.id, u.username, ` + userRoleSelectExpr + `, u.status, 
 // on the value.
 type sessionRecord struct {
 	user             *models.User
+	actor            *models.User
+	sessionID        string
 	csrfTok          string
 	viaDevLogin      bool
+	impersonating    bool
 	expiresAt        time.Time
 	createdAt        time.Time
 	permissionsEpoch int64
@@ -309,25 +325,44 @@ type sessionRecord struct {
 // session is invisible to the rest of the code) and disables the
 // session inline if the user has been deactivated.
 func loadSession(sessionID string) (*sessionRecord, error) {
-	rec := &sessionRecord{user: &models.User{}}
+	rec := &sessionRecord{user: &models.User{}, actor: &models.User{}, sessionID: sessionID}
 	var csrfTok string
 	var viaDevLoginInt int
+	var impersonatingInt int
 	var expiresStr, createdStr string
 	var epoch int64
 	dests := append(
-		[]any{&csrfTok, &viaDevLoginInt, &expiresStr, &createdStr, &epoch},
+		[]any{&csrfTok, &viaDevLoginInt, &expiresStr, &createdStr, &epoch, &impersonatingInt},
 		userScanDests(rec.user)...,
 	)
+	dests = append(dests, userScanDests(rec.actor)...)
 	row := db.DB.QueryRow(`
 		SELECT s.csrf_token, s.via_dev_login, s.expires_at, s.created_at,
-		       u.permissions_epoch, `+userSelectCols+`
-		FROM sessions s JOIN users u ON s.user_id = u.id
+		       u.permissions_epoch,
+		       CASE WHEN s.acting_as_user_id IS NOT NULL THEN 1 ELSE 0 END,
+		       `+userSelectCols+`, `+userSelectColsFor("actor")+`
+		FROM sessions s
+		JOIN users actor ON actor.id = COALESCE(s.actor_user_id, s.user_id)
+		JOIN users u ON u.id = COALESCE(s.acting_as_user_id, s.user_id)
 		WHERE s.id = ? AND s.expires_at > datetime('now')
 	`, sessionID)
 	if err := row.Scan(dests...); err != nil {
 		return nil, err
 	}
 	rec.permissionsEpoch = epoch
+	rec.impersonating = impersonatingInt != 0
+	if rec.actor.Status == "inactive" || rec.actor.Status == "deleted" {
+		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
+			log.Printf("loadSession: delete session %s: %v", sessionID, err)
+		}
+		return nil, fmt.Errorf("account disabled")
+	}
+	if rec.impersonating && !IsSuperAdmin(rec.actor) {
+		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
+			log.Printf("loadSession: delete demoted impersonation session %s: %v", sessionID, err)
+		}
+		return nil, fmt.Errorf("actor lacks super-admin role")
+	}
 	if rec.user.Status == "inactive" || rec.user.Status == "deleted" {
 		if _, err := db.DB.Exec("DELETE FROM sessions WHERE id=?", sessionID); err != nil {
 			log.Printf("loadSession: delete session %s: %v", sessionID, err)
@@ -492,18 +527,28 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 // a dev session for a real one. Always false on production builds
 // (the dev_login_prod stub never sets the context flag).
 type MeResponse struct {
-	User        *models.User   `json:"user"`
-	Access      AccessResponse `json:"access"`
-	ViaDevLogin bool           `json:"via_dev_login,omitempty"`
+	User          *models.User           `json:"user"`
+	Access        AccessResponse         `json:"access"`
+	ViaDevLogin   bool                   `json:"via_dev_login,omitempty"`
+	Impersonation *ImpersonationResponse `json:"impersonation,omitempty"`
 }
 
 func MeHandler(w http.ResponseWriter, r *http.Request) {
 	user := GetUser(r)
+	var impersonation *ImpersonationResponse
+	if imp := GetImpersonation(r); imp.Active {
+		impersonation = &ImpersonationResponse{
+			Active: true,
+			Actor:  imp.Actor,
+			Target: imp.Target,
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MeResponse{
-		User:        user,
-		Access:      BuildAccessResponse(user),
-		ViaDevLogin: IsViaDevLogin(r.Context()),
+		User:          user,
+		Access:        BuildAccessResponse(user),
+		ViaDevLogin:   IsViaDevLogin(r.Context()),
+		Impersonation: impersonation,
 	})
 }
 

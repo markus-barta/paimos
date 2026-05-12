@@ -13,6 +13,8 @@ GET    /auth/me
 POST   /auth/login                  {username, password}
 POST   /auth/password               {current_password, new_password}
                                       — invalidates all *other* sessions; clears must_change_password
+POST   /auth/impersonation/start    {user_id} — super_admin only
+POST   /auth/impersonation/end      {} — exits active impersonation
 POST   /auth/api-keys               {name} → {key} (shown once)
 GET    /auth/api-keys
 DELETE /auth/api-keys/:id

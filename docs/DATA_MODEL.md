@@ -364,6 +364,8 @@ all are operator-visible via the API or admin UI.
 | M91       | `users.must_change_password`    | PAI-321  | Force-password-change gate. Default `1` for new users; cleared on first successful `POST /auth/password`.              |
 | M92       | `users.is_super_admin`          | PAI-335  | Compatibility boolean for legacy super-admin reads.                                                                    |
 | M105      | `users.role_key`                | PAI-336  | Canonical public role enum: `admin`, `member`, `external`, `super_admin`; writes mirror into legacy `role`/flag.       |
+| M106      | `sessions.actor_user_id`        | PAI-389  | Real operator while a super-admin impersonation session is active.                                                     |
+| M106      | `sessions.acting_as_user_id`    | PAI-389  | Effective user while a super-admin impersonation session is active.                                                    |
 
 `sessions` is touched on every authenticated write — keep changes
 additive. `users.role` keeps the older SQLite CHECK constraint as a
@@ -371,6 +373,8 @@ compatibility shim; application code reads `users.role_key`.
 
 PAI-336 also adds `role_permissions` for seeded role capability checks
 and `super_admin_audit` for queryable privileged-action traceability.
+PAI-389 extends that audit feed with impersonation start/end rows and
+mutating-request rows while the impersonation frame is active.
 
 ---
 

@@ -25,6 +25,7 @@ import GlobalNewIssueModal from '@/components/GlobalNewIssueModal.vue'
 import AttachmentLightbox from '@/components/issue/AttachmentLightbox.vue'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import AppDevLoginBanner from '@/components/AppDevLoginBanner.vue'
+import AppImpersonationBanner from '@/components/AppImpersonationBanner.vue'
 import { LS_SIDEBAR_COLLAPSED as COLLAPSED_KEY } from '@/constants/storage'
 
 const auth    = useAuthStore()
@@ -141,6 +142,7 @@ onMounted(() => {
        banner lives outside .layout; .layout still owns the grid. -->
   <div class="app-shell">
     <AppDevLoginBanner />
+    <AppImpersonationBanner />
     <SessionExpiredModal />
     <div :class="['layout', { 'sidebar-collapsed': sidebarCollapsed }]">
 

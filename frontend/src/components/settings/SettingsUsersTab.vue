@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { api, errMsg } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useSort } from '@/composables/useSort'
@@ -12,6 +13,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import type { User } from '@/types'
 
 const auth = useAuthStore()
+const router = useRouter()
 
 const ROLE_OPTIONS: MetaOption[] = [
   { value: 'member', label: 'Member' },
@@ -41,8 +43,11 @@ const disableUserTarget = ref<User | null>(null)
 const disablingUser     = ref(false)
 const deleteUserTarget  = ref<User | null>(null)
 const deletingUser      = ref(false)
+const impersonatingUserId = ref<number | null>(null)
+const impersonationError = ref('')
 const isSelf = (u: User) => u.id === auth.user?.id
 const roleText = (role: User['role']) => role.replace('_', ' ').toUpperCase()
+const canImpersonate = (u: User) => auth.isSuperAdmin && !auth.impersonation && !isSelf(u) && u.status === 'active'
 
 // Inline nickname editing
 const nickEditId  = ref<number | null>(null)
@@ -283,6 +288,20 @@ async function confirmDeleteUser() {
   finally { deletingUser.value = false }
 }
 
+async function impersonateUser(u: User) {
+  if (!canImpersonate(u)) return
+  impersonatingUserId.value = u.id
+  impersonationError.value = ''
+  try {
+    await auth.startImpersonation(u.id)
+    await router.push(auth.user?.role === 'external' ? '/portal' : '/')
+  } catch (e: unknown) {
+    impersonationError.value = errMsg(e, 'Failed to start impersonation.')
+  } finally {
+    impersonatingUserId.value = null
+  }
+}
+
 // Init
 loadUsers()
 </script>
@@ -296,6 +315,7 @@ loadUsers()
       </div>
       <button class="btn btn-primary btn-sm" @click="showCreateUser=true">+ New user</button>
     </div>
+    <div v-if="impersonationError" class="form-error impersonation-error">{{ impersonationError }}</div>
     <div class="card" style="padding:0;overflow:hidden">
       <table class="settings-table">
         <thead>
@@ -348,6 +368,13 @@ loadUsers()
             <td class="muted">{{ u.created_at.slice(0,10) }}</td>
             <td class="muted" :title="u.last_login_at ?? ''">{{ u.last_login_at ? relativeTime(u.last_login_at) : 'Never' }}</td>
             <td class="actions-cell">
+              <button
+                v-if="canImpersonate(u)"
+                class="btn btn-ghost btn-sm"
+                :disabled="impersonatingUserId === u.id"
+                @click="impersonateUser(u)"
+                title="Act as this user in the current session"
+              >{{ impersonatingUserId === u.id ? 'Starting…' : 'Act as' }}</button>
               <button class="btn btn-ghost btn-sm" @click="openEditUser(u)">Edit</button>
               <button v-if="!isSelf(u)" class="btn btn-ghost btn-sm" @click="openMemberships(u)" title="Per-project access levels">Access</button>
               <template v-if="!isSelf(u)">
@@ -582,6 +609,7 @@ loadUsers()
 <style src="./settings-shared.css"></style>
 <style scoped>
 .user-avatar-row { display: flex; align-items: center; gap: .6rem; }
+.impersonation-error { margin: 0 0 .75rem; }
 .you-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: .1rem .45rem; }
 .role-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
 .role-admin    { color: #d97706; }

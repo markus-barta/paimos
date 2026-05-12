@@ -4545,6 +4545,24 @@ func migrate(db *sql.DB) error {
 			`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_target ON super_admin_audit(target_user_id, created_at)`,
 			`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_capability ON super_admin_audit(capability, created_at)`,
 		}},
+
+		// M106 / PAI-389: session-framed super-admin impersonation.
+		//
+		// sessions.user_id remains the real logged-in account. When a
+		// super-admin temporarily acts as another user, actor_user_id
+		// preserves the original operator and acting_as_user_id points at
+		// the effective user resolved by auth middleware. Audit rows record
+		// start, end, and mutating requests while active.
+		{106, []string{
+			`ALTER TABLE sessions ADD COLUMN actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+			`ALTER TABLE sessions ADD COLUMN acting_as_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+			`CREATE INDEX IF NOT EXISTS idx_sessions_actor_user ON sessions(actor_user_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_sessions_acting_as_user ON sessions(acting_as_user_id)`,
+			`INSERT OR IGNORE INTO role_permissions(role, capability) VALUES
+				('super_admin', 'auth.impersonation.start'),
+				('super_admin', 'auth.impersonation.end'),
+				('super_admin', 'auth.impersonation.action')`,
+		}},
 	}
 
 	for _, m := range migrations {

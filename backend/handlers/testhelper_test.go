@@ -134,6 +134,8 @@ func buildRouter() http.Handler {
 			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Post("/auth/logout", auth.LogoutHandler)
 			r.Get("/auth/me", auth.MeHandler)
+			r.Post("/auth/impersonation/start", handlers.StartImpersonation)
+			r.Post("/auth/impersonation/end", handlers.EndImpersonation)
 			r.Patch("/auth/me", handlers.UpdateProfile)
 			r.Post("/auth/password", auth.ChangePassword)
 			r.Get("/instance", func(w http.ResponseWriter, req *http.Request) {

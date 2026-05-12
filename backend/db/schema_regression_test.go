@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 105
+const latestSchemaVersion = 106
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -135,6 +135,12 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	if !columnExists(t, db, "sessions", "csrf_token") {
 		t.Fatal("expected sessions.csrf_token to exist")
 	}
+	if !columnExists(t, db, "sessions", "actor_user_id") {
+		t.Fatal("expected sessions.actor_user_id to exist (PAI-389 / M106)")
+	}
+	if !columnExists(t, db, "sessions", "acting_as_user_id") {
+		t.Fatal("expected sessions.acting_as_user_id to exist (PAI-389 / M106)")
+	}
 	if !columnExists(t, db, "users", "issue_auto_refresh_enabled") {
 		t.Fatal("expected users.issue_auto_refresh_enabled to exist")
 	}
@@ -244,6 +250,8 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_super_admin_audit_actor",
 		"idx_super_admin_audit_target",
 		"idx_super_admin_audit_capability",
+		"idx_sessions_actor_user",
+		"idx_sessions_acting_as_user",
 	} {
 		found, err := SchemaHasIndex(db, index)
 		if err != nil {
@@ -265,6 +273,9 @@ func TestSchemaSeedsSuperAdminCapabilities(t *testing.T) {
 		{"super_admin", "security.super_admin_audit.read"},
 		{"super_admin", "time_entries.write_any_user"},
 		{"super_admin", "users.grant_super_admin"},
+		{"super_admin", "auth.impersonation.start"},
+		{"super_admin", "auth.impersonation.end"},
+		{"super_admin", "auth.impersonation.action"},
 	} {
 		var found int
 		if err := db.QueryRow(

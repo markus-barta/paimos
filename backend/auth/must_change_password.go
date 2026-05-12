@@ -30,6 +30,8 @@
 //                                which clears the flag.
 //   - POST /api/auth/logout    — escape hatch in case the user
 //                                changes their mind.
+//   - POST /api/auth/impersonation/end — escape hatch for a
+//                                super-admin acting as a gated user.
 //
 // Anything else returns 403 with `{"error":"must_change_password"}`.
 // The SPA's axios interceptor recognises that error code and routes
@@ -53,6 +55,7 @@ var mustChangeAllowedPaths = []string{
 	"/api/auth/me",
 	"/api/auth/password",
 	"/api/auth/logout",
+	"/api/auth/impersonation/end",
 }
 
 func mustChangePathAllowed(p string) bool {

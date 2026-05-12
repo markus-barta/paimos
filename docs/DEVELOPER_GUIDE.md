@@ -180,7 +180,9 @@ on view-only-when-edit-required.
 **Frontend access**:
 
 `/auth/login`, `/auth/me`, and `/auth/totp/verify` return an envelope
-`{ user, access }`. `access = { all_projects, levels: { [pid]: "viewer"|"editor" } }`.
+`{ user, access, impersonation? }`. `access = { all_projects, levels: { [pid]: "viewer"|"editor" } }`.
+When `impersonation.active` is present, `user` is the effective target
+and `impersonation.actor` is the real super-admin session owner.
 The Pinia store (`stores/auth.ts`) exposes `canView(pid)` and
 `canEdit(pid)` plus a hydrated `accessibleProjects` Map. Router routes
 opt in to per-project guarding by setting
