@@ -101,10 +101,9 @@ function onBlur() {
 function onInput(event: Event) {
   const raw =
     event.target instanceof HTMLInputElement ? event.target.value : search.query;
-  const q = raw.trim();
   search.setQuery(raw);
-  syncActiveRouteQuery(q);
-  paletteVisible.value = q.length >= 2;
+  syncActiveRouteQuery(raw);
+  paletteVisible.value = raw.trim().length >= 2;
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -153,18 +152,18 @@ function clear() {
 }
 
 function searchAllResultsLocation() {
-  const q = search.query.trim();
-  const query = q.length >= 2 ? { q } : {};
+  const raw = search.query;
+  const query = raw.trim().length >= 2 ? { q: raw } : {};
   if (search.scope === "project" && search.projectId) {
     return { path: `/projects/${search.projectId}`, query };
   }
   return { path: "/issues", query };
 }
 
-function syncActiveRouteQuery(q: string) {
+function syncActiveRouteQuery(raw: string) {
   if (!isSearchListRoute.value) return;
   const nextQuery = { ...route.query };
-  if (q.length >= 2) nextQuery.q = q;
+  if (raw.trim().length >= 2) nextQuery.q = raw;
   else delete nextQuery.q;
   void router.replace({ query: nextQuery });
 }
@@ -173,7 +172,7 @@ function syncQueryFromRoute() {
   if (!isSearchListRoute.value) return;
   const raw = route.query.q;
   const q = Array.isArray(raw) ? raw[0] ?? "" : raw ?? "";
-  search.setQuery(String(q).trim(), { remember: false });
+  search.setQuery(String(q), { remember: false });
 }
 
 function toggleSearchScope() {

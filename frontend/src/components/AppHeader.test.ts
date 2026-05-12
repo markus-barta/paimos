@@ -225,7 +225,7 @@ describe("AppHeader issue refresh prompt", () => {
 
     expect(mockSearchStore.setQuery).toHaveBeenLastCalledWith("undo ");
     expect(mockSearchStore.query).toBe("undo ");
-    expect(routerReplace).toHaveBeenLastCalledWith({ query: { q: "undo" } });
+    expect(routerReplace).toHaveBeenLastCalledWith({ query: { q: "undo " } });
     expect(mounted.el.querySelector(".search-palette-stub")).toBeTruthy();
 
     input!.value = "undo history";
@@ -237,6 +237,23 @@ describe("AppHeader issue refresh prompt", () => {
     expect(routerReplace).toHaveBeenLastCalledWith({
       query: { q: "undo history" },
     });
+
+    await mounted.unmount();
+  });
+
+  it("keeps the word boundary after backspacing the second word", async () => {
+    const mounted = await mountHeader();
+    const input = mounted.el.querySelector<HTMLInputElement>('input[type="search"]');
+    expect(input).toBeTruthy();
+
+    input!.dispatchEvent(new Event("focus", { bubbles: true }));
+    input!.value = "flaky ";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+
+    expect(mockSearchStore.setQuery).toHaveBeenLastCalledWith("flaky ");
+    expect(mockSearchStore.query).toBe("flaky ");
+    expect(routerReplace).toHaveBeenLastCalledWith({ query: { q: "flaky " } });
 
     await mounted.unmount();
   });

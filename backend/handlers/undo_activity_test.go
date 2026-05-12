@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -109,5 +110,47 @@ func TestSystemSettingsAndUndoActivityEndpoints(t *testing.T) {
 	decode(t, policyResp, &retention)
 	if retention.MutationLogDays <= 0 {
 		t.Fatalf("expected mutation_log_days in retention policy, got %#v", retention)
+	}
+}
+
+func TestUndoActivityIssueSubjectLabelUsesKeyAndTitle(t *testing.T) {
+	ts := newTestServer(t)
+	projectID := responseID(t, ts.post(t, "/api/projects", ts.adminCookie, map[string]any{
+		"name": "Undo Labels",
+		"key":  "ULBL",
+	}))
+	issueID := responseID(t, ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "Show useful context in the undo stack",
+		"type":  "task",
+	}))
+
+	updateResp := ts.put(t, "/api/issues/"+itoa(issueID), ts.adminCookie, map[string]any{
+		"priority": "high",
+	})
+	assertStatus(t, updateResp, http.StatusOK)
+
+	activityResp := ts.get(t, "/api/undo/activity", ts.adminCookie)
+	assertStatus(t, activityResp, http.StatusOK)
+	var activity struct {
+		UndoRows []struct {
+			SubjectID    int64  `json:"subject_id"`
+			SubjectLabel string `json:"subject_label"`
+			Summary      string `json:"summary"`
+		} `json:"undo_rows"`
+	}
+	decode(t, activityResp, &activity)
+
+	var label string
+	for _, row := range activity.UndoRows {
+		if row.SubjectID == issueID && row.Summary == "Updated issue fields" {
+			label = row.SubjectLabel
+			break
+		}
+	}
+	if !strings.HasPrefix(label, "ULBL-1 - Show useful context") {
+		t.Fatalf("subject_label=%q, want issue key plus title preview", label)
+	}
+	if strings.Contains(label, fmt.Sprintf("Issue %d", issueID)) {
+		t.Fatalf("subject_label=%q still exposes raw issue id", label)
 	}
 }

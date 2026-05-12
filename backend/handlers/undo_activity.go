@@ -930,10 +930,31 @@ func loadRedoableMutation(tx *sql.Tx, logID int64, userID int64) (mutationLogRow
 }
 
 func issueLabel(id int64) string {
-	var key string
-	err := db.DB.QueryRow(`SELECT issue_key FROM issues WHERE id = ?`, id).Scan(&key)
-	if err == nil && strings.TrimSpace(key) != "" {
-		return key
+	var key, title string
+	err := db.DB.QueryRow(`
+		SELECT
+			COALESCE(
+				CASE
+					WHEN p.key IS NOT NULL AND i.issue_number > 0
+					THEN p.key || '-' || CAST(i.issue_number AS TEXT)
+					ELSE ''
+				END,
+				''
+			),
+			COALESCE(i.title, '')
+		FROM issues i
+		LEFT JOIN projects p ON p.id = i.project_id
+		WHERE i.id = ?
+	`, id).Scan(&key, &title)
+	if err == nil {
+		label := strings.TrimSpace(key)
+		if label == "" {
+			label = fmt.Sprintf("Issue %d", id)
+		}
+		if preview := plainPreview(title, 52); preview != "" {
+			return label + " - " + preview
+		}
+		return label
 	}
 	return fmt.Sprintf("Issue %d", id)
 }
@@ -1282,6 +1303,16 @@ func quotePreview(v string) string {
 	v = strings.ReplaceAll(v, "\n", " ")
 	v = strings.Join(strings.Fields(v), " ")
 	return `"` + truncatePreview(v, 64) + `"`
+}
+
+func plainPreview(v string, limit int) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	v = strings.ReplaceAll(v, "\n", " ")
+	v = strings.Join(strings.Fields(v), " ")
+	return truncatePreview(v, limit)
 }
 
 func truncatePreview(v string, limit int) string {
