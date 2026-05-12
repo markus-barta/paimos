@@ -65,7 +65,8 @@ Cross-references — every routine operation has a runbook in the repo. Do not r
 
 | Operation | Runbook |
 |---|---|
-| Cut a release | [`DEPLOY.md` § The four commands](DEPLOY.md#the-four-commands) — `just release patch\|minor\|major` |
+| Cut a release | [`DEPLOY.md` § The five commands](DEPLOY.md#the-five-commands) — `just release patch\|minor\|major` |
+| Verify a release before deploy | [`DEPLOY.md` § `just verify-release <tag>`](DEPLOY.md#just-verify-release-tag) — `just verify-release v<x.y.z>` |
 | Deploy a tag to ppm / pmo | `just deploy-ppm <tag>` / `just deploy-pmo <tag>` |
 | Doc-sync follow-up after release | `just doc-sync` |
 | Restore a deployment from backup | [`DEPLOY.md` § Rollback](DEPLOY.md#rollback-if-a-deploy-goes-sideways) |

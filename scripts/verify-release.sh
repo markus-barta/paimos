@@ -38,11 +38,20 @@ echo
 echo "[2/4] CycloneDX SBOM attestations"
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
-if cosign verify-attestation "$IMAGE" \
-  --type cyclonedx \
-  --certificate-identity-regexp "$ID_RE" \
-  --certificate-oidc-issuer "$OIDC" 2>/dev/null \
-  | jq -s '.[].payload | @base64d | fromjson | .predicate' > "$tmp_dir/sboms.json"; then
+
+verify_cyclonedx_attestations() {
+  local out="$1"
+  shift
+  cosign verify-attestation "$IMAGE" \
+    --type cyclonedx \
+    --certificate-identity-regexp "$ID_RE" \
+    --certificate-oidc-issuer "$OIDC" \
+    "$@" 2>/dev/null \
+    | jq -s '.[].payload | @base64d | fromjson | .predicate' > "$out"
+}
+
+if verify_cyclonedx_attestations "$tmp_dir/sboms.json" || \
+   verify_cyclonedx_attestations "$tmp_dir/sboms.json" --new-bundle-format=false; then
   count=$(jq -s 'length' "$tmp_dir/sboms.json")
   echo "  ok verified $count SBOM attestation(s)"
 else

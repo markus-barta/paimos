@@ -9,14 +9,16 @@
 # commits, the script refuses to guess; pass a release tag, sha-* image tag,
 # or "current" explicitly.
 # The flow (all remote via SSH):
-#   1. verify tag exists on ghcr
-#   2. stop the service
-#   3. snapshot the data (tar archive)
-#   4. validate the backup (gzip + entry count + db presence)
-#   5. write a manifest with pre/post image digests
-#   6. pin compose to the new tag, `docker compose pull && up -d`
-#   7. tail logs briefly
-#   8. external curl smoke test against /api/health
+#   1. resolve target and verify the image exists on ghcr
+#   2. remote pre-flight reads current image/digest; aborts if target=current
+#   3. stop the service
+#   4. snapshot the data (tar archive)
+#   5. validate the backup (gzip + entry count + db presence)
+#   6. write a manifest with pre/post image digests
+#   7. pin compose to the new tag, `docker compose pull && up -d`
+#   8. verify the running container reports the requested image
+#   9. tail logs briefly
+#   10. external curl smoke test against /api/health, including version
 #
 # On any failure, prints a manual rollback command. Never auto-rolls-back
 # a live system.

@@ -2,9 +2,11 @@
 
 {
   packages = with pkgs; [
+    cosign
     go
     gotools
     gopls
+    shellcheck
   ];
 
   languages.javascript = {

@@ -25,6 +25,11 @@ release mode="":
 sbom:
     @./scripts/sbom.sh
 
+# Verify a published release image's signature, SBOM attestations, provenance,
+# and claim matrix before deploying it.
+verify-release tag:
+    @./scripts/verify-release.sh {{tag}}
+
 # Deploy to ppm: release tag, sha-* image tag, or current HEAD.
 deploy-ppm target="":
     @./scripts/deploy.sh ppm {{target}}

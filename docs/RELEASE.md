@@ -66,6 +66,16 @@ tag, no SBOM, no signature, no CLI binaries.
 
 ## How to verify a release
 
+The short path is:
+
+    just verify-release v<x.y.z>
+
+That wraps [`scripts/verify-release.sh`](../scripts/verify-release.sh) and
+checks the image signature, SBOM attestations, GitHub provenance
+attestation, and claim matrix. It requires `cosign`, `gh`, and `jq`
+locally. The manual commands below are the same evidence surface broken out
+for inspection.
+
 ### Container image
 
 Verify the signature (replace `<x.y.z>` with the tag you're pulling):

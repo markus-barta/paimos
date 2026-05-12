@@ -23,10 +23,11 @@ CI source of truth: `.github/workflows/ci.yml`.
 
 ---
 
-## The four commands
+## The five commands
 
 ```
 just release [patch|minor|major|x.y.z]   # cut a release (VERSION + README + CHANGELOG + tag + push)
+just verify-release <tag>                # verify signature + SBOM attestations + provenance before deploy
 just deploy-ppm <target>                 # deploy a release tag or sha-* image to ppm
 just deploy-pmo <target>                 # deploy a release tag or sha-* image to pmo
 just doc-sync [tag]                      # file a "doc/site sync follow-up" ticket in PAIMOS
@@ -38,13 +39,13 @@ Plus a read-only status helper:
 just status                              # last 5 tags + commits since last tag
 ```
 
-The standard sequence after a feature lands on `main` is **release → deploy
-→ doc-sync**. The first two cut and roll out the new build; `doc-sync`
-files a single PAIMOS ticket with a four-item checklist (README, `docs/`,
-the `../paimos-site` repo, brand/screenshots) so the user-facing surfaces
-don't drift out of sync with the code. `release.sh` prints the
-`just doc-sync` reminder as part of its "Next:" output to make the step
-hard to miss.
+The standard sequence after a feature lands on `main` is **release →
+verify-release → deploy → doc-sync**. The first three cut, verify, and roll
+out the new build; `doc-sync` files or reuses a single PAIMOS ticket with a
+four-item checklist (README, `docs/`, the `../paimos-site` repo,
+brand/screenshots) so the user-facing surfaces don't drift out of sync with
+the code. `release.sh` prints the `verify-release` and `doc-sync` reminders
+as part of its "Next:" output to make the steps hard to miss.
 
 For untagged main-commit canaries, wait for CI to publish the commit image,
 then deploy it explicitly:
@@ -80,6 +81,28 @@ commits that touch files under `backend/` or `frontend/src/`, lean **minor**.
 Breaking API or schema changes → **major**. Pure docs / brand / scripts →
 **patch**. The `release.sh` no-arg output breaks this down for you.
 
+## `just verify-release <tag>`
+
+Run this after the tag workflows have completed and before deploying a
+release tag:
+
+```
+just verify-release v3.2.4
+```
+
+It wraps `scripts/verify-release.sh` and checks:
+
+1. cosign image signature against GitHub Actions OIDC identity.
+2. CycloneDX SBOM attestations on the image.
+3. GitHub provenance attestation for the OCI image.
+4. The public claim matrix release gate.
+
+Local prerequisites: `cosign`, `gh`, and `jq`.
+
+This applies to release tags. Untagged `sha-*` canaries are CI images, not
+fully published releases, so they do not have the same release-evidence
+surface.
+
 ## `just deploy-{ppm,pmo}`
 
 Deploy targets are explicit by default:
@@ -104,7 +127,7 @@ For each instance:
    container, aborts if target == current.
 3. `docker compose stop <service>`.
 4. Backup:
-   - **bind storage** → `tar -czf` on the bind path.
+   - **bind storage** → throwaway `alpine` container tarring the bind path.
    - **volume storage** → throwaway `alpine` container tarring the volume.
 5. Validate: `gzip -t`, count archive entries, verify the DB file is
    present.
@@ -112,10 +135,13 @@ For each instance:
    target-image, paths).
 7. `sed` the compose image pin from old → new tag, `docker compose pull`,
    `up -d`.
-8. Tail logs for 5 seconds (surfaces migration output + "server starting").
-9. External `curl /api/health` from your laptop, up to 24s of retries.
+8. Verify the restarted container reports the requested image.
+9. Tail logs for 5 seconds (surfaces migration output + "server starting").
+10. External `curl /api/health` from your laptop, up to 24s of retries.
+    Full semver targets must report that exact `version`; `sha-*` targets
+    must report a `version` containing the deployed short SHA.
 
-**On any failure in steps 2–8**, the script prints the exact rollback
+**On any failure in steps 2–10**, the script prints the exact rollback
 command for the host and exits non-zero. It does **not** auto-rollback.
 
 Artifacts produced on the remote host:
@@ -139,6 +165,18 @@ Each instance has a small conf file in `scripts/`:
   `~/Secrets/PMO/`.
 
 If you spin up a third instance, copy one of these and change the values.
+
+Deploy preflight uses SSH plus the public health endpoint; it does not
+require a PAIMOS API key for that instance. For a richer read-only operator
+smoke, configure a matching `paimos` CLI instance and run:
+
+```
+paimos --instance ppm doctor
+paimos --instance pmo doctor
+```
+
+If an operator only has SSH deploy access for an instance, `doctor` may be
+unavailable locally even though deploy preflight works.
 
 ## Rollback (if a deploy goes sideways)
 

@@ -100,7 +100,7 @@ deploy::run() {
   stamp=$(date -u +%Y-%m-%dT%H-%M-%SZ)
   backup="$BACKUP_ROOT/$stamp"
 
-  echo "--- [1/8] pre-flight"
+  echo "--- [1/9] pre-flight"
   pre_image=$(deploy::ssh "docker inspect $CONTAINER --format '{{.Config.Image}}' 2>/dev/null || echo no-container")
   pre_digest=$(deploy::ssh "docker inspect $CONTAINER --format '{{.Image}}' 2>/dev/null || echo unknown")
   echo "    current: $pre_image"
@@ -114,10 +114,10 @@ deploy::run() {
     return 0
   fi
 
-  echo "--- [2/8] stop $CONTAINER"
+  echo "--- [2/9] stop $CONTAINER"
   deploy::ssh "cd $COMPOSE_DIR && docker compose stop $SERVICE"
 
-  echo "--- [3/8] backup ($STORAGE)"
+  echo "--- [3/9] backup ($STORAGE)"
   deploy::ssh "mkdir -p $backup && cp $COMPOSE_DIR/docker-compose.yml $backup/docker-compose.yml.pre"
   case "$STORAGE" in
     bind)
@@ -139,7 +139,7 @@ deploy::run() {
       ;;
   esac
 
-  echo "--- [4/8] validate backup"
+  echo "--- [4/9] validate backup"
   local probe
   probe=$(deploy::ssh "
     set -e
@@ -171,7 +171,7 @@ deploy::run() {
     return 1
   fi
 
-  echo "--- [5/8] manifest"
+  echo "--- [5/9] manifest"
   # printf with newlines is safer over ssh than heredoc.
   deploy::ssh "printf '%s\n' \
     'instance: $instance' \
@@ -186,7 +186,7 @@ deploy::run() {
     'db_filename: $DB_FILENAME' \
     > $backup/manifest.yaml"
 
-  echo "--- [6/8] pin compose → $image, pull, up -d"
+  echo "--- [6/9] pin compose → $image, pull, up -d"
   # Keep a .bak alongside the live compose for extra safety.
   deploy::ssh "
     set -e
@@ -198,14 +198,27 @@ deploy::run() {
     docker compose up -d $SERVICE
   "
 
-  echo "--- [7/8] tail logs (5s warm-up)"
+  echo "--- [7/9] verify running image"
+  local post_image
+  post_image=$(deploy::ssh "docker inspect $CONTAINER --format '{{.Config.Image}}' 2>/dev/null || echo no-container")
+  echo "    running: $post_image"
+  echo "    target:  $image"
+  if [[ "$post_image" != "$image" ]]; then
+    echo "error: container image mismatch after restart" >&2
+    deploy::print_rollback "$backup" "$pre_image"
+    return 1
+  fi
+
+  echo "--- [8/9] tail logs (5s warm-up)"
   sleep 5
   deploy::ssh "cd $COMPOSE_DIR && docker compose logs --tail=40 $SERVICE" || true
 
-  echo "--- [8/8] external smoke test: $INSTANCE_URL/api/health"
+  echo "--- [9/9] external smoke test: $INSTANCE_URL/api/health"
   local ok=0
-  for i in $(seq 1 12); do
-    if curl -sfS -A "paimos-deploy/1.0" --max-time 5 "$INSTANCE_URL/api/health" 2>/dev/null | grep -q '"status":"ok"'; then
+  local health_body=""
+  for _ in $(seq 1 12); do
+    health_body=$(curl -sfS -A "paimos-deploy/1.0" --max-time 5 "$INSTANCE_URL/api/health" 2>/dev/null || true)
+    if printf '%s' "$health_body" | grep -q '"status":"ok"'; then
       ok=1
       break
     fi
@@ -216,13 +229,41 @@ deploy::run() {
     deploy::print_rollback "$backup" "$pre_image"
     return 1
   fi
-  echo "    ✔ /api/health ok"
+  local health_version
+  health_version=$(printf '%s' "$health_body" | sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
+  if ! deploy::health_version_matches_target "$tag" "$health_version"; then
+    echo "✗ health version mismatch: version='$health_version' target='$tag'" >&2
+    deploy::print_rollback "$backup" "$pre_image"
+    return 1
+  fi
+  if [[ -n "$health_version" ]]; then
+    echo "    ✔ /api/health ok (version: $health_version)"
+  else
+    echo "    ✔ /api/health ok (version check skipped for target: $tag)"
+  fi
 
   echo
   echo "✔ $instance is live on $image"
   echo "  backup: $backup"
   echo
   deploy::print_rollback "$backup" "$pre_image" "INFO"
+}
+
+deploy::health_version_matches_target() {
+  local tag="$1" version="$2"
+  local semver_re='^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$'
+  if [[ "$tag" == sha-* ]]; then
+    local sha="${tag#sha-}"
+    [[ -n "$version" && "$version" == *"+$sha"* ]]
+    return $?
+  fi
+  if [[ "$tag" =~ $semver_re ]]; then
+    [[ "$version" == "$tag" ]]
+    return $?
+  fi
+  # Moving aliases such as 3.2 or 3 do not carry enough information to
+  # predict the baked runtime version. Require status=ok only for those.
+  return 0
 }
 
 deploy::print_rollback() {

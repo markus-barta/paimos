@@ -187,11 +187,12 @@ echo "Pushed $NEW_TAG. Waiting for CI to publish ghcr.io/markus-barta/paimos:$NE
 # ghcr::image_exists from _deploy-lib.sh).
 # shellcheck disable=SC1091
 source "$(dirname "$0")/_deploy-lib.sh"
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if ghcr::image_exists "ghcr.io/markus-barta/paimos:$NEW"; then
     echo "✔ ghcr.io/markus-barta/paimos:$NEW is live."
     echo
     echo "Next:"
+    echo "  just verify-release $NEW_TAG"
     echo "  just deploy-ppm $NEW_TAG"
     echo "  just deploy-pmo $NEW_TAG"
     echo "  just doc-sync       # file the README / docs / paimos-site sync ticket"

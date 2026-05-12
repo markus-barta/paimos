@@ -54,7 +54,7 @@ The split is deliberate: the tarball is the **smallest sufficient unit** to rest
 
 ### Automatic — every deploy
 
-`scripts/deploy.sh ppm <tag>` (or `pmo`) takes a backup before every image swap. The step is in `scripts/_deploy-lib.sh::do_backup` and is non-skippable: a deploy that can't produce a valid tarball **does not proceed**.
+`scripts/deploy.sh ppm <tag>` (or `pmo`) takes a backup before every image swap. The backup step lives in `deploy::run` in `scripts/_deploy-lib.sh` and is non-skippable: a deploy that can't produce a valid tarball **does not proceed**.
 
 Backup artefacts land at:
 
