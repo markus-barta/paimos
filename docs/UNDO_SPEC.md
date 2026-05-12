@@ -10,11 +10,11 @@
 - Explicit resolution modal
 - Undo + redo stacks
 - Per-user stack depth control
+- Activity UI rows that show who made the change, what changed, and the before -> after direction
 
 Out of scope for this shipped slice:
 
 - Cross-user undo
-- Bulk multi-step rollback
 - Text-editor keystroke undo
 - A full mutation-class matrix for every entity family
 
@@ -38,10 +38,44 @@ The current implementation fully ships:
 - `field-changed-by-other`
 - `parent-deleted`
 - `target-deleted`
+- `field-set-deleted` for issue-tag restore when the tag was deleted
+- `time-entry-invoiced` for time-entry undo/redo after an issue is invoiced
+
+Undoable mutation families currently include:
+
+- Issue field updates
+- Issue relation create/delete
+- Issue tag add/remove
+- Issue comment create/delete
+- Issue time-entry create/update/delete
 
 The remaining patterns are reserved by contract for later mutation-class expansion.
 
 ## API Contract
+
+### Activity rows
+
+`GET /api/undo/activity` and `GET /api/issues/{id}/activity` return rows with both operational and human-readable detail. The UI must keep this visible enough that a user can tell who made the mutation and what undo/redo will move from and to.
+
+```json
+{
+  "id": 42,
+  "request_id": "req_...",
+  "mutation_type": "issue.comment.delete",
+  "subject_type": "comment",
+  "subject_id": 9,
+  "subject_label": "Comment on PAI-228",
+  "summary": "Removed comment",
+  "change_detail": "\"old comment\" -> absent",
+  "actor_label": "comment-agent via admin",
+  "origin_label": "session abc123",
+  "undoable": true,
+  "on_user_stack": true,
+  "redoable": false,
+  "undone": false,
+  "created_at": "2026-05-12 10:15:30"
+}
+```
 
 ### Clean undo
 

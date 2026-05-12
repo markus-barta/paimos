@@ -69,12 +69,6 @@ func ListComments(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/issues/{id}/comments  { "body": "..." }
-//
-// PAI-354: the comment insert plus a mutation_log row are written in a
-// single transaction so the X-Paimos-Agent-Name + X-Paimos-Session-Id
-// attribution lands on the same logical event as the row itself. The
-// mutation is recorded with Undoable=false — comments aren't part of
-// the PAI-209 undo stack today, and this hook is purely informational.
 func CreateComment(w http.ResponseWriter, r *http.Request) {
 	issueID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -103,6 +97,11 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	if !issueExistsActiveTx(tx, issueID) {
+		jsonError(w, "issue not found", http.StatusNotFound)
+		return
+	}
+
 	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO comments(issue_id, author_id, body) VALUES(?, ?, ?)
 	`, issueID, authorID, body.Body)
@@ -112,6 +111,14 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+
+	before := commentMutationSnapshot{ID: id}
+	after, err := fetchCommentMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("CreateComment: snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
 		RequestID:    requestIDFromRequest(r),
@@ -125,11 +132,9 @@ func CreateComment(w http.ResponseWriter, r *http.Request) {
 			Method: http.MethodDelete,
 			Path:   fmt.Sprintf("/comments/%d", id),
 		},
-		BeforeState: nil,
-		AfterState:  map[string]any{"id": id, "issue_id": issueID, "body": body.Body},
-		// Undo of comment-add is intentionally not wired into PAI-209
-		// today — attribution lands on the row regardless.
-		Undoable: false,
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    true,
 	}); err != nil {
 		log.Printf("CreateComment: recordMutation: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -162,23 +167,73 @@ func DeleteComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := auth.GetUser(r)
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-	// Check ownership
-	var authorID *int64
-	err = db.DB.QueryRow("SELECT author_id FROM comments WHERE id=?", id).Scan(&authorID)
+	tx, err := db.DB.BeginTx(r.Context(), nil)
 	if err != nil {
+		log.Printf("DeleteComment: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	before, err := fetchCommentMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("DeleteComment: snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !before.Exists {
 		jsonError(w, "comment not found", http.StatusNotFound)
 		return
 	}
 
-	isOwner := authorID != nil && *authorID == user.ID
+	isOwner := before.AuthorID != nil && *before.AuthorID == user.ID
 	if !isOwner && user.Role != "admin" {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	if _, err := db.DB.Exec("DELETE FROM comments WHERE id=?", id); err != nil {
+	if _, err := tx.ExecContext(r.Context(), "DELETE FROM comments WHERE id=?", id); err != nil {
 		log.Printf("DeleteComment: id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	after, err := fetchCommentMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("DeleteComment: after snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	userID := user.ID
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       &userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.comment.delete"),
+		SubjectType:  "comment",
+		SubjectID:    id,
+		InverseOp: InverseOp{
+			Method: http.MethodPut,
+			Path:   fmt.Sprintf("/comments/%d", id),
+			Body:   before,
+		},
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    true,
+	}); err != nil {
+		log.Printf("DeleteComment: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("DeleteComment: commit: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}

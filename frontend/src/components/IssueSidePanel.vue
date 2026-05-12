@@ -705,8 +705,8 @@ async function removeSprint(sprintId: number) {
 async function deleteTimeEntry(entry: TimeEntry) {
   const isOther = entry.user_id !== authStore.user?.id;
   const msg = isOther
-    ? `You are deleting ${entry.username}'s time entry. This cannot be undone.`
-    : "Delete this time entry?";
+    ? `You are deleting ${entry.username}'s time entry. You can undo this from Recent activity.`
+    : "Delete this time entry? You can undo it from Recent activity.";
   if (!(await confirm({ message: msg, confirmLabel: "Delete", danger: true })))
     return;
   await api.delete(`/time-entries/${entry.id}`);

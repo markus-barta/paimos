@@ -218,6 +218,7 @@ const searchMaxLimit = 200
 
 func Search(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	issueTypeFilter := strings.TrimSpace(r.URL.Query().Get("type"))
 
 	// Parse optional offset + limit
 	offset := 0
@@ -241,14 +242,10 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		HasMore:  false,
 	}
 
-	scopedProjectID := int64(0)
-	if strings.EqualFold(r.URL.Query().Get("scope"), "project") {
-		id, err := strconv.ParseInt(r.URL.Query().Get("project_id"), 10, 64)
-		if err != nil || id <= 0 || !auth.CanViewProject(r, id) {
-			jsonOK(w, results)
-			return
-		}
-		scopedProjectID = id
+	scopedProjectID, ok := resolveSearchScopedProjectID(r)
+	if !ok {
+		jsonOK(w, results)
+		return
 	}
 
 	if len(q) < 2 {
@@ -281,6 +278,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if scopedProjectID > 0 && (iss.ProjectID == nil || *iss.ProjectID != scopedProjectID) {
+				continue
+			}
+			if !matchesSearchIssueType(iss.Type, issueTypeFilter) {
 				continue
 			}
 			filtered = append(filtered, iss)
@@ -361,6 +361,12 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		scopeIssueFilter = " AND i.project_id = ?"
 		scopeIssueArgs = append(scopeIssueArgs, scopedProjectID)
 	}
+	typeIssueFilter := ""
+	typeIssueArgs := []any{}
+	if issueTypeFilter != "" {
+		typeIssueFilter = " AND LOWER(i.type) = LOWER(?)"
+		typeIssueArgs = append(typeIssueArgs, issueTypeFilter)
+	}
 
 	// ── Projects ─────────────────────────────────────────────────────────────
 	projArgs := append([]any{ftsQuery}, accessProjectArgs...)
@@ -388,6 +394,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	// ── Issues (FTS content match) ────────────────────────────────────────────
 	issArgs := append([]any{ftsQuery}, accessIssueArgs...)
 	issArgs = append(issArgs, scopeIssueArgs...)
+	issArgs = append(issArgs, typeIssueArgs...)
 	issArgs = append(issArgs, limit+1)
 	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	issRows, err := db.DB.Query(`
@@ -398,7 +405,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'issue'
 		  AND search_index MATCH ?
-		  AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
+		  AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+typeIssueFilter+`
 		LIMIT ?
 	`, issArgs...)
 	if err == nil {
@@ -487,6 +494,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		tiArgs := append([]any{}, tagIDs...)
 		tiArgs = append(tiArgs, accessIssueArgs...)
 		tiArgs = append(tiArgs, scopeIssueArgs...)
+		tiArgs = append(tiArgs, typeIssueArgs...)
 		tiArgs = append(tiArgs, limit+1)
 		// #nosec G202 G701 -- placeholders and filters are fixed-fragment assembly.
 		tiRows, err := db.DB.Query(`
@@ -495,7 +503,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			JOIN issues i ON i.id = it.issue_id
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE it.tag_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
+			WHERE it.tag_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+typeIssueFilter+`
 			LIMIT ?
 		`, tiArgs...)
 		if err == nil {
@@ -514,6 +522,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		aiArgs := append([]any{}, userIDs...)
 		aiArgs = append(aiArgs, accessIssueArgs...)
 		aiArgs = append(aiArgs, scopeIssueArgs...)
+		aiArgs = append(aiArgs, typeIssueArgs...)
 		aiArgs = append(aiArgs, limit+1)
 		// #nosec G202 G701 -- placeholders and filters are fixed-fragment assembly.
 		aiRows, err := db.DB.Query(`
@@ -521,7 +530,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 			FROM issues i
 			LEFT JOIN projects p ON p.id = i.project_id
 			LEFT JOIN users u ON u.id = i.assignee_id
-			WHERE i.assignee_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
+			WHERE i.assignee_id IN (`+ph+`) AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+typeIssueFilter+`
 			ORDER BY i.updated_at DESC
 			LIMIT ?
 		`, aiArgs...)
@@ -534,6 +543,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	keyArgs := []any{"%" + q + "%"}
 	keyArgs = append(keyArgs, accessIssueArgs...)
 	keyArgs = append(keyArgs, scopeIssueArgs...)
+	keyArgs = append(keyArgs, typeIssueArgs...)
 	keyArgs = append(keyArgs, limit+1)
 	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	keyLikeRows, err := db.DB.Query(`
@@ -541,7 +551,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ? AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
+		WHERE (COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT)) LIKE ? AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+typeIssueFilter+`
 		ORDER BY i.updated_at DESC
 		LIMIT ?
 	`, keyArgs...)
@@ -554,6 +564,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	cmtArgs := []any{ftsQuery}
 	cmtArgs = append(cmtArgs, accessIssueArgs...)
 	cmtArgs = append(cmtArgs, scopeIssueArgs...)
+	cmtArgs = append(cmtArgs, typeIssueArgs...)
 	cmtArgs = append(cmtArgs, limit+1)
 	// #nosec G202 G701 -- SQL is fixed-fragment assembly; all user values are placeholders.
 	commentIssRows, err := db.DB.Query(`
@@ -565,7 +576,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE si.entity_type = 'comment'
 		  AND search_index MATCH ?
-		  AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+`
+		  AND i.deleted_at IS NULL`+accessIssueFilter+scopeIssueFilter+typeIssueFilter+`
 		LIMIT ?
 	`, cmtArgs...)
 	if err == nil {
@@ -583,6 +594,9 @@ func Search(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if scopedProjectID > 0 && (iss.ProjectID == nil || *iss.ProjectID != scopedProjectID) {
+				continue
+			}
+			if !matchesSearchIssueType(iss.Type, issueTypeFilter) {
 				continue
 			}
 			filtered = append(filtered, iss)
@@ -605,6 +619,47 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	results.Issues, results.HasMore = dedup.result(offset, limit)
 	jsonOK(w, results)
+}
+
+func resolveSearchScopedProjectID(r *http.Request) (int64, bool) {
+	if ref := strings.TrimSpace(r.URL.Query().Get("project")); ref != "" {
+		return resolveSearchProjectRef(r, ref)
+	}
+	if !strings.EqualFold(r.URL.Query().Get("scope"), "project") {
+		return 0, true
+	}
+	return resolveSearchProjectRef(r, r.URL.Query().Get("project_id"))
+}
+
+func resolveSearchProjectRef(r *http.Request, ref string) (int64, bool) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return 0, false
+	}
+	if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
+		if id <= 0 || !auth.CanViewProject(r, id) {
+			return 0, false
+		}
+		return id, true
+	}
+
+	var id int64
+	if err := db.DB.QueryRow(`
+		SELECT id
+		FROM projects
+		WHERE UPPER(key) = UPPER(?)
+		LIMIT 1
+	`, ref).Scan(&id); err != nil {
+		return 0, false
+	}
+	if id <= 0 || !auth.CanViewProject(r, id) {
+		return 0, false
+	}
+	return id, true
+}
+
+func matchesSearchIssueType(issueType, filter string) bool {
+	return strings.TrimSpace(filter) == "" || strings.EqualFold(issueType, filter)
 }
 
 func itoa(n int) string {

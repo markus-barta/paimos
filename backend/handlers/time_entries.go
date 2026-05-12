@@ -17,6 +17,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -112,16 +113,24 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		crossUser = true
 	}
 
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("CreateTimeEntry: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
 	// Snapshot the TARGET user's rate, not the caller's — otherwise
 	// the super-admin's rate would silently shadow the actual worker's.
 	var userRate *float64
-	if err := db.DB.QueryRow("SELECT internal_rate_hourly FROM users WHERE id=?", targetUserID).Scan(&userRate); err != nil {
+	if err := tx.QueryRow("SELECT internal_rate_hourly FROM users WHERE id=?", targetUserID).Scan(&userRate); err != nil {
 		log.Printf("CreateTimeEntry: rate snapshot user=%d: %v", targetUserID, err)
 		jsonError(w, "target user not found", http.StatusBadRequest)
 		return
 	}
 
-	res, err := db.DB.Exec(`
+	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO time_entries(issue_id, user_id, started_at, stopped_at, override, comment, internal_rate_hourly)
 		VALUES(?,?,?,?,?,?,?)
 	`, ticketID, targetUserID, body.StartedAt, body.StoppedAt, body.Override, body.Comment, userRate)
@@ -129,6 +138,43 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	before := timeEntryMutationSnapshot{ID: id}
+	after, err := fetchTimeEntryMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("CreateTimeEntry: snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !after.Exists {
+		jsonError(w, "not found after insert", http.StatusInternalServerError)
+		return
+	}
+	userID := caller.ID
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       &userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.time_entry.create"),
+		SubjectType:  "time_entry",
+		SubjectID:    id,
+		InverseOp: InverseOp{
+			Method: http.MethodDelete,
+			Path:   fmt.Sprintf("/time-entries/%d", id),
+		},
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    true,
+	}); err != nil {
+		log.Printf("CreateTimeEntry: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("CreateTimeEntry: commit: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	entry := getTimeEntryByID(id)
 	if entry == nil {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)
@@ -167,18 +213,10 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	// explicit so a future role-cascade refactor that narrows admin
 	// can't quietly take this away).
 	user := auth.GetUser(r)
-	var ownerID *int64
-	err = db.DB.QueryRow("SELECT user_id FROM time_entries WHERE id=?", id).Scan(&ownerID)
-	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	isOwner := ownerID != nil && *ownerID == user.ID
-	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
-		jsonError(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	crossUser := !isOwner
 
 	var body struct {
 		StoppedAt     *string  `json:"stopped_at"`
@@ -191,8 +229,33 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("UpdateTimeEntry: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	before, err := fetchTimeEntryMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("UpdateTimeEntry: snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !before.Exists {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	isOwner := before.UserID == user.ID
+	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
+		jsonError(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	crossUser := !isOwner
+
 	if body.ClearOverride {
-		_, err = db.DB.Exec(`
+		_, err = tx.ExecContext(r.Context(), `
 			UPDATE time_entries SET
 				stopped_at = CASE WHEN ? IS NOT NULL THEN ? ELSE stopped_at END,
 				override   = NULL,
@@ -200,7 +263,7 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 			WHERE id = ?
 		`, body.StoppedAt, body.StoppedAt, body.Comment, id)
 	} else {
-		_, err = db.DB.Exec(`
+		_, err = tx.ExecContext(r.Context(), `
 			UPDATE time_entries SET
 				stopped_at = CASE WHEN ? IS NOT NULL THEN ? ELSE stopped_at END,
 				override   = COALESCE(?, override),
@@ -212,6 +275,40 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	after, err := fetchTimeEntryMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("UpdateTimeEntry: after snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	userID := user.ID
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       &userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.time_entry.update"),
+		SubjectType:  "time_entry",
+		SubjectID:    id,
+		InverseOp: InverseOp{
+			Method: http.MethodPut,
+			Path:   fmt.Sprintf("/time-entries/%d", id),
+			Body:   before,
+		},
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    !valuesEqual(snapshotMap(before), snapshotMap(after)),
+	}); err != nil {
+		log.Printf("UpdateTimeEntry: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("UpdateTimeEntry: commit: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	entry := getTimeEntryByID(id)
 	if entry == nil {
 		jsonError(w, "not found", http.StatusNotFound)
@@ -220,13 +317,9 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	// PAI-335: stamp every cross-user write so a paper-trail grep
 	// surfaces every privileged action.
 	if crossUser {
-		var targetID int64
-		if ownerID != nil {
-			targetID = *ownerID
-		}
 		log.Printf(
 			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_update target_user_id=%d entry_id=%d issue_id=%d",
-			user.ID, user.Username, targetID, id, entry.IssueID,
+			user.ID, user.Username, before.UserID, id, entry.IssueID,
 		)
 	}
 	// Re-evaluate system tags (timer stopped or override changed)
@@ -245,21 +338,37 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 
 	// own-or-admin check (PAI-335: super-admin too — see UpdateTimeEntry).
 	user := auth.GetUser(r)
-	var ownerID *int64
-	var issueID int64
-	err = db.DB.QueryRow("SELECT user_id, issue_id FROM time_entries WHERE id=?", id).Scan(&ownerID, &issueID)
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tx, err := db.DB.BeginTx(r.Context(), nil)
 	if err != nil {
+		log.Printf("DeleteTimeEntry: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	before, err := fetchTimeEntryMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("DeleteTimeEntry: snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !before.Exists {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	isOwner := ownerID != nil && *ownerID == user.ID
+	isOwner := before.UserID == user.ID
 	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	crossUser := !isOwner
 
-	res, err := db.DB.Exec("DELETE FROM time_entries WHERE id=?", id)
+	res, err := tx.ExecContext(r.Context(), "DELETE FROM time_entries WHERE id=?", id)
 	if err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
 		return
@@ -269,19 +378,48 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	after, err := fetchTimeEntryMutationSnapshotTx(tx, id)
+	if err != nil {
+		log.Printf("DeleteTimeEntry: after snapshot id=%d: %v", id, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	userID := user.ID
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       &userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: mutationTypeForRequest(r, "issue.time_entry.delete"),
+		SubjectType:  "time_entry",
+		SubjectID:    id,
+		InverseOp: InverseOp{
+			Method: http.MethodPut,
+			Path:   fmt.Sprintf("/time-entries/%d", id),
+			Body:   before,
+		},
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    true,
+	}); err != nil {
+		log.Printf("DeleteTimeEntry: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("DeleteTimeEntry: commit: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	// PAI-335: paper-trail.
 	if crossUser {
-		var targetID int64
-		if ownerID != nil {
-			targetID = *ownerID
-		}
 		log.Printf(
 			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_delete target_user_id=%d entry_id=%d issue_id=%d",
-			user.ID, user.Username, targetID, id, issueID,
+			user.ID, user.Username, before.UserID, id, before.IssueID,
 		)
 	}
 	// Re-evaluate system tags after time entry removal
-	EvaluateSystemTags(issueID)
+	EvaluateSystemTags(before.IssueID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -17,6 +17,10 @@ const actingLogId = ref<number | null>(null);
 const payload = ref<MutationActivityResponse | null>(null);
 const undoStore = useUndoStore();
 
+function actorLine(row: { actor_label: string; origin_label?: string }) {
+  return row.origin_label ? `${row.actor_label} - ${row.origin_label}` : row.actor_label;
+}
+
 async function load() {
   loading.value = true;
   error.value = "";
@@ -113,9 +117,11 @@ onMounted(() => {
             </button>
           </div>
           <div class="issue-ai__meta">
+            <span>{{ actorLine(row) }}</span>
             <span class="issue-ai__mono">{{ row.mutation_type }}</span>
             <span>{{ fmtShortDateTime(row.created_at) }}</span>
           </div>
+          <div v-if="row.change_detail" class="issue-ai__detail">{{ row.change_detail }}</div>
         </div>
 
         <div
@@ -138,9 +144,11 @@ onMounted(() => {
             </button>
           </div>
           <div class="issue-ai__meta">
+            <span>{{ actorLine(row) }}</span>
             <span class="issue-ai__mono">{{ row.mutation_type }}</span>
             <span>{{ fmtShortDateTime(row.created_at) }}</span>
           </div>
+          <div v-if="row.change_detail" class="issue-ai__detail">{{ row.change_detail }}</div>
         </div>
 
         <div
@@ -157,9 +165,11 @@ onMounted(() => {
             </div>
           </div>
           <div class="issue-ai__meta">
+            <span>{{ actorLine(row) }}</span>
             <span class="issue-ai__mono">{{ row.mutation_type }}</span>
             <span>{{ fmtShortDateTime(row.created_at) }}</span>
           </div>
+          <div v-if="row.change_detail" class="issue-ai__detail">{{ row.change_detail }}</div>
         </div>
       </div>
     </div>
@@ -221,6 +231,13 @@ onMounted(() => {
 .issue-ai__meta,
 .issue-ai__outcome {
   color: var(--text-muted);
+}
+.issue-ai__detail {
+  margin-top: 0.35rem;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 .issue-ai__body {
   padding: 0 0.95rem 0.95rem;

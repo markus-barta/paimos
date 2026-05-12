@@ -172,6 +172,7 @@ PUT    /tags/:id                    admin only
 DELETE /tags/:id                    admin only
 POST   /issues/:id/tags             {tag_id}
 DELETE /issues/:id/tags/:tag_id
+GET    /projects/:id/tags
 POST   /projects/:id/tags           {tag_id}
 DELETE /projects/:id/tags/:tag_id
 GET    /system-tag-rules
@@ -194,6 +195,8 @@ DELETE /views/:id/pin
 
 ```
 GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix)
+                                      optional: project=<key-or-id>, type=<issue-type>, limit=N, offset=N
+                                      legacy project scope also works: scope=project&project_id=<id>
 ```
 
 ## Agent Context

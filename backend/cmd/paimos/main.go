@@ -116,6 +116,8 @@ Get started:
 
 	cmd.AddCommand(authCmd())
 	cmd.AddCommand(projectCmd())
+	cmd.AddCommand(tagCmd())
+	cmd.AddCommand(searchCmd())
 	cmd.AddCommand(anchorsCmd())
 	// PAI-358: manifestCmd removed with the project_manifests table.
 	cmd.AddCommand(issueCmd())

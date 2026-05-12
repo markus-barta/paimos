@@ -118,6 +118,12 @@ func Test_Search(t *testing.T) {
 	})
 	assertStatus(t, otherIssueResp, http.StatusCreated)
 
+	taskResp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.memberCookie, map[string]interface{}{
+		"title": "Task-flavored zeta issue", "type": "task", "status": "backlog", "priority": "medium",
+	})
+	assertStatus(t, taskResp, http.StatusCreated)
+	taskID := responseID(t, taskResp)
+
 	// Issue with unique jira_id term (avoid issue-key pattern like "PROJ-99999")
 	i3Resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.memberCookie, map[string]interface{}{
 		"title": "Jira imported issue", "type": "ticket", "status": "backlog", "priority": "medium",
@@ -180,6 +186,75 @@ func Test_Search(t *testing.T) {
 			if p.ID != projectID {
 				t.Fatalf("scoped search returned project %d, want %d", p.ID, projectID)
 			}
+		}
+	})
+
+	t.Run("project key parameter narrows search results", func(t *testing.T) {
+		resp := ts.get(t, "/api/search?q=zeta&project=spz", ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var result struct {
+			Issues []struct {
+				ID        int64  `json:"id"`
+				ProjectID *int64 `json:"project_id"`
+			} `json:"issues"`
+			Projects []struct {
+				ID int64 `json:"id"`
+			} `json:"projects"`
+		}
+		decode(t, resp, &result)
+		if len(result.Issues) == 0 {
+			t.Fatal("project-key search returned no issues")
+		}
+		for _, iss := range result.Issues {
+			if iss.ProjectID == nil || *iss.ProjectID != projectID {
+				t.Fatalf("project-key search returned issue %d from project %v, want %d", iss.ID, iss.ProjectID, projectID)
+			}
+		}
+		for _, p := range result.Projects {
+			if p.ID != projectID {
+				t.Fatalf("project-key search returned project %d, want %d", p.ID, projectID)
+			}
+		}
+	})
+
+	t.Run("type parameter narrows issue results", func(t *testing.T) {
+		resp := ts.get(t, "/api/search?q=zeta&type=task", ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var result struct {
+			Issues []struct {
+				ID   int64  `json:"id"`
+				Type string `json:"type"`
+			} `json:"issues"`
+		}
+		decode(t, resp, &result)
+		if len(result.Issues) == 0 {
+			t.Fatal("type-filtered search returned no issues")
+		}
+		foundTask := false
+		for _, iss := range result.Issues {
+			if iss.Type != "task" {
+				t.Fatalf("type-filtered search returned issue %d with type %q, want task", iss.ID, iss.Type)
+			}
+			if iss.ID == taskID {
+				foundTask = true
+			}
+		}
+		if !foundTask {
+			t.Fatalf("type-filtered search did not return task issue %d", taskID)
+		}
+	})
+
+	t.Run("project and type parameters can return an empty issue set", func(t *testing.T) {
+		resp := ts.get(t, "/api/search?q=zeta&project=SPZ&type=epic", ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var result struct {
+			Issues []struct {
+				ID int64 `json:"id"`
+			} `json:"issues"`
+		}
+		decode(t, resp, &result)
+		if len(result.Issues) != 0 {
+			t.Fatalf("project+type search returned %d issues, want 0", len(result.Issues))
 		}
 	})
 
@@ -404,6 +479,7 @@ func Test_TagCRUD(t *testing.T) {
 	ts := newTestServer(t)
 
 	var tagID int64
+	var projectID int64
 
 	t.Run("admin creates tag", func(t *testing.T) {
 		resp := ts.post(t, "/api/tags", ts.adminCookie, map[string]string{
@@ -431,6 +507,29 @@ func Test_TagCRUD(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("created tag %d not found in list", tagID)
+		}
+	})
+
+	t.Run("project tag list returns attached tags", func(t *testing.T) {
+		res, err := db.DB.Exec(`INSERT INTO projects(name, key) VALUES(?, ?)`, "Tag Project", "TAG")
+		if err != nil {
+			t.Fatalf("seed project: %v", err)
+		}
+		projectID, _ = res.LastInsertId()
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/tags", projectID), ts.adminCookie, map[string]int64{
+			"tag_id": tagID,
+		})
+		assertStatus(t, resp, http.StatusNoContent)
+
+		resp = ts.get(t, fmt.Sprintf("/api/projects/%d/tags", projectID), ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var tags []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		}
+		decode(t, resp, &tags)
+		if len(tags) != 1 || tags[0].ID != tagID || tags[0].Name != "feature" {
+			t.Fatalf("project tags = %#v, want feature tag", tags)
 		}
 	})
 

@@ -71,6 +71,9 @@ type mutationActivityRow struct {
 	SubjectID    int64  `json:"subject_id"`
 	SubjectLabel string `json:"subject_label"`
 	Summary      string `json:"summary"`
+	ChangeDetail string `json:"change_detail"`
+	ActorLabel   string `json:"actor_label"`
+	OriginLabel  string `json:"origin_label,omitempty"`
 	Undoable     bool   `json:"undoable"`
 	OnUserStack  bool   `json:"on_user_stack"`
 	Redoable     bool   `json:"redoable"`
@@ -97,6 +100,24 @@ func decodeRelationSnapshot(raw string) (relationMutationSnapshot, error) {
 	return snap, err
 }
 
+func decodeIssueTagSnapshot(raw string) (issueTagMutationSnapshot, error) {
+	var snap issueTagMutationSnapshot
+	err := json.Unmarshal([]byte(raw), &snap)
+	return snap, err
+}
+
+func decodeTimeEntrySnapshot(raw string) (timeEntryMutationSnapshot, error) {
+	var snap timeEntryMutationSnapshot
+	err := json.Unmarshal([]byte(raw), &snap)
+	return snap, err
+}
+
+func decodeCommentSnapshot(raw string) (commentMutationSnapshot, error) {
+	var snap commentMutationSnapshot
+	err := json.Unmarshal([]byte(raw), &snap)
+	return snap, err
+}
+
 func snapshotMap(v any) map[string]any {
 	blob, _ := json.Marshal(sanitizeSnapshotValue(v))
 	var out map[string]any
@@ -111,6 +132,34 @@ func issueExistsActiveTx(tx *sql.Tx, issueID int64) bool {
 	var id int64
 	err := tx.QueryRow(`SELECT id FROM issues WHERE id = ? AND deleted_at IS NULL`, issueID).Scan(&id)
 	return err == nil
+}
+
+func userExistsTx(tx *sql.Tx, userID int64) bool {
+	if userID <= 0 {
+		return false
+	}
+	var id int64
+	err := tx.QueryRow(`SELECT id FROM users WHERE id = ?`, userID).Scan(&id)
+	return err == nil
+}
+
+func tagExistsTx(tx *sql.Tx, tagID int64) bool {
+	if tagID <= 0 {
+		return false
+	}
+	var id int64
+	err := tx.QueryRow(`SELECT id FROM tags WHERE id = ?`, tagID).Scan(&id)
+	return err == nil
+}
+
+func issueInvoicedTx(tx *sql.Tx, issueID int64) bool {
+	if issueID <= 0 {
+		return false
+	}
+	var status string
+	var invoicedAt sql.NullString
+	err := tx.QueryRow(`SELECT status, invoiced_at FROM issues WHERE id = ?`, issueID).Scan(&status, &invoicedAt)
+	return err == nil && (status == "invoiced" || invoicedAt.Valid)
 }
 
 func classifyIssueConflictsTx(tx *sql.Tx, row mutationLogRow, mode undoMode) ([]undoFieldConflict, []undoCascadeBlocker, error) {
@@ -211,6 +260,185 @@ func classifyRelationConflictsTx(tx *sql.Tx, row mutationLogRow, mode undoMode) 
 	return nil, nil, nil
 }
 
+func classifyIssueTagConflictsTx(tx *sql.Tx, row mutationLogRow, mode undoMode) ([]undoFieldConflict, []undoCascadeBlocker, error) {
+	before, err := decodeIssueTagSnapshot(row.BeforeState)
+	if err != nil {
+		return nil, nil, err
+	}
+	after, err := decodeIssueTagSnapshot(row.AfterState)
+	if err != nil {
+		return nil, nil, err
+	}
+	current, err := issueTagSnapshotFromRow(tx, row)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	desired := before
+	baseline := after
+	if mode == undoModeRedo {
+		desired = after
+		baseline = before
+	}
+
+	blockers := make([]undoCascadeBlocker, 0)
+	if desired.Exists && !issueExistsActiveTx(tx, desired.IssueID) {
+		blockers = append(blockers, undoCascadeBlocker{
+			Pattern:     "parent-deleted",
+			TargetID:    desired.IssueID,
+			Description: fmt.Sprintf("Parent issue %d is no longer active.", desired.IssueID),
+			Options: []undoConflictOption{
+				{ID: "skip_tag", Label: "Skip the tag change", Default: true},
+				{ID: "cancel", Label: "Cancel"},
+			},
+		})
+	}
+	if desired.Exists && !tagExistsTx(tx, desired.TagID) {
+		return []undoFieldConflict{{
+			Pattern:      "field-set-deleted",
+			Field:        "tag",
+			TheirValue:   tagLabel(desired.TagID),
+			TargetValue:  "present",
+			CurrentValue: "deleted",
+			Options: []undoConflictOption{
+				{ID: "skip_tag", Label: "Skip the tag change", Default: true},
+				{ID: "cancel", Label: "Cancel"},
+			},
+		}}, blockers, nil
+	}
+
+	if valuesEqual(snapshotMap(current), snapshotMap(desired)) || valuesEqual(snapshotMap(current), snapshotMap(baseline)) {
+		return nil, blockers, nil
+	}
+	conflict := undoFieldConflict{
+		Pattern:      "field-changed-by-other",
+		Field:        "tag",
+		TheirValue:   issueTagStatePreview(current),
+		TargetValue:  issueTagStatePreview(desired),
+		CurrentValue: issueTagStatePreview(current),
+		Options: []undoConflictOption{
+			{ID: "overwrite", Label: "Use my target value", Default: true},
+			{ID: "keep_theirs", Label: "Keep the newer value"},
+		},
+	}
+	return []undoFieldConflict{conflict}, blockers, nil
+}
+
+func classifyTimeEntryConflictsTx(tx *sql.Tx, row mutationLogRow, mode undoMode) ([]undoFieldConflict, []undoCascadeBlocker, error) {
+	before, err := decodeTimeEntrySnapshot(row.BeforeState)
+	if err != nil {
+		return nil, nil, err
+	}
+	after, err := decodeTimeEntrySnapshot(row.AfterState)
+	if err != nil {
+		return nil, nil, err
+	}
+	current, err := fetchTimeEntryMutationSnapshotTx(tx, row.SubjectID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	desired := before
+	baseline := after
+	if mode == undoModeRedo {
+		desired = after
+		baseline = before
+	}
+
+	blockers := make([]undoCascadeBlocker, 0)
+	if desired.Exists && !issueExistsActiveTx(tx, desired.IssueID) {
+		blockers = append(blockers, undoCascadeBlocker{
+			Pattern:     "parent-deleted",
+			TargetID:    desired.IssueID,
+			Description: fmt.Sprintf("Parent issue %d is no longer active.", desired.IssueID),
+			Options: []undoConflictOption{
+				{ID: "skip_time_entry", Label: "Skip the time-entry change", Default: true},
+				{ID: "cancel", Label: "Cancel"},
+			},
+		})
+	}
+	if desired.Exists && !userExistsTx(tx, desired.UserID) {
+		return []undoFieldConflict{{
+			Pattern:      "field-set-deleted",
+			Field:        "user",
+			TheirValue:   fmt.Sprintf("User %d", desired.UserID),
+			TargetValue:  "present",
+			CurrentValue: "deleted",
+			Options: []undoConflictOption{
+				{ID: "skip_time_entry", Label: "Skip the time-entry change", Default: true},
+				{ID: "cancel", Label: "Cancel"},
+			},
+		}}, blockers, nil
+	}
+
+	if valuesEqual(snapshotMap(current), snapshotMap(desired)) || valuesEqual(snapshotMap(current), snapshotMap(baseline)) {
+		return nil, blockers, nil
+	}
+	conflict := undoFieldConflict{
+		Pattern:      "field-changed-by-other",
+		Field:        "time_entry",
+		TheirValue:   timeEntryStatePreview(current),
+		TargetValue:  timeEntryStatePreview(desired),
+		CurrentValue: timeEntryStatePreview(current),
+		Options: []undoConflictOption{
+			{ID: "overwrite", Label: "Use my target value", Default: true},
+			{ID: "keep_theirs", Label: "Keep the newer value"},
+		},
+	}
+	return []undoFieldConflict{conflict}, blockers, nil
+}
+
+func classifyCommentConflictsTx(tx *sql.Tx, row mutationLogRow, mode undoMode) ([]undoFieldConflict, []undoCascadeBlocker, error) {
+	before, err := decodeCommentSnapshot(row.BeforeState)
+	if err != nil {
+		return nil, nil, err
+	}
+	after, err := decodeCommentSnapshot(row.AfterState)
+	if err != nil {
+		return nil, nil, err
+	}
+	current, err := fetchCommentMutationSnapshotTx(tx, row.SubjectID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	desired := before
+	baseline := after
+	if mode == undoModeRedo {
+		desired = after
+		baseline = before
+	}
+
+	blockers := make([]undoCascadeBlocker, 0)
+	if desired.Exists && !issueExistsActiveTx(tx, desired.IssueID) {
+		blockers = append(blockers, undoCascadeBlocker{
+			Pattern:     "parent-deleted",
+			TargetID:    desired.IssueID,
+			Description: fmt.Sprintf("Parent issue %d is no longer active.", desired.IssueID),
+			Options: []undoConflictOption{
+				{ID: "skip_comment", Label: "Skip the comment change", Default: true},
+				{ID: "cancel", Label: "Cancel"},
+			},
+		})
+	}
+
+	if valuesEqual(snapshotMap(current), snapshotMap(desired)) || valuesEqual(snapshotMap(current), snapshotMap(baseline)) {
+		return nil, blockers, nil
+	}
+	conflict := undoFieldConflict{
+		Pattern:      "field-changed-by-other",
+		Field:        "comment",
+		TheirValue:   commentStatePreview(current),
+		TargetValue:  commentStatePreview(desired),
+		CurrentValue: commentStatePreview(current),
+		Options: []undoConflictOption{
+			{ID: "overwrite", Label: "Use my target value", Default: true},
+			{ID: "keep_theirs", Label: "Keep the newer value"},
+		},
+	}
+	return []undoFieldConflict{conflict}, blockers, nil
+}
+
 func classifyMutationConflictTx(tx *sql.Tx, row mutationLogRow, mode undoMode) (undoConflictResponse, error) {
 	resp := undoConflictResponse{
 		Status:       "conflict",
@@ -229,6 +457,27 @@ func classifyMutationConflictTx(tx *sql.Tx, row mutationLogRow, mode undoMode) (
 		resp.CascadingBlockers = blockers
 	case "issue_relation":
 		conflicts, blockers, err := classifyRelationConflictsTx(tx, row, mode)
+		if err != nil {
+			return resp, err
+		}
+		resp.Conflicts = conflicts
+		resp.CascadingBlockers = blockers
+	case "issue_tag":
+		conflicts, blockers, err := classifyIssueTagConflictsTx(tx, row, mode)
+		if err != nil {
+			return resp, err
+		}
+		resp.Conflicts = conflicts
+		resp.CascadingBlockers = blockers
+	case "time_entry":
+		conflicts, blockers, err := classifyTimeEntryConflictsTx(tx, row, mode)
+		if err != nil {
+			return resp, err
+		}
+		resp.Conflicts = conflicts
+		resp.CascadingBlockers = blockers
+	case "comment":
+		conflicts, blockers, err := classifyCommentConflictsTx(tx, row, mode)
 		if err != nil {
 			return resp, err
 		}
@@ -409,6 +658,72 @@ func applyRelationResolutionTx(ctx context.Context, tx *sql.Tx, row mutationLogR
 	return executeInverseOpTx(ctx, tx, redo)
 }
 
+func applyIssueTagResolutionTx(ctx context.Context, tx *sql.Tx, row mutationLogRow, mode undoMode, res undoResolutionPayload) error {
+	if choice := res.CascadeChoices["parent-deleted"]; choice == "skip_tag" || choice == "cancel" {
+		return nil
+	}
+	if choice := res.FieldChoices["tag"]; choice == "keep_theirs" || choice == "skip_tag" || choice == "cancel" {
+		return nil
+	}
+	if mode == undoModeUndo {
+		var inv InverseOp
+		if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
+			return err
+		}
+		return executeInverseOpTx(ctx, tx, inv)
+	}
+	redo, err := redoOpForRow(row)
+	if err != nil {
+		return err
+	}
+	return executeInverseOpTx(ctx, tx, redo)
+}
+
+func applyTimeEntryResolutionTx(ctx context.Context, tx *sql.Tx, row mutationLogRow, mode undoMode, res undoResolutionPayload) error {
+	if choice := res.CascadeChoices["parent-deleted"]; choice == "skip_time_entry" || choice == "cancel" {
+		return nil
+	}
+	for _, field := range []string{"time_entry", "user"} {
+		choice := res.FieldChoices[field]
+		if choice == "keep_theirs" || choice == "skip_time_entry" || choice == "cancel" {
+			return nil
+		}
+	}
+	if mode == undoModeUndo {
+		var inv InverseOp
+		if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
+			return err
+		}
+		return executeInverseOpTx(ctx, tx, inv)
+	}
+	redo, err := redoOpForRow(row)
+	if err != nil {
+		return err
+	}
+	return executeInverseOpTx(ctx, tx, redo)
+}
+
+func applyCommentResolutionTx(ctx context.Context, tx *sql.Tx, row mutationLogRow, mode undoMode, res undoResolutionPayload) error {
+	if choice := res.CascadeChoices["parent-deleted"]; choice == "skip_comment" || choice == "cancel" {
+		return nil
+	}
+	if choice := res.FieldChoices["comment"]; choice == "keep_theirs" {
+		return nil
+	}
+	if mode == undoModeUndo {
+		var inv InverseOp
+		if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
+			return err
+		}
+		return executeInverseOpTx(ctx, tx, inv)
+	}
+	redo, err := redoOpForRow(row)
+	if err != nil {
+		return err
+	}
+	return executeInverseOpTx(ctx, tx, redo)
+}
+
 func redoOpForRow(row mutationLogRow) (InverseOp, error) {
 	switch row.SubjectType {
 	case "issue":
@@ -437,6 +752,33 @@ func redoOpForRow(row mutationLogRow) (InverseOp, error) {
 		}
 		deleteBody := map[string]any{"target_id": body["target_id"], "type": after.Type}
 		return InverseOp{Method: http.MethodDelete, Path: fmt.Sprintf("/issues/%d/relations", sourceID), Body: deleteBody}, nil
+	case "issue_tag":
+		var after issueTagMutationSnapshot
+		if err := json.Unmarshal([]byte(row.AfterState), &after); err != nil {
+			return InverseOp{}, err
+		}
+		if after.Exists {
+			return InverseOp{Method: http.MethodPost, Path: fmt.Sprintf("/issues/%d/tags", after.IssueID), Body: map[string]any{"tag_id": after.TagID}}, nil
+		}
+		return InverseOp{Method: http.MethodDelete, Path: fmt.Sprintf("/issues/%d/tags/%d", after.IssueID, after.TagID)}, nil
+	case "time_entry":
+		var after timeEntryMutationSnapshot
+		if err := json.Unmarshal([]byte(row.AfterState), &after); err != nil {
+			return InverseOp{}, err
+		}
+		if after.Exists {
+			return InverseOp{Method: http.MethodPut, Path: fmt.Sprintf("/time-entries/%d", row.SubjectID), Body: after}, nil
+		}
+		return InverseOp{Method: http.MethodDelete, Path: fmt.Sprintf("/time-entries/%d", row.SubjectID)}, nil
+	case "comment":
+		var after commentMutationSnapshot
+		if err := json.Unmarshal([]byte(row.AfterState), &after); err != nil {
+			return InverseOp{}, err
+		}
+		if after.Exists {
+			return InverseOp{Method: http.MethodPut, Path: fmt.Sprintf("/comments/%d", row.SubjectID), Body: after}, nil
+		}
+		return InverseOp{Method: http.MethodDelete, Path: fmt.Sprintf("/comments/%d", row.SubjectID)}, nil
 	default:
 		return InverseOp{}, fmt.Errorf("unsupported redo subject type %s", row.SubjectType)
 	}
@@ -479,6 +821,22 @@ func applyMutationFlowTx(ctx context.Context, tx *sql.Tx, row mutationLogRow, us
 			}
 		case "issue_relation":
 			if err := applyRelationResolutionTx(ctx, tx, row, mode, *resolution); err != nil {
+				return nil, nil, http.StatusInternalServerError, err
+			}
+		case "issue_tag":
+			if err := applyIssueTagResolutionTx(ctx, tx, row, mode, *resolution); err != nil {
+				return nil, nil, http.StatusInternalServerError, err
+			}
+		case "time_entry":
+			if err := applyTimeEntryResolutionTx(ctx, tx, row, mode, *resolution); err != nil {
+				var locked *undoLockedError
+				if errors.As(err, &locked) {
+					return nil, nil, http.StatusLocked, err
+				}
+				return nil, nil, http.StatusInternalServerError, err
+			}
+		case "comment":
+			if err := applyCommentResolutionTx(ctx, tx, row, mode, *resolution); err != nil {
 				return nil, nil, http.StatusInternalServerError, err
 			}
 		default:
@@ -525,7 +883,15 @@ func applyMutationFlowTx(ctx context.Context, tx *sql.Tx, row mutationLogRow, us
 	if opErr != nil {
 		var conflict *undoConflictError
 		if errors.As(opErr, &conflict) {
+			resp, err := classifyMutationConflictTx(tx, row, mode)
+			if err == nil && (len(resp.Conflicts) > 0 || len(resp.CascadingBlockers) > 0) {
+				return nil, &resp, http.StatusConflict, nil
+			}
 			return nil, nil, http.StatusConflict, opErr
+		}
+		var locked *undoLockedError
+		if errors.As(opErr, &locked) {
+			return nil, nil, http.StatusLocked, opErr
 		}
 		return nil, nil, http.StatusInternalServerError, opErr
 	}
@@ -563,7 +929,6 @@ func loadRedoableMutation(tx *sql.Tx, logID int64, userID int64) (mutationLogRow
 	return row, nil
 }
 
-
 func issueLabel(id int64) string {
 	var key string
 	err := db.DB.QueryRow(`SELECT issue_key FROM issues WHERE id = ?`, id).Scan(&key)
@@ -571,6 +936,68 @@ func issueLabel(id int64) string {
 		return key
 	}
 	return fmt.Sprintf("Issue %d", id)
+}
+
+func commentIssueID(row mutationLogRow) int64 {
+	for _, raw := range []string{row.AfterState, row.BeforeState} {
+		snap, err := decodeCommentSnapshot(raw)
+		if err == nil && snap.IssueID > 0 {
+			return snap.IssueID
+		}
+	}
+	return 0
+}
+
+func timeEntryIssueID(row mutationLogRow) int64 {
+	for _, raw := range []string{row.AfterState, row.BeforeState} {
+		snap, err := decodeTimeEntrySnapshot(raw)
+		if err == nil && snap.IssueID > 0 {
+			return snap.IssueID
+		}
+	}
+	return 0
+}
+
+func runUndoMutationSideEffects(rows []mutationLogRow) {
+	seenTimeEntryIssues := make(map[int64]bool)
+	for _, row := range rows {
+		if row.SubjectType != "time_entry" {
+			continue
+		}
+		issueID := timeEntryIssueID(row)
+		if issueID <= 0 || seenTimeEntryIssues[issueID] {
+			continue
+		}
+		seenTimeEntryIssues[issueID] = true
+		EvaluateSystemTags(issueID)
+	}
+}
+
+func subjectLabel(row mutationLogRow) string {
+	switch row.SubjectType {
+	case "issue":
+		return issueLabel(row.SubjectID)
+	case "issue_relation":
+		return issueLabel(row.SubjectID)
+	case "issue_tag":
+		issueID, _, err := issueTagIDsFromRow(row)
+		if err == nil && issueID > 0 {
+			return fmt.Sprintf("Tag on %s", issueLabel(issueID))
+		}
+		return fmt.Sprintf("Tag on %s", issueLabel(row.SubjectID))
+	case "comment":
+		if issueID := commentIssueID(row); issueID > 0 {
+			return fmt.Sprintf("Comment on %s", issueLabel(issueID))
+		}
+		return fmt.Sprintf("Comment %d", row.SubjectID)
+	case "time_entry":
+		if issueID := timeEntryIssueID(row); issueID > 0 {
+			return fmt.Sprintf("Time entry on %s", issueLabel(issueID))
+		}
+		return fmt.Sprintf("Time entry %d", row.SubjectID)
+	default:
+		return fmt.Sprintf("%s %d", strings.ReplaceAll(row.SubjectType, "_", " "), row.SubjectID)
+	}
 }
 
 func mutationSummary(row mutationLogRow) string {
@@ -581,9 +1008,308 @@ func mutationSummary(row mutationLogRow) string {
 		return "Added issue relation"
 	case "ai.issue.relation.delete", "issue.relation.delete":
 		return "Removed issue relation"
+	case "ai.issue.tag.add", "issue.tag.add":
+		return "Added tag"
+	case "ai.issue.tag.remove", "issue.tag.remove":
+		return "Removed tag"
+	case "ai.issue.comment.create", "issue.comment.create":
+		return "Added comment"
+	case "ai.issue.comment.delete", "issue.comment.delete":
+		return "Removed comment"
+	case "ai.issue.time_entry.create", "issue.time_entry.create":
+		return "Added time entry"
+	case "ai.issue.time_entry.update", "issue.time_entry.update":
+		return "Updated time entry"
+	case "ai.issue.time_entry.delete", "issue.time_entry.delete":
+		return "Removed time entry"
 	default:
 		return strings.ReplaceAll(row.MutationType, ".", " → ")
 	}
+}
+
+func mutationDetail(row mutationLogRow) string {
+	switch row.SubjectType {
+	case "issue":
+		return issueMutationDetail(row)
+	case "issue_relation":
+		return relationMutationDetail(row)
+	case "issue_tag":
+		return issueTagMutationDetail(row)
+	case "comment":
+		return commentMutationDetail(row)
+	case "time_entry":
+		return timeEntryMutationDetail(row)
+	default:
+		return ""
+	}
+}
+
+func issueMutationDetail(row mutationLogRow) string {
+	before, err := decodeIssueSnapshot(row.BeforeState)
+	if err != nil {
+		return ""
+	}
+	after, err := decodeIssueSnapshot(row.AfterState)
+	if err != nil {
+		return ""
+	}
+	beforeMap := snapshotMap(before)
+	afterMap := snapshotMap(after)
+	keys := make([]string, 0, len(afterMap))
+	for key := range afterMap {
+		if key == "id" || key == "project_id" || key == "deleted_at" {
+			continue
+		}
+		if !valuesEqual(beforeMap[key], afterMap[key]) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, min(len(keys), 3))
+	for _, key := range keys {
+		if len(parts) == 3 {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s -> %s", fieldLabel(key), valuePreview(beforeMap[key]), valuePreview(afterMap[key])))
+	}
+	if len(keys) > len(parts) {
+		parts = append(parts, fmt.Sprintf("+%d more", len(keys)-len(parts)))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func relationMutationDetail(row mutationLogRow) string {
+	before, berr := decodeRelationSnapshot(row.BeforeState)
+	after, aerr := decodeRelationSnapshot(row.AfterState)
+	if berr != nil || aerr != nil {
+		return ""
+	}
+	sourceID := after.SourceID
+	if sourceID == 0 {
+		sourceID = before.SourceID
+	}
+	targetID := after.TargetID
+	if targetID == 0 {
+		targetID = before.TargetID
+	}
+	relType := after.Type
+	if relType == "" {
+		relType = before.Type
+	}
+	beforeState := "absent"
+	if before.Exists {
+		beforeState = "present"
+	}
+	afterState := "absent"
+	if after.Exists {
+		afterState = "present"
+	}
+	return fmt.Sprintf("%s %s %s: %s -> %s", issueLabel(sourceID), strings.ReplaceAll(relType, "_", " "), issueLabel(targetID), beforeState, afterState)
+}
+
+func issueTagMutationDetail(row mutationLogRow) string {
+	before, berr := decodeIssueTagSnapshot(row.BeforeState)
+	after, aerr := decodeIssueTagSnapshot(row.AfterState)
+	if berr != nil || aerr != nil {
+		return ""
+	}
+	tagID := after.TagID
+	if tagID == 0 {
+		tagID = before.TagID
+	}
+	return fmt.Sprintf("%s: %s -> %s", tagLabel(tagID), issueTagStatePreview(before), issueTagStatePreview(after))
+}
+
+func issueTagStatePreview(snap issueTagMutationSnapshot) string {
+	if snap.Exists {
+		return "present"
+	}
+	return "absent"
+}
+
+func tagLabel(tagID int64) string {
+	if tagID <= 0 {
+		return "Tag"
+	}
+	var name string
+	err := db.DB.QueryRow(`SELECT name FROM tags WHERE id = ?`, tagID).Scan(&name)
+	if err == nil && strings.TrimSpace(name) != "" {
+		return "#" + strings.TrimSpace(name)
+	}
+	return fmt.Sprintf("Tag %d", tagID)
+}
+
+func commentMutationDetail(row mutationLogRow) string {
+	before, berr := decodeCommentSnapshot(row.BeforeState)
+	after, aerr := decodeCommentSnapshot(row.AfterState)
+	if berr != nil || aerr != nil {
+		return ""
+	}
+	return fmt.Sprintf("%s -> %s", commentStatePreview(before), commentStatePreview(after))
+}
+
+func commentStatePreview(snap commentMutationSnapshot) string {
+	if !snap.Exists {
+		return "absent"
+	}
+	return valuePreview(snap.Body)
+}
+
+func timeEntryMutationDetail(row mutationLogRow) string {
+	before, berr := decodeTimeEntrySnapshot(row.BeforeState)
+	after, aerr := decodeTimeEntrySnapshot(row.AfterState)
+	if berr != nil || aerr != nil {
+		return ""
+	}
+	stateChange := fmt.Sprintf("%s -> %s", timeEntryStatePreview(before), timeEntryStatePreview(after))
+	if !before.Exists || !after.Exists {
+		return stateChange
+	}
+
+	beforeMap := snapshotMap(before)
+	afterMap := snapshotMap(after)
+	keys := []string{"user_id", "started_at", "stopped_at", "override", "comment", "internal_rate_hourly", "mite_id"}
+	parts := []string{stateChange}
+	for _, key := range keys {
+		if len(parts) == 4 {
+			break
+		}
+		if valuesEqual(beforeMap[key], afterMap[key]) {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s -> %s", fieldLabel(key), valuePreview(beforeMap[key]), valuePreview(afterMap[key])))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func timeEntryStatePreview(snap timeEntryMutationSnapshot) string {
+	if !snap.Exists {
+		return "absent"
+	}
+	duration := "running"
+	switch {
+	case snap.Override != nil:
+		duration = formatHoursPreview(*snap.Override)
+	case snap.StoppedAt != nil:
+		if hours, ok := timeEntryHours(snap.StartedAt, *snap.StoppedAt); ok {
+			duration = formatHoursPreview(hours)
+		} else {
+			duration = "stopped"
+		}
+	}
+	parts := []string{duration}
+	if label := userLabel(snap.UserID); label != "" {
+		parts = append(parts, "for "+label)
+	}
+	if strings.TrimSpace(snap.Comment) != "" {
+		parts = append(parts, quotePreview(snap.Comment))
+	}
+	return strings.Join(parts, " ")
+}
+
+func timeEntryHours(startedAt, stoppedAt string) (float64, bool) {
+	layouts := []string{
+		"2006-01-02T15:04:05Z",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+	}
+	var start, stop time.Time
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, startedAt); err == nil {
+			start = t
+			break
+		}
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, stoppedAt); err == nil {
+			stop = t
+			break
+		}
+	}
+	if start.IsZero() || stop.IsZero() || !stop.After(start) {
+		return 0, false
+	}
+	return stop.Sub(start).Hours(), true
+}
+
+func formatHoursPreview(hours float64) string {
+	s := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", hours), "0"), ".")
+	return s + "h"
+}
+
+func userLabel(userID int64) string {
+	if userID <= 0 {
+		return ""
+	}
+	var name string
+	err := db.DB.QueryRow(`SELECT COALESCE(NULLIF(nickname,''), username, '') FROM users WHERE id = ?`, userID).Scan(&name)
+	if err == nil && strings.TrimSpace(name) != "" {
+		return strings.TrimSpace(name)
+	}
+	return fmt.Sprintf("User %d", userID)
+}
+
+func fieldLabel(field string) string {
+	return strings.ReplaceAll(field, "_", " ")
+}
+
+func valuePreview(v any) string {
+	if v == nil {
+		return "empty"
+	}
+	switch x := v.(type) {
+	case string:
+		return quotePreview(x)
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	default:
+		blob, _ := json.Marshal(sanitizeSnapshotValue(v))
+		return truncatePreview(string(blob), 72)
+	}
+}
+
+func quotePreview(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "empty"
+	}
+	v = strings.ReplaceAll(v, "\n", " ")
+	v = strings.Join(strings.Fields(v), " ")
+	return `"` + truncatePreview(v, 64) + `"`
+}
+
+func truncatePreview(v string, limit int) string {
+	if len(v) <= limit {
+		return v
+	}
+	if limit <= 3 {
+		return v[:limit]
+	}
+	return v[:limit-3] + "..."
+}
+
+func actorLabel(actorName, agentName sql.NullString) string {
+	actor := "Unknown user"
+	if actorName.Valid && strings.TrimSpace(actorName.String) != "" {
+		actor = strings.TrimSpace(actorName.String)
+	}
+	if agentName.Valid && strings.TrimSpace(agentName.String) != "" {
+		return fmt.Sprintf("%s via %s", strings.TrimSpace(agentName.String), actor)
+	}
+	return actor
+}
+
+func originLabel(sessionID sql.NullString) string {
+	if sessionID.Valid && strings.TrimSpace(sessionID.String) != "" {
+		return "session " + strings.TrimSpace(sessionID.String)
+	}
+	return ""
 }
 
 func listMutationActivity(userID int64, subjectType string, subjectID int64) (mutationActivityResponse, error) {
@@ -598,20 +1324,42 @@ func listMutationActivity(userID int64, subjectType string, subjectID int64) (mu
 		resp.StackDepth = depth
 	}
 	query := `
-		SELECT id, request_id, mutation_type, subject_type, subject_id, undoable, on_user_stack, redoable, undone_at, created_at
-		FROM mutation_log
-		WHERE user_id = ?`
+		SELECT m.id, m.request_id, m.mutation_type, m.subject_type, m.subject_id,
+		       m.undoable, m.on_user_stack, m.redoable, m.undone_at, m.created_at,
+		       m.before_state, m.after_state,
+		       COALESCE(NULLIF(u.nickname,''), u.username), m.agent_name, m.session_id
+		FROM mutation_log m
+		LEFT JOIN users u ON u.id = m.user_id
+		WHERE m.user_id = ?`
 	args := []any{userID}
 	if subjectType != "" && subjectID > 0 {
 		if subjectType == "issue" {
-			query += ` AND ((subject_type = 'issue' AND subject_id = ?) OR (subject_type = 'issue_relation' AND subject_id = ?))`
-			args = append(args, subjectID, subjectID)
+			query += ` AND (
+				(m.subject_type = 'issue' AND m.subject_id = ?)
+				OR (m.subject_type = 'issue_relation' AND m.subject_id = ?)
+				OR (m.subject_type = 'issue_tag' AND m.subject_id = ?)
+				OR (
+					m.subject_type = 'comment'
+					AND (
+						json_extract(m.before_state, '$.issue_id') = ?
+						OR json_extract(m.after_state, '$.issue_id') = ?
+					)
+				)
+				OR (
+					m.subject_type = 'time_entry'
+					AND (
+						json_extract(m.before_state, '$.issue_id') = ?
+						OR json_extract(m.after_state, '$.issue_id') = ?
+					)
+				)
+			)`
+			args = append(args, subjectID, subjectID, subjectID, subjectID, subjectID, subjectID, subjectID)
 		} else {
-			query += ` AND subject_type = ? AND subject_id = ?`
+			query += ` AND m.subject_type = ? AND m.subject_id = ?`
 			args = append(args, subjectType, subjectID)
 		}
 	}
-	query += ` ORDER BY created_at DESC, id DESC LIMIT 30`
+	query += ` ORDER BY m.created_at DESC, m.id DESC LIMIT 30`
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		return resp, err
@@ -619,17 +1367,35 @@ func listMutationActivity(userID int64, subjectType string, subjectID int64) (mu
 	defer rows.Close()
 	for rows.Next() {
 		var row mutationActivityRow
+		var mrow mutationLogRow
 		var undoable, onUserStack, redoable int
 		var undoneAt sql.NullString
-		if err := rows.Scan(&row.ID, &row.RequestID, &row.MutationType, &row.SubjectType, &row.SubjectID, &undoable, &onUserStack, &redoable, &undoneAt, &row.CreatedAt); err != nil {
+		var actorName, agentName, sessionID sql.NullString
+		if err := rows.Scan(
+			&mrow.ID, &mrow.RequestID, &mrow.MutationType, &mrow.SubjectType, &mrow.SubjectID,
+			&undoable, &onUserStack, &redoable, &undoneAt, &row.CreatedAt,
+			&mrow.BeforeState, &mrow.AfterState, &actorName, &agentName, &sessionID,
+		); err != nil {
 			return resp, err
 		}
+		row.ID = mrow.ID
+		row.RequestID = mrow.RequestID
+		row.MutationType = mrow.MutationType
+		row.SubjectType = mrow.SubjectType
+		row.SubjectID = mrow.SubjectID
 		row.Undoable = undoable == 1
 		row.OnUserStack = onUserStack == 1 && !undoneAt.Valid
 		row.Redoable = redoable == 1 && undoneAt.Valid
 		row.Undone = undoneAt.Valid
-		row.SubjectLabel = issueLabel(row.SubjectID)
-		row.Summary = mutationSummary(mutationLogRow{MutationType: row.MutationType})
+		mrow.Undoable = row.Undoable
+		mrow.OnUserStack = row.OnUserStack
+		mrow.Redoable = row.Redoable
+		mrow.UndoneAt = undoneAt
+		row.SubjectLabel = subjectLabel(mrow)
+		row.Summary = mutationSummary(mrow)
+		row.ChangeDetail = mutationDetail(mrow)
+		row.ActorLabel = actorLabel(actorName, agentName)
+		row.OriginLabel = originLabel(sessionID)
 		switch {
 		case row.OnUserStack:
 			resp.UndoRows = append(resp.UndoRows, row)
@@ -740,6 +1506,10 @@ func runUndoMode(w http.ResponseWriter, r *http.Request, mode undoMode, byReques
 			body, conflict, status, err := applyMutationFlowTx(r.Context(), tx, row, user.ID, mode, resolution)
 			if err != nil {
 				log.Printf("undo flow: %v", err)
+				if status == http.StatusLocked {
+					jsonError(w, "irreversible mutation", status)
+					return
+				}
 				jsonError(w, "undo failed", status)
 				return
 			}
@@ -770,6 +1540,7 @@ func runUndoMode(w http.ResponseWriter, r *http.Request, mode undoMode, byReques
 			jsonError(w, "undo failed", http.StatusInternalServerError)
 			return
 		}
+		runUndoMutationSideEffects(batchRows)
 		// Aggregate response: keep the single-row body shape (caller
 		// expectations) and add batch_size so callers that care can
 		// tell how many rows were affected.
@@ -813,6 +1584,10 @@ func runUndoMode(w http.ResponseWriter, r *http.Request, mode undoMode, byReques
 	body, conflict, status, err := applyMutationFlowTx(r.Context(), tx, row, user.ID, mode, resolution)
 	if err != nil {
 		log.Printf("undo flow: %v", err)
+		if status == http.StatusLocked {
+			jsonError(w, "irreversible mutation", status)
+			return
+		}
 		jsonError(w, "undo failed", status)
 		return
 	}
@@ -833,6 +1608,7 @@ func runUndoMode(w http.ResponseWriter, r *http.Request, mode undoMode, byReques
 		jsonError(w, "undo failed", http.StatusInternalServerError)
 		return
 	}
+	runUndoMutationSideEffects([]mutationLogRow{row})
 	jsonOK(w, body)
 }
 

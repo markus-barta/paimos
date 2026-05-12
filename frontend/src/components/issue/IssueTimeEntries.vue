@@ -209,8 +209,8 @@ async function clearOverride(entry: TimeEntry) {
 async function deleteTimeEntry(entry: TimeEntry) {
   const isOther = entry.user_id !== authStore.user?.id
   const msg = isOther
-    ? `You are deleting ${entry.username}'s time entry. This cannot be undone.`
-    : 'Delete this time entry?'
+    ? `You are deleting ${entry.username}'s time entry. You can undo this from Recent activity.`
+    : 'Delete this time entry? You can undo it from Recent activity.'
   if (!await confirm({ message: msg, confirmLabel: 'Delete', danger: true })) return
   await deleteTimeEntryById(entry.id)
   timeEntries.value = timeEntries.value.filter(e => e.id !== entry.id)

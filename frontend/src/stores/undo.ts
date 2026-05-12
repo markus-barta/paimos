@@ -72,7 +72,7 @@ export const useUndoStore = defineStore("undo", () => {
       id: row.id,
       title:
         mode === "undo" ? row.subject_label : `${row.subject_label} redone`,
-      detail: row.summary,
+      detail: row.change_detail || row.summary,
       mode,
       expiresAt: Date.now() + 8000,
     };

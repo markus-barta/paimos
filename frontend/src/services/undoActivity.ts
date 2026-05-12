@@ -40,6 +40,9 @@ export interface MutationActivityRow {
   subject_id: number;
   subject_label: string;
   summary: string;
+  change_detail: string;
+  actor_label: string;
+  origin_label?: string;
   undoable: boolean;
   on_user_stack: boolean;
   redoable: boolean;

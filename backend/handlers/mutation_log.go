@@ -111,11 +111,46 @@ type relationMutationSnapshot struct {
 	Exists   bool   `json:"exists"`
 }
 
+type issueTagMutationSnapshot struct {
+	IssueID int64 `json:"issue_id"`
+	TagID   int64 `json:"tag_id"`
+	Exists  bool  `json:"exists"`
+}
+
+type commentMutationSnapshot struct {
+	ID        int64  `json:"id"`
+	IssueID   int64  `json:"issue_id,omitempty"`
+	AuthorID  *int64 `json:"author_id"`
+	Body      string `json:"body,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	Exists    bool   `json:"exists"`
+}
+
+type timeEntryMutationSnapshot struct {
+	ID                 int64    `json:"id"`
+	IssueID            int64    `json:"issue_id,omitempty"`
+	UserID             int64    `json:"user_id,omitempty"`
+	StartedAt          string   `json:"started_at,omitempty"`
+	StoppedAt          *string  `json:"stopped_at"`
+	Override           *float64 `json:"override"`
+	Comment            string   `json:"comment,omitempty"`
+	CreatedAt          string   `json:"created_at,omitempty"`
+	InternalRateHourly *float64 `json:"internal_rate_hourly"`
+	MiteID             *int64   `json:"mite_id"`
+	Exists             bool     `json:"exists"`
+}
+
 type undoConflictError struct {
 	Message string
 }
 
 func (e *undoConflictError) Error() string { return e.Message }
+
+type undoLockedError struct {
+	Message string
+}
+
+func (e *undoLockedError) Error() string { return e.Message }
 
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -438,6 +473,109 @@ func fetchRelationMutationSnapshotTx(tx *sql.Tx, sourceID, targetID int64, relTy
 	return snap, nil
 }
 
+func fetchIssueTagMutationSnapshotTx(tx *sql.Tx, issueID, tagID int64) (issueTagMutationSnapshot, error) {
+	snap := issueTagMutationSnapshot{IssueID: issueID, TagID: tagID}
+	var exists int
+	err := tx.QueryRow(`SELECT 1 FROM issue_tags WHERE issue_id=? AND tag_id=?`, issueID, tagID).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return snap, nil
+		}
+		return snap, err
+	}
+	snap.Exists = true
+	return snap, nil
+}
+
+func issueTagSnapshotFromRow(tx *sql.Tx, row mutationLogRow) (issueTagMutationSnapshot, error) {
+	issueID, tagID, err := issueTagIDsFromRow(row)
+	if err != nil {
+		return issueTagMutationSnapshot{}, err
+	}
+	return fetchIssueTagMutationSnapshotTx(tx, issueID, tagID)
+}
+
+func issueTagIDsFromRow(row mutationLogRow) (int64, int64, error) {
+	for _, raw := range []string{row.AfterState, row.BeforeState} {
+		var snap issueTagMutationSnapshot
+		if err := json.Unmarshal([]byte(raw), &snap); err == nil && snap.IssueID > 0 && snap.TagID > 0 {
+			return snap.IssueID, snap.TagID, nil
+		}
+	}
+	var inv InverseOp
+	if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
+		return 0, 0, err
+	}
+	if inv.Method == http.MethodDelete && strings.Contains(inv.Path, "/tags/") {
+		return parseIssueTagIDsFromPath(inv.Path)
+	}
+	if inv.Method == http.MethodPost && strings.HasSuffix(inv.Path, "/tags") {
+		issueID, err := parseIssueIDFromPath(inv.Path)
+		if err != nil {
+			return 0, 0, err
+		}
+		bodyBytes, _ := json.Marshal(inv.Body)
+		var body struct {
+			TagID int64 `json:"tag_id"`
+		}
+		if err := json.Unmarshal(bodyBytes, &body); err != nil {
+			return 0, 0, err
+		}
+		if body.TagID <= 0 {
+			return 0, 0, fmt.Errorf("tag id not found in inverse op")
+		}
+		return issueID, body.TagID, nil
+	}
+	return 0, 0, fmt.Errorf("issue tag ids not found for mutation row %d", row.ID)
+}
+
+func fetchCommentMutationSnapshotTx(tx *sql.Tx, commentID int64) (commentMutationSnapshot, error) {
+	snap := commentMutationSnapshot{ID: commentID}
+	var authorID sql.NullInt64
+	err := tx.QueryRow(`
+		SELECT id, issue_id, author_id, body, created_at
+		FROM comments
+		WHERE id = ?
+	`, commentID).Scan(&snap.ID, &snap.IssueID, &authorID, &snap.Body, &snap.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return snap, nil
+		}
+		return snap, err
+	}
+	snap.AuthorID = nullInt64Ptr(authorID)
+	snap.Exists = true
+	return snap, nil
+}
+
+func fetchTimeEntryMutationSnapshotTx(tx *sql.Tx, entryID int64) (timeEntryMutationSnapshot, error) {
+	snap := timeEntryMutationSnapshot{ID: entryID}
+	var stoppedAt sql.NullString
+	var override sql.NullFloat64
+	var internalRate sql.NullFloat64
+	var miteID sql.NullInt64
+	err := tx.QueryRow(`
+		SELECT id, issue_id, user_id, started_at, stopped_at, override, comment, created_at, internal_rate_hourly, mite_id
+		FROM time_entries
+		WHERE id = ?
+	`, entryID).Scan(
+		&snap.ID, &snap.IssueID, &snap.UserID, &snap.StartedAt, &stoppedAt,
+		&override, &snap.Comment, &snap.CreatedAt, &internalRate, &miteID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return snap, nil
+		}
+		return snap, err
+	}
+	snap.StoppedAt = nullStringPtr(stoppedAt)
+	snap.Override = nullFloat64Ptr(override)
+	snap.InternalRateHourly = nullFloat64Ptr(internalRate)
+	snap.MiteID = nullInt64Ptr(miteID)
+	snap.Exists = true
+	return snap, nil
+}
+
 func nullStringPtr(v sql.NullString) *string {
 	if !v.Valid {
 		return nil
@@ -479,6 +617,99 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 		snap.ArLp, snap.TimeOverride, snap.Color, snap.AssigneeID, snap.DeletedAt, time.Now().UTC().Format("2006-01-02 15:04:05"),
 		issueID,
 	)
+	return err
+}
+
+func applyIssueTagSnapshotTx(ctx context.Context, tx *sql.Tx, snap issueTagMutationSnapshot) error {
+	if snap.IssueID <= 0 || snap.TagID <= 0 {
+		return fmt.Errorf("issue tag snapshot missing ids")
+	}
+	if !snap.Exists {
+		_, err := tx.ExecContext(ctx, `DELETE FROM issue_tags WHERE issue_id=? AND tag_id=?`, snap.IssueID, snap.TagID)
+		return err
+	}
+	if !issueExistsActiveTx(tx, snap.IssueID) {
+		return &undoConflictError{Message: fmt.Sprintf("tag parent issue %d is no longer active", snap.IssueID)}
+	}
+	if !tagExistsTx(tx, snap.TagID) {
+		return &undoConflictError{Message: fmt.Sprintf("tag %d no longer exists", snap.TagID)}
+	}
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO issue_tags(issue_id, tag_id) VALUES(?,?)`, snap.IssueID, snap.TagID)
+	return err
+}
+
+func applyTimeEntrySnapshotTx(ctx context.Context, tx *sql.Tx, entryID int64, snap timeEntryMutationSnapshot) error {
+	if !snap.Exists {
+		if snap.IssueID > 0 && issueInvoicedTx(tx, snap.IssueID) {
+			return &undoLockedError{Message: fmt.Sprintf("time entry issue %d is invoiced", snap.IssueID)}
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM time_entries WHERE id = ?`, entryID)
+		return err
+	}
+	if snap.ID == 0 {
+		snap.ID = entryID
+	}
+	if snap.ID != entryID {
+		return fmt.Errorf("time entry snapshot id %d does not match path id %d", snap.ID, entryID)
+	}
+	if snap.IssueID <= 0 {
+		return fmt.Errorf("time entry snapshot missing issue_id")
+	}
+	if !issueExistsActiveTx(tx, snap.IssueID) {
+		return &undoConflictError{Message: fmt.Sprintf("time entry parent issue %d is no longer active", snap.IssueID)}
+	}
+	if issueInvoicedTx(tx, snap.IssueID) {
+		return &undoLockedError{Message: fmt.Sprintf("time entry issue %d is invoiced", snap.IssueID)}
+	}
+	if !userExistsTx(tx, snap.UserID) {
+		return &undoConflictError{Message: fmt.Sprintf("time entry user %d no longer exists", snap.UserID)}
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO time_entries(id, issue_id, user_id, started_at, stopped_at, override, comment, created_at, internal_rate_hourly, mite_id)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			issue_id = excluded.issue_id,
+			user_id = excluded.user_id,
+			started_at = excluded.started_at,
+			stopped_at = excluded.stopped_at,
+			override = excluded.override,
+			comment = excluded.comment,
+			created_at = excluded.created_at,
+			internal_rate_hourly = excluded.internal_rate_hourly,
+			mite_id = excluded.mite_id
+	`, snap.ID, snap.IssueID, snap.UserID, snap.StartedAt, snap.StoppedAt, snap.Override, snap.Comment, snap.CreatedAt, snap.InternalRateHourly, snap.MiteID)
+	return err
+}
+
+func applyCommentSnapshotTx(tx *sql.Tx, commentID int64, snap commentMutationSnapshot) error {
+	if !snap.Exists {
+		_, err := tx.Exec(`DELETE FROM comments WHERE id = ?`, commentID)
+		return err
+	}
+	if snap.ID == 0 {
+		snap.ID = commentID
+	}
+	if snap.ID != commentID {
+		return fmt.Errorf("comment snapshot id %d does not match path id %d", snap.ID, commentID)
+	}
+	if snap.IssueID <= 0 {
+		return fmt.Errorf("comment snapshot missing issue_id")
+	}
+	if !issueExistsActiveTx(tx, snap.IssueID) {
+		return &undoConflictError{Message: fmt.Sprintf("comment parent issue %d is no longer active", snap.IssueID)}
+	}
+	if snap.AuthorID != nil && !userExistsTx(tx, *snap.AuthorID) {
+		snap.AuthorID = nil
+	}
+	_, err := tx.Exec(`
+		INSERT INTO comments(id, issue_id, author_id, body, created_at)
+		VALUES(?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			issue_id = excluded.issue_id,
+			author_id = excluded.author_id,
+			body = excluded.body,
+			created_at = excluded.created_at
+	`, snap.ID, snap.IssueID, snap.AuthorID, snap.Body, snap.CreatedAt)
 	return err
 }
 
@@ -631,6 +862,27 @@ func currentMutationHashTx(tx *sql.Tx, row mutationLogRow) (string, error) {
 		}
 		_, hash, err := canonicalState(snap)
 		return hash, err
+	case "issue_tag":
+		snap, err := issueTagSnapshotFromRow(tx, row)
+		if err != nil {
+			return "", err
+		}
+		_, hash, err := canonicalState(snap)
+		return hash, err
+	case "time_entry":
+		snap, err := fetchTimeEntryMutationSnapshotTx(tx, row.SubjectID)
+		if err != nil {
+			return "", err
+		}
+		_, hash, err := canonicalState(snap)
+		return hash, err
+	case "comment":
+		snap, err := fetchCommentMutationSnapshotTx(tx, row.SubjectID)
+		if err != nil {
+			return "", err
+		}
+		_, hash, err := canonicalState(snap)
+		return hash, err
 	default:
 		var inv InverseOp
 		if err := json.Unmarshal([]byte(row.InverseOp), &inv); err != nil {
@@ -680,6 +932,77 @@ func executeInverseOpTx(ctx context.Context, tx *sql.Tx, inv InverseOp) error {
 			return err
 		}
 		return applyIssueSnapshotTx(tx, issueID, snap)
+	case inv.Method == http.MethodPost && strings.HasSuffix(inv.Path, "/tags"):
+		issueID, err := parseIssueIDFromPath(inv.Path)
+		if err != nil {
+			return err
+		}
+		bodyBytes, err := json.Marshal(inv.Body)
+		if err != nil {
+			return err
+		}
+		var body struct {
+			TagID int64 `json:"tag_id"`
+		}
+		if err := json.Unmarshal(bodyBytes, &body); err != nil {
+			return err
+		}
+		return applyIssueTagSnapshotTx(ctx, tx, issueTagMutationSnapshot{IssueID: issueID, TagID: body.TagID, Exists: true})
+	case inv.Method == http.MethodPut && strings.Contains(inv.Path, "/time-entries/"):
+		entryID, err := parseTimeEntryIDFromPath(inv.Path)
+		if err != nil {
+			return err
+		}
+		bodyBytes, err := json.Marshal(inv.Body)
+		if err != nil {
+			return err
+		}
+		var snap timeEntryMutationSnapshot
+		if err := json.Unmarshal(bodyBytes, &snap); err != nil {
+			return err
+		}
+		return applyTimeEntrySnapshotTx(ctx, tx, entryID, snap)
+	case inv.Method == http.MethodDelete && strings.Contains(inv.Path, "/time-entries/"):
+		entryID, err := parseTimeEntryIDFromPath(inv.Path)
+		if err != nil {
+			return err
+		}
+		snap, err := fetchTimeEntryMutationSnapshotTx(tx, entryID)
+		if err != nil {
+			return err
+		}
+		if !snap.Exists {
+			return nil
+		}
+		snap.Exists = false
+		return applyTimeEntrySnapshotTx(ctx, tx, entryID, snap)
+	case inv.Method == http.MethodDelete && strings.Contains(inv.Path, "/tags/"):
+		issueID, tagID, err := parseIssueTagIDsFromPath(inv.Path)
+		if err != nil {
+			return err
+		}
+		return applyIssueTagSnapshotTx(ctx, tx, issueTagMutationSnapshot{IssueID: issueID, TagID: tagID})
+	case inv.Method == http.MethodPut && strings.Contains(inv.Path, "/comments/"):
+		commentID, err := parseCommentIDFromPath(inv.Path)
+		if err != nil {
+			return err
+		}
+		bodyBytes, err := json.Marshal(inv.Body)
+		if err != nil {
+			return err
+		}
+		var snap commentMutationSnapshot
+		if err := json.Unmarshal(bodyBytes, &snap); err != nil {
+			return err
+		}
+		return applyCommentSnapshotTx(tx, commentID, snap)
+	case inv.Method == http.MethodDelete && strings.Contains(inv.Path, "/comments/"):
+		commentID, err := parseCommentIDFromPath(inv.Path)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM comments WHERE id = ?`, commentID)
+		return err
 	case inv.Method == http.MethodDelete && strings.HasSuffix(inv.Path, "/relations"):
 		sourceID, err := parseIssueIDFromPath(inv.Path)
 		if err != nil {
@@ -747,6 +1070,47 @@ func parseIssueIDFromPath(path string) (int64, error) {
 		}
 	}
 	return 0, fmt.Errorf("issue id not found in path %q", path)
+}
+
+func parseTimeEntryIDFromPath(path string) (int64, error) {
+	path = strings.TrimSpace(path)
+	parts := strings.Split(path, "/")
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "time-entries" && i+1 < len(parts) {
+			return strconv.ParseInt(parts[i+1], 10, 64)
+		}
+	}
+	return 0, fmt.Errorf("time entry id not found in path %q", path)
+}
+
+func parseIssueTagIDsFromPath(path string) (int64, int64, error) {
+	issueID, err := parseIssueIDFromPath(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	path = strings.TrimSpace(path)
+	parts := strings.Split(path, "/")
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "tags" && i+1 < len(parts) {
+			tagID, err := strconv.ParseInt(parts[i+1], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			return issueID, tagID, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("tag id not found in path %q", path)
+}
+
+func parseCommentIDFromPath(path string) (int64, error) {
+	path = strings.TrimSpace(path)
+	parts := strings.Split(path, "/")
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "comments" && i+1 < len(parts) {
+			return strconv.ParseInt(parts[i+1], 10, 64)
+		}
+	}
+	return 0, fmt.Errorf("comment id not found in path %q", path)
 }
 
 func UndoMutation(w http.ResponseWriter, r *http.Request) {

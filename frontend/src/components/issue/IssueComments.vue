@@ -59,8 +59,8 @@ async function submitComment() {
 async function deleteComment(comment: Comment) {
   const isOther = comment.author_id !== authStore.user?.id
   const msg = isOther
-    ? `You are deleting ${comment.author ?? 'another user'}'s comment. This cannot be undone.`
-    : 'Delete this comment? This cannot be undone.'
+    ? `Delete ${comment.author ?? 'another user'}'s comment? You can undo this from Recent activity.`
+    : 'Delete this comment? You can undo this from Recent activity.'
   if (!await confirm({ message: msg, confirmLabel: 'Delete', danger: true })) return
   await deleteIssueComment(comment.id)
   comments.value = comments.value.filter(c => c.id !== comment.id)

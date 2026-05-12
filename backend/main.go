@@ -519,6 +519,7 @@ func main() {
 			r.With(auth.RequireAdmin).Delete("/tags/{id}", handlers.DeleteTag)
 
 			// Tag associations
+			r.With(auth.RequireProjectView).Get("/projects/{id}/tags", handlers.ListProjectTags)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.With(auth.RequireIssueEdit).Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)

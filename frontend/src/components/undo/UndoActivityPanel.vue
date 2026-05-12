@@ -38,6 +38,10 @@ function historyLabel(row: MutationActivityRow) {
   return "History";
 }
 
+function actorLine(row: MutationActivityRow) {
+  return row.origin_label ? `${row.actor_label} - ${row.origin_label}` : row.actor_label;
+}
+
 // ── Right-edge sidebar plumbing (mirrors ProjectAuxPanel) ─────────────
 // Reusing the same width singleton means the undo panel lines up with
 // the issue side panel and project aux panels — they all share one
@@ -171,6 +175,8 @@ onUnmounted(() => {
               <div class="undo-row__main">
                 <strong>{{ row.subject_label }}</strong>
                 <span>{{ row.summary }}</span>
+                <span v-if="row.change_detail" class="undo-row__detail">{{ row.change_detail }}</span>
+                <span class="undo-row__actor">{{ actorLine(row) }}</span>
               </div>
               <div class="undo-row__meta">
                 <span>{{ fmtShortDateTime(row.created_at) }}</span>
@@ -204,6 +210,8 @@ onUnmounted(() => {
               <div class="undo-row__main">
                 <strong>{{ row.subject_label }}</strong>
                 <span>{{ row.summary }}</span>
+                <span v-if="row.change_detail" class="undo-row__detail">{{ row.change_detail }}</span>
+                <span class="undo-row__actor">{{ actorLine(row) }}</span>
               </div>
               <div class="undo-row__meta">
                 <span>{{ fmtShortDateTime(row.created_at) }}</span>
@@ -235,6 +243,8 @@ onUnmounted(() => {
               <div class="undo-row__main">
                 <strong>{{ row.subject_label }}</strong>
                 <span>{{ row.summary }}</span>
+                <span v-if="row.change_detail" class="undo-row__detail">{{ row.change_detail }}</span>
+                <span class="undo-row__actor">{{ actorLine(row) }}</span>
               </div>
               <div class="undo-row__meta">
                 <span>{{ fmtShortDateTime(row.created_at) }}</span>
@@ -472,6 +482,17 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.undo-row__main .undo-row__detail {
+  color: var(--text);
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.undo-row__main .undo-row__actor {
+  font-size: 11px;
 }
 .undo-row__meta {
   display: flex;

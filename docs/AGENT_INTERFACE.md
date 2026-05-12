@@ -43,7 +43,7 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 ### Caveat — current CLI coverage gaps
 
-The CLI today covers issue-CRUD, relations (add only), tags (assignment only), apply, anchors, sync, skills, sessions, project-context. **It does NOT yet cover** time entries, attachments, free-text search, tag management (create/edit/delete), batch issue create, sprints, issue forensics (history/activity), memory CRUD, knowledge plane, comment delete, or issue lifecycle (clone/archive/restore). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
+The CLI today covers issue-CRUD, free-text search, batch issue create via `apply`, relations (add only), tag management + assignment, anchors, sync, skills, sessions, project-context. **It does NOT yet cover** time entries, attachments, sprints, issue forensics (history/activity), memory CRUD, knowledge plane, comment delete, or issue lifecycle (clone/archive/restore). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
 
 > **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
 > See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
@@ -236,6 +236,51 @@ paimos --json issue list --project PAI --status backlog --limit 5 \
   | jq '.issues[] | {key: .issue_key, title}'
 ```
 
+### Search issues
+
+Use `paimos search` for free-text issue lookup instead of raw
+`/api/search` calls. The query can be quoted or passed as trailing words;
+`--project` accepts either a project key or a numeric project id.
+
+```sh
+paimos search "undo history" --project PAI --type ticket --limit 20
+paimos search undo history --project 6
+
+paimos --json search "undo history" --project PAI \
+  | jq '.issues[] | {key: .issue_key, type, status, title}'
+```
+
+Pretty output is an issue table. `--json` returns the server's full search
+payload, including projects, users, tags, and `has_more`.
+
+### Tag workflows
+
+There are two separate tag flows:
+
+- **Manage the catalog** with `paimos tag ...`
+- **Assign an existing tag to an issue** with `paimos issue tag ...`
+
+```sh
+# Global catalog
+paimos tag list
+paimos tag create --name blocked --color red
+paimos tag update 42 --name blocked-by-release --color orange
+paimos tag delete 42 --yes
+
+# Project taxonomy bootstrap; --project accepts key or numeric id.
+paimos tag list --project PAI
+paimos tag create --project PAI --name qa --color teal
+
+# Issue assignment; resolves --tag against /api/tags.
+paimos issue tag add PAI-123 --tag qa
+paimos issue tag rm  PAI-123 --tag qa
+```
+
+Valid colors are: `gray`, `slate`, `blue`, `indigo`, `purple`,
+`pink`, `red`, `orange`, `yellow`, `green`, `teal`, `cyan`.
+`paimos tag delete` removes the catalog tag and therefore its existing
+issue/project assignments; non-interactive scripts must pass `--yes`.
+
 ### Errors exit non-zero and never dump HTML
 
 - Exit **0** success
@@ -313,9 +358,14 @@ chunk 1: 3 items updated
 3 items updated across 1 chunk(s); 0 failed
 ```
 
-### Scaffolding: `apply`
+### Batch issue create and scaffolding: `apply`
 
-Declarative YAML plan — create + relate in one command. Named refs let children reference a same-plan parent.
+Declarative YAML plan — create many issues, then optionally update or
+relate in one command. For batch issue creation, `apply` is the
+canonical CLI path: its `create:` block calls
+`POST /api/projects/{key}/issues/batch`, so the server applies the
+create rows atomically and supports same-batch `parent_ref` links.
+Named refs let children reference a same-plan parent.
 
 ```yaml
 # plan.yaml
@@ -343,6 +393,29 @@ $ paimos apply --from-file plan.yaml
 ✓ created 3 issues
 ✓ added 1 relations
 ```
+
+For “file 50 tickets at once,” generate the same YAML shape from your
+script and keep each batch at 100 `create:` rows or fewer. Put large
+multi-line markdown in a literal block instead of shell-quoted JSON:
+
+```yaml
+project: PAI
+create:
+  - type: ticket
+    title: Import retry should back off
+    description: |
+      ## Problem
+
+      Remote 429s currently retry too aggressively.
+    acceptance_criteria: |
+      - Backoff is exponential
+      - Test covers 429 retry timing
+  - type: ticket
+    title: Import retry emits structured log
+```
+
+Use `paimos apply --from-file plan.yaml --dry-run` before sending.
+Dry-run parses and echoes the plan without touching the API.
 
 **Not idempotent in v1** — running twice duplicates. After scaffolding, use `ensure-status` / `batch-update` for subsequent changes:
 
@@ -477,9 +550,6 @@ The CLI today covers issue-CRUD strongly; ~80–100 of the ~217 REST endpoints a
 |---|---|---|
 | **Time entries** — start/stop/list/edit | ❌ no CLI; `curl` `/api/time-entries/*` | [PAI-374](https://pm.barta.cm/issues/PAI-374) |
 | **Attachments** — upload + link | ❌ no CLI; multipart `curl` `/api/attachments` then `PATCH /api/attachments/link` | [PAI-375](https://pm.barta.cm/issues/PAI-375) |
-| **Search** — free-text issue lookup | ❌ no CLI; `curl` `/api/search?q=...` | [PAI-376](https://pm.barta.cm/issues/PAI-376) |
-| **Tag management** — list/create/update/delete tags themselves (assignment is in CLI) | ❌ no CLI; `curl` `/api/tags`, `/api/projects/{id}/tags` | [PAI-377](https://pm.barta.cm/issues/PAI-377) |
-| **Batch issue create** — atomic create-many | ❓ check `paimos apply` first; if not, file via `curl /api/projects/{key}/issues/batch` | [PAI-378](https://pm.barta.cm/issues/PAI-378) |
 
 Tier-2 misses (issue forensics, sprints, memory CRUD, relations list/remove, knowledge plane, comment delete, issue lifecycle clone/archive/restore) are tracked in PAI-373's body.
 

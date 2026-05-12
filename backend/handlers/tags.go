@@ -16,7 +16,9 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -51,6 +53,47 @@ func ListTags(w http.ResponseWriter, r *http.Request) {
 		var t models.Tag
 		if err := rows.Scan(&t.ID, &t.Name, &t.Color, &t.Description, &t.System, &t.CreatedAt); err != nil {
 			log.Printf("scan error: %v", err)
+			continue
+		}
+		tags = append(tags, t)
+	}
+	jsonOK(w, tags)
+}
+
+func ListProjectTags(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	var exists int
+	if err := db.DB.QueryRow(`SELECT 1 FROM projects WHERE id=?`, projectID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			jsonError(w, "project not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("ListProjectTags project=%d: %v", projectID, err)
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	rows, err := db.DB.Query(`
+		SELECT t.id, t.name, t.color, t.description, t.system, t.created_at
+		FROM project_tags pt
+		JOIN tags t ON t.id = pt.tag_id
+		WHERE pt.project_id = ?
+		ORDER BY t.name
+	`, projectID)
+	if err != nil {
+		log.Printf("ListProjectTags query project=%d: %v", projectID, err)
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	tags := []models.Tag{}
+	for rows.Next() {
+		var t models.Tag
+		if err := rows.Scan(&t.ID, &t.Name, &t.Color, &t.Description, &t.System, &t.CreatedAt); err != nil {
+			log.Printf("ListProjectTags scan project=%d: %v", projectID, err)
 			continue
 		}
 		tags = append(tags, t)
@@ -167,15 +210,6 @@ func DeleteTag(w http.ResponseWriter, r *http.Request) {
 
 // ── Tag associations ─────────────────────────────────────────────────────────
 
-// PAI-354: tag attach/detach now records a mutation_log row carrying
-// X-Paimos-Agent-Name + X-Paimos-Session-Id so the per-mutation
-// attribution feed (PAI-209's mutation_log) can surface "which agent
-// attached/removed this tag, in which session?". The recordMutation
-// call is non-undoable — the existing endpoint is idempotent
-// (INSERT OR IGNORE) and the existing UI flow doesn't expect a
-// reversible op for tag toggles, so attribution is the only goal
-// here. Wrapping the INSERT/DELETE in a transaction keeps the row
-// and the audit-trail row atomic.
 func AddTagToIssue(w http.ResponseWriter, r *http.Request) {
 	issueID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -203,10 +237,31 @@ func AddTagToIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	if !issueExistsActiveTx(tx, issueID) {
+		jsonError(w, "issue not found", http.StatusNotFound)
+		return
+	}
+	if !tagExistsTx(tx, body.TagID) {
+		jsonError(w, "tag not found", http.StatusNotFound)
+		return
+	}
+	before, err := fetchIssueTagMutationSnapshotTx(tx, issueID, body.TagID)
+	if err != nil {
+		log.Printf("AddTagToIssue: before snapshot issue_id=%d tag_id=%d err=%v", issueID, body.TagID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	if _, err := tx.ExecContext(r.Context(), `INSERT OR IGNORE INTO issue_tags(issue_id,tag_id) VALUES(?,?)`,
 		issueID, body.TagID); err != nil {
 		log.Printf("AddTagToIssue: issue_id=%d tag_id=%d err=%v", issueID, body.TagID, err)
 		jsonError(w, "failed to attach tag", http.StatusInternalServerError)
+		return
+	}
+	after, err := fetchIssueTagMutationSnapshotTx(tx, issueID, body.TagID)
+	if err != nil {
+		log.Printf("AddTagToIssue: after snapshot issue_id=%d tag_id=%d err=%v", issueID, body.TagID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -226,9 +281,9 @@ func AddTagToIssue(w http.ResponseWriter, r *http.Request) {
 			Method: http.MethodDelete,
 			Path:   fmt.Sprintf("/issues/%d/tags/%d", issueID, body.TagID),
 		},
-		BeforeState: nil,
-		AfterState:  map[string]any{"issue_id": issueID, "tag_id": body.TagID},
-		Undoable:    false,
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    before.Exists != after.Exists,
 	}); err != nil {
 		log.Printf("AddTagToIssue: recordMutation: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -268,8 +323,29 @@ func RemoveTagFromIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	if !issueExistsActiveTx(tx, issueID) {
+		jsonError(w, "issue not found", http.StatusNotFound)
+		return
+	}
+	if !tagExistsTx(tx, tagID) {
+		jsonError(w, "tag not found", http.StatusNotFound)
+		return
+	}
+	before, err := fetchIssueTagMutationSnapshotTx(tx, issueID, tagID)
+	if err != nil {
+		log.Printf("RemoveTagFromIssue: before snapshot issue_id=%d tag_id=%d err=%v", issueID, tagID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	if _, err := tx.ExecContext(r.Context(), `DELETE FROM issue_tags WHERE issue_id=? AND tag_id=?`, issueID, tagID); err != nil {
 		log.Printf("RemoveTagFromIssue: issue=%d tag=%d: %v", issueID, tagID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	after, err := fetchIssueTagMutationSnapshotTx(tx, issueID, tagID)
+	if err != nil {
+		log.Printf("RemoveTagFromIssue: after snapshot issue_id=%d tag_id=%d err=%v", issueID, tagID, err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -293,9 +369,9 @@ func RemoveTagFromIssue(w http.ResponseWriter, r *http.Request) {
 				"tag_id": tagID,
 			},
 		},
-		BeforeState: map[string]any{"issue_id": issueID, "tag_id": tagID},
-		AfterState:  nil,
-		Undoable:    false,
+		BeforeState: before,
+		AfterState:  after,
+		Undoable:    before.Exists != after.Exists,
 	}); err != nil {
 		log.Printf("RemoveTagFromIssue: recordMutation: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
