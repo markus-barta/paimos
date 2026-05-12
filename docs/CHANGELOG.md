@@ -5,6 +5,22 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] — 2026-05-12
+
+Patch polish for the issue table's inline-edit and saved-view ergonomics.
+
+### Added
+
+- Issue-table columns can now be resized from the header edge, double-clicked back to their default width, and restored from saved views through the view/filter snapshot.
+
+### Changed
+
+- Status, priority, and assignee table cells now render as compact read-mode values with a hover/focus edit pencil; the heavier dropdown control only appears while the cell is actively being edited.
+
+### Fixed
+
+- Assignee dropdowns now show a single `Unassigned` option while still allowing that option to clear an assignee.
+
 ## [3.3.0] — 2026-05-12
 
 Minor release for the expanded agent/operator surface: tier-1 CLI gaps are
