@@ -22,6 +22,7 @@ package handlers_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -80,7 +81,7 @@ func Test_Auth(t *testing.T) {
 			User map[string]interface{} `json:"user"`
 		}
 		decode(t, resp, &env)
-		for _, key := range []string{"id", "username", "role", "status", "markdown_default", "monospace_fields", "recent_projects_limit", "locale", "issue_auto_refresh_enabled", "issue_auto_refresh_interval_seconds"} {
+		for _, key := range []string{"id", "username", "role", "status", "markdown_default", "monospace_fields", "recent_projects_limit", "locale", "issue_auto_refresh_enabled", "issue_auto_refresh_interval_seconds", "search_scope_shortcut"} {
 			if _, ok := env.User[key]; !ok {
 				t.Errorf("login response missing user.%q", key)
 			}
@@ -103,6 +104,59 @@ func Test_Auth(t *testing.T) {
 		}
 		if user.IssueAutoRefreshIntervalSeconds != 10 {
 			t.Errorf("issue_auto_refresh_interval_seconds = %d, want 10", user.IssueAutoRefreshIntervalSeconds)
+		}
+	})
+
+	t.Run("profile update validates and persists search scope shortcut", func(t *testing.T) {
+		shortcut := `{"ctrl":true,"shift":false,"alt":false,"meta":false,"code":"KeyJ","key":"j","label":"Ctrl+J"}`
+		resp := ts.patch(t, "/api/auth/me", ts.memberCookie, map[string]interface{}{
+			"search_scope_shortcut": shortcut,
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var user struct {
+			SearchScopeShortcut string `json:"search_scope_shortcut"`
+		}
+		decode(t, resp, &user)
+		if user.SearchScopeShortcut != shortcut {
+			t.Errorf("search_scope_shortcut = %q, want %q", user.SearchScopeShortcut, shortcut)
+		}
+
+		resp = ts.get(t, "/api/auth/me", ts.memberCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var env struct {
+			User struct {
+				SearchScopeShortcut string `json:"search_scope_shortcut"`
+			} `json:"user"`
+		}
+		decode(t, resp, &env)
+		if env.User.SearchScopeShortcut != shortcut {
+			t.Errorf("GET /auth/me search_scope_shortcut = %q, want %q", env.User.SearchScopeShortcut, shortcut)
+		}
+
+		resp = ts.patch(t, "/api/auth/me", ts.memberCookie, map[string]interface{}{
+			"search_scope_shortcut": "",
+		})
+		assertStatus(t, resp, http.StatusOK)
+		decode(t, resp, &user)
+		if user.SearchScopeShortcut != "" {
+			t.Errorf("cleared search_scope_shortcut = %q, want empty", user.SearchScopeShortcut)
+		}
+	})
+
+	t.Run("profile update rejects invalid search scope shortcut", func(t *testing.T) {
+		for name, value := range map[string]string{
+			"malformed":     "{",
+			"missing-code":  `{"ctrl":true}`,
+			"shift-only":    `{"shift":true,"code":"KeyJ"}`,
+			"missing-mod":   `{"code":"KeyJ"}`,
+			"over-max-size": `{"ctrl":true,"code":"` + strings.Repeat("x", 260) + `"}`,
+		} {
+			t.Run(name, func(t *testing.T) {
+				resp := ts.patch(t, "/api/auth/me", ts.memberCookie, map[string]interface{}{
+					"search_scope_shortcut": value,
+				})
+				assertStatus(t, resp, http.StatusBadRequest)
+			})
 		}
 	})
 }

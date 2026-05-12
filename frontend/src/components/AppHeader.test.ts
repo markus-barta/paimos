@@ -4,9 +4,10 @@ import { createPinia, setActivePinia } from "pinia";
 import AppHeader from "@/components/AppHeader.vue";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 
-const { routerPush, routerReplace, mockRoute, mockAuthStore, mockSearchStore } = vi.hoisted(() => ({
+const { routerPush, routerReplace, apiGet, mockRoute, mockAuthStore, mockSearchStore } = vi.hoisted(() => ({
   routerPush: vi.fn(),
   routerReplace: vi.fn(),
+  apiGet: vi.fn(),
   mockRoute: {
     path: "/issues",
     params: {} as Record<string, string>,
@@ -55,7 +56,7 @@ vi.mock("vue-router", () => ({
 
 vi.mock("@/api/client", () => ({
   api: {
-    get: vi.fn(),
+    get: apiGet,
   },
 }));
 
@@ -119,6 +120,7 @@ function fakeUser(overrides: Record<string, unknown> = {}) {
     preview_hover_delay: 1000,
     issue_auto_refresh_enabled: true,
     issue_auto_refresh_interval_seconds: 60,
+    search_scope_shortcut: "",
     last_login_at: null,
     accruals_stats_enabled: false,
     accruals_extra_statuses: "",
@@ -189,6 +191,7 @@ describe("AppHeader issue refresh prompt", () => {
     mockSearchStore.projectKey = "";
     mockSearchStore.hasProjectContext = false;
     mockSearchStore.scope = "global";
+    apiGet.mockReset();
     mockRoute.path = "/issues";
     mockRoute.params = {};
     mockRoute.query = {};
@@ -254,6 +257,79 @@ describe("AppHeader issue refresh prompt", () => {
     expect(mockSearchStore.setQuery).toHaveBeenLastCalledWith("flaky ");
     expect(mockSearchStore.query).toBe("flaky ");
     expect(routerReplace).toHaveBeenLastCalledWith({ query: { q: "flaky " } });
+
+    await mounted.unmount();
+  });
+
+  it("uses the configured per-user shortcut to toggle project search scope", async () => {
+    mockRoute.path = "/projects/7";
+    mockRoute.params = { id: "7" };
+    apiGet.mockResolvedValue({ id: 7, key: "PAI" });
+    const shortcut = JSON.stringify({
+      ctrl: true,
+      shift: false,
+      alt: false,
+      meta: false,
+      code: "KeyJ",
+      key: "j",
+      label: "Ctrl+J",
+    });
+    const mounted = await mountHeader({ search_scope_shortcut: shortcut });
+    const input = mounted.el.querySelector<HTMLInputElement>('input[type="search"]');
+    expect(input).toBeTruthy();
+
+    const wrongKey = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    input!.dispatchEvent(wrongKey);
+
+    expect(wrongKey.defaultPrevented).toBe(false);
+    expect(mockSearchStore.toggleScope).not.toHaveBeenCalled();
+
+    const matchingKey = new KeyboardEvent("keydown", {
+      key: "j",
+      code: "KeyJ",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    input!.dispatchEvent(matchingKey);
+
+    expect(matchingKey.defaultPrevented).toBe(true);
+    expect(mockSearchStore.toggleScope).toHaveBeenCalledTimes(1);
+
+    await mounted.unmount();
+  });
+
+  it("removes the fixed Ctrl+^ hint and exposes the configured chord in the scope tooltip", async () => {
+    mockRoute.path = "/projects/7";
+    mockRoute.params = { id: "7" };
+    apiGet.mockResolvedValue({ id: 7, key: "PAI" });
+    const mounted = await mountHeader({
+      search_scope_shortcut: JSON.stringify({
+        ctrl: true,
+        shift: false,
+        alt: false,
+        meta: false,
+        code: "KeyJ",
+        key: "j",
+        label: "Ctrl+J",
+      }),
+    });
+
+    const scopeButton = mounted.el.querySelector<HTMLButtonElement>(".ah-search-scope");
+
+    expect(scopeButton?.title).toContain("Press Ctrl+J");
+    expect(mounted.el.textContent).not.toContain("Ctrl+^");
+    expect(
+      Array.from(mounted.el.querySelectorAll("kbd")).some((node) =>
+        node.textContent?.includes("Ctrl+^"),
+      ),
+    ).toBe(false);
 
     await mounted.unmount();
   });
