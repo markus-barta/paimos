@@ -312,26 +312,49 @@ async function disableTOTP() {
 }
 
 // ── API Keys ─────────────────────────────────────────────────────────────────
-interface APIKey { id: number; name: string; key_prefix: string; created_at: string; last_used_at: string | null }
+interface APIKey { id: number; name: string; key_prefix: string; created_at: string; last_used_at: string | null; scopes?: string[] }
+// PAI-379: api-key scopes. The sentinel '*' means "full owner-role
+// power" (the long-standing default). Named scopes narrow the key. The
+// catalog is fetched from /api/schema on mount so the UI stays in sync
+// with the backend's auth.ScopeCatalog() — single source of truth.
+interface SchemaScope { name: string; required_role: string; description: string; endpoints: string[] }
 const apiKeys        = ref<APIKey[]>([])
 const newKeyName     = ref('')
 const newKeyCreating = ref(false)
 const newKeyError    = ref('')
-const newKeyResult   = ref<{ key: string } | null>(null)
+const newKeyResult   = ref<{ key: string; scopes?: string[] } | null>(null)
 const newKeyInputRef = ref<HTMLInputElement | null>(null)
+const scopeCatalog   = ref<SchemaScope[]>([])
+const newKeyScopes   = ref<Record<string, boolean>>({})
+// Admin-only feature: only admins can attach narrowable scopes (catalog
+// rule). Members see no picker — their default '*' key already grants
+// everything member-role can do.
+const canPickScopes  = computed(() =>
+  auth.user?.role === 'admin' && scopeCatalog.value.length > 0)
 
 async function loadAPIKeys() {
   try { apiKeys.value = await api.get<APIKey[]>('/auth/api-keys') } catch {}
+}
+async function loadScopeCatalog() {
+  if (auth.user?.role !== 'admin') return
+  try {
+    const s = await api.get<{ scopes?: SchemaScope[] }>('/schema')
+    scopeCatalog.value = (s.scopes ?? []).filter(x => x.required_role === 'admin')
+  } catch {}
 }
 async function createAPIKey() {
   newKeyError.value = ''
   if (!newKeyName.value.trim()) { newKeyError.value = 'Name required.'; return }
   newKeyCreating.value = true
   try {
-    const r = await api.post<{ id: number; name: string; key_prefix: string; key: string }>('/auth/api-keys', { name: newKeyName.value.trim() })
-    apiKeys.value.unshift({ id: r.id, name: r.name, key_prefix: r.key_prefix, created_at: new Date().toISOString().slice(0,19).replace('T',' '), last_used_at: null })
-    newKeyResult.value = { key: r.key }
+    const selected = Object.entries(newKeyScopes.value).filter(([, on]) => on).map(([k]) => k)
+    const payload: { name: string; scopes?: string[] } = { name: newKeyName.value.trim() }
+    if (selected.length > 0) payload.scopes = selected
+    const r = await api.post<{ id: number; name: string; key_prefix: string; key: string; scopes?: string[] }>('/auth/api-keys', payload)
+    apiKeys.value.unshift({ id: r.id, name: r.name, key_prefix: r.key_prefix, created_at: new Date().toISOString().slice(0,19).replace('T',' '), last_used_at: null, scopes: r.scopes })
+    newKeyResult.value = { key: r.key, scopes: r.scopes }
     newKeyName.value = ''
+    newKeyScopes.value = {}
     await nextTick(); newKeyInputRef.value?.select()
   } catch (e: unknown) { newKeyError.value = errMsg(e, 'Failed.') }
   finally { newKeyCreating.value = false }
@@ -426,6 +449,7 @@ async function init() {
   initProfileForm()
   await loadTOTPStatus()
   await loadAPIKeys()
+  await loadScopeCatalog()
   await loadAutoWatch()
 }
 init()
@@ -750,6 +774,19 @@ init()
       <input v-model="newKeyName" type="text" placeholder="Key name, e.g. ci-script" class="apikey-name-input" @keyup.enter="createAPIKey" />
       <button class="btn btn-primary btn-sm" :disabled="newKeyCreating" @click="createAPIKey">{{ newKeyCreating ? 'Creating…' : '+ Create key' }}</button>
     </div>
+    <!-- PAI-379: admin-only scope picker. Unchecked = sentinel '*' =
+         the long-standing "key inherits owner role wholesale" default.
+         Checking a scope narrows the key to that capability. Members
+         see no picker; their default key already grants everything
+         their role permits. -->
+    <div v-if="canPickScopes" class="apikey-scope-picker">
+      <span class="apikey-scope-label">Restrict to scopes (optional — leave empty for full power):</span>
+      <label v-for="s in scopeCatalog" :key="s.name" class="apikey-scope-row">
+        <input type="checkbox" v-model="newKeyScopes[s.name]" />
+        <code class="icode">{{ s.name }}</code>
+        <span class="muted">— {{ s.description }}</span>
+      </label>
+    </div>
     <div v-if="newKeyError" class="form-error" style="margin-bottom:.5rem">{{ newKeyError }}</div>
     <div v-if="newKeyResult" class="apikey-reveal">
       <span class="apikey-reveal-label">Copy now — shown only once:</span>
@@ -760,14 +797,24 @@ init()
         </button>
         <button class="btn btn-ghost btn-sm" @click="newKeyResult=null"><AppIcon name="x" :size="13" /></button>
       </div>
+      <div v-if="newKeyResult.scopes && newKeyResult.scopes.length > 0" class="apikey-scope-chips" style="margin-top:.4rem">
+        <span class="muted">Scopes:</span>
+        <code v-for="s in newKeyResult.scopes" :key="s" class="icode">{{ s }}</code>
+      </div>
     </div>
     <div v-if="apiKeys.length > 0" class="card" style="padding:0;overflow:hidden;margin-top:.25rem">
       <table class="settings-table">
-        <thead><tr><th>Name</th><th>Prefix</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Created</th><th>Last used</th><th></th></tr></thead>
         <tbody>
           <tr v-for="k in apiKeys" :key="k.id">
             <td class="fw500">{{ k.name }}</td>
             <td><code class="icode">{{ k.key_prefix }}…</code></td>
+            <td>
+              <span v-if="!k.scopes || k.scopes.length === 0 || k.scopes.includes('*')" class="muted">full</span>
+              <span v-else class="apikey-scope-chips">
+                <code v-for="s in k.scopes" :key="s" class="icode">{{ s }}</code>
+              </span>
+            </td>
             <td class="muted">{{ k.created_at.slice(0,10) }}</td>
             <td class="muted">{{ k.last_used_at ? k.last_used_at.slice(0,10) : '—' }}</td>
             <td class="actions-cell"><button class="btn btn-ghost btn-sm danger" @click="revokeAPIKey(k.id)">Revoke</button></td>
@@ -924,6 +971,12 @@ init()
 .apikey-reveal-label { font-size: 12px; font-weight: 600; color: #856404; }
 .apikey-reveal-row { display: flex; align-items: center; gap: .5rem; }
 .apikey-reveal-input { flex: 1; font-family: 'DM Mono','Fira Code',monospace; font-size: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .35rem .6rem; color: var(--text); }
+/* PAI-379 — admin-only scope picker shown beneath the create row. */
+.apikey-scope-picker { display: flex; flex-direction: column; gap: .35rem; margin: 0 0 .6rem; padding: .5rem .75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.apikey-scope-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.apikey-scope-row { display: flex; align-items: center; gap: .45rem; font-size: 12px; }
+.apikey-scope-row input[type="checkbox"] { margin: 0; }
+.apikey-scope-chips { display: inline-flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
 
 /* ── Editor preference toggles ────────────────────────────────────────────── */
 .section-divider {

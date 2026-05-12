@@ -117,7 +117,7 @@ func Middleware(next http.Handler) http.Handler {
 		// 1. Try API key: Authorization: Bearer <BRAND_API_KEY_PREFIX>...
 		if hdr := r.Header.Get("Authorization"); strings.HasPrefix(hdr, "Bearer "+brand.Default.APIKeyPrefix) {
 			rawKey := strings.TrimPrefix(hdr, "Bearer ")
-			user, err := ResolveAPIKey(rawKey)
+			user, scopes, err := ResolveAPIKey(rawKey)
 			if err != nil {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
@@ -128,6 +128,11 @@ func Middleware(next http.Handler) http.Handler {
 			w.Header().Set("X-Permissions-Epoch", strconv.FormatInt(GetPermissionsEpoch(user.ID), 10))
 			ctx := context.WithValue(r.Context(), UserKey, user)
 			ctx = WithAccessCache(ctx)
+			// PAI-379: api-key scopes ride along on the context so
+			// RequireScope can narrow specific routes without a second
+			// DB query. Pre-M104 keys backfill to `*` (= ScopeAll) so
+			// existing callers behave unchanged.
+			ctx = WithScopes(ctx, scopes)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -228,6 +233,10 @@ func Middleware(next http.Handler) http.Handler {
 		ctx = WithAccessCache(ctx)
 		ctx = withSessionAuth(ctx, rec.csrfTok)
 		ctx = withDevLoginFlag(ctx, rec.viaDevLogin)
+		// PAI-379: browser sessions are never narrowed; attach the
+		// all-scopes set so RequireScope is a uniform downstream check
+		// regardless of auth method.
+		ctx = WithScopes(ctx, ScopeSet{ScopeAll: {}})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

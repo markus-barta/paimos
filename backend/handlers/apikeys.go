@@ -22,7 +22,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -49,7 +51,7 @@ func generateAPIKey() (full, prefix, hash string, err error) {
 func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUser(r)
 	rows, err := db.DB.Query(`
-		SELECT id, name, key_prefix, created_at, last_used_at
+		SELECT id, name, key_prefix, created_at, last_used_at, scopes
 		FROM api_keys WHERE user_id = ?
 		ORDER BY created_at DESC
 	`, user.ID)
@@ -60,33 +62,72 @@ func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type APIKey struct {
-		ID          int64   `json:"id"`
-		Name        string  `json:"name"`
-		KeyPrefix   string  `json:"key_prefix"`
-		CreatedAt   string  `json:"created_at"`
-		LastUsedAt  *string `json:"last_used_at"`
+		ID         int64    `json:"id"`
+		Name       string   `json:"name"`
+		KeyPrefix  string   `json:"key_prefix"`
+		CreatedAt  string   `json:"created_at"`
+		LastUsedAt *string  `json:"last_used_at"`
+		Scopes     []string `json:"scopes"`
 	}
 	keys := []APIKey{}
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.CreatedAt, &k.LastUsedAt); err == nil {
+		var scopesCSV string
+		if err := rows.Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.CreatedAt, &k.LastUsedAt, &scopesCSV); err == nil {
+			k.Scopes = scopesSetToSortedSlice(auth.ParseScopes(scopesCSV))
 			keys = append(keys, k)
 		}
 	}
 	jsonOK(w, keys)
 }
 
-// POST /api/auth/api-keys  { "name": "My script" }
+// scopesSetToSortedSlice serializes a ScopeSet to a stable, JSON-friendly
+// array. The sentinel "*" sorts first because it has special meaning.
+func scopesSetToSortedSlice(s auth.ScopeSet) []string {
+	out := make([]string, 0, len(s))
+	for k := range s {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// POST /api/auth/api-keys  { "name": "My script", "scopes": ["projects:write"] }
 // Returns the full key ONCE — not stored, not retrievable again.
+//
+// PAI-379: `scopes` is optional. Omitting it (or passing an empty array)
+// stores the sentinel `*` so the key inherits the owner's full role —
+// the long-standing behavior. Named scopes narrow the key; the caller's
+// role must be permitted by the catalog to attach each named scope
+// (see auth.ValidateScopesForRole).
 func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUser(r)
 	var body struct {
-		Name string `json:"name"`
+		Name   string   `json:"name"`
+		Scopes []string `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
 		jsonError(w, "name required", http.StatusBadRequest)
 		return
 	}
+
+	// Build the scope set: empty / missing → ScopeAll (back-compat).
+	scopeSet := auth.ScopeSet{}
+	for _, s := range body.Scopes {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		scopeSet[s] = struct{}{}
+	}
+	if len(scopeSet) == 0 {
+		scopeSet[auth.ScopeAll] = struct{}{}
+	}
+	if err := auth.ValidateScopesForRole(scopeSet, user.Role); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	scopesCSV := auth.FormatScopes(scopeSet)
 
 	full, prefix, hash, err := generateAPIKey()
 	if err != nil {
@@ -96,16 +137,17 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	var id int64
 	res, err := db.DB.Exec(`
-		INSERT INTO api_keys(user_id, name, key_hash, key_prefix)
-		VALUES (?, ?, ?, ?)
-	`, user.ID, body.Name, hash, prefix)
+		INSERT INTO api_keys(user_id, name, key_hash, key_prefix, scopes)
+		VALUES (?, ?, ?, ?, ?)
+	`, user.ID, body.Name, hash, prefix, scopesCSV)
 	if err != nil {
 		jsonError(w, "insert failed", http.StatusInternalServerError)
 		return
 	}
 	id, _ = res.LastInsertId()
 
-	log.Printf("audit: api_key_created username=%q key_prefix=%s name=%q", user.Username, prefix, body.Name)
+	log.Printf("audit: api_key_created username=%q key_prefix=%s name=%q scopes=%q",
+		user.Username, prefix, body.Name, scopesCSV)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]any{
@@ -113,6 +155,7 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		"name":       body.Name,
 		"key_prefix": prefix,
 		"key":        full, // shown ONCE
+		"scopes":     scopesSetToSortedSlice(scopeSet),
 	})
 }
 

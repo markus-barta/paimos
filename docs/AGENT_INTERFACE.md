@@ -360,7 +360,7 @@ The server publishes a single source of truth at `GET /api/schema`. The CLI cach
 ```sh
 $ paimos schema
 instance: ppm (https://pm.barta.cm)
-version:  1.1.0
+version:  1.2.0
 enum priority: low, medium, high
 enum relation: groups, sprint, depends_on, impacts, follows_from, blocks, related
 enum status:   new, backlog, in-progress, qa, done, delivered, accepted, invoiced, cancelled
@@ -370,6 +370,42 @@ $ paimos schema --refresh       # re-download + report if version moved
 ```
 
 The schema includes **recommended** status transitions — enforced client-side as hints, the backend still accepts any→any so you can fix mistakes without ceremony.
+
+### Project creation + api-key scopes (PAI-379)
+
+`/api/schema` also exposes a `scopes` block — the catalog of named
+api-key scopes that narrow what a key can do. Today there's one:
+
+```json
+{
+  "name": "projects:write",
+  "required_role": "admin",
+  "endpoints": ["POST /api/projects"],
+  "description": "Create new projects. Combined with the existing admin-role gate on the endpoint."
+}
+```
+
+**Policy.** Scopes only **narrow**. They never let a caller do
+something their role couldn't already do. `POST /api/projects` still
+requires admin role; for api-key auth, the key must additionally carry
+`projects:write`. A member cannot conjure a `projects:write` key —
+the catalog says it requires admin role at issue-time. Session-cookie
+auth (the browser SPA) is never narrowed.
+
+**Bootstrap a project as an agent.**
+
+```sh
+# Admin logs in to the web UI, goes to Settings → API Keys, ticks
+# "projects:write" on a new key, gives it to the agent.
+export PAIMOS_API_KEY="paimos_..."
+
+paimos project create --name "My new project" --key MYP
+# or, from Claude Desktop:
+#   paimos_project_create(name="My new project", key="MYP")
+```
+
+The narrowed key cannot do anything else — it can't create issues, list
+private boards, etc. It is exactly "create projects, and only that".
 
 ---
 
@@ -404,6 +440,8 @@ Tools available in the current allowlist:
 | `paimos_issue_create` | title + project_key required |
 | `paimos_issue_update` | partial by ref |
 | `paimos_relation_add` | all 7 types |
+| `paimos_project_list` | list projects on the active instance |
+| `paimos_project_create` | name + key required; api-key needs `projects:write` scope on an admin account |
 
 **Deliberately not exposed**: `batch-update`, `apply`. MCP context grows fast; agents that need bulk should shell out to the `paimos` CLI instead.
 

@@ -4483,6 +4483,17 @@ func migrate(db *sql.DB) error {
 		{103, []string{
 			`ALTER TABLE users ADD COLUMN search_scope_shortcut TEXT NOT NULL DEFAULT ''`,
 		}},
+
+		// M104 / PAI-379: api-key scope narrowing. Adds a comma-separated
+		// `scopes` column to api_keys. Sentinel `*` means "full owner-role
+		// power" (every key created before this migration backfills to `*`
+		// so behavior doesn't change). Named scopes like `projects:write`
+		// narrow the key — handlers that opt in via `auth.RequireScope`
+		// reject api-key callers whose scope set lacks the required entry.
+		// Session-cookie auth is unaffected: scopes only attach to keys.
+		{104, []string{
+			`ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT '*'`,
+		}},
 	}
 
 	for _, m := range migrations {

@@ -234,7 +234,12 @@ func main() {
 
 			// Projects
 			r.Get("/projects", handlers.ListProjects)
-			r.With(auth.RequireAdmin).Post("/projects", handlers.CreateProject)
+			// PAI-379: scope-narrowable project creation. The admin
+			// role is still required, AND when the caller authenticates
+			// via api-key the key must carry the projects:write scope.
+			// Session-cookie auth implicitly carries ScopeAll, so the
+			// admin web UI is unaffected.
+			r.With(auth.RequireAdmin, auth.RequireScope(auth.ScopeProjectsWrite)).Post("/projects", handlers.CreateProject)
 			r.With(auth.RequireProjectView).Get("/projects/{id}", handlers.GetProject)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}", handlers.UpdateProject)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}", handlers.DeleteProject)

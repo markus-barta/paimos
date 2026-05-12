@@ -241,9 +241,32 @@ paimos doctor
 }
 ```
 
-Exposes six tools: `paimos_schema`, `paimos_issue_get`, `_list`,
-`_create`, `_update`, `paimos_relation_add`. Bulk ops are deliberately
-CLI-only — MCP context grows fast.
+Exposes `paimos_schema`, `paimos_issue_get`, `_list`, `_create`,
+`_update`, `paimos_relation_add`, `paimos_project_list`, and
+`paimos_project_create`. Bulk ops are deliberately CLI-only — MCP
+context grows fast.
+
+### Creating a New Project
+
+Project create is admin-gated. Three equivalent paths:
+
+```bash
+# 1) Web UI: Admin → Projects → "+ New project".
+# 2) CLI (admin's default api-key or session):
+paimos project create --name "My Project" --key MYP
+
+# 3) MCP (Claude Desktop): the agent calls paimos_project_create
+#    name="My Project" key=MYP — no human-in-the-loop required.
+```
+
+For agent workflows that should not carry full admin power, issue an
+api-key narrowed to `projects:write` from **Settings → API Keys** (the
+scope picker appears for admins only) and use that key as the
+`Authorization: Bearer` header. The key can create projects and
+nothing else — useful for service-account-style automation.
+
+See [`docs/AGENT_INTERFACE.md`](docs/AGENT_INTERFACE.md) for the full
+scope catalog (also exposed via `GET /api/schema` → `scopes`).
 
 ### Still just HTTP
 
@@ -290,7 +313,9 @@ Everything operator-configurable is in `docs/CONFIGURATION.md`:
 
 ## Security
 
-- Project create/update/delete is admin-only
+- Project create/update/delete requires admin role; create is also
+  reachable via api-key with the `projects:write` scope (PAI-379) for
+  agent-driven bootstrap
 - Session cookies: `HttpOnly`, `SameSite=Lax`, `Secure` when
   `COOKIE_SECURE=true`
 - **Sliding 30-day sessions with a 90-day absolute lifetime cap;**

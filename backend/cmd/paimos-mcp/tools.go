@@ -200,6 +200,36 @@ func (s *Server) tools() []Tool {
 			handler: s.toolIssueCreate,
 		},
 		{
+			// PAI-379: agent-accessible project listing. Mirrors `paimos
+			// project list` so agents can confirm a key exists / fetch
+			// project metadata without falling back to /api/projects raw.
+			Name:        "paimos_project_list",
+			Description: "Lists projects on the active instance. Returns array of { id, key, name, description, ... } sorted by name.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+			handler: s.toolProjectList,
+		},
+		{
+			// PAI-379: agent-accessible project bootstrap. Requires an
+			// api-key with the `projects:write` scope on an admin-owned
+			// account (catalog rule, enforced server-side). The
+			// previously hand-off-to-the-UI step is now end-to-end.
+			Name:        "paimos_project_create",
+			Description: "Creates a new project. name + key required; optional description. Requires an api-key with `projects:write` scope on an admin account (see paimos_schema → scopes).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string"},
+					"key":         map[string]any{"type": "string", "description": "short project key, e.g. PAI"},
+					"description": map[string]any{"type": "string"},
+				},
+				"required": []string{"name", "key"},
+			},
+			handler: s.toolProjectCreate,
+		},
+		{
 			Name:        "paimos_issue_update",
 			Description: "Partial-updates one issue. Provide ref + only the fields to change.",
 			InputSchema: map[string]any{
@@ -300,6 +330,39 @@ func (s *Server) toolIssueList(args map[string]any) (string, error) {
 		path += "?" + q.Encode()
 	}
 	raw, err := s.client.Do("GET", path, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// toolProjectList → GET /api/projects.
+func (s *Server) toolProjectList(args map[string]any) (string, error) {
+	raw, err := s.client.Do("GET", "/api/projects", nil)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// toolProjectCreate → POST /api/projects.
+// PAI-379: name + key required. The server requires admin role on the
+// underlying user AND the api-key must carry `projects:write`. Missing
+// either gate returns a 403 the MCP surfaces as an isError result.
+func (s *Server) toolProjectCreate(args map[string]any) (string, error) {
+	name, _ := args["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	key, _ := args["key"].(string)
+	if strings.TrimSpace(key) == "" {
+		return "", fmt.Errorf("key is required")
+	}
+	body := map[string]any{"name": name, "key": key}
+	if desc, _ := args["description"].(string); desc != "" {
+		body["description"] = desc
+	}
+	raw, err := s.client.Do("POST", "/api/projects", body)
 	if err != nil {
 		return "", err
 	}

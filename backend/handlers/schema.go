@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/markus-barta/paimos/backend/auth"
 )
 
 // SchemaVersion is the authoritative version of the API schema payload.
@@ -30,7 +32,12 @@ import (
 // changes — forcing the bump to happen in the same commit as the edit.
 //
 // The version doubles as cache key: clients refetch when the value changes.
-const SchemaVersion = "1.1.0"
+//
+// 1.2.0 (PAI-379): added the top-level `scopes` block so agents can
+// discover which api-key scopes unlock which endpoints. The scope list
+// is populated at init() from auth.ScopeCatalog() — a single source of
+// truth shared with the runtime check.
+const SchemaVersion = "1.2.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -39,6 +46,7 @@ type SchemaPayload struct {
 	Transitions map[string]map[string][]string `json:"transitions"`
 	Entities    map[string]SchemaEntity        `json:"entities"`
 	Conventions map[string]string              `json:"conventions"`
+	Scopes      []auth.ScopeDef                `json:"scopes"`
 }
 
 // SchemaEntity describes the create/update shape for a given entity type.
@@ -125,6 +133,9 @@ var (
 )
 
 func init() {
+	// PAI-379: populate the scopes block from the auth catalog so the
+	// runtime check and the discoverable schema can never drift.
+	Schema.Scopes = auth.ScopeCatalog()
 	b, err := json.MarshalIndent(&Schema, "", "  ")
 	if err != nil {
 		// Unreachable in practice — Schema is a literal with only maps,

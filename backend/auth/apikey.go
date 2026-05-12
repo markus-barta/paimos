@@ -26,24 +26,29 @@ import (
 )
 
 // ResolveAPIKey looks up a raw API key (full "paimos_..." string), verifies it
-// against the stored hash, updates last_used_at, and returns the owning user.
-func ResolveAPIKey(rawKey string) (*models.User, error) {
+// against the stored hash, updates last_used_at, and returns the owning user
+// alongside the key's scope set. PAI-379: the scopes column (M104) is parsed
+// here so the auth middleware can stash a ScopeSet on the request context
+// without a second query.
+func ResolveAPIKey(rawKey string) (*models.User, ScopeSet, error) {
 	sum := sha256.Sum256([]byte(rawKey))
 	hash := hex.EncodeToString(sum[:])
 
 	var keyID int64
+	var scopesCSV string
 	u := &models.User{}
-	dests := append([]any{&keyID}, userScanDests(u)...)
+	// Scan order: key id + scopes column + the user-cols list.
+	dests := append([]any{&keyID, &scopesCSV}, userScanDests(u)...)
 	err := db.DB.QueryRow(`
-		SELECT ak.id, `+userSelectCols+`
+		SELECT ak.id, ak.scopes, `+userSelectCols+`
 		FROM api_keys ak JOIN users u ON u.id = ak.user_id
 		WHERE ak.key_hash = ?
 	`, hash).Scan(dests...)
 	if err != nil {
-		return nil, fmt.Errorf("invalid api key")
+		return nil, nil, fmt.Errorf("invalid api key")
 	}
 	if u.Status == "inactive" || u.Status == "deleted" {
-		return nil, fmt.Errorf("account disabled")
+		return nil, nil, fmt.Errorf("account disabled")
 	}
 
 	// Best-effort last_used_at update
@@ -51,5 +56,5 @@ func ResolveAPIKey(rawKey string) (*models.User, error) {
 		log.Printf("ResolveAPIKey: update last_used_at key_id=%d: %v", keyID, err)
 	}
 
-	return u, nil
+	return u, ParseScopes(scopesCSV), nil
 }
