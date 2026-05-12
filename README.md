@@ -221,6 +221,13 @@ paimos issue ensure-status PAI-83 done
 paimos issue update PAI-83 --status done \
   --close-note-file /tmp/close.md
 
+# Search, tag, track time, and attach artefacts from the CLI
+paimos search "flaky session" --project PAI --limit 5
+paimos issue tag add PAI-83 --tag backend
+paimos time start PAI-83 --note "Investigating session expiry"
+paimos time stop
+paimos attach PAI-83 /tmp/screenshot.png
+
 # Scaffold an epic + N children + relations in one shot
 paimos apply --from-file plan.yaml
 

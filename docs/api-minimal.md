@@ -100,6 +100,7 @@ GET    /issues/:id/members          list by relation
 GET    /issues/:id/time-entries
 POST   /issues/:id/time-entries     {started_at, stopped_at?, override?, comment?, user_id?}
                                       — super-admin only: user_id = create on behalf of another user
+GET    /time-entries/:id
 PUT    /time-entries/:id            partial update — super-admin can edit any user's entry
 DELETE /time-entries/:id            super-admin can delete any user's entry
 GET    /time-entries/running        active timers for current user
@@ -114,6 +115,7 @@ Cross-user writes are stamped in `mutation_log` and emit a
 ```
 GET    /issues/:id/attachments
 POST   /issues/:id/attachments      multipart upload — links immediately
+GET    /attachments/:id/meta        metadata only
 GET    /attachments/:id             fetch file bytes
 DELETE /attachments/:id             admin only
 POST   /attachments                 multipart — upload pending (not yet linked)

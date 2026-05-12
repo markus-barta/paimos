@@ -12,8 +12,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -148,8 +150,31 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+	c.prepareRequest(req, body != nil, "application/json", "application/json")
+	return c.doRequest(req)
+}
+
+func (c *Client) doRequest(req *http.Request) ([]byte, error) {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP %s %s: %w", req.Method, req.URL.Path, err)
+	}
+	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return rawBody, &httpError{Code: resp.StatusCode, Body: rawBody, Method: req.Method, Path: req.URL.Path}
+	}
+	return rawBody, nil
+}
+
+func (c *Client) prepareRequest(req *http.Request, hasBody bool, contentType, accept string) {
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
 
 	// Agent-attribution forwarding (PAI-325). Centralised here so every
 	// command picks it up automatically — sprinkling the header logic
@@ -161,7 +186,7 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 		// per-invocation correlation; reads benefit from it too).
 		req.Header.Set(sessionAttrHeader, session)
 	}
-	if isWriteMethod(method) && agent != "" {
+	if isWriteMethod(req.Method) && agent != "" {
 		// Agent header is writes-only — server only persists it on
 		// history-snapshotted mutations, sending it on GETs would be
 		// noise.
@@ -171,22 +196,52 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if hasBody && contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
-	resp, err := c.http.Do(req)
+}
+
+func (c *Client) doMultipartFile(path, fieldName, filePath string) ([]byte, error) {
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		file, err := os.Open(filePath)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		defer file.Close()
+
+		part, err := mw.CreateFormFile(fieldName, filepath.Base(filePath))
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		if err := mw.Close(); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
+	}()
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, pr)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
-	defer resp.Body.Close()
-	rawBody, err := io.ReadAll(resp.Body)
+	c.prepareRequest(req, true, mw.FormDataContentType(), "application/json")
+	return c.doRequest(req)
+}
+
+func (c *Client) doDownload(path string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
-	if resp.StatusCode >= 400 {
-		return rawBody, &httpError{Code: resp.StatusCode, Body: rawBody, Method: method, Path: path}
-	}
-	return rawBody, nil
+	c.prepareRequest(req, false, "", "*/*")
+	return c.doRequest(req)
 }
 
 // httpError carries the full API failure so the caller can render it

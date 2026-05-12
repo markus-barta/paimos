@@ -283,6 +283,33 @@ func GetAttachmentFile(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, br)
 }
 
+// GetAttachmentMeta — GET /api/attachments/{id}/meta
+func GetAttachmentMeta(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var a Attachment
+	err = db.DB.QueryRow(`
+		SELECT a.id, COALESCE(a.issue_id,0), a.object_key, a.filename, a.content_type,
+		       a.size_bytes, a.uploaded_by, COALESCE(u.username,''), a.created_at
+		FROM attachments a
+		LEFT JOIN users u ON u.id = a.uploaded_by
+		WHERE a.id = ?
+	`, id).Scan(&a.ID, &a.IssueID, &a.ObjectKey, &a.Filename,
+		&a.ContentType, &a.SizeBytes, &a.UploadedBy, &a.Uploader, &a.CreatedAt)
+	if err == sql.ErrNoRows {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, a)
+}
+
 // DeleteAttachment — DELETE /api/attachments/{id}
 func DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

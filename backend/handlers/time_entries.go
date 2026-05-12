@@ -63,6 +63,22 @@ func ListTimeEntries(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, entries)
 }
 
+// GetTimeEntry returns one time entry by id.
+// GET /api/time-entries/:id
+func GetTimeEntry(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	entry := getTimeEntryByID(id)
+	if entry == nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	jsonOK(w, entry)
+}
+
 // CreateTimeEntry starts a new time entry (or records a manual one).
 // POST /api/issues/:id/time-entries
 //
@@ -217,6 +233,7 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
+		StartedAt     *string  `json:"started_at"`
 		StoppedAt     *string  `json:"stopped_at"`
 		Override      *float64 `json:"override"`
 		Comment       *string  `json:"comment"`
@@ -255,19 +272,21 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	if body.ClearOverride {
 		_, err = tx.ExecContext(r.Context(), `
 			UPDATE time_entries SET
+				started_at  = CASE WHEN ? IS NOT NULL THEN ? ELSE started_at END,
 				stopped_at = CASE WHEN ? IS NOT NULL THEN ? ELSE stopped_at END,
 				override   = NULL,
 				comment    = COALESCE(?, comment)
 			WHERE id = ?
-		`, body.StoppedAt, body.StoppedAt, body.Comment, id)
+		`, body.StartedAt, body.StartedAt, body.StoppedAt, body.StoppedAt, body.Comment, id)
 	} else {
 		_, err = tx.ExecContext(r.Context(), `
 			UPDATE time_entries SET
+				started_at  = CASE WHEN ? IS NOT NULL THEN ? ELSE started_at END,
 				stopped_at = CASE WHEN ? IS NOT NULL THEN ? ELSE stopped_at END,
 				override   = COALESCE(?, override),
 				comment    = COALESCE(?, comment)
 			WHERE id = ?
-		`, body.StoppedAt, body.StoppedAt, body.Override, body.Comment, id)
+		`, body.StartedAt, body.StartedAt, body.StoppedAt, body.StoppedAt, body.Override, body.Comment, id)
 	}
 	if handleDBError(w, err, "time entry") {
 		return

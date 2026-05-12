@@ -410,6 +410,7 @@ func main() {
 			// Attachments
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/attachments", handlers.ListAttachments)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/attachments", handlers.UploadAttachment)
+			r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}/meta", handlers.GetAttachmentMeta)
 			r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}", handlers.GetAttachmentFile)
 			r.With(auth.RequireAttachmentEdit).Delete("/attachments/{id}", handlers.DeleteAttachment)
 			r.Post("/attachments", handlers.UploadPendingAttachment)
@@ -453,10 +454,11 @@ func main() {
 			// Time entries (v2)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
-			r.With(auth.RequireTimeEntryEdit).Put("/time-entries/{id}", handlers.UpdateTimeEntry)
-			r.With(auth.RequireTimeEntryEdit).Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
 			r.Get("/time-entries/running", handlers.GetRunningTimers)
 			r.Get("/time-entries/recent", handlers.GetRecentTimers)
+			r.With(auth.RequireTimeEntryAccess).Get("/time-entries/{id}", handlers.GetTimeEntry)
+			r.With(auth.RequireTimeEntryEdit).Put("/time-entries/{id}", handlers.UpdateTimeEntry)
+			r.With(auth.RequireTimeEntryEdit).Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
 
 			// System tag rules (admin only)
 			r.Get("/system-tag-rules", handlers.ListSystemTagRules)

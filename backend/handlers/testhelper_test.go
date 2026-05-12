@@ -376,17 +376,20 @@ func buildRouter() http.Handler {
 			// Attachments
 			r.Get("/issues/{id}/attachments", handlers.ListAttachments)
 			r.Post("/issues/{id}/attachments", handlers.UploadAttachment)
+			r.Get("/attachments/{id}/meta", handlers.GetAttachmentMeta)
 			r.Get("/attachments/{id}", handlers.GetAttachmentFile)
 			r.Delete("/attachments/{id}", handlers.DeleteAttachment)
+			r.Post("/attachments", handlers.UploadPendingAttachment)
 			r.Patch("/attachments/link", handlers.LinkAttachments)
 
 			// Time entries
 			r.Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
 			r.Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
-			r.Put("/time-entries/{id}", handlers.UpdateTimeEntry)
-			r.Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
 			r.Get("/time-entries/running", handlers.GetRunningTimers)
 			r.Get("/time-entries/recent", handlers.GetRecentTimers)
+			r.Get("/time-entries/{id}", handlers.GetTimeEntry)
+			r.Put("/time-entries/{id}", handlers.UpdateTimeEntry)
+			r.Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
 
 			// Purge time entries (admin)
 			r.With(auth.RequireAdmin).Get("/projects/{id}/time-entries/users", handlers.PurgeUsers)

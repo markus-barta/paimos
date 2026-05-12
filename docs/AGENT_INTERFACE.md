@@ -43,7 +43,7 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 ### Caveat — current CLI coverage gaps
 
-The CLI today covers issue-CRUD, free-text search, batch issue create via `apply`, relations (add only), tag management + assignment, anchors, sync, skills, sessions, project-context. **It does NOT yet cover** time entries, attachments, sprints, issue forensics (history/activity), memory CRUD, knowledge plane, comment delete, or issue lifecycle (clone/archive/restore). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
+The CLI today covers issue-CRUD, free-text search, batch issue create via `apply`, time entries, attachments, relations (add only), tag management + assignment, anchors, sync, skills, sessions, and project-context. **It does NOT yet cover** sprints, issue forensics (history/activity), memory CRUD, knowledge plane, comment delete, or the full issue lifecycle (clone/archive/restore/purge). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
 
 > **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
 > See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
@@ -252,6 +252,45 @@ paimos --json search "undo history" --project PAI \
 
 Pretty output is an issue table. `--json` returns the server's full search
 payload, including projects, users, tags, and `has_more`.
+
+### Track time
+
+Use `paimos time ...` for ticket-level time tracking. Issue arguments
+accept either keys or numeric ids.
+
+```sh
+paimos time start PAI-83 --note "debugging failing deploy"
+paimos time stop                         # idempotent no-op when nothing is running
+paimos time stop 123                     # explicit timer id
+
+paimos time list --running
+paimos time list --recent --limit 5
+paimos time list --issue PAI-83
+
+paimos time set 123 --duration 90m --note "corrected"
+paimos time get 123 --json
+```
+
+`--duration` uses Go duration syntax (`90m`, `1h30m`, `2h`) and stores a
+manual hours override. Use `--started-at` / `--stopped-at` only when you
+need an explicit timestamp correction.
+
+### Attach files
+
+Use `paimos attach <issue> <file>` for the common screenshot/log/artifact
+case. The command uploads the file as pending, links it to the issue, and
+rolls the pending attachment back if linking fails.
+
+```sh
+paimos attach PAI-83 /tmp/screenshot.png
+paimos attach list --issue PAI-83
+paimos attach get 42
+paimos attach get 42 --download /tmp/screenshot.png
+paimos attach rm 42
+```
+
+`--json` is supported on every attachment verb. `attach get --download -`
+writes raw bytes to stdout, so do not combine that form with `--json`.
 
 ### Project metadata
 
@@ -561,16 +600,28 @@ Most of the time you won't need to. Reach for the REST API directly when:
 
 If a pattern feels awkward via CLI but natural via REST — **file a ticket** under [PAI-373](https://pm.barta.cm/issues/PAI-373) (the agent-CLI surface-gap epic) or as a sibling of PAI-85. The whole point of those epics is that agent-facing ergonomics belong in the CLI.
 
-### Known CLI gaps (post-v3.2.4 audit, tracked under PAI-373)
+### Known CLI gaps (current v3.2.x audit, tracked under PAI-373)
 
-The CLI today covers issue-CRUD strongly; ~80–100 of the ~217 REST endpoints are agent-relevant and not yet exposed. The tier-1 misses you'll hit on day-2 agent work:
+The tier-1 PAI-373 gaps are now covered:
 
 | Domain | Status | Tracked under |
 |---|---|---|
-| **Time entries** — start/stop/list/edit | ❌ no CLI; `curl` `/api/time-entries/*` | [PAI-374](https://pm.barta.cm/issues/PAI-374) |
-| **Attachments** — upload + link | ❌ no CLI; multipart `curl` `/api/attachments` then `PATCH /api/attachments/link` | [PAI-375](https://pm.barta.cm/issues/PAI-375) |
+| **Search** — free-text issue lookup | ✅ `paimos search` | [PAI-376](https://pm.barta.cm/issues/PAI-376) |
+| **Tag management** — list/create/update/delete | ✅ `paimos tag ...` plus `paimos issue tag ...` | [PAI-377](https://pm.barta.cm/issues/PAI-377) |
+| **Batch issue create** | ✅ `paimos apply` create block | [PAI-378](https://pm.barta.cm/issues/PAI-378) |
+| **Time entries** — start/stop/list/edit | ✅ `paimos time ...` | [PAI-374](https://pm.barta.cm/issues/PAI-374) |
+| **Attachments** — upload + link | ✅ `paimos attach ...` | [PAI-375](https://pm.barta.cm/issues/PAI-375) |
 
-Tier-2 misses (issue forensics, sprints, memory CRUD, relations list/remove, knowledge plane, comment delete, issue lifecycle clone/archive/restore) are tracked in PAI-373's body.
+Remaining REST fallbacks are tier-2/admin surfaces:
+
+| Domain | Status | Tracked under |
+|---|---|---|
+| **Issue forensics** — history/activity/AI activity | REST only | PAI-373 follow-up |
+| **Sprints** — full lifecycle | REST/UI only | PAI-373 follow-up |
+| **Memory CRUD** — list/get/update/delete/promote | REST only (`memory propose` has CLI) | PAI-373 follow-up |
+| **Relations** — list/remove | partial CLI (add only) | PAI-373 follow-up |
+| **Knowledge plane** | REST only | PAI-373 follow-up |
+| **Issue lifecycle** — clone/archive/restore/purge | REST/UI only | PAI-373 follow-up |
 
 If you find yourself reaching for `curl` outside this list, that's a new gap — file it as a child of PAI-373.
 

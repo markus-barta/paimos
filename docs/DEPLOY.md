@@ -87,7 +87,7 @@ Run this after the tag workflows have completed and before deploying a
 release tag:
 
 ```
-just verify-release v3.2.4
+just verify-release vX.Y.Z
 ```
 
 It wraps `scripts/verify-release.sh` and checks:

@@ -17,16 +17,16 @@ curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_
 Or, pinned to a version:
 
 ```bash
-VER=3.2.4
+VER=3.2.5
 curl -fL https://github.com/markus-barta/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos
 ```
 
 The binary is **codesigned + notarized** under "Developer ID
-Application: BYTEPOETS GmbH". Gatekeeper accepts it on first run; no
-`xattr` dance, no System Settings approval. First run requires an
-internet connection so macOS can fetch the notarization ticket from
-Apple — after that it works offline.
+Application: Markus Barta (P66J39QV6V)". Gatekeeper accepts it on
+first run; no `xattr` dance, no System Settings approval. First run
+requires an internet connection so macOS can fetch the notarization
+ticket from Apple — after that it works offline.
 
 Verify the signature manually if you want:
 
@@ -34,7 +34,7 @@ Verify the signature manually if you want:
 spctl --assess -vv /usr/local/bin/paimos
 # → /usr/local/bin/paimos: accepted
 # → source=Notarized Developer ID
-# → origin=Developer ID Application: BYTEPOETS GmbH (TEAM_ID)
+# → origin=Developer ID Application: Markus Barta (P66J39QV6V)
 ```
 
 For `paimos-mcp` (the MCP server), substitute `paimos-mcp` everywhere:
@@ -63,7 +63,7 @@ curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_
 Every release ships a `sha256sums.txt` next to the tarballs:
 
 ```bash
-VER=3.2.4
+VER=3.2.5
 curl -fLO https://github.com/markus-barta/paimos/releases/download/v$VER/sha256sums.txt
 curl -fLO https://github.com/markus-barta/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz
 shasum -a 256 -c sha256sums.txt --ignore-missing
@@ -89,7 +89,7 @@ also builds from source declaratively.
 ## After install — first-use checklist
 
 ```bash
-paimos --version    # 3.2.4
+paimos --version    # 3.2.5
 ```
 
 ### 1. Log in
@@ -130,9 +130,23 @@ paimos issue create --project PAI --type ticket \
 # Idempotent status transitions — safe to re-run
 paimos issue ensure-status PAI-83 done
 
-# Update + comment in one atomic-ish step
+# Update + close-note in one atomic-ish step
 paimos issue update PAI-83 --status done \
-  --comment-file /tmp/closing-note.md
+  --close-note-file /tmp/closing-note.md
+
+# Search, then tag the issue you found
+paimos search "flaky session" --project PAI --limit 5
+paimos tag list
+paimos issue tag add PAI-83 --tag backend
+
+# Track work without leaving the terminal
+paimos time start PAI-83 --note "Investigating session expiry"
+paimos time stop
+paimos time list --issue PAI-83
+
+# Attach a screenshot or generated artefact to the ticket
+paimos attach PAI-83 /tmp/screenshot.png
+paimos attach list --issue PAI-83
 
 # Machine-readable output for shell pipelines
 paimos --json issue list --project PAI --status backlog
