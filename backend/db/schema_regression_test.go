@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +60,35 @@ func TestSchemaMigrationsReachLatestVersion(t *testing.T) {
 	}
 	if maxVersion != latestSchemaVersion {
 		t.Fatalf("max schema version=%d want %d", maxVersion, latestSchemaVersion)
+	}
+}
+
+func TestPerConnectionPragmasDoNotTouchJournalMode(t *testing.T) {
+	for _, pragma := range perConnectionPragmas {
+		if strings.Contains(strings.ToLower(pragma), "journal_mode") {
+			t.Fatalf("per-connection pragma %q touches journal_mode; WAL must be set once during Open", pragma)
+		}
+	}
+}
+
+func TestEnableWALModePersistsFileJournalMode(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "wal-mode.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	if err := enableWALMode(db); err != nil {
+		t.Fatalf("enable WAL: %v", err)
+	}
+	var mode string
+	if err := db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatalf("read journal_mode: %v", err)
+	}
+	if !strings.EqualFold(mode, "wal") {
+		t.Fatalf("journal_mode=%q, want wal", mode)
 	}
 }
 

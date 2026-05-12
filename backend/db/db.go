@@ -28,6 +28,11 @@ import (
 	"github.com/markus-barta/paimos/backend/brand"
 )
 
+var perConnectionPragmas = []string{
+	"PRAGMA busy_timeout=5000",
+	"PRAGMA foreign_keys=ON",
+}
+
 func init() {
 	// RegisterConnectionHook fires on every new connection in the pool —
 	// the right place for genuinely per-connection pragmas. NOT the right
@@ -40,10 +45,7 @@ func init() {
 	// at ~10–15% rate. WAL is now set once at Open(); see below.
 	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, _ string) error {
 		ctx := context.Background()
-		for _, pragma := range []string{
-			"PRAGMA busy_timeout=5000",
-			"PRAGMA foreign_keys=ON",
-		} {
+		for _, pragma := range perConnectionPragmas {
 			if _, err := conn.ExecContext(ctx, pragma, nil); err != nil {
 				return fmt.Errorf("pragma %q: %w", pragma, err)
 			}
@@ -88,7 +90,7 @@ func Open() error {
 	// SQLITE_BUSY in CI. One exec here, then every subsequent connection
 	// inherits the file's WAL mode without touching it. Test mode below
 	// can still flip to MEMORY for speed.
-	if _, err := db.ExecContext(context.Background(), "PRAGMA journal_mode=WAL"); err != nil {
+	if err := enableWALMode(db); err != nil {
 		return fmt.Errorf("enable WAL: %w", err)
 	}
 
@@ -98,6 +100,11 @@ func Open() error {
 
 	DB = db
 	return migrate(db)
+}
+
+func enableWALMode(db *sql.DB) error {
+	_, err := db.ExecContext(context.Background(), "PRAGMA journal_mode=WAL")
+	return err
 }
 
 func migrate(db *sql.DB) error {
