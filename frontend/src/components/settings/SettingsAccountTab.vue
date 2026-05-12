@@ -330,13 +330,13 @@ const newKeyScopes   = ref<Record<string, boolean>>({})
 // rule). Members see no picker — their default '*' key already grants
 // everything member-role can do.
 const canPickScopes  = computed(() =>
-  auth.user?.role === 'admin' && scopeCatalog.value.length > 0)
+  auth.isAdmin && scopeCatalog.value.length > 0)
 
 async function loadAPIKeys() {
   try { apiKeys.value = await api.get<APIKey[]>('/auth/api-keys') } catch {}
 }
 async function loadScopeCatalog() {
-  if (auth.user?.role !== 'admin') return
+  if (!auth.isAdmin) return
   try {
     const s = await api.get<{ scopes?: SchemaScope[] }>('/schema')
     scopeCatalog.value = (s.scopes ?? []).filter(x => x.required_role === 'admin')
@@ -675,9 +675,9 @@ init()
           <div v-if="recordingError" class="form-error" style="margin-top:.4rem">{{ recordingError }}</div>
         </div>
 
-        <div v-if="auth.user?.role === 'admin'" class="section-divider" style="grid-column:1/-1">Reports</div>
+        <div v-if="auth.isAdmin" class="section-divider" style="grid-column:1/-1">Reports</div>
 
-        <div v-if="auth.user?.role === 'admin'" class="pref-toggle-row" style="grid-column:1/-1">
+        <div v-if="auth.isAdmin" class="pref-toggle-row" style="grid-column:1/-1">
           <label class="pref-toggle-label" for="pref-accruals">
             <span class="pref-toggle-title">Vorräte / Projektabgrenzungen anzeigen</span>
             <span class="pref-toggle-desc">Blendet AR-Stundensummen pro Status auf den Projektkarten ein, inklusive TSV-Kopie und druckbarer Bilanz. Nur für Admins.</span>

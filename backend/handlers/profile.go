@@ -69,7 +69,7 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Accruals fields are admin-only — silently drop for non-admins
-	if user.Role != "admin" {
+	if !auth.IsAdmin(user) {
 		body.AccrualsStatsEnabled = nil
 		body.AccrualsExtraStatuses = nil
 	}

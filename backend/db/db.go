@@ -3888,14 +3888,9 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`,
 		}},
 
-		// M92 / PAI-335: per-user super-admin flag, orthogonal to the
-		// role enum. Backfills `mba` to 1 — the single super-admin on
-		// both production instances per the operator's intent. Other
-		// users default to 0; flipping the bit on another account is
-		// a deliberate SQL-level act today (PAI-336 will add a UI).
-		// The flag gates cross-user time-entry writes (and is the
-		// foundation any future super-admin-only endpoint can build
-		// on via auth.IsSuperAdmin / auth.RequireSuperAdmin).
+		// M92 / PAI-335: per-user super-admin flag. M105 promotes this
+		// into the canonical role_key='super_admin' role; the flag stays
+		// as the compatibility marker for older rows and clients.
 		{92, []string{
 			`ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0`,
 			`UPDATE users SET is_super_admin = 1 WHERE username = 'mba'`,
@@ -4500,6 +4495,55 @@ func migrate(db *sql.DB) error {
 		// Session-cookie auth is unaffected: scopes only attach to keys.
 		{104, []string{
 			`ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT '*'`,
+		}},
+
+		// M105 / PAI-336: promote super-admin from a hidden boolean to a
+		// canonical application role, while keeping the legacy columns as
+		// compatibility shims.
+		//
+		// `users.role` still carries the old enum because SQLite cannot
+		// widen its CHECK constraint in-place without rebuilding a highly
+		// referenced table. New code reads/writes `role_key`; writes also
+		// mirror back into `role` (`super_admin` -> `admin`) and
+		// `is_super_admin` so older code paths/tests continue to resolve
+		// safely during the transition.
+		//
+		// role_permissions is intentionally small and seeded: PAI-336 does
+		// not introduce dynamic custom roles, only a queryable capability
+		// registry for privileged actions.
+		{105, []string{
+			`ALTER TABLE users ADD COLUMN role_key TEXT NOT NULL DEFAULT 'member'
+				CHECK(role_key IN ('admin','member','external','super_admin'))`,
+			`UPDATE users
+			 SET role_key = CASE
+			   WHEN is_super_admin = 1 THEN 'super_admin'
+			   WHEN role IN ('admin','member','external') THEN role
+			   ELSE 'member'
+			 END`,
+			`CREATE TABLE IF NOT EXISTS role_permissions (
+				role       TEXT NOT NULL CHECK(role IN ('admin','member','external','super_admin')),
+				capability TEXT NOT NULL,
+				PRIMARY KEY(role, capability)
+			)`,
+			`INSERT OR IGNORE INTO role_permissions(role, capability) VALUES
+				('admin',       'security.super_admin_audit.read'),
+				('super_admin', 'security.super_admin_audit.read'),
+				('super_admin', 'time_entries.write_any_user'),
+				('super_admin', 'users.grant_super_admin')`,
+			`CREATE TABLE IF NOT EXISTS super_admin_audit (
+				id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				actor_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				capability     TEXT NOT NULL,
+				endpoint       TEXT NOT NULL DEFAULT '',
+				request_id     TEXT NOT NULL DEFAULT '',
+				details_json   TEXT NOT NULL DEFAULT '{}',
+				created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_created_at ON super_admin_audit(created_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_actor ON super_admin_audit(actor_user_id, created_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_target ON super_admin_audit(target_user_id, created_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_capability ON super_admin_audit(capability, created_at)`,
 		}},
 	}
 

@@ -30,6 +30,7 @@ describe('settings tab registry', () => {
   it('keeps admin tabs visible for admins', () => {
     const tabs = visibleSettingsTabs(computed(() => true).value)
     expect(tabs.some((tab) => tab.id === 'users')).toBe(true)
+    expect(tabs.some((tab) => tab.id === 'security')).toBe(true)
     expect(tabs.some((tab) => tab.id === 'ai-prompts')).toBe(true)
   })
 })

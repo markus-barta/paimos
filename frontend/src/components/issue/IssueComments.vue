@@ -79,7 +79,7 @@ async function deleteComment(comment: Comment) {
             <span class="comment-author">{{ c.author ?? 'deleted user' }}</span>
             <span class="comment-date">{{ fmtShortDateTime(c.created_at) }}</span>
             <button
-              v-if="authStore.user && (c.author_id === authStore.user.id || authStore.user.role === 'admin')"
+              v-if="authStore.user && (c.author_id === authStore.user.id || authStore.isAdmin)"
               class="comment-delete" @click="deleteComment(c)" title="Delete comment"
             ><AppIcon name="x" :size="11" /></button>
           </div>

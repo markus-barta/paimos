@@ -414,7 +414,14 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 	// ── Users ─────────────────────────────────────────────────────────────────
 	userRows, err := db.DB.Query(`
-		SELECT u.id, u.username, u.role
+		SELECT u.id, u.username,
+		       CASE
+		         WHEN u.is_super_admin = 1 THEN 'super_admin'
+		         WHEN u.role_key = 'member' AND u.role IN ('admin','external') THEN u.role
+		         WHEN u.role_key IN ('admin','member','external','super_admin') THEN u.role_key
+		         WHEN u.role IN ('admin','member','external') THEN u.role
+		         ELSE 'member'
+		       END
 		FROM search_index si
 		JOIN users u ON u.id = si.entity_id
 		WHERE si.entity_type = 'user'

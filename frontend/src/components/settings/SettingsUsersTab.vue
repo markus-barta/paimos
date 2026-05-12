@@ -13,7 +13,12 @@ import type { User } from '@/types'
 
 const auth = useAuthStore()
 
-const ROLE_OPTIONS: MetaOption[] = [{ value: 'member', label: 'Member' }, { value: 'admin', label: 'Admin' }, { value: 'external', label: 'External' }]
+const ROLE_OPTIONS: MetaOption[] = [
+  { value: 'member', label: 'Member' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'super_admin', label: 'Super admin' },
+  { value: 'external', label: 'External' },
+]
 
 const users          = ref<User[]>([])
 const usersLoaded    = ref(false)
@@ -37,6 +42,7 @@ const disablingUser     = ref(false)
 const deleteUserTarget  = ref<User | null>(null)
 const deletingUser      = ref(false)
 const isSelf = (u: User) => u.id === auth.user?.id
+const roleText = (role: User['role']) => role.replace('_', ' ').toUpperCase()
 
 // Inline nickname editing
 const nickEditId  = ref<number | null>(null)
@@ -71,7 +77,7 @@ function relativeTime(ts: string): string {
 
 const { sorted: sortedUsers, sortIndicator: userSortInd, thProps: userThProps } = useSort(users, {
   username:   { value: u => u.username,   type: 'string' },
-  role:       { value: u => u.role,       type: { order: ['admin','member','external'] } },
+  role:       { value: u => u.role,       type: { order: ['super_admin','admin','member','external'] } },
   rate:       { value: u => u.internal_rate_hourly ?? 0, type: 'number' },
   created_at: { value: u => u.created_at, type: 'date' },
 })
@@ -102,14 +108,14 @@ const addProjectId        = ref<number | null>(null)
 const addLevel            = ref<AccessLevel>('viewer')
 
 const isExternal = computed(() => membershipsTarget.value?.role === 'external')
-// Role default mirrors backend logic in ListUserMemberships: admin/member → editor, external → none.
+// Role default mirrors backend logic in ListUserMemberships: internal roles → editor, external → none.
 const roleDefault = computed<AccessLevel>(() => isExternal.value ? 'none' : 'editor')
 const roleDefaultLabel = computed(() => roleDefault.value)
 const roleHint = computed(() => {
   if (!membershipsTarget.value) return ''
   return isExternal.value
     ? 'Externals start with no access. Grant per project below.'
-    : 'Members default to editor. Use this to override per project.'
+            : 'Internal users default to editor. Use this to override per project.'
 })
 // Externals can only be None or Viewer; the Editor level is hidden for them.
 const visibleLevels = computed(() =>
@@ -330,7 +336,7 @@ loadUsers()
                 {{ u.nickname || '—' }}
               </span>
             </td>
-            <td><span class="role-label" :class="`role-${u.role}`">{{ u.role.toUpperCase() }}</span></td>
+            <td><span class="role-label" :class="`role-${u.role}`">{{ roleText(u.role) }}</span></td>
             <td>
               <span class="badge" :class="{
                 'badge-active': u.status === 'active',
@@ -579,6 +585,7 @@ loadUsers()
 .you-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: .1rem .45rem; }
 .role-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
 .role-admin    { color: #d97706; }
+.role-super_admin { color: #7c3aed; }
 .role-member   { color: var(--bp-blue); }
 .role-external { color: #dc2626; }
 .field-check { display: flex; align-items: flex-start; }

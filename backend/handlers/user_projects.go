@@ -178,7 +178,7 @@ func ListUserMemberships(w http.ResponseWriter, r *http.Request) {
 
 	// Role is needed to compute defaults for rows with no explicit grant.
 	var role string
-	if err := db.DB.QueryRow("SELECT role FROM users WHERE id=?", userID).Scan(&role); err != nil {
+	if err := db.DB.QueryRow("SELECT "+userRoleSelectExpr+" FROM users WHERE id=?", userID).Scan(&role); err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
 	}
@@ -205,7 +205,7 @@ func ListUserMemberships(w http.ResponseWriter, r *http.Request) {
 		}
 		if lvl == "" {
 			// No explicit row — apply the default for this user's role.
-			if role == "admin" || role == "member" {
+			if auth.IsInternalRole(role) {
 				m.AccessLevel = "editor"
 			} else {
 				m.AccessLevel = "none"
@@ -381,18 +381,18 @@ func ListAccessAudit(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type auditRow struct {
-		ID          int64   `json:"id"`
-		ProjectID   *int64  `json:"project_id"`
-		UserID      *int64  `json:"user_id"`
-		ActorID     *int64  `json:"actor_id"`
-		Action      string  `json:"action"`
-		OldLevel    string  `json:"old_level"`
-		NewLevel    string  `json:"new_level"`
-		CreatedAt   string  `json:"created_at"`
-		ProjectName string  `json:"project_name"`
-		ProjectKey  string  `json:"project_key"`
-		Username    string  `json:"username"`
-		ActorName   string  `json:"actor_name"`
+		ID          int64  `json:"id"`
+		ProjectID   *int64 `json:"project_id"`
+		UserID      *int64 `json:"user_id"`
+		ActorID     *int64 `json:"actor_id"`
+		Action      string `json:"action"`
+		OldLevel    string `json:"old_level"`
+		NewLevel    string `json:"new_level"`
+		CreatedAt   string `json:"created_at"`
+		ProjectName string `json:"project_name"`
+		ProjectKey  string `json:"project_key"`
+		Username    string `json:"username"`
+		ActorName   string `json:"actor_name"`
 	}
 	items := []auditRow{}
 	for rows.Next() {

@@ -28,7 +28,7 @@ import (
 // Called inline by tests that need the gate to allow.
 func promoteToSuperAdmin(t *testing.T, username string) {
 	t.Helper()
-	if _, err := db.DB.Exec(`UPDATE users SET is_super_admin=1 WHERE username=?`, username); err != nil {
+	if _, err := db.DB.Exec(`UPDATE users SET role='admin', role_key='super_admin', is_super_admin=1 WHERE username=?`, username); err != nil {
 		t.Fatalf("promote %s: %v", username, err)
 	}
 }
@@ -207,5 +207,84 @@ func TestRegression_SuperAdmin_006_AuditMarkerOnMeResponse(t *testing.T) {
 	body, _ = io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), `"is_super_admin":false`) {
 		t.Errorf("INV-SA-006 violated: /auth/me unpromoted member missing is_super_admin=false — body: %s", body)
+	}
+}
+
+func TestRegression_SuperAdmin_007_CrossUserCreateWritesQueryableAudit(t *testing.T) {
+	ts := newTestServer(t)
+	issueID := seedTestProjectAndIssue(t, ts)
+	memberID := userIDByUsername(t, "member")
+	promoteToSuperAdmin(t, "admin")
+
+	resp := ts.post(t, fmt.Sprintf("/api/issues/%d/time-entries", issueID), ts.adminCookie, map[string]any{
+		"started_at": "2026-05-01T09:00:00Z",
+		"stopped_at": "2026-05-01T10:00:00Z",
+		"user_id":    memberID,
+		"comment":    "audited cross-user create",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("cross-user create returned %d, want 201 — body: %s", resp.StatusCode, body)
+	}
+	entryID := responseID(t, resp)
+
+	var actorID, targetID int64
+	var capability, details string
+	if err := db.DB.QueryRow(`
+		SELECT actor_user_id, target_user_id, capability, details_json
+		FROM super_admin_audit
+		WHERE capability='time_entries.write_any_user'
+		ORDER BY id DESC
+		LIMIT 1
+	`).Scan(&actorID, &targetID, &capability, &details); err != nil {
+		t.Fatalf("lookup super_admin_audit: %v", err)
+	}
+	if actorID != userIDByUsername(t, "admin") || targetID != memberID {
+		t.Fatalf("audit actor/target = %d/%d, want admin/member %d/%d", actorID, targetID, userIDByUsername(t, "admin"), memberID)
+	}
+	if capability != "time_entries.write_any_user" || !strings.Contains(details, fmt.Sprintf(`"time_entry_id":%d`, entryID)) {
+		t.Fatalf("audit row missing capability/details: capability=%q details=%s", capability, details)
+	}
+
+	list := ts.get(t, "/api/super-admin-activity?limit=10", ts.adminCookie)
+	defer list.Body.Close()
+	body, _ := io.ReadAll(list.Body)
+	if list.StatusCode != http.StatusOK {
+		t.Fatalf("super-admin activity returned %d, want 200 — body: %s", list.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"capability":"time_entries.write_any_user"`) {
+		t.Fatalf("activity feed missing audit capability — body: %s", body)
+	}
+}
+
+func TestRegression_SuperAdmin_008_AdminAloneCannotCrossUserUpdateOrDelete(t *testing.T) {
+	ts := newTestServer(t)
+	issueID := seedTestProjectAndIssue(t, ts)
+
+	create := ts.post(t, fmt.Sprintf("/api/issues/%d/time-entries", issueID), ts.memberCookie, map[string]any{
+		"started_at": "2026-05-01T09:00:00Z",
+		"stopped_at": "2026-05-01T10:00:00Z",
+		"comment":    "member-owned",
+	})
+	if create.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(create.Body)
+		create.Body.Close()
+		t.Fatalf("member create returned %d, want 201 — body: %s", create.StatusCode, body)
+	}
+	entryID := responseID(t, create)
+
+	update := ts.put(t, fmt.Sprintf("/api/time-entries/%d", entryID), ts.adminCookie, map[string]any{
+		"comment": "admin tries to edit another user's entry",
+	})
+	update.Body.Close()
+	if update.StatusCode != http.StatusForbidden {
+		t.Fatalf("admin cross-user update returned %d, want 403", update.StatusCode)
+	}
+
+	del := ts.del(t, fmt.Sprintf("/api/time-entries/%d", entryID), ts.adminCookie)
+	del.Body.Close()
+	if del.StatusCode != http.StatusForbidden {
+		t.Fatalf("admin cross-user delete returned %d, want 403", del.StatusCode)
 	}
 }

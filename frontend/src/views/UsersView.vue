@@ -15,6 +15,8 @@ import type { User } from '@/types'
 const ROLE_OPTIONS: MetaOption[] = [
   { value: 'member', label: 'Member' },
   { value: 'admin',  label: 'Admin'  },
+  { value: 'super_admin', label: 'Super admin' },
+  { value: 'external', label: 'External' },
 ]
 
 const authStore = useAuthStore()
@@ -34,10 +36,11 @@ const editError  = ref('')
 const updating   = ref(false)
 
 const isSelf = (u: User) => u.id === authStore.user?.id
+const isAdminRole = (u: User) => u.role === 'admin' || u.role === 'super_admin'
 
 const { sorted: sortedUsers, sortIndicator, thProps } = useSort(users, {
   username:   { value: u => u.username,   type: 'string' },
-  role:       { value: u => u.role,       type: { order: ['admin','member'] } },
+  role:       { value: u => u.role,       type: { order: ['super_admin','admin','member','external'] } },
   created_at: { value: u => u.created_at, type: 'date' },
 })
 
@@ -123,7 +126,7 @@ async function updateUser() {
                 <span v-if="isSelf(u)" class="you-badge">you</span>
               </div>
             </td>
-            <td><span class="badge" :class="u.role === 'admin' ? 'badge-active' : 'badge-archived'">{{ u.role }}</span></td>
+            <td><span class="badge" :class="isAdminRole(u) ? 'badge-active' : 'badge-archived'">{{ u.role }}</span></td>
             <td class="date-cell">{{ u.created_at.slice(0, 10) }}</td>
             <td class="actions-cell">
               <button class="btn btn-ghost btn-sm" @click="openEdit(u)">Edit</button>

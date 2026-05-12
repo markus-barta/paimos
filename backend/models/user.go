@@ -58,10 +58,9 @@ type User struct {
 	// Accruals report preferences (migration 62) — admin-only feature
 	AccrualsStatsEnabled  bool   `json:"accruals_stats_enabled"`
 	AccrualsExtraStatuses string `json:"accruals_extra_statuses"`
-	// PAI-335: super-admin flag, orthogonal to Role. True only for the
-	// single super-admin (`mba`) per M92's backfill. Drives the user
-	// picker on the time-entry forms and the cross-user-write gate in
-	// `auth.IsSuperAdmin`. Promoted to a proper role in PAI-336.
+	// PAI-336: compatibility marker for super-admin. Role is now the
+	// canonical public value (`super_admin`), while this flag stays on
+	// the API so older clients can keep gating privileged affordances.
 	IsSuperAdmin bool `json:"is_super_admin"`
 }
 

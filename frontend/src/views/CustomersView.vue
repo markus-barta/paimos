@@ -27,7 +27,7 @@ import type { Customer, ExternalProvider } from '@/types'
 
 const auth = useAuthStore()
 const router = useRouter()
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 
 const customers = ref<Customer[]>([])
 const loading = ref(true)

@@ -18,8 +18,17 @@ package handlers
 import "github.com/markus-barta/paimos/backend/models"
 
 // userSelectCols is the full column list for the users table (bare names, for
-// direct "SELECT ... FROM users" queries).
-const userSelectCols = `id, username, role, status, created_at, nickname, first_name, last_name, email, avatar_path, markdown_default, monospace_fields, recent_projects_limit, internal_rate_hourly, show_alt_unit_table, show_alt_unit_detail, locale, recent_timers_limit, timezone, preview_hover_delay, issue_auto_refresh_enabled, issue_auto_refresh_interval_seconds, last_login_at, accruals_stats_enabled, accruals_extra_statuses, is_super_admin, search_scope_shortcut`
+// direct "SELECT ... FROM users" queries). Role reads are canonicalized through
+// role_key; role/is_super_admin remain compatibility shims.
+const userRoleSelectExpr = `CASE
+	WHEN is_super_admin = 1 THEN 'super_admin'
+	WHEN role_key = 'member' AND role IN ('admin','external') THEN role
+	WHEN role_key IN ('admin','member','external','super_admin') THEN role_key
+	WHEN role IN ('admin','member','external') THEN role
+	ELSE 'member'
+END`
+const userSuperAdminSelectExpr = `CASE WHEN ` + userRoleSelectExpr + ` = 'super_admin' OR is_super_admin = 1 THEN 1 ELSE 0 END`
+const userSelectCols = `id, username, ` + userRoleSelectExpr + `, status, created_at, nickname, first_name, last_name, email, avatar_path, markdown_default, monospace_fields, recent_projects_limit, internal_rate_hourly, show_alt_unit_table, show_alt_unit_detail, locale, recent_timers_limit, timezone, preview_hover_delay, issue_auto_refresh_enabled, issue_auto_refresh_interval_seconds, last_login_at, accruals_stats_enabled, accruals_extra_statuses, ` + userSuperAdminSelectExpr + `, search_scope_shortcut`
 
 // userSelectColsWithTOTP appends totp_enabled — used by admin list/update endpoints.
 const userSelectColsWithTOTP = userSelectCols + `, totp_enabled`

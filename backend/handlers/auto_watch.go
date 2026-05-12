@@ -207,7 +207,7 @@ func userCanViewProject(user *models.User, projectID int64) bool {
 	if user == nil {
 		return false
 	}
-	if user.Role == "admin" {
+	if auth.IsAdmin(user) {
 		return true
 	}
 	var lvl string

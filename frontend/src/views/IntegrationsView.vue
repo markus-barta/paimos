@@ -17,7 +17,7 @@ const route  = useRoute()
 const router = useRouter()
 
 // Redirect non-admins
-if (auth.user && auth.user.role !== 'admin') router.replace('/')
+if (auth.user && !auth.isAdmin) router.replace('/')
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 type TabId = 'jira' | 'mite' | 'crm' | 'ai'

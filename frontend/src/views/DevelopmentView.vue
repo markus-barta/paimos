@@ -11,7 +11,7 @@ const auth   = useAuthStore()
 const router = useRouter()
 
 // Guard: admin only
-if (auth.user && auth.user.role !== 'admin') router.replace('/')
+if (auth.user && !auth.isAdmin) router.replace('/')
 
 // ── Test reports ──────────────────────────────────────────────────────────────
 

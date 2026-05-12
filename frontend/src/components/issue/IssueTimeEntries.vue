@@ -160,7 +160,7 @@ const editingTeId = ref<number | null>(null)
 const editingTeValue = ref('')
 
 function canEditEntry(entry: TimeEntry): boolean {
-  return authStore.user?.role === 'admin' || entry.user_id === authStore.user?.id
+  return authStore.isSuperAdmin || entry.user_id === authStore.user?.id
 }
 
 function startEditDuration(entry: TimeEntry) {

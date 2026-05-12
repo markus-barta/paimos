@@ -90,7 +90,7 @@ const searchQuery = computed(() => (props.searchQueryOverride ?? searchStore.que
 
 const { formatHours, label: timeLabel, toggle: toggleTimeUnit } = useTimeUnit()
 const authStore = useAuthStore()
-const isAdmin   = computed(() => authStore.user?.role === 'admin')
+const isAdmin   = computed(() => authStore.isAdmin)
 
 const colScope = computed(() => `project-${props.projectId ?? 'global'}`)
 const { ALL_COLUMNS, isVisible, toggle: toggleCol, reset: resetCols, setFromJSON: setColsFromJSON, toJSON: colsToJSON } = useColumnConfig(colScope)

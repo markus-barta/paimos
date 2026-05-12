@@ -43,7 +43,7 @@ export interface Project {
 }
 
 const auth = useAuthStore()
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 
 const statusFilter = ref<'active' | 'archived' | 'deleted'>('active')
 const projects = ref<Project[]>([])

@@ -305,7 +305,7 @@ func DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 
 	// own-or-admin check
 	user := auth.GetUser(r)
-	if uploadedBy != user.ID && user.Role != "admin" {
+	if uploadedBy != user.ID && !auth.IsAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -461,7 +461,7 @@ func LinkAttachments(w http.ResponseWriter, r *http.Request) {
 	// who guessed a pending attachment id could hijack a paste/drop the
 	// uploader had not yet committed to an issue.
 	user := auth.GetUser(r)
-	isAdmin := user != nil && user.Role == "admin"
+	isAdmin := auth.IsAdmin(user)
 	var callerID int64
 	if user != nil {
 		callerID = user.ID

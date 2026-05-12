@@ -48,15 +48,15 @@ const (
 // generic file icon in the frontend (no preview); PDFs and images get
 // real previews. Anything not in this list → 415.
 var allowedDocumentMimes = map[string]bool{
-	"application/pdf":             true,
-	"image/png":                   true,
-	"image/jpeg":                  true,
-	"image/webp":                  true,
-	"image/svg+xml":               true,
-	"application/msword":          true,
+	"application/pdf":    true,
+	"image/png":          true,
+	"image/jpeg":         true,
+	"image/webp":         true,
+	"image/svg+xml":      true,
+	"application/msword": true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
-	"text/plain":                  true,
-	"text/markdown":               true,
+	"text/plain":    true,
+	"text/markdown": true,
 }
 
 // allowedDocumentStatuses mirrors the DB CHECK constraint so the API
@@ -368,7 +368,7 @@ func canAccessDocument(r *http.Request, d *models.Document) bool {
 	if user == nil || user.Status != "active" {
 		return false
 	}
-	if user.Role == "admin" {
+	if auth.IsAdmin(user) {
 		return true
 	}
 	if d.Scope == "project" && d.ProjectID != nil {

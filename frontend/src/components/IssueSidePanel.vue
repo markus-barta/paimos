@@ -798,7 +798,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
             <AppIcon name="chevron-down" :size="15" />
           </button>
           <button
-            v-if="issue && !readonly && authStore.user?.role === 'admin'"
+            v-if="issue && !readonly && authStore.isAdmin"
             class="sp-action-btn sp-action-btn--danger"
             @click="deleteIssue"
             title="Delete issue"
@@ -1021,7 +1021,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
                 <span class="sp-te-comment">{{ e.comment || "—" }}</span>
                 <button
                   v-if="
-                    authStore.user?.role === 'admin' ||
+                    authStore.isAdmin ||
                     e.user_id === authStore.user?.id
                   "
                   class="sp-te-del"
@@ -1279,7 +1279,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
                   <span class="sp-te-comment">{{ e.comment || "—" }}</span>
                   <button
                     v-if="
-                      authStore.user?.role === 'admin' ||
+                      authStore.isAdmin ||
                       e.user_id === authStore.user?.id
                     "
                     class="sp-te-del"

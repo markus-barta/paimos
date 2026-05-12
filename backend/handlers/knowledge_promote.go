@@ -110,7 +110,7 @@ func PromoteMemory(w http.ResponseWriter, r *http.Request) {
 	}
 	if to == "instance" {
 		// Mirror the admin gate on POST /api/instance/memory.
-		if user.Role != "admin" {
+		if !auth.IsAdmin(user) {
 			jsonError(w, "forbidden: instance scope requires admin", http.StatusForbidden)
 			return
 		}
@@ -396,4 +396,3 @@ func promoteMemoryTx(r *http.Request, mod knowledge.Module, srcID int64, srcScop
 
 	return loadOneUserOrInstanceMemoryByID(newID, mod)
 }
-

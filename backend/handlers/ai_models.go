@@ -56,7 +56,7 @@ const (
 	// Source URLs. The frontend endpoint is undocumented but exposes
 	// trending / throughput rankings that /v1/models doesn't. Treat
 	// as best-effort: failures fall back to derived rankings.
-	openRouterModelsURL  = "https://openrouter.ai/api/v1/models"
+	openRouterModelsURL       = "https://openrouter.ai/api/v1/models"
 	openRouterFrontendFindURL = "https://openrouter.ai/api/frontend/models/find"
 
 	// modelsCacheTTL is the soft-expiry of the cached snapshot. After
@@ -92,14 +92,14 @@ const (
 // orModel is the slice of /v1/models we read. Pricing fields are
 // strings ("0" / "0.00000125") in OpenRouter's contract.
 type orModel struct {
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	Description         string   `json:"description"`
-	ContextLength       int      `json:"context_length"`
-	HuggingFaceID       string   `json:"hugging_face_id"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	Description         string    `json:"description"`
+	ContextLength       int       `json:"context_length"`
+	HuggingFaceID       string    `json:"hugging_face_id"`
 	Pricing             orPricing `json:"pricing"`
-	SupportedParameters []string `json:"supported_parameters"`
-	Created             int64    `json:"created"`
+	SupportedParameters []string  `json:"supported_parameters"`
+	Created             int64     `json:"created"`
 }
 
 type orPricing struct {
@@ -164,11 +164,11 @@ type modelsResponse struct {
 		Cheapest    []pickedModel `json:"cheapest"`
 		Fastest     []pickedModel `json:"fastest"`
 	} `json:"categories"`
-	FetchedAt          time.Time `json:"fetched_at"`
-	Stale              bool      `json:"stale"`
-	FastestUnofficial  bool      `json:"fastest_unofficial"`
-	Source             string    `json:"source"`
-	UpstreamLatencyMs  int64     `json:"upstream_latency_ms"`
+	FetchedAt         time.Time `json:"fetched_at"`
+	Stale             bool      `json:"stale"`
+	FastestUnofficial bool      `json:"fastest_unofficial"`
+	Source            string    `json:"source"`
+	UpstreamLatencyMs int64     `json:"upstream_latency_ms"`
 }
 
 // modelsCache is the package-level cache. A single struct + mutex is
@@ -440,16 +440,16 @@ func pickCheapest(all []orModel) []pickedModel {
 // Anthropic models because Claude was trending that week.
 //
 // Strategy:
-//   1. Build a per-vendor candidate list from the canonical
-//      /v1/models pull (filter by frontier price floor).
-//   2. If we have trending data, RANK each vendor's list using the
-//      trending order; otherwise sort by created desc (newest first).
-//   3. Take the top 1 per vendor in a fixed order: Anthropic → OpenAI
-//      → xAI → Google. The fixed order matches industry mindshare
-//      and gives admins a consistent visual scan.
-//   4. If a vendor has no qualifying model, the slot is filled by
-//      the next-best frontier model from any vendor (so the row
-//      always renders 4 cards on a busy day).
+//  1. Build a per-vendor candidate list from the canonical
+//     /v1/models pull (filter by frontier price floor).
+//  2. If we have trending data, RANK each vendor's list using the
+//     trending order; otherwise sort by created desc (newest first).
+//  3. Take the top 1 per vendor in a fixed order: Anthropic → OpenAI
+//     → xAI → Google. The fixed order matches industry mindshare
+//     and gives admins a consistent visual scan.
+//  4. If a vendor has no qualifying model, the slot is filled by
+//     the next-best frontier model from any vendor (so the row
+//     always renders 4 cards on a busy day).
 func pickFrontierByVendor(trending, canonical []orModel) []pickedModel {
 	// Bucket canonical models by vendor; only frontier-priced are
 	// eligible.
@@ -674,7 +674,7 @@ func staticFallbackPayload(latency time.Duration) *modelsResponse {
 // handler is mounted under auth.RequireAdmin in main.go.
 func requireAdminFromCtx(r *http.Request) bool {
 	user := auth.GetUser(r)
-	return user != nil && user.Role == "admin"
+	return auth.IsAdmin(user)
 }
 
 // (kept private to avoid an unused-helper warning if tests import this

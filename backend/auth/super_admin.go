@@ -13,18 +13,11 @@
 // You should have received a copy of the GNU Affero General Public
 // License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// PAI-335 — super-admin gate.
+// PAI-336 — role helpers.
 //
-// Orthogonal to the role enum (admin / member / external). Currently
-// gates one capability: "write a time entry on behalf of another
-// user". Every code path that wants to ask the question goes through
-// IsSuperAdmin so a future swap to a proper role + capability table
-// (PAI-336) only changes one place.
-//
-// The flag is set at the database level (M92 backfills `mba` to 1).
-// There is intentionally no admin UI to grant / revoke today —
-// keeping the surface tiny is the whole point of shipping this as a
-// boolean rather than a fourth role.
+// `super_admin` is now a canonical public role. The legacy
+// is_super_admin flag remains a read/write compatibility shim so older
+// rows and older callers still resolve through the same helper methods.
 
 package auth
 
@@ -34,14 +27,53 @@ import (
 	"github.com/markus-barta/paimos/backend/models"
 )
 
-// IsSuperAdmin reports whether the given user is a super-admin.
-// Returns false for nil users so callers can safely pass GetUser(r)
-// without an explicit nil check.
+const (
+	RoleAdmin      = "admin"
+	RoleMember     = "member"
+	RoleExternal   = "external"
+	RoleSuperAdmin = "super_admin"
+)
+
+// IsValidRole reports whether role is one of the persisted public roles.
+func IsValidRole(role string) bool {
+	switch role {
+	case RoleAdmin, RoleMember, RoleExternal, RoleSuperAdmin:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsAdminRole reports whether role should pass admin-only application
+// gates. Super-admin inherits admin powers, then adds explicit
+// capability-gated powers on top.
+func IsAdminRole(role string) bool {
+	return role == RoleAdmin || role == RoleSuperAdmin
+}
+
+func IsInternalRole(role string) bool {
+	return IsAdminRole(role) || role == RoleMember
+}
+
+func LegacyRoleForPublicRole(role string) string {
+	if role == RoleSuperAdmin {
+		return RoleAdmin
+	}
+	return role
+}
+
+// IsAdmin is nil-safe for direct handler checks.
+func IsAdmin(u *models.User) bool {
+	return u != nil && IsAdminRole(u.Role)
+}
+
+// IsSuperAdmin reports whether the given user is a super-admin. It accepts
+// either the canonical role or the legacy flag.
 func IsSuperAdmin(u *models.User) bool {
 	if u == nil {
 		return false
 	}
-	return u.IsSuperAdmin
+	return u.Role == RoleSuperAdmin || u.IsSuperAdmin
 }
 
 // IsSuperAdminRequest is the convenience form for handlers that hold

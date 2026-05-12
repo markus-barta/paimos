@@ -10,7 +10,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import TagChip from '@/components/TagChip.vue'
 
 const auth = useAuthStore()
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 
 const tags        = ref<Tag[]>([])
 const tagsLoaded  = ref(false)

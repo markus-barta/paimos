@@ -134,7 +134,7 @@ async function deleteAttachment(a: Attachment) {
           <div class="attach-meta">
             <span class="attach-size">{{ formatSize(a.size_bytes) }}</span>
             <span class="attach-uploader">{{ a.uploader }}</span>
-            <button v-if="attachmentsEnabled && (authStore.user?.role === 'admin' || a.uploaded_by === authStore.user?.id)" class="attach-delete" @click="deleteAttachment(a)" title="Delete">
+            <button v-if="attachmentsEnabled && (authStore.isAdmin || a.uploaded_by === authStore.user?.id)" class="attach-delete" @click="deleteAttachment(a)" title="Delete">
               <AppIcon name="x" :size="12" />
             </button>
           </div>

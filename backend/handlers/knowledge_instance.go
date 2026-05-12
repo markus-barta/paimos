@@ -59,7 +59,7 @@ var _ = sql.ErrNoRows
 // can never silently leak instance memory writes to non-admins.
 func requireAdminUser(w http.ResponseWriter, r *http.Request) bool {
 	user := auth.GetUser(r)
-	if user == nil || user.Role != "admin" {
+	if !auth.IsAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return false
 	}
@@ -260,4 +260,3 @@ func loadOneInstanceMemoryBySlug(mod knowledge.Module, slug string) (knowledge.O
 	`, mod.Type(), slug)
 	return scanUserOrInstanceOutput(row, mod)
 }
-

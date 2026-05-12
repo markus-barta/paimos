@@ -127,7 +127,7 @@ func CreateView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Only admins can set is_admin_default
-	if body.IsAdminDefault && user.Role != "admin" {
+	if body.IsAdminDefault && !auth.IsAdmin(user) {
 		body.IsAdminDefault = false
 	}
 	if body.ColumnsJSON == "" {
@@ -176,7 +176,7 @@ func UpdateView(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "view not found", http.StatusNotFound)
 		return
 	}
-	if ownerID != user.ID && user.Role != "admin" {
+	if ownerID != user.ID && !auth.IsAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -196,10 +196,10 @@ func UpdateView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Only admins can set is_admin_default or hidden
-	if body.IsAdminDefault != nil && *body.IsAdminDefault && user.Role != "admin" {
+	if body.IsAdminDefault != nil && *body.IsAdminDefault && !auth.IsAdmin(user) {
 		body.IsAdminDefault = nil
 	}
-	if body.Hidden != nil && user.Role != "admin" {
+	if body.Hidden != nil && !auth.IsAdmin(user) {
 		body.Hidden = nil
 	}
 
@@ -246,7 +246,7 @@ func DeleteView(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "view not found", http.StatusNotFound)
 		return
 	}
-	if ownerID != user.ID && user.Role != "admin" {
+	if ownerID != user.ID && !auth.IsAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}

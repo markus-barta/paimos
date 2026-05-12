@@ -138,7 +138,7 @@ async function loadOriginatingTickets() {
 void loadOriginatingTickets()
 watch(() => props.entryId, () => loadOriginatingTickets())
 
-const canEditLinks = computed(() => auth.user?.role === 'admin')
+const canEditLinks = computed(() => auth.isAdmin)
 
 async function unlinkTicket(rel: IssueRelation) {
   if (!props.entryId) return
@@ -216,7 +216,7 @@ const promoteError = ref('')
 const canPromote = computed(
   () => props.category === 'memory' && props.currentSlug !== null && (props.projectId ?? 0) > 0,
 )
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 const currentScope = computed<MemoryScope>(() => {
   // Editor is project-rooted in v1. Future: detect user / instance
   // when the editor is reused on /users/me/memory or /instance/memory.

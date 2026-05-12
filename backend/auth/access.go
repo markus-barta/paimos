@@ -137,7 +137,7 @@ func lookup(ctx context.Context, userID, projectID int64) AccessLevel {
 
 // effectiveLevel resolves the user's access to projectID, taking role
 // defaults into account:
-//   - admin always gets editor (bypass)
+//   - admin/super-admin always get editor (bypass)
 //   - inactive/deleted users always get none
 //   - members default to editor unless an explicit row says otherwise
 //   - external users get only what's explicitly granted
@@ -148,7 +148,7 @@ func effectiveLevel(ctx context.Context, user *models.User, projectID int64) Acc
 	if user.Status != "active" {
 		return AccessNone
 	}
-	if user.Role == "admin" {
+	if IsAdmin(user) {
 		return AccessEditor
 	}
 	lvl := lookup(ctx, user.ID, projectID)
@@ -199,7 +199,7 @@ func AccessibleProjectIDs(r *http.Request) []int64 {
 	if user == nil || user.Status != "active" {
 		return []int64{}
 	}
-	if user.Role == "admin" {
+	if IsAdmin(user) {
 		return nil
 	}
 
@@ -268,7 +268,7 @@ func AccessibleProjectIDs(r *http.Request) []int64 {
 // for a newly created admin/member. External users are not seeded — they
 // must receive explicit grants via the user-memberships endpoints.
 func SeedAccessForUser(userID int64, role string) {
-	if role != "admin" && role != "member" {
+	if !IsInternalRole(role) {
 		return
 	}
 	_, err := db.DB.Exec(`
@@ -289,7 +289,13 @@ func SeedAccessForProject(projectID int64) {
 		INSERT OR IGNORE INTO project_members(user_id, project_id, access_level)
 		SELECT u.id, ?, 'editor'
 		FROM users u
-		WHERE u.role IN ('admin','member')
+		WHERE CASE
+		        WHEN u.is_super_admin = 1 THEN 'super_admin'
+		        WHEN u.role_key = 'member' AND u.role IN ('admin','external') THEN u.role
+		        WHEN u.role_key IN ('admin','member','external','super_admin') THEN u.role_key
+		        WHEN u.role IN ('admin','member','external') THEN u.role
+		        ELSE 'member'
+		      END IN ('admin','super_admin','member')
 		  AND u.status = 'active'
 	`, projectID)
 	if err != nil {
@@ -301,11 +307,11 @@ func SeedAccessForProject(projectID int64) {
 // and /auth/me responses. It lets the frontend hydrate its permission
 // cache in a single round trip instead of querying each project.
 //
-// - AllProjects is true for admins (shortcut meaning "every project").
-// - Levels maps project_id (as string, for JSON) to the effective access
-//   level the user has on that project. For members, projects without an
-//   explicit row are listed as "editor" (default). For externals, only
-//   projects with an explicit viewer/editor grant appear.
+//   - AllProjects is true for admins (shortcut meaning "every project").
+//   - Levels maps project_id (as string, for JSON) to the effective access
+//     level the user has on that project. For members, projects without an
+//     explicit row are listed as "editor" (default). For externals, only
+//     projects with an explicit viewer/editor grant appear.
 type AccessResponse struct {
 	AllProjects bool              `json:"all_projects"`
 	Levels      map[string]string `json:"levels"`
@@ -319,7 +325,7 @@ func BuildAccessResponse(user *models.User) AccessResponse {
 	if user == nil || user.Status != "active" {
 		return resp
 	}
-	if user.Role == "admin" {
+	if IsAdmin(user) {
 		resp.AllProjects = true
 		return resp
 	}

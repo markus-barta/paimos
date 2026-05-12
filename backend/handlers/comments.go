@@ -192,7 +192,7 @@ func DeleteComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isOwner := before.AuthorID != nil && *before.AuthorID == user.ID
-	if !isOwner && user.Role != "admin" {
+	if !isOwner && !auth.IsAdmin(user) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}

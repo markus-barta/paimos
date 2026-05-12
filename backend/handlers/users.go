@@ -20,6 +20,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -28,18 +29,37 @@ import (
 	"github.com/markus-barta/paimos/backend/models"
 )
 
+func normalizeUserRole(role string) (publicRole string, legacyRole string, superAdminFlag int, ok bool) {
+	publicRole = strings.TrimSpace(role)
+	if publicRole == "" {
+		publicRole = auth.RoleMember
+	}
+	if !auth.IsValidRole(publicRole) {
+		return "", "", 0, false
+	}
+	legacyRole = auth.LegacyRoleForPublicRole(publicRole)
+	if publicRole == auth.RoleSuperAdmin {
+		superAdminFlag = 1
+	}
+	return publicRole, legacyRole, superAdminFlag, true
+}
+
 func ListUsers(w http.ResponseWriter, r *http.Request) {
 	// By default only active + inactive. Pass ?status=deleted for trash.
 	status := r.URL.Query().Get("status")
-	var rows interface{ Next() bool; Scan(...any) error; Close() error }
+	var rows interface {
+		Next() bool
+		Scan(...any) error
+		Close() error
+	}
 	var err error
 	if status == "deleted" {
 		rows, err = db.DB.Query(
-			"SELECT "+userSelectColsWithTOTP+" FROM users WHERE status='deleted' ORDER BY username",
+			"SELECT " + userSelectColsWithTOTP + " FROM users WHERE status='deleted' ORDER BY username",
 		)
 	} else {
 		rows, err = db.DB.Query(
-			"SELECT "+userSelectColsWithTOTP+" FROM users WHERE status != 'deleted' ORDER BY username",
+			"SELECT " + userSelectColsWithTOTP + " FROM users WHERE status != 'deleted' ORDER BY username",
 		)
 	}
 	if err != nil {
@@ -78,6 +98,16 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	if body.Role == "" {
 		body.Role = "member"
 	}
+	publicRole, legacyRole, superAdminFlag, ok := normalizeUserRole(body.Role)
+	if !ok {
+		jsonError(w, "role must be admin, member, external, or super_admin", http.StatusBadRequest)
+		return
+	}
+	actor := auth.GetUser(r)
+	if publicRole == auth.RoleSuperAdmin && !auth.HasCapability(r.Context(), actor, auth.CapabilityUsersGrantSuperAdmin) {
+		jsonError(w, "only super-admin can grant super-admin", http.StatusForbidden)
+		return
+	}
 	mustChange := 1 // default ON
 	if body.MustChangePassword != nil && !*body.MustChangePassword {
 		mustChange = 0
@@ -89,17 +119,41 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := db.DB.Exec(
-		"INSERT INTO users(username,password,role,status,must_change_password) VALUES(?,?,?,'active',?)",
-		body.Username, hash, body.Role, mustChange,
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("CreateUser: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(r.Context(),
+		`INSERT INTO users(username,password,role,role_key,is_super_admin,status,must_change_password)
+		 VALUES(?,?,?,?,?,'active',?)`,
+		body.Username, hash, legacyRole, publicRole, superAdminFlag, mustChange,
 	)
 	if handleDBError(w, err, "username") {
 		return
 	}
 	id, _ := res.LastInsertId()
+	if publicRole == auth.RoleSuperAdmin {
+		if err := recordSuperAdminAuditTx(r.Context(), tx, r, actor, id, auth.CapabilityUsersGrantSuperAdmin, map[string]any{
+			"action": "create_user",
+			"role":   publicRole,
+		}); err != nil {
+			log.Printf("CreateUser: super-admin audit user=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("CreateUser: commit: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	// Seed editor access on all active projects for internal roles. External
 	// users are not seeded — they must be granted access explicitly.
-	auth.SeedAccessForUser(id, body.Role)
+	auth.SeedAccessForUser(id, publicRole)
 	var u models.User
 	scanUser(db.DB.QueryRow("SELECT "+userSelectCols+" FROM users WHERE id=?", id), &u)
 	w.WriteHeader(http.StatusCreated)
@@ -127,6 +181,14 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid body", http.StatusBadRequest)
 		return
 	}
+	if body.Role != nil {
+		if publicRole, _, _, ok := normalizeUserRole(*body.Role); !ok {
+			jsonError(w, "role must be admin, member, external, or super_admin", http.StatusBadRequest)
+			return
+		} else {
+			*body.Role = publicRole
+		}
+	}
 
 	if body.Status != nil {
 		s := *body.Status
@@ -147,24 +209,69 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// user's access model (member default-editor vs. external no-default),
 	// so a bare UPDATE isn't enough.
 	var oldRole string
-	if err := db.DB.QueryRow("SELECT role FROM users WHERE id=?", id).Scan(&oldRole); err != nil {
+	if err := db.DB.QueryRow("SELECT "+userRoleSelectExpr+" FROM users WHERE id=?", id).Scan(&oldRole); err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	actor := auth.GetUser(r)
+	if body.Role != nil && *body.Role != oldRole && (*body.Role == auth.RoleSuperAdmin || oldRole == auth.RoleSuperAdmin) {
+		if !auth.HasCapability(r.Context(), actor, auth.CapabilityUsersGrantSuperAdmin) {
+			jsonError(w, "only super-admin can grant or revoke super-admin", http.StatusForbidden)
+			return
+		}
+	}
 
 	if body.Username != nil || body.Role != nil || body.Status != nil || body.Nickname != nil || body.Email != nil || body.InternalRateHourly != nil || body.Locale != nil {
-		_, err = db.DB.Exec(`
+		var roleKeyArg any
+		var legacyRoleArg any
+		var superAdminArg any
+		if body.Role != nil {
+			roleKey, legacyRole, superAdminFlag, _ := normalizeUserRole(*body.Role)
+			roleKeyArg = roleKey
+			legacyRoleArg = legacyRole
+			superAdminArg = superAdminFlag
+		}
+		tx, err := db.DB.BeginTx(r.Context(), nil)
+		if err != nil {
+			log.Printf("UpdateUser: begin tx user=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+		_, err = tx.ExecContext(r.Context(), `
 			UPDATE users SET
 				username             = COALESCE(?, username),
 				role                 = COALESCE(?, role),
+				role_key             = COALESCE(?, role_key),
+				is_super_admin       = COALESCE(?, is_super_admin),
 				status               = COALESCE(?, status),
 				nickname             = COALESCE(?, nickname),
 				email                = COALESCE(?, email),
 				internal_rate_hourly = COALESCE(?, internal_rate_hourly),
 				locale               = COALESCE(?, locale)
 			WHERE id = ?
-		`, body.Username, body.Role, body.Status, body.Nickname, body.Email, body.InternalRateHourly, body.Locale, id)
+		`, body.Username, legacyRoleArg, roleKeyArg, superAdminArg, body.Status, body.Nickname, body.Email, body.InternalRateHourly, body.Locale, id)
 		if handleDBError(w, err, "user") {
+			return
+		}
+		if body.Role != nil && *body.Role != oldRole && (*body.Role == auth.RoleSuperAdmin || oldRole == auth.RoleSuperAdmin) {
+			action := "grant_super_admin"
+			if oldRole == auth.RoleSuperAdmin {
+				action = "revoke_super_admin"
+			}
+			if err := recordSuperAdminAuditTx(r.Context(), tx, r, actor, id, auth.CapabilityUsersGrantSuperAdmin, map[string]any{
+				"action":   action,
+				"old_role": oldRole,
+				"new_role": *body.Role,
+			}); err != nil {
+				log.Printf("UpdateUser: super-admin audit user=%d: %v", id, err)
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("UpdateUser: commit user=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		// PAI-320: bump the epoch only when something that affects
@@ -186,13 +293,12 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// default internal access on non-deleted projects.
 	if body.Role != nil && *body.Role != oldRole {
 		newRole := *body.Role
-		actor := auth.GetUser(r)
 		var actorID int64
 		if actor != nil {
 			actorID = actor.ID
 		}
-		wasInternal := oldRole == "admin" || oldRole == "member"
-		nowInternal := newRole == "admin" || newRole == "member"
+		wasInternal := auth.IsInternalRole(oldRole)
+		nowInternal := auth.IsInternalRole(newRole)
 		ctx := r.Context()
 		switch {
 		case wasInternal && !nowInternal:

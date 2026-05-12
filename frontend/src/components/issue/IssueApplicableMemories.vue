@@ -211,7 +211,7 @@ function memoryRoute(m: { project_id: number; slug: string }): string {
 const canEdit = computed(() => {
   // Same gate as IssueRelations: admins see edit affordances. The
   // backend rejects non-admin writes anyway, so this is purely UX.
-  return authStore.user?.role === 'admin'
+  return authStore.isAdmin
 })
 </script>
 

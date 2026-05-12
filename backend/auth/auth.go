@@ -44,21 +44,21 @@ const sessionCookie = "session"
 
 // PAI-322: 30-day sliding window with a 90-day absolute cap.
 //
-// - sessionDuration is the sliding window. Every authenticated request
-//   that finds the remaining TTL below half of this value bumps
-//   expires_at back to now+sessionDuration. So an active user never
-//   gets logged out; an inactive user is logged out 30 days after
-//   their last request.
+//   - sessionDuration is the sliding window. Every authenticated request
+//     that finds the remaining TTL below half of this value bumps
+//     expires_at back to now+sessionDuration. So an active user never
+//     gets logged out; an inactive user is logged out 30 days after
+//     their last request.
 //
-// - sessionAbsoluteLifetime is a hard ceiling measured from the row's
-//   created_at. Even a perpetually-active session is forced to
-//   re-login once it crosses this. Catches stolen-cookie risk and
-//   keeps a clean session-table when users churn devices.
+//   - sessionAbsoluteLifetime is a hard ceiling measured from the row's
+//     created_at. Even a perpetually-active session is forced to
+//     re-login once it crosses this. Catches stolen-cookie risk and
+//     keeps a clean session-table when users churn devices.
 //
-// - sessionRenewThreshold is the "below half" decision: don't UPDATE
-//   on every request — only when it earns us at least half a window.
-//   For 30d sliding, that means we write at most every ~15 days per
-//   session under normal use.
+//   - sessionRenewThreshold is the "below half" decision: don't UPDATE
+//     on every request — only when it earns us at least half a window.
+//     For 30d sliding, that means we write at most every ~15 days per
+//     session under normal use.
 //
 // The cookie's Expires attribute is set to sessionAbsoluteLifetime so
 // the browser keeps the cookie alive for the full possible lifetime
@@ -272,13 +272,23 @@ func userScanDests(u *models.User) []any {
 		&u.RecentTimersLimit, &u.Timezone, &u.PreviewHoverDelay,
 		&u.IssueAutoRefreshEnabled, &u.IssueAutoRefreshIntervalSeconds, &u.LastLoginAt,
 		&u.AccrualsStatsEnabled, &u.AccrualsExtraStatuses,
-		&u.IsSuperAdmin,           // PAI-335
-		&u.SearchScopeShortcut,    // PAI-368 / M103
+		&u.IsSuperAdmin,        // PAI-335
+		&u.SearchScopeShortcut, // PAI-368 / M103
 	}
 }
 
-// userSelectCols is the full qualified column list for the users table.
-const userSelectCols = `u.id, u.username, u.role, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.issue_auto_refresh_enabled, u.issue_auto_refresh_interval_seconds, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses, u.is_super_admin, u.search_scope_shortcut`
+// userSelectCols is the full qualified column list for the users table. Role
+// reads are canonicalized through role_key; the legacy role/is_super_admin
+// columns stay as compatibility shims.
+const userRoleSelectExpr = `CASE
+	WHEN u.is_super_admin = 1 THEN 'super_admin'
+	WHEN u.role_key = 'member' AND u.role IN ('admin','external') THEN u.role
+	WHEN u.role_key IN ('admin','member','external','super_admin') THEN u.role_key
+	WHEN u.role IN ('admin','member','external') THEN u.role
+	ELSE 'member'
+END`
+const userSuperAdminSelectExpr = `CASE WHEN ` + userRoleSelectExpr + ` = 'super_admin' OR u.is_super_admin = 1 THEN 1 ELSE 0 END`
+const userSelectCols = `u.id, u.username, ` + userRoleSelectExpr + `, u.status, u.created_at, u.nickname, u.first_name, u.last_name, u.email, u.avatar_path, u.markdown_default, u.monospace_fields, u.recent_projects_limit, u.internal_rate_hourly, u.show_alt_unit_table, u.show_alt_unit_detail, u.locale, u.recent_timers_limit, u.timezone, u.preview_hover_delay, u.issue_auto_refresh_enabled, u.issue_auto_refresh_interval_seconds, u.last_login_at, u.accruals_stats_enabled, u.accruals_extra_statuses, ` + userSuperAdminSelectExpr + `, u.search_scope_shortcut`
 
 // sessionRecord is the full row needed to make slide / cap / surface
 // decisions in Middleware. Times are parsed from the SQLite TEXT
@@ -581,7 +591,7 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := GetUser(r)
-		if user == nil || user.Role != "admin" {
+		if !IsAdmin(user) {
 			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 			return
 		}
@@ -609,7 +619,7 @@ func RequirePortalAccess(next http.Handler) http.Handler {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		if user.Role != "external" && user.Role != "admin" {
+		if user.Role != "external" && !IsAdmin(user) {
 			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 			return
 		}

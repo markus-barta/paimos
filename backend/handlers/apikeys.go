@@ -171,7 +171,7 @@ func DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	// Only delete own keys (admins may delete any)
 	var query string
 	var args []any
-	if user.Role == "admin" {
+	if auth.IsAdmin(user) {
 		query = "DELETE FROM api_keys WHERE id = ?"
 		args = []any{id}
 	} else {
@@ -191,5 +191,3 @@ func DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	log.Printf("audit: api_key_deleted username=%q key_id=%d", user.Username, id)
 	w.WriteHeader(http.StatusNoContent)
 }
-
-

@@ -498,6 +498,7 @@ func main() {
 
 			// Access-change audit log (admin only).
 			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
+			r.With(auth.RequireAdmin, auth.RequireCapability(auth.CapabilitySuperAdminAuditRead)).Get("/super-admin-activity", handlers.ListSuperAdminActivity)
 
 			// Incident log (PAI-116). Admin-only CRUD + JSON/CSV export
 			// for SIEM ingestion. Export route is registered before

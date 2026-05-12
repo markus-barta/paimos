@@ -35,7 +35,7 @@ import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 
 const customerId = computed(() => Number(route.params.id))
 

@@ -11,6 +11,7 @@ import SettingsTrashTab from "@/components/settings/SettingsTrashTab.vue";
 import SettingsPermissionsTab from "@/components/settings/SettingsPermissionsTab.vue";
 import SettingsAIPromptsTab from "@/components/settings/SettingsAIPromptsTab.vue";
 import SettingsSystemTab from "@/components/settings/SettingsSystemTab.vue";
+import SettingsSecurityTab from "@/components/settings/SettingsSecurityTab.vue";
 
 export type SettingsTab =
   | "account"
@@ -18,6 +19,7 @@ export type SettingsTab =
   | "appearance"
   | "users"
   | "permissions"
+  | "security"
   | "sprints"
   | "views"
   | "ai-prompts"
@@ -44,6 +46,12 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
     label: "Permissions",
     adminOnly: true,
     component: SettingsPermissionsTab,
+  },
+  {
+    id: "security",
+    label: "Security",
+    adminOnly: true,
+    component: SettingsSecurityTab,
   },
   {
     id: "sprints",

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 104
+const latestSchemaVersion = 105
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -110,6 +110,8 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"project_agents",
 		"project_environments",
 		"project_deploy_recipes",
+		"role_permissions",
+		"super_admin_audit",
 	} {
 		if !tableExists(t, db, table) {
 			t.Fatalf("expected table %s to exist", table)
@@ -138,6 +140,9 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "users", "issue_auto_refresh_interval_seconds") {
 		t.Fatal("expected users.issue_auto_refresh_interval_seconds to exist")
+	}
+	if !columnExists(t, db, "users", "role_key") {
+		t.Fatal("expected users.role_key to exist (PAI-336 / M105)")
 	}
 	// PAI-324 / M93 — agent + session attribution on history snapshots.
 	if !columnExists(t, db, "issue_history", "agent_name") {
@@ -234,6 +239,11 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_issues_type_slug_project",
 		// PAI-345 / M99 — user-scoped knowledge lookups.
 		"idx_issues_user_type",
+		// PAI-336 / M105 — queryable privileged-action audit feed.
+		"idx_super_admin_audit_created_at",
+		"idx_super_admin_audit_actor",
+		"idx_super_admin_audit_target",
+		"idx_super_admin_audit_capability",
 	} {
 		found, err := SchemaHasIndex(db, index)
 		if err != nil {
@@ -241,6 +251,27 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("expected index %s to exist", index)
+		}
+	}
+}
+
+func TestSchemaSeedsSuperAdminCapabilities(t *testing.T) {
+	db := openTestDB(t)
+	for _, row := range []struct {
+		role       string
+		capability string
+	}{
+		{"admin", "security.super_admin_audit.read"},
+		{"super_admin", "security.super_admin_audit.read"},
+		{"super_admin", "time_entries.write_any_user"},
+		{"super_admin", "users.grant_super_admin"},
+	} {
+		var found int
+		if err := db.QueryRow(
+			"SELECT 1 FROM role_permissions WHERE role=? AND capability=?",
+			row.role, row.capability,
+		).Scan(&found); err != nil {
+			t.Fatalf("expected role_permissions row (%s, %s): %v", row.role, row.capability, err)
 		}
 	}
 }

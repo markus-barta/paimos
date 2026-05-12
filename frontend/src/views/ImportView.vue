@@ -15,7 +15,7 @@ const auth   = useAuthStore()
 const router = useRouter()
 
 // Redirect non-admins
-if (auth.user && auth.user.role !== 'admin') router.replace('/')
+if (auth.user && !auth.isAdmin) router.replace('/')
 
 // ── Jira connection status ────────────────────────────────────────────────────
 const jiraConfigured = ref(false)

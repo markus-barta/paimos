@@ -557,7 +557,7 @@ export interface Sprint {
 export interface User {
   id: number
   username: string
-  role: 'admin' | 'member' | 'external'
+  role: 'admin' | 'member' | 'external' | 'super_admin'
   status: 'active' | 'inactive' | 'deleted'
   nickname: string
   first_name: string
@@ -579,9 +579,8 @@ export interface User {
   last_login_at: string | null
   created_at: string
   totp_enabled: boolean
-  // PAI-335: super-admin flag, orthogonal to role. Drives the user
-  // picker on the time-entry create form. Promoted to a proper role
-  // in PAI-336.
+  // PAI-336: compatibility flag. The canonical public role is now
+  // `super_admin`; this remains for older clients and cautious UI gates.
   is_super_admin: boolean
 }
 

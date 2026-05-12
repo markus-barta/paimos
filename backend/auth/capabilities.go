@@ -15,6 +15,20 @@
 
 package auth
 
+import (
+	"context"
+	"net/http"
+
+	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/models"
+)
+
+const (
+	CapabilitySuperAdminAuditRead  = "security.super_admin_audit.read"
+	CapabilityTimeEntriesWriteAny  = "time_entries.write_any_user"
+	CapabilityUsersGrantSuperAdmin = "users.grant_super_admin"
+)
+
 // Capability describes a single action that can be performed within a
 // project, annotated with which access levels unlock it. Used by the
 // /api/permissions/matrix endpoint to render the permissions settings
@@ -102,4 +116,35 @@ var Capabilities = []Capability{
 		Description: "Change per-project access levels for other users.",
 		Viewer:      false, Editor: false, Admin: true,
 	},
+}
+
+// HasCapability checks the role_permissions registry seeded by M105. A
+// legacy is_super_admin=true row resolves as the canonical super_admin role.
+func HasCapability(ctx context.Context, user *models.User, capability string) bool {
+	if user == nil || user.Status != "active" || capability == "" {
+		return false
+	}
+	role := user.Role
+	if IsSuperAdmin(user) {
+		role = RoleSuperAdmin
+	}
+	var ok int
+	err := db.DB.QueryRowContext(ctx, `
+		SELECT 1 FROM role_permissions
+		WHERE role = ? AND capability = ?
+		LIMIT 1
+	`, role, capability).Scan(&ok)
+	return err == nil && ok == 1
+}
+
+func RequireCapability(capability string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !HasCapability(r.Context(), GetUser(r), capability) {
+				http.Error(w, `{"error":"forbidden: capability `+capability+` required"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

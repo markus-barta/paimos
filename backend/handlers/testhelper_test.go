@@ -301,6 +301,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Delete("/users/{id}/memberships/{projectId}", handlers.DeleteUserMembership)
 			r.Get("/permissions/matrix", handlers.GetPermissionsMatrix)
 			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
+			r.With(auth.RequireAdmin, auth.RequireCapability(auth.CapabilitySuperAdminAuditRead)).Get("/super-admin-activity", handlers.ListSuperAdminActivity)
 			r.With(auth.RequireAdmin).Get("/sessions/{id}/activity", handlers.GetSessionActivity)
 
 			r.Get("/auth/api-keys", handlers.ListAPIKeys)

@@ -66,10 +66,10 @@ type portalIssue struct {
 }
 
 type portalSummary struct {
-	TotalIssues  int      `json:"total_issues"`
-	ByStatus     map[string]int `json:"by_status"`
-	TotalEstEur  *float64 `json:"total_estimate_eur"`
-	TotalArEur   *float64 `json:"total_ar_eur"`
+	TotalIssues int            `json:"total_issues"`
+	ByStatus    map[string]int `json:"by_status"`
+	TotalEstEur *float64       `json:"total_estimate_eur"`
+	TotalArEur  *float64       `json:"total_ar_eur"`
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ func PortalListProjects(w http.ResponseWriter, r *http.Request) {
 	var query string
 	var args []any
 
-	if user.Role == "admin" {
+	if auth.IsAdmin(user) {
 		query = `
 			SELECT p.id, p.key, p.name, p.description, p.status,
 			       COALESCE(p.logo_path, ''),

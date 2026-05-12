@@ -160,7 +160,7 @@ function splitByDirection(rels: IssueRelation[]) {
             {{ r.target_key || r.target_id }}
           </RouterLink>
           <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
-          <button v-if="authStore.user?.role === 'admin'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+          <button v-if="authStore.isAdmin" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
         </div>
       </div>
     </div>
@@ -172,7 +172,7 @@ function splitByDirection(rels: IssueRelation[]) {
             {{ r.target_key || r.target_id }}
           </RouterLink>
           <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
-          <button v-if="authStore.user?.role === 'admin'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+          <button v-if="authStore.isAdmin" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
         </div>
       </div>
     </div>
@@ -186,7 +186,7 @@ function splitByDirection(rels: IssueRelation[]) {
                 {{ r.target_key || r.target_id }}
               </RouterLink>
               <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
-              <button v-if="authStore.user?.role === 'admin' && r.direction !== 'incoming'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+              <button v-if="authStore.isAdmin && r.direction !== 'incoming'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
             </div>
           </div>
         </div>

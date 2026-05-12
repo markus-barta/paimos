@@ -1145,7 +1145,7 @@ async function cancelEdit() {
               "
             />
             <button
-              v-if="authStore.user?.role === 'admin'"
+              v-if="authStore.isAdmin"
               class="btn btn-danger"
               @click="deleteIssue"
             >
@@ -1194,7 +1194,7 @@ async function cancelEdit() {
               "
             />
             <button
-              v-if="authStore.user?.role === 'admin'"
+              v-if="authStore.isAdmin"
               class="btn btn-danger"
               @click="deleteIssue"
             >

@@ -50,6 +50,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 )
 
@@ -185,27 +186,27 @@ func RecordUsage(userID int64, promptTokens, completionTokens int) {
 // aiUsageRow is one entry in the per-user list returned by the
 // admin endpoint.
 type aiUsageRow struct {
-	UserID            int64  `json:"user_id"`
-	Username          string `json:"username"`
-	IsAdmin           bool   `json:"is_admin"`
-	PromptTokens      int64  `json:"prompt_tokens"`
-	CompletionTokens  int64  `json:"completion_tokens"`
-	RequestCount      int64  `json:"request_count"`
-	CapEffective      int64  `json:"cap_effective"`
-	CapOverride       *int64 `json:"cap_override"`
-	OverCap           bool   `json:"over_cap"`
+	UserID           int64  `json:"user_id"`
+	Username         string `json:"username"`
+	IsAdmin          bool   `json:"is_admin"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	RequestCount     int64  `json:"request_count"`
+	CapEffective     int64  `json:"cap_effective"`
+	CapOverride      *int64 `json:"cap_override"`
+	OverCap          bool   `json:"over_cap"`
 }
 
 // aiUsageResponse is the body served at GET /api/ai/usage. Day is
 // the UTC bucket the rows belong to; the SPA renders it next to
 // the totals so admins know which timezone they're seeing.
 type aiUsageResponse struct {
-	Day              string       `json:"day"`
-	DefaultCap       int64        `json:"default_cap"`
-	OrgPromptTokens  int64        `json:"org_prompt_tokens"`
-	OrgCompletionTokens int64     `json:"org_completion_tokens"`
-	OrgRequestCount  int64        `json:"org_request_count"`
-	Users            []aiUsageRow `json:"users"`
+	Day                 string       `json:"day"`
+	DefaultCap          int64        `json:"default_cap"`
+	OrgPromptTokens     int64        `json:"org_prompt_tokens"`
+	OrgCompletionTokens int64        `json:"org_completion_tokens"`
+	OrgRequestCount     int64        `json:"org_request_count"`
+	Users               []aiUsageRow `json:"users"`
 }
 
 // AIUsage handles GET /api/ai/usage — admin-only summary.
@@ -222,7 +223,15 @@ func AIUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const q = `
-SELECT u.id, u.username, u.role, u.ai_cap_override_tokens,
+SELECT u.id, u.username,
+       CASE
+         WHEN u.is_super_admin = 1 THEN 'super_admin'
+         WHEN u.role_key = 'member' AND u.role IN ('admin','external') THEN u.role
+         WHEN u.role_key IN ('admin','member','external','super_admin') THEN u.role_key
+         WHEN u.role IN ('admin','member','external') THEN u.role
+         ELSE 'member'
+       END,
+       u.ai_cap_override_tokens,
        COALESCE(au.prompt_tokens, 0)     AS pt,
        COALESCE(au.completion_tokens, 0) AS ct,
        COALESCE(au.request_count, 0)     AS rc
@@ -246,7 +255,7 @@ ORDER BY (COALESCE(au.prompt_tokens, 0) + COALESCE(au.completion_tokens, 0)) DES
 			log.Printf("ai_usage: scan: %v", err)
 			continue
 		}
-		row.IsAdmin = role == "admin"
+		row.IsAdmin = auth.IsAdminRole(role)
 		if override.Valid {
 			v := override.Int64
 			row.CapOverride = &v

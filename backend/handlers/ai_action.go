@@ -199,7 +199,7 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		userID = user.ID
 	}
-	isAdmin := user != nil && user.Role == "admin"
+	isAdmin := auth.IsAdmin(user)
 	requestID := newAIRequestID()
 	var userIDPtr *int64
 	if user != nil {
@@ -225,12 +225,12 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	if ok, _, _, bypass := CheckUsageCap(userID, isAdmin); !ok {
 		auditAction(requestID, userID, "", "", "", 0, "", "bad_request", 0, 0, 0)
 		recordAICall(r.Context(), aiCallArgs{
-			RequestID: requestID,
-			UserID:    userIDPtr,
-			ActionKey: "",
-			Surface:   "",
-			Outcome:   "bad_request",
-			ErrorClass:"usage_cap",
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "",
+			Surface:    "",
+			Outcome:    "bad_request",
+			ErrorClass: "usage_cap",
 		})
 		jsonError(w, "Daily AI limit reached. Ask an admin to raise the cap.", http.StatusTooManyRequests)
 		return
@@ -243,12 +243,12 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ai_action: load settings: %v", err)
 		auditAction(requestID, userID, "", "", "", 0, "", "cfg_load_fail", 0, 0, 0)
 		recordAICall(r.Context(), aiCallArgs{
-			RequestID: requestID,
-			UserID:    userIDPtr,
-			ActionKey: "",
-			Surface:   "",
-			Outcome:   "cfg_load_fail",
-			ErrorClass:"settings_load",
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "",
+			Surface:    "",
+			Outcome:    "cfg_load_fail",
+			ErrorClass: "settings_load",
 		})
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
@@ -272,14 +272,14 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		auditAction(requestID, userID, "", "", "", 0, settings.Model, "bad_request", 0, 0, 0)
 		recordAICall(r.Context(), aiCallArgs{
-			RequestID: requestID,
-			UserID:    userIDPtr,
-			ActionKey: "",
-			Surface:   "",
-			Provider:  settings.Provider,
-			Model:     settings.Model,
-			Outcome:   "bad_request",
-			ErrorClass:"json_decode",
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  "",
+			Surface:    "",
+			Provider:   settings.Provider,
+			Model:      settings.Model,
+			Outcome:    "bad_request",
+			ErrorClass: "json_decode",
 		})
 		jsonError(w, "invalid JSON body", http.StatusBadRequest)
 		return
@@ -292,15 +292,15 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0)
 		recordAICall(r.Context(), aiCallArgs{
-			RequestID: requestID,
-			UserID:    userIDPtr,
-			ActionKey: body.Action,
-			SubAction: body.SubAction,
-			Surface:   "",
-			Provider:  settings.Provider,
-			Model:     settings.Model,
-			Outcome:   "bad_request",
-			ErrorClass:"unknown_action",
+			RequestID:  requestID,
+			UserID:     userIDPtr,
+			ActionKey:  body.Action,
+			SubAction:  body.SubAction,
+			Surface:    "",
+			Provider:   settings.Provider,
+			Model:      settings.Model,
+			Outcome:    "bad_request",
+			ErrorClass: "unknown_action",
 		})
 		jsonError(w, "unknown action: "+body.Action, http.StatusBadRequest)
 		return

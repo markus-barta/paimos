@@ -44,7 +44,7 @@ const { init: initKeyboardShortcuts } = useKeyboardShortcuts(appHeaderRef)
 initKeyboardShortcuts()
 
 // ── Local state ──────────────────────────────────────────────────────────────
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 const show2FAWarning = computed(() => auth.checked && !!auth.user && auth.totpChecked && !auth.totpEnabled)
 
 function isActive(path: string) {
@@ -188,7 +188,7 @@ onMounted(() => {
           <RouterLink to="/reporting" :class="['nav-item', { active: isActive('/reporting') }]" :title="isExpanded ? '' : 'Reporting'">
             <AppIcon name="bar-chart-2" /><span class="sl">Reporting</span>
           </RouterLink>
-          <RouterLink v-if="auth.user?.role === 'admin'" to="/integrations" :class="['nav-item', { active: isActive('/integrations') }]" :title="isExpanded ? '' : 'Integrations'">
+          <RouterLink v-if="auth.isAdmin" to="/integrations" :class="['nav-item', { active: isActive('/integrations') }]" :title="isExpanded ? '' : 'Integrations'">
             <AppIcon name="plug" /><span class="sl">Integrations</span>
           </RouterLink>
         </nav>

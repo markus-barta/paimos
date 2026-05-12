@@ -98,14 +98,14 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// PAI-335: decide whose entry this is. Default = caller. A super-
-	// admin can pass any user_id; anyone else passing a foreign id is
-	// denied even if the field's value would have been a no-op
-	// (paranoia: never silently accept a bad client request).
+	// PAI-336: decide whose entry this is. Default = caller. A caller
+	// with time_entries.write_any_user can pass any user_id; anyone else
+	// passing a foreign id is denied even if the field's value would have
+	// been a no-op.
 	targetUserID := caller.ID
 	crossUser := false
 	if body.UserID != nil && *body.UserID != caller.ID {
-		if !auth.IsSuperAdmin(caller) {
+		if !auth.HasCapability(r.Context(), caller, auth.CapabilityTimeEntriesWriteAny) {
 			jsonError(w, "only super-admin can create time entries for other users", http.StatusForbidden)
 			return
 		}
@@ -170,6 +170,17 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if crossUser {
+		if err := recordSuperAdminAuditTx(r.Context(), tx, r, caller, targetUserID, auth.CapabilityTimeEntriesWriteAny, map[string]any{
+			"action":        "time_entry_create",
+			"time_entry_id": id,
+			"issue_id":      ticketID,
+		}); err != nil {
+			log.Printf("CreateTimeEntry: super-admin audit id=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		log.Printf("CreateTimeEntry: commit: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -179,17 +190,6 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	if entry == nil {
 		jsonError(w, "not found after insert", http.StatusInternalServerError)
 		return
-	}
-	// PAI-335: structured audit line for the cross-user case. Same
-	// shape as the auth audit lines (login_ok / login_failed / …) so
-	// operators can grep for `super_admin_act` to find every
-	// privileged action across the deployment. PAI-336 will replace
-	// this with a queryable mutation_log entry + dashboard.
-	if crossUser {
-		log.Printf(
-			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_create target_user_id=%d entry_id=%d issue_id=%d",
-			caller.ID, caller.Username, targetUserID, id, ticketID,
-		)
 	}
 	// Re-evaluate system tags if this entry has hours (stopped or override)
 	if body.StoppedAt != nil || body.Override != nil {
@@ -208,10 +208,8 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// own-or-admin check (PAI-335: super-admin is always allowed too,
-	// even though admin already covers it today — keeps the gate
-	// explicit so a future role-cascade refactor that narrows admin
-	// can't quietly take this away).
+	// Own-entry edits stay self-service. Cross-user edits require the
+	// explicit super-admin capability; regular admin is not enough.
 	user := auth.GetUser(r)
 	if user == nil {
 		jsonError(w, "unauthorized", http.StatusUnauthorized)
@@ -248,7 +246,7 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isOwner := before.UserID == user.ID
-	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
+	if !isOwner && !auth.HasCapability(r.Context(), user, auth.CapabilityTimeEntriesWriteAny) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -303,6 +301,17 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if crossUser {
+		if err := recordSuperAdminAuditTx(r.Context(), tx, r, user, before.UserID, auth.CapabilityTimeEntriesWriteAny, map[string]any{
+			"action":        "time_entry_update",
+			"time_entry_id": id,
+			"issue_id":      before.IssueID,
+		}); err != nil {
+			log.Printf("UpdateTimeEntry: super-admin audit id=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		log.Printf("UpdateTimeEntry: commit: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -313,14 +322,6 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	if entry == nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
-	}
-	// PAI-335: stamp every cross-user write so a paper-trail grep
-	// surfaces every privileged action.
-	if crossUser {
-		log.Printf(
-			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_update target_user_id=%d entry_id=%d issue_id=%d",
-			user.ID, user.Username, before.UserID, id, entry.IssueID,
-		)
 	}
 	// Re-evaluate system tags (timer stopped or override changed)
 	EvaluateSystemTags(entry.IssueID)
@@ -336,7 +337,8 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// own-or-admin check (PAI-335: super-admin too — see UpdateTimeEntry).
+	// Own-entry deletes stay self-service. Cross-user deletes require the
+	// explicit super-admin capability; regular admin is not enough.
 	user := auth.GetUser(r)
 	if user == nil {
 		jsonError(w, "unauthorized", http.StatusUnauthorized)
@@ -362,7 +364,7 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isOwner := before.UserID == user.ID
-	if !isOwner && user.Role != "admin" && !auth.IsSuperAdmin(user) {
+	if !isOwner && !auth.HasCapability(r.Context(), user, auth.CapabilityTimeEntriesWriteAny) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -406,17 +408,21 @@ func DeleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if crossUser {
+		if err := recordSuperAdminAuditTx(r.Context(), tx, r, user, before.UserID, auth.CapabilityTimeEntriesWriteAny, map[string]any{
+			"action":        "time_entry_delete",
+			"time_entry_id": id,
+			"issue_id":      before.IssueID,
+		}); err != nil {
+			log.Printf("DeleteTimeEntry: super-admin audit id=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		log.Printf("DeleteTimeEntry: commit: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
-	}
-	// PAI-335: paper-trail.
-	if crossUser {
-		log.Printf(
-			"audit: super_admin_act actor_id=%d actor=%q action=time_entry_delete target_user_id=%d entry_id=%d issue_id=%d",
-			user.ID, user.Username, before.UserID, id, before.IssueID,
-		)
 	}
 	// Re-evaluate system tags after time entry removal
 	EvaluateSystemTags(before.IssueID)

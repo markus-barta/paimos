@@ -84,7 +84,7 @@ const router    = useRouter()
 const auth      = useAuthStore()
 const search    = useSearchStore()
 const issueRefreshPrompt = useIssueRefreshPromptStore()
-const isAdmin   = computed(() => auth.user?.role === 'admin')
+const isAdmin   = computed(() => auth.isAdmin)
 const projectId = computed(() => Number(route.params.id))
 // Whether the current user can edit inside this project — admins and
 // project editors pass, viewers fall through to read-only rendering.

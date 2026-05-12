@@ -1503,7 +1503,7 @@ func Test_SystemTagAtRisk(t *testing.T) {
 		json.Unmarshal(body, &entries)
 		// Delete all but one
 		for i := 1; i < len(entries); i++ {
-			ts.del(t, fmt.Sprintf("/api/time-entries/%d", entries[i].ID), ts.adminCookie)
+			ts.del(t, fmt.Sprintf("/api/time-entries/%d", entries[i].ID), ts.memberCookie)
 		}
 		if hasAtRisk() {
 			t.Error("issue should NOT have At Risk tag after deleting entries below threshold")

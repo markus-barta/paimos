@@ -362,12 +362,15 @@ all are operator-visible via the API or admin UI.
 | M89       | `sessions.created_at`           | PAI-322  | Anchors the 90-day absolute lifetime cap independent of the sliding `expires_at`.                                       |
 | M90       | `users.permissions_epoch`       | PAI-320  | Counter bumped on role / membership / status change. Surfaced as `X-Permissions-Epoch`; mismatch invalidates sessions. |
 | M91       | `users.must_change_password`    | PAI-321  | Force-password-change gate. Default `1` for new users; cleared on first successful `POST /auth/password`.              |
-| M92       | `users.is_super_admin`          | PAI-335  | Narrow boolean orthogonal to `users.role`. Today gates only the time-entry on-behalf surface; PAI-336 will widen it.   |
+| M92       | `users.is_super_admin`          | PAI-335  | Compatibility boolean for legacy super-admin reads.                                                                    |
+| M105      | `users.role_key`                | PAI-336  | Canonical public role enum: `admin`, `member`, `external`, `super_admin`; writes mirror into legacy `role`/flag.       |
 
 `sessions` is touched on every authenticated write — keep changes
-additive. The `users.role` enum is not yet promoted to include
-`super_admin` (that's PAI-336); the boolean is the deliberate
-short-term shape.
+additive. `users.role` keeps the older SQLite CHECK constraint as a
+compatibility shim; application code reads `users.role_key`.
+
+PAI-336 also adds `role_permissions` for seeded role capability checks
+and `super_admin_audit` for queryable privileged-action traceability.
 
 ---
 

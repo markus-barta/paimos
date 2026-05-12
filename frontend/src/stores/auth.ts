@@ -26,7 +26,7 @@ import { useSearchStore } from '@/stores/search'
 export interface User {
   id: number
   username: string
-  role: 'admin' | 'member' | 'external'
+  role: 'admin' | 'member' | 'external' | 'super_admin'
   created_at: string
   // Profile fields (migration 25)
   nickname:    string
@@ -63,9 +63,8 @@ export interface User {
   // Accruals report preferences (migration 62) — admin-only feature
   accruals_stats_enabled: boolean
   accruals_extra_statuses: string
-  // PAI-335: super-admin flag, orthogonal to role. Drives the user
-  // picker on the time-entry create form. Promoted to a proper role
-  // in PAI-336.
+  // PAI-336: compatibility flag. The canonical public role is now
+  // `super_admin`; this remains for older clients and cautious UI gates.
   is_super_admin: boolean
 }
 
@@ -134,11 +133,8 @@ export const useAuthStore = defineStore('auth', () => {
     return accessibleProjects.value.get(projectId) === 'editor'
   }
 
-  // PAI-335: orthogonal to role. The single super-admin (`mba` per
-  // the M92 backfill) gets the user picker on the time-entry form.
-  // Components branch on this rather than reading user.value
-  // directly so they don't have to nil-check on every read.
-  const isSuperAdmin = computed(() => !!user.value?.is_super_admin)
+  const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'super_admin')
+  const isSuperAdmin = computed(() => user.value?.role === 'super_admin' || !!user.value?.is_super_admin)
 
   async function fetchMe() {
     try {
@@ -284,6 +280,7 @@ export const useAuthStore = defineStore('auth', () => {
     hydrateAccess,
     canView,
     canEdit,
+    isAdmin,
     isSuperAdmin,
     fetchTOTPStatus,
     setTOTPEnabled,

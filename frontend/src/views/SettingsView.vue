@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsTabs } from '@/composables/useSettingsTabs'
 
 const auth    = useAuthStore()
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.isAdmin)
 const { tabs, activeTab, activeTabDef, activeTabProps, setTab } = useSettingsTabs(isAdmin)
 </script>
 

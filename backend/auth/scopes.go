@@ -161,7 +161,7 @@ func ValidateScopesForRole(s ScopeSet, role string) error {
 		if !ok {
 			return fmt.Errorf("unknown scope %q", name)
 		}
-		if def.RequiredRole == "admin" && role != "admin" {
+		if def.RequiredRole == "admin" && !IsAdminRole(role) {
 			return fmt.Errorf("scope %q requires admin role", name)
 		}
 	}
