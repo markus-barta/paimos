@@ -77,8 +77,11 @@ func retrieveProjectContextHits(projectID int64, q string, k int) ([]map[string]
 		hits = fuseProjectContextRRF(k, hits, expanded)
 	}
 	meta := map[string]any{
-		"fusion": "rrf",
-		"k":      k,
+		"fusion":             "rrf",
+		"k":                  k,
+		"embedding_model":    projectContextEmbeddingModel,
+		"embedding_indexing": "async",
+		"vector_index":       "bruteforce-fallback",
 		"stages": map[string]int{
 			"issue_lexical":   len(issueHits),
 			"context_lexical": len(contextHits),
@@ -616,6 +619,7 @@ func replaceProjectAnchors(projectID int64, body anchorIngestRequest) (map[strin
 	if err := tx.Commit(); err != nil {
 		return nil, &userError{msg: "commit failed", status: 500}
 	}
+	enqueueProjectContextEmbeddingIndex(projectID)
 	return map[string]any{
 		"repo_id":        body.RepoID,
 		"replaced":       len(inserts),

@@ -6,18 +6,22 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"math"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/markus-barta/paimos/backend/db"
 )
 
 const (
-	projectContextEmbeddingModel = "local-hash-v1"
-	projectContextEmbeddingDim   = 256
+	projectContextEmbeddingModel      = "local-hash-v1"
+	projectContextEmbeddingDim        = 256
+	projectContextEmbeddingDebounce   = 150 * time.Millisecond
+	projectContextEmbeddingRetryDelay = 100 * time.Millisecond
 )
 
 var embeddingTokenPattern = regexp.MustCompile(`[A-Za-z0-9_./:-]+`)
@@ -30,14 +34,29 @@ type retrievalDoc struct {
 	Hit        map[string]any
 }
 
+type projectContextEmbeddingIndexState struct {
+	mu      sync.Mutex
+	queued  map[int64]bool
+	running map[int64]bool
+	rerun   map[int64]bool
+}
+
+var (
+	projectContextEmbeddingQueue      = make(chan int64, 128)
+	projectContextEmbeddingWorkerOnce sync.Once
+	projectContextEmbeddingState      = projectContextEmbeddingIndexState{
+		queued:  map[int64]bool{},
+		running: map[int64]bool{},
+		rerun:   map[int64]bool{},
+	}
+)
+
 func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[string]any, error) {
 	docs, err := collectProjectRetrievalDocs(projectID)
 	if err != nil {
 		return nil, err
 	}
-	if err := syncProjectContextEmbeddings(projectID, docs); err != nil {
-		return nil, err
-	}
+	enqueueProjectContextEmbeddingIndex(projectID)
 	docByKey := map[string]retrievalDoc{}
 	for _, doc := range docs {
 		docByKey[retrievalDocKey(doc.EntityType, doc.EntityID)] = doc
@@ -103,31 +122,191 @@ func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[s
 	return out, rows.Err()
 }
 
-func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
-	tx, err := db.DB.Begin()
+func enqueueProjectContextEmbeddingIndex(projectID int64) {
+	if projectID <= 0 {
+		return
+	}
+	projectContextEmbeddingWorkerOnce.Do(func() {
+		go runProjectContextEmbeddingWorker()
+	})
+	projectContextEmbeddingState.mu.Lock()
+	if projectContextEmbeddingState.queued[projectID] {
+		projectContextEmbeddingState.mu.Unlock()
+		return
+	}
+	if projectContextEmbeddingState.running[projectID] {
+		projectContextEmbeddingState.rerun[projectID] = true
+		projectContextEmbeddingState.mu.Unlock()
+		return
+	}
+	projectContextEmbeddingState.queued[projectID] = true
+	projectContextEmbeddingState.mu.Unlock()
+
+	select {
+	case projectContextEmbeddingQueue <- projectID:
+	default:
+		go func() { projectContextEmbeddingQueue <- projectID }()
+	}
+}
+
+func runProjectContextEmbeddingWorker() {
+	for projectID := range projectContextEmbeddingQueue {
+		runProjectContextEmbeddingJob(projectID)
+	}
+}
+
+func runProjectContextEmbeddingJob(projectID int64) {
+	for {
+		projectContextEmbeddingState.mu.Lock()
+		projectContextEmbeddingState.queued[projectID] = false
+		projectContextEmbeddingState.running[projectID] = true
+		projectContextEmbeddingState.mu.Unlock()
+
+		time.Sleep(projectContextEmbeddingDebounce)
+		if err := indexProjectContextEmbeddingsWithRetry(projectID); err != nil {
+			log.Printf("project context embedding index project=%d: %v", projectID, err)
+		}
+
+		projectContextEmbeddingState.mu.Lock()
+		if projectContextEmbeddingState.rerun[projectID] {
+			projectContextEmbeddingState.rerun[projectID] = false
+			projectContextEmbeddingState.queued[projectID] = true
+			projectContextEmbeddingState.mu.Unlock()
+			continue
+		}
+		delete(projectContextEmbeddingState.queued, projectID)
+		delete(projectContextEmbeddingState.running, projectID)
+		delete(projectContextEmbeddingState.rerun, projectID)
+		projectContextEmbeddingState.mu.Unlock()
+		return
+	}
+}
+
+func indexProjectContextEmbeddingsWithRetry(projectID int64) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(projectContextEmbeddingRetryDelay)
+		}
+		err := indexProjectContextEmbeddings(projectID)
+		if err == nil {
+			return nil
+		}
+		if !isSQLiteBusyError(err) {
+			return err
+		}
+		lastErr = err
+	}
+	return lastErr
+}
+
+func isSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
+}
+
+func indexProjectContextEmbeddings(projectID int64) error {
+	if db.DB == nil {
+		return fmt.Errorf("database not open")
+	}
+	docs, err := collectProjectRetrievalDocs(projectID)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM entity_embeddings WHERE project_id = ? AND model = ?`, projectID, projectContextEmbeddingModel); err != nil {
-		return err
+	return syncProjectContextEmbeddings(projectID, docs)
+}
+
+func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
+	type embeddingRow struct {
+		entityType string
+		entityID   int64
+		dim        int
+		vector     []byte
+		hash       string
 	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	seen := map[string]struct{}{}
+	embeddingRows := make([]embeddingRow, 0, len(docs))
 	for _, doc := range docs {
 		text := strings.TrimSpace(doc.Title + "\n" + doc.Content)
 		if text == "" {
 			continue
 		}
+		seen[retrievalDocKey(doc.EntityType, doc.EntityID)] = struct{}{}
 		vec := embedTextDeterministic(text)
 		raw, err := encodeEmbedding(vec)
 		if err != nil {
 			return err
 		}
 		hash := sha256.Sum256([]byte(text))
+		embeddingRows = append(embeddingRows, embeddingRow{
+			entityType: doc.EntityType,
+			entityID:   doc.EntityID,
+			dim:        len(vec),
+			vector:     raw,
+			hash:       fmt.Sprintf("%x", hash[:]),
+		})
+	}
+
+	tx, err := db.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`
+		SELECT entity_type, entity_id
+		FROM entity_embeddings
+		WHERE project_id = ? AND model = ?
+	`, projectID, projectContextEmbeddingModel)
+	if err != nil {
+		return err
+	}
+	stored := map[string]struct{}{}
+	for rows.Next() {
+		var entityType string
+		var entityID int64
+		if err := rows.Scan(&entityType, &entityID); err != nil {
+			rows.Close()
+			return err
+		}
+		stored[retrievalDocKey(entityType, entityID)] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, row := range embeddingRows {
 		if _, err := tx.Exec(`
 			INSERT INTO entity_embeddings(project_id, entity_type, entity_id, model, dim, vector, source_hash, last_indexed_at)
 			VALUES(?,?,?,?,?,?,?,?)
-		`, projectID, doc.EntityType, doc.EntityID, projectContextEmbeddingModel, len(vec), raw, fmt.Sprintf("%x", hash[:]), now); err != nil {
+			ON CONFLICT(entity_type, entity_id, model) DO UPDATE SET
+				project_id = excluded.project_id,
+				dim = excluded.dim,
+				vector = excluded.vector,
+				source_hash = excluded.source_hash,
+				last_indexed_at = excluded.last_indexed_at
+		`, projectID, row.entityType, row.entityID, projectContextEmbeddingModel, row.dim, row.vector, row.hash, now); err != nil {
+			return err
+		}
+	}
+	for key := range stored {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		entityType, entityID, ok := parseRetrievalDocKey(key)
+		if !ok {
+			continue
+		}
+		if _, err := tx.Exec(`
+			DELETE FROM entity_embeddings
+			WHERE project_id = ? AND entity_type = ? AND entity_id = ? AND model = ?
+		`, projectID, entityType, entityID, projectContextEmbeddingModel); err != nil {
 			return err
 		}
 	}
@@ -367,4 +546,16 @@ func cosineSimilarity(a, b []float32) float64 {
 
 func retrievalDocKey(entityType string, entityID int64) string {
 	return fmt.Sprintf("%s:%d", entityType, entityID)
+}
+
+func parseRetrievalDocKey(key string) (string, int64, bool) {
+	entityType, rawID, ok := strings.Cut(key, ":")
+	if !ok || entityType == "" {
+		return "", 0, false
+	}
+	var entityID int64
+	if _, err := fmt.Sscanf(rawID, "%d", &entityID); err != nil || entityID <= 0 {
+		return "", 0, false
+	}
+	return entityType, entityID, true
 }

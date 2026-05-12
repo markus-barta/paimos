@@ -13,10 +13,18 @@ curl -s -H "Authorization: Bearer $PAIMOS_API_KEY" \
   -d '{"q":"password reset flow","k":10}'
 ```
 
-This currently fuses lexical hits across issue text, anchors, derived
-symbols, manifest content, ADRs, and NFRs, blends in deterministic
-local vector matches via reciprocal-rank fusion, then expands related
-graph neighbors.
+This currently fuses lexical hits across issue text, anchors, and
+derived symbols, blends in deterministic local vector matches via
+reciprocal-rank fusion, then expands related graph neighbors.
+
+Vector indexing is asynchronous. A retrieve call queues a background
+index refresh for the project and uses whatever vectors are already
+indexed; on a cold project the first response may be lexical-only, and
+the next response will include vector hits once the worker has caught up.
+The response `meta` includes `embedding_indexing: "async"`,
+`embedding_model`, and `vector_index`. The current vector search path is
+the built-in brute-force fallback; a SQLite-native ANN extension can
+replace it later without changing the public response shape.
 
 ## Traverse the project graph
 

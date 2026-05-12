@@ -148,6 +148,9 @@ func DeleteProjectRepo(w http.ResponseWriter, r *http.Request) {
 	_, _ = db.DB.Exec(`DELETE FROM entity_relations WHERE (source_type='project' AND source_id=? AND target_type='repo' AND target_id=?)
 		OR (source_type='repo' AND source_id=?)
 		OR (target_type='repo' AND target_id=?)`, projectID, repoID, repoID, repoID)
+	if projectID > 0 {
+		enqueueProjectContextEmbeddingIndex(projectID)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

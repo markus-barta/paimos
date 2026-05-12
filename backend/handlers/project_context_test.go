@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
+
+	"github.com/markus-barta/paimos/backend/db"
 )
 
 func Test_ProjectContextEndpoints(t *testing.T) {
@@ -137,6 +140,9 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if retrieve.Meta["fusion"] != "rrf" {
 		t.Fatalf("retrieve meta missing rrf: %#v", retrieve.Meta)
 	}
+	if retrieve.Meta["embedding_indexing"] != "async" {
+		t.Fatalf("retrieve meta missing async embedding indexing: %#v", retrieve.Meta)
+	}
 	foundExpanded := false
 	for _, hit := range retrieve.Hits {
 		if hit["expanded_from"] != nil {
@@ -146,6 +152,24 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	}
 	if !foundExpanded {
 		t.Fatalf("retrieve missing expanded graph hit: %#v", retrieve.Hits)
+	}
+	waitForProjectEmbeddings(t, project.ID, 4)
+
+	vectorResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
+		"q": "RetrieveProjectContext",
+		"k": 10,
+	})
+	assertStatus(t, vectorResp, http.StatusOK)
+	var vectorRetrieve struct {
+		Meta map[string]any `json:"meta"`
+	}
+	decode(t, vectorResp, &vectorRetrieve)
+	stages, ok := vectorRetrieve.Meta["stages"].(map[string]any)
+	if !ok {
+		t.Fatalf("retrieve meta stages missing: %#v", vectorRetrieve.Meta)
+	}
+	if vectorCount, ok := stages["vector"].(float64); !ok || vectorCount <= 0 {
+		t.Fatalf("retrieve vector stage count = %#v, want > 0 after async index", stages["vector"])
 	}
 
 	anchorSearchResp := ts.post(t, "/api/projects/"+strconv.FormatInt(project.ID, 10)+"/retrieve", ts.adminCookie, map[string]any{
@@ -207,4 +231,24 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if len(blast.Reached["symbol"]) == 0 {
 		t.Fatalf("blast radius symbol set empty: %#v", blast.Reached)
 	}
+}
+
+func waitForProjectEmbeddings(t *testing.T, projectID int64, wantAtLeast int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	var count int
+	for time.Now().Before(deadline) {
+		if err := db.DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM entity_embeddings
+			WHERE project_id = ? AND model = 'local-hash-v1'
+		`, projectID).Scan(&count); err != nil {
+			t.Fatalf("count embeddings: %v", err)
+		}
+		if count >= wantAtLeast {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for async embeddings for project %d: got %d, want at least %d", projectID, count, wantAtLeast)
 }

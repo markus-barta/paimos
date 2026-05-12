@@ -89,6 +89,9 @@ func saveSnapshot(issue *models.Issue, changedBy *models.User, r *http.Request) 
 	); err != nil {
 		log.Printf("saveSnapshot: issue_id=%d: %v", issue.ID, err)
 	}
+	if issue.ProjectID != nil && *issue.ProjectID > 0 {
+		enqueueProjectContextEmbeddingIndex(*issue.ProjectID)
+	}
 }
 
 // ── History endpoints ─────────────────────────────────────────────────────────
