@@ -5,6 +5,28 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] — 2026-05-12
+
+Minor release for the expanded agent/operator surface: tier-1 CLI gaps are
+closed, super-admin work is explicit and auditable, and CRM sidecars can now
+integrate through a documented HTTP contract.
+
+### Added
+
+- Agent CLI coverage for time entries and attachments. `paimos time start/stop/list/set/get` now covers timer workflows, and `paimos attach <issue> <file>` wraps pending upload + link in one command with rollback if linking fails.
+- Project workspace metadata commands in the CLI for repos, cost units, releases, and tags, so agents can discover project context without dropping to REST.
+- Super-admin role capabilities, audit events, and impersonation flow with a visible app banner while acting as another user.
+- HTTP CRM sidecar provider with request signing, schema documentation, tests, and a runnable example server.
+
+### Changed
+
+- Issue side panel controls now reuse the same status, assignee, and tag interaction patterns as inline table editing, including quick tag removal/addition and dropdown-backed edits.
+- Agent interface and install docs now document the current search/tag/time/attachment CLI surface and the remaining REST-only fallbacks.
+
+### Fixed
+
+- Added regression coverage around WAL setup and search-scope shortcuts so the recent SQLite and keyboard-path fixes stay stable.
+
 ## [3.2.5] — 2026-05-12
 
 Patch polish for header search editing and undo activity context.
