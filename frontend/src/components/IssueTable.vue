@@ -7,9 +7,9 @@ import AutocompleteInput from '@/components/AutocompleteInput.vue'
 import TagChip from '@/components/TagChip.vue'
 import IssueRowActions from '@/components/IssueRowActions.vue'
 import StatusDot from '@/components/StatusDot.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
-import type { MetaOption } from '@/components/MetaSelect.vue'
+import IssueStatusSelect from '@/components/issue/IssueStatusSelect.vue'
+import IssueAssigneeSelect from '@/components/issue/IssueAssigneeSelect.vue'
 import type { Issue, Sprint, User } from '@/types'
 import {
   useIssueDisplay,
@@ -17,7 +17,7 @@ import {
   STATUS_LABEL,
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
-import { INLINE_STATUS_OPTIONS, INLINE_PRIORITY_OPTIONS } from '@/composables/useInlineEdit'
+import { INLINE_PRIORITY_OPTIONS } from '@/composables/useInlineEdit'
 import type { EditableField } from '@/composables/useInlineEdit'
 import { useTimeUnit } from '@/composables/useTimeUnit'
 import type { FormatContext } from '@/composables/useTimeUnit'
@@ -70,8 +70,6 @@ const props = defineProps<{
   searchQuery: string
   // Epic display
   epicDisplayMode: 'key' | 'title' | 'abbreviated'
-  // Inline assignee options
-  inlineAssigneeOptions: () => MetaOption[]
   // Format hours
   formatHours: (hours: number | null | undefined, context?: FormatContext) => string
   timeLabel: () => string
@@ -295,16 +293,13 @@ function onRowClick(i: Issue) {
            <span class="issue-link" v-html="highlight(i.title, searchQuery)" />
          </td>
         <td v-if="!compact && isVisible('status')" class="inline-edit-cell">
-          <MetaSelect
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'status'"
+          <div class="inline-control inline-control--status">
+            <IssueStatusSelect
             :model-value="i.status"
-            :options="INLINE_STATUS_OPTIONS"
+            size="sm"
             @update:model-value="v => emit('save-cell-edit', i, 'status', v)"
           />
-          <span v-else class="issue-status clickable-cell" @click.stop="emit('open-cell', i, 'status', $event)">
-            <StatusDot :status="i.status" />
-            {{ STATUS_LABEL[i.status] }}
-          </span>
+          </div>
         </td>
         <td v-if="compact">
           <span class="issue-status">
@@ -313,16 +308,14 @@ function onRowClick(i: Issue) {
           </span>
         </td>
         <td v-if="!compact && isVisible('priority')" class="inline-edit-cell">
-          <MetaSelect
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'priority'"
+          <div class="inline-control inline-control--priority">
+            <MetaSelect
             :model-value="i.priority"
             :options="INLINE_PRIORITY_OPTIONS"
+            size="sm"
             @update:model-value="v => emit('save-cell-edit', i, 'priority', v)"
           />
-          <span v-else class="issue-priority clickable-cell" :style="{ color: PRIORITY_COLOR[i.priority] }" @click.stop="emit('open-cell', i, 'priority', $event)">
-            <AppIcon :name="PRIORITY_ICON[i.priority]" :size="12" :stroke-width="2.5" class="issue-priority-arrow" />
-            {{ PRIORITY_LABEL[i.priority] }}
-          </span>
+          </div>
         </td>
         <td v-if="compact">
           <span class="issue-priority" :style="{ color: PRIORITY_COLOR[i.priority] }">
@@ -356,16 +349,15 @@ function onRowClick(i: Issue) {
           <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('assignee')" class="meta-cell inline-edit-cell">
-          <MetaSelect
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'assignee_id'"
+          <div class="inline-control inline-control--assignee">
+            <IssueAssigneeSelect
             :model-value="i.assignee_id !== null ? String(i.assignee_id) : ''"
-            :options="inlineAssigneeOptions()"
+            :users="users"
+            :fallback-user="i.assignee"
+            size="sm"
             @update:model-value="v => emit('save-cell-edit', i, 'assignee_id', v)"
           />
-          <span v-else class="meta-cell-assignee clickable-cell" @click.stop="emit('open-cell', i, 'assignee_id', $event)">
-            <UserAvatar v-if="i.assignee" :user="users.find(u => u.id === i.assignee_id) ?? i.assignee" size="sm" :show-tooltip="true" />
-            <span>{{ i.assignee?.username ?? '—' }}</span>
-          </span>
+          </div>
         </td>
         <td v-if="!compact && isVisible('tags')" class="tags-cell">
           <div v-if="i.tags?.length" class="row-tags">
@@ -496,6 +488,10 @@ function onRowClick(i: Issue) {
 .clickable { cursor: pointer; }
 .issue-table tbody tr.clickable:hover { background: #f0f2f4; }
 .inline-edit-cell { cursor: default; position: relative; overflow: visible; }
+.inline-control { display: inline-flex; align-items: center; min-height: 28px; }
+.inline-control--status { min-width: 132px; }
+.inline-control--priority { min-width: 112px; }
+.inline-control--assignee { min-width: 148px; }
 .clickable-cell { cursor: cell; border-radius: 3px; padding: .1rem .25rem; position: relative; }
 .clickable-cell:hover { background: color-mix(in srgb, var(--bp-blue) 8%, transparent); outline: 1px solid color-mix(in srgb, var(--bp-blue) 25%, transparent); outline-offset: -1px; }
 .clickable-cell::before { content: '✎'; position: absolute; left: -14px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--bp-blue); opacity: 0; transition: opacity .15s; pointer-events: none; }

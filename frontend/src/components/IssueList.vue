@@ -284,7 +284,7 @@ const { editingCell, cellEditValue, openCell, closeCell, saveCellEdit,
         cascadeDialogOpen, cascadePendingStatus, cascadeChildCount, cascadeConfirm,
         sprintPickerSearch, sprintPickerPos, sprintPickerRef,
         sprintPickerFiltered, openSprintPicker, toggleSprint,
-        inlineAssigneeOptions, onGlobalMousedownCell } = inlineEdit
+        onGlobalMousedownCell } = inlineEdit
 
 // ── Mutual-exclusion panel toggle ────────────────────────────────────────────
 function openPanel(name: 'views' | 'filter' | 'columns' | null) {
@@ -599,8 +599,10 @@ function openSidePanel(issue: Issue, edit = false) {
 }
 
 function closeSidePanel() {
+  const wasPinned = sidePanelPinned.value
   sidePanelIssueId.value = null
   sidePanelEdit.value = false
+  if (wasPinned) setSidePanelPinned(false)
   if (route.query.panel !== undefined) {
     router.replace({ query: { ...route.query, panel: undefined } })
   }
@@ -608,7 +610,12 @@ function closeSidePanel() {
 
 watch(filteredIssues, (issues) => {
   if (sidePanelIssueId.value !== null && !issues.some(i => i.id === sidePanelIssueId.value)) {
-    closeSidePanel()
+    if (sidePanelPinned.value) {
+      sidePanelIssueId.value = null
+      sidePanelEdit.value = false
+    } else {
+      closeSidePanel()
+    }
   }
 })
 
@@ -631,7 +638,7 @@ function onPinnedChange(pinned: boolean) {
   setSidePanelPinned(pinned)
 }
 
-watch(sidePanelIssueId, (id) => setSidePanelVisible(!!id), { immediate: true })
+watch([sidePanelIssueId, sidePanelPinned], ([id, pinned]) => setSidePanelVisible(!!id || pinned), { immediate: true })
 onUnmounted(() => setSidePanelVisible(false))
 
 function navigateTo(issue: Issue) { openSidePanel(issue) }
@@ -1161,7 +1168,6 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :side-panel-issue-id="sidePanelIssueId"
         :search-query="searchQuery"
         :epic-display-mode="epicDisplayMode"
-        :inline-assignee-options="inlineAssigneeOptions"
         :format-hours="formatHours"
         :time-label="timeLabel"
         @toggle-select="toggleSelect"

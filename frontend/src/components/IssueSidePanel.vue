@@ -7,6 +7,8 @@ import StatusDot from "@/components/StatusDot.vue";
 import NumericInput from "@/components/NumericInput.vue";
 import MetaSelect from "@/components/MetaSelect.vue";
 import type { MetaOption } from "@/components/MetaSelect.vue";
+import IssueStatusSelect from "@/components/issue/IssueStatusSelect.vue";
+import IssueAssigneeSelect from "@/components/issue/IssueAssigneeSelect.vue";
 import MarkdownToolbar from "@/components/MarkdownToolbar.vue";
 import AutocompleteInput from "@/components/AutocompleteInput.vue";
 import TagSelector from "@/components/TagSelector.vue";
@@ -21,7 +23,6 @@ import { useAuthStore } from "@/stores/auth";
 import { useTimerStore } from "@/stores/timer";
 import {
   useIssueDisplay,
-  STATUS_DOT_STYLE,
   STATUS_LABEL,
   PRIORITY_LABEL,
   PRIORITY_COLOR,
@@ -56,7 +57,6 @@ import {
 import { undoMutationByRequestId } from "@/services/aiPaperTrail";
 import { useUndoStore } from "@/stores/undo";
 import { addIssueRelation } from "@/services/issueRelations";
-import { assignableIssueUsers } from "@/utils/users";
 
 const ctx = useIssueContext(true);
 
@@ -140,28 +140,11 @@ const form = ref({
   time_override: null as number | null,
 });
 
-const STATUS_OPTIONS: MetaOption[] = [
-  { value: "new", label: "New" },
-  { value: "backlog", label: "Backlog" },
-  { value: "in-progress", label: "In Progress" },
-  { value: "qa", label: "QA" },
-  { value: "done", label: "Done" },
-  { value: "delivered", label: "Delivered" },
-  { value: "accepted", label: "Accepted" },
-  { value: "invoiced", label: "Invoiced" },
-  { value: "cancelled", label: "Cancelled" },
-];
 const PRIORITY_OPTIONS: MetaOption[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
-const assigneeOptions = computed<MetaOption[]>(() => [
-  { value: "", label: "Unassigned" },
-  ...assignableIssueUsers(users.value)
-    .map((u) => ({ value: String(u.id), label: u.username })),
-]);
-
 // Attachments — scoped to the currently-loaded issue.
 const attachments = useAttachmentUploads({
   endpoint: () =>
@@ -386,6 +369,32 @@ async function removeTag(tagId: number) {
   await api.delete(`/issues/${issue.value.id}/tags/${tagId}`);
   issue.value = await api.get<Issue>(`/issues/${issue.value.id}`);
   emit("updated", issue.value);
+}
+
+const quickSavingField = ref<"" | "status" | "assignee_id">("");
+const quickError = ref("");
+
+async function quickUpdateIssueField(
+  field: "status" | "assignee_id",
+  value: string,
+) {
+  if (!issue.value || props.readonly || quickSavingField.value) return;
+  const payload =
+    field === "assignee_id"
+      ? { assignee_id: value ? Number(value) : null }
+      : { status: value };
+  quickSavingField.value = field;
+  quickError.value = "";
+  try {
+    const updated = await api.put<Issue>(`/issues/${issue.value.id}`, payload);
+    issue.value = updated;
+    resetForm();
+    emit("updated", updated);
+  } catch (e: unknown) {
+    quickError.value = errMsg(e, "Update failed.");
+  } finally {
+    quickSavingField.value = "";
+  }
 }
 
 watch(
@@ -717,7 +726,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 <template>
   <Transition name="sidepanel">
     <aside
-      v-if="issueId"
+      v-if="issueId || pinned"
       :class="[
         'side-panel',
         { 'side-panel--pinned': pinned, 'side-panel--resizing': resizing },
@@ -843,8 +852,28 @@ async function deleteTimeEntry(entry: TimeEntry) {
         <!-- View mode -->
         <template v-else-if="issue && !editing">
           <h2 class="sp-title">{{ issue.title }}</h2>
+          <div v-if="allTags && !readonly" class="sp-tags sp-tags--interactive">
+            <TagSelector
+              :all-tags="allTags"
+              :selected-ids="issueTagIds"
+              variant="pills"
+              add-label="Add tag"
+              @add="addTag"
+              @remove="removeTag"
+            />
+          </div>
+          <div v-else-if="issue.tags?.length" class="sp-tags">
+            <TagChip v-for="t in issue.tags" :key="t.id" :tag="t" />
+          </div>
           <div class="sp-meta">
-            <span class="sp-meta-item">
+            <IssueStatusSelect
+              v-if="!readonly"
+              :model-value="issue.status"
+              :loading="quickSavingField === 'status'"
+              size="sm"
+              @update:model-value="quickUpdateIssueField('status', $event)"
+            />
+            <span v-else class="sp-meta-item">
               <StatusDot :status="issue.status" />
               {{ STATUS_LABEL[issue.status] ?? issue.status }}
             </span>
@@ -853,7 +882,16 @@ async function deleteTimeEntry(entry: TimeEntry) {
               :style="{ color: PRIORITY_COLOR[issue.priority] }"
               >{{ PRIORITY_LABEL[issue.priority] ?? issue.priority }}</span
             >
-            <span v-if="issue.assignee" class="sp-meta-item">{{
+            <IssueAssigneeSelect
+              v-if="!readonly"
+              :model-value="issue.assignee_id !== null ? String(issue.assignee_id) : ''"
+              :users="users"
+              :fallback-user="issue.assignee"
+              :loading="quickSavingField === 'assignee_id'"
+              size="sm"
+              @update:model-value="quickUpdateIssueField('assignee_id', $event)"
+            />
+            <span v-else-if="issue.assignee" class="sp-meta-item">{{
               issue.assignee.username
             }}</span>
             <span v-else class="sp-meta-item sp-muted">Unassigned</span>
@@ -866,11 +904,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
               issue.release
             }}</span>
           </div>
-
-          <!-- Tags -->
-          <div v-if="issue.tags?.length" class="sp-tags">
-            <TagChip v-for="t in issue.tags" :key="t.id" :tag="t" />
-          </div>
+          <div v-if="quickError" class="sp-quick-error">{{ quickError }}</div>
 
           <!-- Sprints (click to edit) -->
           <div
@@ -1050,16 +1084,6 @@ async function deleteTimeEntry(entry: TimeEntry) {
 
           <IssueAiActivity v-if="issue" :issue-id="issue.id" />
 
-          <!-- Tag selector (view mode, not readonly) -->
-          <div v-if="allTags && !readonly" class="sp-tag-selector">
-            <TagSelector
-              :all-tags="allTags"
-              :selected-ids="issueTagIds"
-              @add="addTag"
-              @remove="removeTag"
-            />
-          </div>
-
           <!-- Attachments (view mode — read-only chip list, clickable thumbnails) -->
           <AttachmentSidebar
             v-if="attachments.jobs.value.length"
@@ -1080,7 +1104,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
             <div class="sp-form-row">
               <div class="field" style="flex: 1">
                 <label>Status</label>
-                <MetaSelect v-model="form.status" :options="STATUS_OPTIONS" />
+                <IssueStatusSelect v-model="form.status" />
               </div>
               <div class="field" style="flex: 1">
                 <label>Priority</label>
@@ -1092,10 +1116,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
             </div>
             <div class="field">
               <label>Assignee</label>
-              <MetaSelect
-                v-model="form.assignee_id"
-                :options="assigneeOptions"
-              />
+              <IssueAssigneeSelect v-model="form.assignee_id" :users="users" />
             </div>
             <div class="field" v-if="showParentPicker">
               <label>Parent</label>
@@ -1361,6 +1382,10 @@ async function deleteTimeEntry(entry: TimeEntry) {
             <IssueAiActivity v-if="issue" :issue-id="issue.id" />
           </div>
         </template>
+        <div v-else class="sp-empty-state">
+          <AppIcon name="inbox" :size="18" />
+          <span>No issue selected</span>
+        </div>
       </div>
     </aside>
   </Transition>
@@ -1550,6 +1575,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
   flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 13px;
+  align-items: center;
 }
 .sp-meta-item {
   display: inline-flex;
@@ -1569,6 +1595,13 @@ async function deleteTimeEntry(entry: TimeEntry) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
+}
+.sp-tags--interactive {
+  margin-top: -0.25rem;
+}
+.sp-quick-error {
+  color: #b91c1c;
+  font-size: 12px;
 }
 .sp-estimates {
   display: flex;
@@ -1618,6 +1651,20 @@ async function deleteTimeEntry(entry: TimeEntry) {
   margin-top: auto;
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
+}
+.sp-empty-state {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.55rem;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.sp-empty-state :deep(svg) {
+  opacity: .65;
 }
 .sp-attach-sidebar {
   /* Reset the inline-sidebar border/margin when mounted in the flow of the panel. */

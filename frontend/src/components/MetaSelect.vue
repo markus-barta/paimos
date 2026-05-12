@@ -10,6 +10,11 @@
  */
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
+import type { User } from '@/types'
+
+type AvatarUser = Pick<User, 'username'> &
+  Partial<Pick<User, 'avatar_path' | 'first_name' | 'last_name' | 'email' | 'nickname'>>
 
 export interface MetaOption {
   value: string
@@ -26,6 +31,8 @@ export interface MetaOption {
   arrow?: string
   /** Lucide icon name — rendered as <AppIcon> */
   iconName?: string
+  /** User/avatar payload for assignee selectors. */
+  avatarUser?: AvatarUser | null
 }
 
 const props = defineProps<{
@@ -33,6 +40,9 @@ const props = defineProps<{
   options: MetaOption[]
   placeholder?: string
   searchable?: boolean
+  disabled?: boolean
+  loading?: boolean
+  size?: 'sm' | 'md'
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -60,6 +70,7 @@ function select(value: string) {
 }
 
 function toggleOpen() {
+  if (props.disabled || props.loading) return
   open.value = !open.value
   if (open.value) {
     if (root.value) {
@@ -105,10 +116,22 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
 </script>
 
 <template>
-  <div class="meta-select" :class="{ open }" ref="root">
-    <button type="button" class="meta-select-trigger" @click="toggleOpen">
+  <div
+    class="meta-select"
+    :class="{ open, 'meta-select--disabled': disabled, 'meta-select--sm': size === 'sm' }"
+    ref="root"
+    @mousedown.stop
+    @click.stop
+  >
+    <button
+      type="button"
+      class="meta-select-trigger"
+      :disabled="disabled || loading"
+      @click.stop="toggleOpen"
+    >
       <!-- Selected value display -->
         <span v-if="selected" class="meta-select-val">
+          <UserAvatar v-if="selected.avatarUser" :user="selected.avatarUser" size="sm" />
           <span v-if="selected.dotColor"
             class="ms-dot"
             :class="{ 'ms-dot--outline': selected.dotOutline }"
@@ -122,7 +145,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
             {{ selected.label }}
           </span>
         </span>
-      <span v-else class="meta-select-placeholder">{{ placeholder ?? 'All' }}</span>
+      <span v-else class="meta-select-placeholder">{{ loading ? 'Saving…' : (placeholder ?? 'All') }}</span>
       <span class="meta-select-chevron"><AppIcon name="chevron-down" :size="12" /></span>
     </button>
 
@@ -153,6 +176,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
         :class="{ active: modelValue === opt.value }"
         @click="select(opt.value)"
       >
+        <UserAvatar v-if="opt.avatarUser" :user="opt.avatarUser" size="sm" />
         <span v-if="opt.dotColor"
           class="ms-dot"
           :class="{ 'ms-dot--outline': opt.dotOutline }"
@@ -203,10 +227,21 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   max-width: 100%;
   justify-content: space-between;
 }
+.meta-select--sm .meta-select-trigger {
+  min-height: 28px;
+  padding: .25rem .45rem;
+  font-size: 12px;
+  border-radius: 5px;
+}
 .meta-select-trigger:hover,
 .meta-select.open .meta-select-trigger {
   border-color: var(--bp-blue);
   background: var(--bg);
+}
+.meta-select--disabled .meta-select-trigger,
+.meta-select-trigger:disabled {
+  cursor: default;
+  opacity: .7;
 }
 
 .meta-select-placeholder { color: var(--text-muted); }

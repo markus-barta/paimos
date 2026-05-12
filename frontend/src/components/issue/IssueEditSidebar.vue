@@ -7,12 +7,12 @@ import AppIcon from '@/components/AppIcon.vue'
 import NumericInput from '@/components/NumericInput.vue'
 import TagSelector from '@/components/TagSelector.vue'
 import SprintChips from '@/components/issue/SprintChips.vue'
+import IssueStatusSelect from '@/components/issue/IssueStatusSelect.vue'
+import IssueAssigneeSelect from '@/components/issue/IssueAssigneeSelect.vue'
 import { EPIC_COLOR_PALETTE } from '@/config/epicColors'
 import type { Issue, Tag, Sprint, User } from '@/types'
-import { assignableIssueUsers } from '@/utils/users'
 import {
   TYPE_SVGS,
-  STATUS_DOT_STYLE, STATUS_LABEL,
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 
@@ -68,17 +68,6 @@ const TYPE_OPTIONS: MetaOption[] = [
   { value: 'release',   label: 'Release',   icon: TYPE_SVGS.release   },
   { value: 'sprint',    label: 'Sprint',    icon: TYPE_SVGS.sprint    },
 ]
-const STATUS_OPTIONS: MetaOption[] = [
-  { value: 'new',          label: STATUS_LABEL.new,             dotColor: STATUS_DOT_STYLE.new.color,             dotOutline: STATUS_DOT_STYLE.new.outline },
-  { value: 'backlog',      label: STATUS_LABEL.backlog,         dotColor: STATUS_DOT_STYLE.backlog.color,         dotOutline: STATUS_DOT_STYLE.backlog.outline },
-  { value: 'in-progress',  label: STATUS_LABEL['in-progress'],  dotColor: STATUS_DOT_STYLE['in-progress'].color,  dotOutline: STATUS_DOT_STYLE['in-progress'].outline },
-  { value: 'qa',           label: STATUS_LABEL.qa,              dotColor: STATUS_DOT_STYLE.qa.color,              dotOutline: STATUS_DOT_STYLE.qa.outline },
-  { value: 'done',         label: STATUS_LABEL.done,            dotColor: STATUS_DOT_STYLE.done.color,            dotOutline: STATUS_DOT_STYLE.done.outline },
-  { value: 'delivered',    label: STATUS_LABEL.delivered,       dotColor: STATUS_DOT_STYLE.delivered.color,       dotOutline: STATUS_DOT_STYLE.delivered.outline },
-  { value: 'accepted',     label: STATUS_LABEL.accepted,        dotColor: STATUS_DOT_STYLE.accepted.color,        dotOutline: STATUS_DOT_STYLE.accepted.outline },
-  { value: 'invoiced',     label: STATUS_LABEL.invoiced,        dotColor: STATUS_DOT_STYLE.invoiced.color,        dotOutline: STATUS_DOT_STYLE.invoiced.outline },
-  { value: 'cancelled',    label: STATUS_LABEL.cancelled,       dotColor: STATUS_DOT_STYLE.cancelled.color,       dotOutline: STATUS_DOT_STYLE.cancelled.outline },
-]
 const PRIORITY_OPTIONS: MetaOption[] = [
   { value: 'high',   label: PRIORITY_LABEL.high,   arrow: PRIORITY_ICON.high,   arrowColor: PRIORITY_COLOR.high   },
   { value: 'medium', label: PRIORITY_LABEL.medium, arrow: PRIORITY_ICON.medium, arrowColor: PRIORITY_COLOR.medium },
@@ -94,11 +83,6 @@ const parentOptions = computed<MetaOption[]>(() => {
     ...closed.map(p => ({ value: String(p.id), label: `${p.issue_key} ${p.title} (done)` })),
   ]
 })
-
-const assigneeOptions = computed<MetaOption[]>(() => [
-  { value: '', label: 'Unassigned' },
-  ...assignableIssueUsers(props.users).map(u => ({ value: String(u.id), label: u.username })),
-])
 
 const formParentStr = computed({
   get: () => props.form.parent_id !== null ? String(props.form.parent_id) : '',
@@ -128,7 +112,7 @@ const showArLp          = computed(() => showEstimateLp.value)
     </div>
     <div class="field">
       <label>Status</label>
-      <MetaSelect v-model="form.status" :options="STATUS_OPTIONS" />
+      <IssueStatusSelect v-model="form.status" />
     </div>
     <template v-if="issueType !== 'sprint'">
       <div class="field">
@@ -137,7 +121,7 @@ const showArLp          = computed(() => showEstimateLp.value)
       </div>
       <div class="field">
         <label>Assignee</label>
-        <MetaSelect v-model="formAssigneeStr" :options="assigneeOptions" placeholder="Unassigned" />
+        <IssueAssigneeSelect v-model="formAssigneeStr" :users="users" />
       </div>
     </template>
     <div class="field" v-if="['epic','ticket','task'].includes(form.type)">

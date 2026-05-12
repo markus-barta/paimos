@@ -23,12 +23,10 @@ import type { Ref } from 'vue'
 import type { Issue, Sprint } from '@/types'
 import type { MetaOption } from '@/components/MetaSelect.vue'
 import {
-  STATUS_DOT_STYLE, STATUS_LABEL,
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 import type { User } from '@/types'
-import { api, errMsg } from '@/api/client'
-import { assignableIssueUsers } from '@/utils/users'
+import { api } from '@/api/client'
 
 export type EditableField =
   | 'status' | 'priority' | 'cost_unit' | 'release' | 'assignee_id' | 'sprint'
@@ -41,18 +39,6 @@ const AUTOSAVE_TEXT_FIELDS: ReadonlySet<EditableField> = new Set([
 const NUMERIC_FIELDS: ReadonlySet<EditableField> = new Set([
   'estimate_hours', 'estimate_lp',
 ])
-
-export const INLINE_STATUS_OPTIONS: MetaOption[] = [
-  { value: 'new',         label: STATUS_LABEL.new,            dotColor: STATUS_DOT_STYLE.new.color,            dotOutline: STATUS_DOT_STYLE.new.outline },
-  { value: 'backlog',     label: STATUS_LABEL.backlog,        dotColor: STATUS_DOT_STYLE.backlog.color,        dotOutline: STATUS_DOT_STYLE.backlog.outline },
-  { value: 'in-progress', label: STATUS_LABEL['in-progress'], dotColor: STATUS_DOT_STYLE['in-progress'].color, dotOutline: STATUS_DOT_STYLE['in-progress'].outline },
-  { value: 'qa',          label: STATUS_LABEL.qa,             dotColor: STATUS_DOT_STYLE.qa.color,             dotOutline: STATUS_DOT_STYLE.qa.outline },
-  { value: 'done',        label: STATUS_LABEL.done,           dotColor: STATUS_DOT_STYLE.done.color,           dotOutline: STATUS_DOT_STYLE.done.outline },
-  { value: 'delivered',   label: STATUS_LABEL.delivered,      dotColor: STATUS_DOT_STYLE.delivered.color,      dotOutline: STATUS_DOT_STYLE.delivered.outline },
-  { value: 'accepted',    label: STATUS_LABEL.accepted,       dotColor: STATUS_DOT_STYLE.accepted.color,       dotOutline: STATUS_DOT_STYLE.accepted.outline },
-  { value: 'invoiced',    label: STATUS_LABEL.invoiced,       dotColor: STATUS_DOT_STYLE.invoiced.color,       dotOutline: STATUS_DOT_STYLE.invoiced.outline },
-  { value: 'cancelled',   label: STATUS_LABEL.cancelled,      dotColor: STATUS_DOT_STYLE.cancelled.color,      dotOutline: STATUS_DOT_STYLE.cancelled.outline },
-]
 
 export const INLINE_PRIORITY_OPTIONS: MetaOption[] = [
   { value: 'high',   label: PRIORITY_LABEL.high,   arrow: PRIORITY_ICON.high,   arrowColor: PRIORITY_COLOR.high   },
@@ -208,13 +194,6 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
     }
   }
 
-  function inlineAssigneeOptions(): MetaOption[] {
-    return [
-      { value: '', label: 'Unassigned' },
-      ...assignableIssueUsers(opts.users.value).map(u => ({ value: String(u.id), label: u.username })),
-    ]
-  }
-
   function onGlobalMousedownCell(e: MouseEvent) {
     if (!editingCell.value) return
     const target = e.target as Element
@@ -229,7 +208,7 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
     cascadeConfirm, countNonTerminalDescendants,
     sprintPickerSearch, sprintPickerPos, sprintPickerRef,
     allSprints, sprintPickerFiltered, openSprintPicker, toggleSprint,
-    inlineAssigneeOptions, onGlobalMousedownCell,
-    INLINE_STATUS_OPTIONS, INLINE_PRIORITY_OPTIONS,
+    onGlobalMousedownCell,
+    INLINE_PRIORITY_OPTIONS,
   }
 }

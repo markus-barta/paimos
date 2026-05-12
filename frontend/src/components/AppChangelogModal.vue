@@ -326,6 +326,9 @@ watch(
 
 .cl-rail-hint {
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   margin: .5rem .25rem 0;
   padding: .35rem .55rem;
   font-size: 10px;
@@ -333,6 +336,8 @@ watch(
   letter-spacing: .03em;
   text-align: center;
   border-top: 1px dashed var(--border);
+  background: linear-gradient(to bottom, rgba(250, 251, 252, .88), #fafbfc 42%);
+  backdrop-filter: blur(4px);
 }
 
 /* ── Content pane ──────────────────────────────────────────────── */
