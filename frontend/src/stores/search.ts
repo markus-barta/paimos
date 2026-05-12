@@ -39,9 +39,10 @@ export const useSearchStore = defineStore('search', () => {
 
   function setQuery(q: string, opts: { remember?: boolean } = {}) {
     query.value = q
-    if (opts.remember !== false && q) {
-      lastQuery.value = q
-      localStorage.setItem(LS_KEY, q)
+    const remembered = q.trim()
+    if (opts.remember !== false && remembered) {
+      lastQuery.value = remembered
+      localStorage.setItem(LS_KEY, remembered)
     }
   }
 

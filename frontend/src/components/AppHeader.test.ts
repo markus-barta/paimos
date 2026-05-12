@@ -211,6 +211,36 @@ describe("AppHeader issue refresh prompt", () => {
     await mounted.unmount();
   });
 
+  it("preserves spaces while syncing trimmed search routes", async () => {
+    const mounted = await mountHeader();
+    const input = mounted.el.querySelector<HTMLInputElement>('input[type="search"]');
+    expect(input).toBeTruthy();
+
+    mockSearchStore.setQuery.mockClear();
+    routerReplace.mockClear();
+
+    input!.value = "undo ";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+
+    expect(mockSearchStore.setQuery).toHaveBeenLastCalledWith("undo ");
+    expect(mockSearchStore.query).toBe("undo ");
+    expect(routerReplace).toHaveBeenLastCalledWith({ query: { q: "undo" } });
+    expect(mounted.el.querySelector(".search-palette-stub")).toBeTruthy();
+
+    input!.value = "undo history";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+
+    expect(mockSearchStore.setQuery).toHaveBeenLastCalledWith("undo history");
+    expect(mockSearchStore.query).toBe("undo history");
+    expect(routerReplace).toHaveBeenLastCalledWith({
+      query: { q: "undo history" },
+    });
+
+    await mounted.unmount();
+  });
+
   it("replaces search with the prompt and handles the refresh shortcut when stale", async () => {
     const mounted = await mountHeader();
     const refresh = vi.fn();

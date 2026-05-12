@@ -32,7 +32,7 @@ const refreshCountdownSeconds = ref(ISSUE_AUTO_REFRESH_DEFAULT_SECONDS);
 let refreshCountdownTimer: number | null = null;
 let projectContextRequest = 0;
 
-const hasQuery = computed(() => search.query.length >= 2);
+const hasQuery = computed(() => search.query.trim().length >= 2);
 const routeProjectId = computed(() => {
   if (!route.path.startsWith("/projects/")) return null;
   const raw = route.params.id;
@@ -98,9 +98,11 @@ function onBlur() {
   }, 200);
 }
 
-function onInput() {
-  const q = search.query.trim();
-  search.setQuery(q);
+function onInput(event: Event) {
+  const raw =
+    event.target instanceof HTMLInputElement ? event.target.value : search.query;
+  const q = raw.trim();
+  search.setQuery(raw);
   syncActiveRouteQuery(q);
   paletteVisible.value = q.length >= 2;
 }
