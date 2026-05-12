@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, onUnmounted, type CSSProperties } from 'vue'
 import { RouterLink } from 'vue-router'
 import { highlight } from '@/composables/useHighlight'
 import AppIcon from '@/components/AppIcon.vue'
@@ -8,6 +8,7 @@ import TagChip from '@/components/TagChip.vue'
 import IssueRowActions from '@/components/IssueRowActions.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import IssueStatusSelect from '@/components/issue/IssueStatusSelect.vue'
 import IssueAssigneeSelect from '@/components/issue/IssueAssigneeSelect.vue'
 import type { Issue, Sprint, User } from '@/types'
@@ -21,8 +22,8 @@ import { INLINE_PRIORITY_OPTIONS } from '@/composables/useInlineEdit'
 import type { EditableField } from '@/composables/useInlineEdit'
 import { useTimeUnit } from '@/composables/useTimeUnit'
 import type { FormatContext } from '@/composables/useTimeUnit'
-import { useSearchStore } from '@/stores/search'
 import { useIssueContext } from '@/composables/useIssueContext'
+import { clampColumnWidth, defaultColumnWidth, type ColumnWidths } from '@/composables/useColumnWidths'
 
 const { users, sprints, costUnits, releases } = useIssueContext()
 
@@ -43,6 +44,7 @@ const props = defineProps<{
   }
   // Column visibility
   isVisible: (key: string) => boolean
+  columnWidths: ColumnWidths
   // Inline edit state
   editingCell: { issueId: number; field: string } | null
   cellEditValue: string
@@ -95,6 +97,8 @@ const emit = defineEmits<{
   'section-drop': [event: DragEvent, groupId: number | 'backlog']
   'toggle-group-expand': [id: number]
   'toggle-time-unit': []
+  'resize-column': [key: string, width: number]
+  'reset-column-width': [key: string]
   'update:cell-edit-value': [value: string]
   'update:sprint-picker-search': [value: string]
 }>()
@@ -159,43 +163,156 @@ function onRowClick(i: Issue) {
     emit('navigate-to', i)
   }
 }
+
+function isEditing(issue: Issue, field: EditableField): boolean {
+  return props.editingCell?.issueId === issue.id && props.editingCell?.field === field
+}
+
+function assigneeUser(issue: Issue): { username: string; avatar_path?: string; first_name?: string; last_name?: string; email?: string; nickname?: string } | null {
+  if (issue.assignee_id !== null) {
+    const user = users.value.find(u => u.id === issue.assignee_id)
+    if (user) return user
+  }
+  return issue.assignee
+}
+
+function assigneeLabel(issue: Issue): string {
+  return assigneeUser(issue)?.username ?? 'Unassigned'
+}
+
+function colStyle(key: string): CSSProperties {
+  const width = props.columnWidths[key]
+  if (!width) return {}
+  const px = `${width}px`
+  return { width: px, minWidth: px, maxWidth: px }
+}
+
+const resizingColumnKey = ref<string | null>(null)
+let resizeState: { key: string; startX: number; startWidth: number } | null = null
+const RESIZE_HIT_PX = 12
+
+function isResizeHit(event: PointerEvent | MouseEvent): boolean {
+  const th = event.currentTarget as HTMLElement | null
+  if (!th) return false
+  const rect = th.getBoundingClientRect()
+  return event.clientX >= rect.right - RESIZE_HIT_PX && event.clientX <= rect.right + RESIZE_HIT_PX
+}
+
+function headerProps(key: string, sortable = false): Record<string, unknown> {
+  const base: Record<string, unknown> = sortable ? props.sortResult.thProps(key) : {}
+  return {
+    ...base,
+    class: [base.class, 'resizable-th', resizingColumnKey.value === key ? 'resizable-th--active' : ''],
+    style: colStyle(key),
+    'data-col-key': key,
+    onPointerdown: (event: PointerEvent) => onColumnHeaderPointerDown(key, event),
+    onDblclick: (event: MouseEvent) => onColumnHeaderDoubleClick(key, event),
+  }
+}
+
+function onColumnHeaderPointerDown(key: string, event: PointerEvent) {
+  if (event.button !== 0 || !isResizeHit(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  const th = event.currentTarget as HTMLElement
+  const currentWidth = props.columnWidths[key] ?? th.getBoundingClientRect().width ?? defaultColumnWidth(key)
+  resizeState = { key, startX: event.clientX, startWidth: currentWidth }
+  resizingColumnKey.value = key
+  document.body.classList.add('is-column-resizing')
+  window.addEventListener('pointermove', onColumnResizePointerMove)
+  window.addEventListener('pointerup', stopColumnResize, { once: true })
+}
+
+function onColumnResizePointerMove(event: PointerEvent) {
+  if (!resizeState) return
+  const width = clampColumnWidth(resizeState.key, resizeState.startWidth + event.clientX - resizeState.startX)
+  emit('resize-column', resizeState.key, width)
+}
+
+function stopColumnResize() {
+  resizeState = null
+  resizingColumnKey.value = null
+  document.body.classList.remove('is-column-resizing')
+  window.removeEventListener('pointermove', onColumnResizePointerMove)
+  window.removeEventListener('pointerup', stopColumnResize)
+}
+
+function onColumnHeaderDoubleClick(key: string, event: MouseEvent) {
+  if (!isResizeHit(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  emit('reset-column-width', key)
+}
+
+onUnmounted(stopColumnResize)
 </script>
 
 <template>
   <table class="issue-table">
+    <colgroup v-if="!compact">
+      <col v-if="selectionMode" class="sel-col" />
+      <col v-if="isVisible('key')" :style="colStyle('key')" />
+      <col v-if="isVisible('type')" :style="colStyle('type')" />
+      <col v-if="isVisible('title')" :style="colStyle('title')" />
+      <col v-if="isVisible('status')" :style="colStyle('status')" />
+      <col v-if="isVisible('priority')" :style="colStyle('priority')" />
+      <col v-if="isVisible('cost_unit')" :style="colStyle('cost_unit')" />
+      <col v-if="isVisible('release')" :style="colStyle('release')" />
+      <col v-if="isVisible('assignee')" :style="colStyle('assignee')" />
+      <col v-if="isVisible('tags')" :style="colStyle('tags')" />
+      <col v-if="isVisible('epic')" :style="colStyle('epic')" />
+      <col v-if="isVisible('sprint')" :style="colStyle('sprint')" />
+      <col v-if="isVisible('billing_type')" :style="colStyle('billing_type')" />
+      <col v-if="isVisible('total_budget')" :style="colStyle('total_budget')" />
+      <col v-if="isVisible('rate_hourly')" :style="colStyle('rate_hourly')" />
+      <col v-if="isVisible('rate_lp')" :style="colStyle('rate_lp')" />
+      <col v-if="isVisible('estimate_hours')" :style="colStyle('estimate_hours')" />
+      <col v-if="isVisible('estimate_lp')" :style="colStyle('estimate_lp')" />
+      <col v-if="isVisible('ar_hours')" :style="colStyle('ar_hours')" />
+      <col v-if="isVisible('ar_lp')" :style="colStyle('ar_lp')" />
+      <col v-if="isVisible('start_date')" :style="colStyle('start_date')" />
+      <col v-if="isVisible('end_date')" :style="colStyle('end_date')" />
+      <col v-if="isVisible('group_state')" :style="colStyle('group_state')" />
+      <col v-if="isVisible('sprint_state')" :style="colStyle('sprint_state')" />
+      <col v-if="isVisible('jira_id')" :style="colStyle('jira_id')" />
+      <col v-if="isVisible('jira_version')" :style="colStyle('jira_version')" />
+      <col v-if="isVisible('jira_text')" :style="colStyle('jira_text')" />
+      <col v-if="isVisible('booked_hours')" :style="colStyle('booked_hours')" />
+      <col :style="colStyle('actions')" />
+    </colgroup>
     <thead v-if="!compact">
       <tr>
         <th v-if="selectionMode" class="sel-th">
           <input type="checkbox" class="sel-cb" :checked="allSelected" @change="emit('toggle-select-all')" title="Select all" />
         </th>
-        <th v-if="isVisible('key')" v-bind="sortResult.thProps('key')" class="col-key">Key <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('key')" :size="11" /></span></th>
-        <th v-if="isVisible('type')" v-bind="sortResult.thProps('type')">Type <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('type')" :size="11" /></span></th>
-        <th v-if="isVisible('title')" v-bind="sortResult.thProps('title')">Title <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('title')" :size="11" /></span></th>
-        <th v-if="isVisible('status')" v-bind="sortResult.thProps('status')">Status <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('status')" :size="11" /></span></th>
-        <th v-if="isVisible('priority')" v-bind="sortResult.thProps('priority')">Priority <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('priority')" :size="11" /></span></th>
-        <th v-if="isVisible('cost_unit')" v-bind="sortResult.thProps('cost_unit')">Cost Unit <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('cost_unit')" :size="11" /></span></th>
-        <th v-if="isVisible('release')" v-bind="sortResult.thProps('release')">Release <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('release')" :size="11" /></span></th>
-        <th v-if="isVisible('assignee')" v-bind="sortResult.thProps('assignee')">Assignee <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('assignee')" :size="11" /></span></th>
-        <th v-if="isVisible('tags')" class="tags-th">Tags</th>
-        <th v-if="isVisible('epic')" class="tags-th">Epic</th>
-        <th v-if="isVisible('sprint')" class="tags-th">Sprint</th>
-        <th v-if="isVisible('billing_type')" v-bind="sortResult.thProps('billing_type')">Billing <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('billing_type')" :size="11" /></span></th>
-        <th v-if="isVisible('total_budget')" v-bind="sortResult.thProps('total_budget')">Budget <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('total_budget')" :size="11" /></span></th>
-        <th v-if="isVisible('rate_hourly')" v-bind="sortResult.thProps('rate_hourly')">Rate/h <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('rate_hourly')" :size="11" /></span></th>
-        <th v-if="isVisible('rate_lp')" v-bind="sortResult.thProps('rate_lp')">Rate LP <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('rate_lp')" :size="11" /></span></th>
-        <th v-if="isVisible('estimate_hours')" v-bind="sortResult.thProps('estimate_hours')" class="th-toggle" @click.stop="emit('toggle-time-unit')">Est. <span class="unit-toggle">{{ timeLabel() }}</span> <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('estimate_hours')" :size="11" /></span></th>
-        <th v-if="isVisible('estimate_lp')" v-bind="sortResult.thProps('estimate_lp')">Est. LP <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('estimate_lp')" :size="11" /></span></th>
-        <th v-if="isVisible('ar_hours')" v-bind="sortResult.thProps('ar_hours')" class="th-toggle" @click.stop="emit('toggle-time-unit')">AR <span class="unit-toggle">{{ timeLabel() }}</span> <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('ar_hours')" :size="11" /></span></th>
-        <th v-if="isVisible('ar_lp')" v-bind="sortResult.thProps('ar_lp')">AR LP <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('ar_lp')" :size="11" /></span></th>
-        <th v-if="isVisible('start_date')" v-bind="sortResult.thProps('start_date')">Start <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('start_date')" :size="11" /></span></th>
-        <th v-if="isVisible('end_date')" v-bind="sortResult.thProps('end_date')">End <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('end_date')" :size="11" /></span></th>
-        <th v-if="isVisible('group_state')" v-bind="sortResult.thProps('group_state')">Group State <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('group_state')" :size="11" /></span></th>
-        <th v-if="isVisible('sprint_state')" v-bind="sortResult.thProps('sprint_state')">Sprint State <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('sprint_state')" :size="11" /></span></th>
-        <th v-if="isVisible('jira_id')" v-bind="sortResult.thProps('jira_id')">Jira ID <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_id')" :size="11" /></span></th>
-        <th v-if="isVisible('jira_version')" v-bind="sortResult.thProps('jira_version')">Jira Version <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_version')" :size="11" /></span></th>
-        <th v-if="isVisible('jira_text')" v-bind="sortResult.thProps('jira_text')">Jira Text <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_text')" :size="11" /></span></th>
-        <th v-if="isVisible('booked_hours')" v-bind="sortResult.thProps('booked_hours')">Booked <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('booked_hours')" :size="11" /></span></th>
-        <th class="col-actions">Actions</th>
+        <th v-if="isVisible('key')" v-bind="headerProps('key', true)" class="col-key">Key <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('key')" :size="11" /></span></th>
+        <th v-if="isVisible('type')" v-bind="headerProps('type', true)">Type <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('type')" :size="11" /></span></th>
+        <th v-if="isVisible('title')" v-bind="headerProps('title', true)">Title <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('title')" :size="11" /></span></th>
+        <th v-if="isVisible('status')" v-bind="headerProps('status', true)">Status <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('status')" :size="11" /></span></th>
+        <th v-if="isVisible('priority')" v-bind="headerProps('priority', true)">Priority <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('priority')" :size="11" /></span></th>
+        <th v-if="isVisible('cost_unit')" v-bind="headerProps('cost_unit', true)">Cost Unit <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('cost_unit')" :size="11" /></span></th>
+        <th v-if="isVisible('release')" v-bind="headerProps('release', true)">Release <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('release')" :size="11" /></span></th>
+        <th v-if="isVisible('assignee')" v-bind="headerProps('assignee', true)">Assignee <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('assignee')" :size="11" /></span></th>
+        <th v-if="isVisible('tags')" v-bind="headerProps('tags')" class="tags-th">Tags</th>
+        <th v-if="isVisible('epic')" v-bind="headerProps('epic')" class="tags-th">Epic</th>
+        <th v-if="isVisible('sprint')" v-bind="headerProps('sprint')" class="tags-th">Sprint</th>
+        <th v-if="isVisible('billing_type')" v-bind="headerProps('billing_type', true)">Billing <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('billing_type')" :size="11" /></span></th>
+        <th v-if="isVisible('total_budget')" v-bind="headerProps('total_budget', true)">Budget <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('total_budget')" :size="11" /></span></th>
+        <th v-if="isVisible('rate_hourly')" v-bind="headerProps('rate_hourly', true)">Rate/h <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('rate_hourly')" :size="11" /></span></th>
+        <th v-if="isVisible('rate_lp')" v-bind="headerProps('rate_lp', true)">Rate LP <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('rate_lp')" :size="11" /></span></th>
+        <th v-if="isVisible('estimate_hours')" v-bind="headerProps('estimate_hours', true)" class="th-toggle" @click.stop="emit('toggle-time-unit')">Est. <span class="unit-toggle">{{ timeLabel() }}</span> <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('estimate_hours')" :size="11" /></span></th>
+        <th v-if="isVisible('estimate_lp')" v-bind="headerProps('estimate_lp', true)">Est. LP <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('estimate_lp')" :size="11" /></span></th>
+        <th v-if="isVisible('ar_hours')" v-bind="headerProps('ar_hours', true)" class="th-toggle" @click.stop="emit('toggle-time-unit')">AR <span class="unit-toggle">{{ timeLabel() }}</span> <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('ar_hours')" :size="11" /></span></th>
+        <th v-if="isVisible('ar_lp')" v-bind="headerProps('ar_lp', true)">AR LP <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('ar_lp')" :size="11" /></span></th>
+        <th v-if="isVisible('start_date')" v-bind="headerProps('start_date', true)">Start <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('start_date')" :size="11" /></span></th>
+        <th v-if="isVisible('end_date')" v-bind="headerProps('end_date', true)">End <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('end_date')" :size="11" /></span></th>
+        <th v-if="isVisible('group_state')" v-bind="headerProps('group_state', true)">Group State <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('group_state')" :size="11" /></span></th>
+        <th v-if="isVisible('sprint_state')" v-bind="headerProps('sprint_state', true)">Sprint State <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('sprint_state')" :size="11" /></span></th>
+        <th v-if="isVisible('jira_id')" v-bind="headerProps('jira_id', true)">Jira ID <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_id')" :size="11" /></span></th>
+        <th v-if="isVisible('jira_version')" v-bind="headerProps('jira_version', true)">Jira Version <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_version')" :size="11" /></span></th>
+        <th v-if="isVisible('jira_text')" v-bind="headerProps('jira_text', true)">Jira Text <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_text')" :size="11" /></span></th>
+        <th v-if="isVisible('booked_hours')" v-bind="headerProps('booked_hours', true)">Booked <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('booked_hours')" :size="11" /></span></th>
+        <th v-bind="headerProps('actions')" class="col-actions">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -292,14 +409,28 @@ function onRowClick(i: Issue) {
          <td v-if="compact" class="issue-title-cell">
            <span class="issue-link" v-html="highlight(i.title, searchQuery)" />
          </td>
-        <td v-if="!compact && isVisible('status')" class="inline-edit-cell">
-          <div class="inline-control inline-control--status">
+        <td v-if="!compact && isVisible('status')" class="inline-edit-cell" :style="colStyle('status')">
+          <div v-if="isEditing(i, 'status')" class="inline-control inline-control--status">
             <IssueStatusSelect
-            :model-value="i.status"
-            size="sm"
-            @update:model-value="v => emit('save-cell-edit', i, 'status', v)"
-          />
+              :model-value="i.status"
+              size="sm"
+              open-on-mount
+              @update:model-value="v => emit('save-cell-edit', i, 'status', v)"
+            />
           </div>
+          <button
+            v-else
+            type="button"
+            class="inline-read-value inline-read-value--status"
+            title="Change status"
+            @click.stop="emit('open-cell', i, 'status', $event)"
+          >
+            <span class="issue-status">
+              <StatusDot :status="i.status" />
+              {{ STATUS_LABEL[i.status] ?? i.status }}
+            </span>
+            <AppIcon name="pencil" :size="11" class="inline-edit-ghost" />
+          </button>
         </td>
         <td v-if="compact">
           <span class="issue-status">
@@ -307,15 +438,29 @@ function onRowClick(i: Issue) {
             {{ STATUS_LABEL[i.status] }}
           </span>
         </td>
-        <td v-if="!compact && isVisible('priority')" class="inline-edit-cell">
-          <div class="inline-control inline-control--priority">
+        <td v-if="!compact && isVisible('priority')" class="inline-edit-cell" :style="colStyle('priority')">
+          <div v-if="isEditing(i, 'priority')" class="inline-control inline-control--priority">
             <MetaSelect
-            :model-value="i.priority"
-            :options="INLINE_PRIORITY_OPTIONS"
-            size="sm"
-            @update:model-value="v => emit('save-cell-edit', i, 'priority', v)"
-          />
+              :model-value="i.priority"
+              :options="INLINE_PRIORITY_OPTIONS"
+              size="sm"
+              open-on-mount
+              @update:model-value="v => emit('save-cell-edit', i, 'priority', v)"
+            />
           </div>
+          <button
+            v-else
+            type="button"
+            class="inline-read-value inline-read-value--priority"
+            title="Change priority"
+            @click.stop="emit('open-cell', i, 'priority', $event)"
+          >
+            <span class="issue-priority" :style="{ color: PRIORITY_COLOR[i.priority] }">
+              <AppIcon :name="PRIORITY_ICON[i.priority]" :size="12" :stroke-width="2.5" class="issue-priority-arrow" />
+              {{ PRIORITY_LABEL[i.priority] }}
+            </span>
+            <AppIcon name="pencil" :size="11" class="inline-edit-ghost" />
+          </button>
         </td>
         <td v-if="compact">
           <span class="issue-priority" :style="{ color: PRIORITY_COLOR[i.priority] }">
@@ -348,16 +493,28 @@ function onRowClick(i: Issue) {
           </select>
           <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release || '—' }}</span>
         </td>
-        <td v-if="!compact && isVisible('assignee')" class="meta-cell inline-edit-cell">
-          <div class="inline-control inline-control--assignee">
+        <td v-if="!compact && isVisible('assignee')" class="meta-cell inline-edit-cell" :style="colStyle('assignee')">
+          <div v-if="isEditing(i, 'assignee_id')" class="inline-control inline-control--assignee">
             <IssueAssigneeSelect
-            :model-value="i.assignee_id !== null ? String(i.assignee_id) : ''"
-            :users="users"
-            :fallback-user="i.assignee"
-            size="sm"
-            @update:model-value="v => emit('save-cell-edit', i, 'assignee_id', v)"
-          />
+              :model-value="i.assignee_id !== null ? String(i.assignee_id) : ''"
+              :users="users"
+              :fallback-user="i.assignee"
+              size="sm"
+              open-on-mount
+              @update:model-value="v => emit('save-cell-edit', i, 'assignee_id', v)"
+            />
           </div>
+          <button
+            v-else
+            type="button"
+            class="inline-read-value inline-read-value--assignee"
+            title="Change assignee"
+            @click.stop="emit('open-cell', i, 'assignee_id', $event)"
+          >
+            <UserAvatar v-if="assigneeUser(i)" :user="assigneeUser(i)" size="sm" />
+            <span class="inline-read-label">{{ assigneeLabel(i) }}</span>
+            <AppIcon name="pencil" :size="11" class="inline-edit-ghost" />
+          </button>
         </td>
         <td v-if="!compact && isVisible('tags')" class="tags-cell">
           <div v-if="i.tags?.length" class="row-tags">
@@ -481,17 +638,53 @@ function onRowClick(i: Issue) {
 .issue-table tbody tr:last-child td:first-child { border-bottom-left-radius: 7px; }
 .issue-table tbody tr:last-child td:last-child  { border-bottom-right-radius: 7px; }
 
-.issue-table thead th { padding: .6rem .85rem; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.issue-table thead th { padding: .6rem .85rem; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; box-sizing: border-box; }
 .issue-table tbody tr { border-bottom: none; }
-.issue-table td { padding: .6rem .85rem; font-size: 13px; vertical-align: middle; }
+.issue-table td { padding: .6rem .85rem; font-size: 13px; vertical-align: middle; box-sizing: border-box; }
 
 .clickable { cursor: pointer; }
 .issue-table tbody tr.clickable:hover { background: #f0f2f4; }
 .inline-edit-cell { cursor: default; position: relative; overflow: visible; }
-.inline-control { display: inline-flex; align-items: center; min-height: 28px; }
-.inline-control--status { min-width: 132px; }
-.inline-control--priority { min-width: 112px; }
-.inline-control--assignee { min-width: 148px; }
+.inline-control { display: inline-flex; align-items: center; min-height: 28px; max-width: 100%; }
+.inline-control :deep(.meta-select-trigger) { min-width: 112px; }
+.inline-control--assignee :deep(.meta-select-trigger) { min-width: 138px; }
+.inline-read-value {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 28px;
+  max-width: 100%;
+  padding: .1rem .25rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.inline-read-value:hover,
+.inline-read-value:focus-visible {
+  background: color-mix(in srgb, var(--bp-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--bp-blue) 22%, transparent);
+  outline: none;
+}
+.inline-read-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inline-edit-ghost {
+  flex-shrink: 0;
+  color: var(--bp-blue);
+  opacity: 0;
+  transition: opacity .12s;
+}
+.inline-read-value:hover .inline-edit-ghost,
+.inline-read-value:focus-visible .inline-edit-ghost {
+  opacity: .58;
+}
 .clickable-cell { cursor: cell; border-radius: 3px; padding: .1rem .25rem; position: relative; }
 .clickable-cell:hover { background: color-mix(in srgb, var(--bp-blue) 8%, transparent); outline: 1px solid color-mix(in srgb, var(--bp-blue) 25%, transparent); outline-offset: -1px; }
 .clickable-cell::before { content: '✎'; position: absolute; left: -14px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--bp-blue); opacity: 0; transition: opacity .15s; pointer-events: none; }
@@ -507,6 +700,32 @@ function onRowClick(i: Issue) {
 .sortable-th.sort-active { color: var(--bp-blue-dark) !important; }
 .sort-ind { display: inline-block; margin-left: .25rem; font-size: 10px; opacity: .55; vertical-align: middle; }
 .sortable-th.sort-active .sort-ind { opacity: 1; }
+.resizable-th { position: sticky; overflow: visible; }
+.resizable-th::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -5px;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.resizable-th:hover::before,
+.resizable-th--active::before {
+  content: '';
+  position: absolute;
+  top: .35rem;
+  right: 0;
+  bottom: .35rem;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bp-blue) 55%, transparent);
+}
+:global(body.is-column-resizing) {
+  cursor: col-resize;
+  user-select: none;
+}
 
 .col-key { position: sticky; left: 0; z-index: 11; }
 .issue-table thead .col-key { background: var(--bg); z-index: 12; }
@@ -516,7 +735,7 @@ function onRowClick(i: Issue) {
 .issue-table tbody tr:hover .col-key { background: #f0f2f4; }
 .issue-table tbody tr.row-selected:hover .col-key { background: var(--bp-blue-pale); }
 .key-cell { white-space: nowrap; }
-.issue-title-cell { min-width: 250px; max-width: 260px; }
+.issue-title-cell { min-width: 220px; }
 
 :deep(.search-highlight) { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; font-style: normal; }
 .issue-link { font-weight: 500; color: var(--text); }

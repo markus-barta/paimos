@@ -11,6 +11,7 @@ defineProps<{
   disabled?: boolean;
   loading?: boolean;
   size?: "sm" | "md";
+  openOnMount?: boolean;
 }>();
 
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
@@ -40,6 +41,7 @@ const STATUS_OPTIONS: MetaOption[] = [
     :disabled="disabled"
     :loading="loading"
     :size="size"
+    :open-on-mount="openOnMount"
     @update:model-value="emit('update:modelValue', $event)"
   />
 </template>

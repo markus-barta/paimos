@@ -53,8 +53,14 @@ vi.mock('@/components/AppModal.vue', () => ({
 
 vi.mock('@/components/IssueTable.vue', () => ({
   default: {
-    props: ['issues'],
-    template: '<div class="issue-table-stub" :data-rendered-count="issues.length"></div>',
+    props: ['issues', 'columnWidths'],
+    emits: ['resize-column', 'reset-column-width'],
+    template: `
+      <div class="issue-table-stub" :data-rendered-count="issues.length" :data-column-widths="JSON.stringify(columnWidths)">
+        <button class="resize-status-stub" @click="$emit('resize-column', 'status', 124)">resize</button>
+        <button class="reset-status-stub" @click="$emit('reset-column-width', 'status')">reset</button>
+      </div>
+    `,
   },
 }))
 
@@ -244,6 +250,28 @@ describe('IssueList progressive rendering', () => {
     expect(mounted.el.querySelector('.issue-count')?.textContent).toContain('443 issues')
     expect(mounted.el.querySelector('.issue-count')?.textContent).not.toContain('showing')
     expect(mounted.el.querySelector('.issue-count-link')).toBeNull()
+
+    mounted.unmount()
+  })
+
+  it('persists resized column widths in the issue-list filter snapshot', async () => {
+    const mounted = mountIssueList([makeIssue(1)])
+    await settle()
+
+    mounted.el.querySelector<HTMLButtonElement>('.resize-status-stub')!.click()
+    await settle()
+
+    expect(JSON.parse(localStorage.getItem('paimos:filters:global') ?? '{}')).toMatchObject({
+      columnWidths: { status: 124 },
+    })
+    expect(mounted.el.querySelector('.issue-table-stub')?.getAttribute('data-column-widths')).toContain('"status":124')
+
+    mounted.el.querySelector<HTMLButtonElement>('.reset-status-stub')!.click()
+    await settle()
+
+    expect(JSON.parse(localStorage.getItem('paimos:filters:global') ?? '{}')).toMatchObject({
+      columnWidths: {},
+    })
 
     mounted.unmount()
   })

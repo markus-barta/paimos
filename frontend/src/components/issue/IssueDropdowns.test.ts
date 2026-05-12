@@ -52,4 +52,34 @@ describe("issue dropdown components", () => {
 
     await mounted.unmount();
   });
+
+  it("renders a single unassigned option in the assignee dropdown", async () => {
+    const users = [
+      {
+        id: 7,
+        username: "marta",
+        role: "member",
+        status: "active",
+        nickname: "MB",
+        first_name: "Marta",
+        last_name: "B",
+        email: "marta@example.com",
+        avatar_path: "",
+      },
+    ];
+    const mounted = await mountComponent(IssueAssigneeSelect, {
+      modelValue: "",
+      users,
+      size: "sm",
+    });
+
+    mounted.el.querySelector<HTMLButtonElement>(".meta-select-trigger")?.click();
+    await nextTick();
+
+    const optionLabels = Array.from(document.querySelectorAll(".meta-select-dropdown--teleported .ms-option"))
+      .map((el) => el.textContent?.trim());
+    expect(optionLabels.filter((label) => label === "Unassigned")).toHaveLength(1);
+
+    await mounted.unmount();
+  });
 });

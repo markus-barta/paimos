@@ -15,6 +15,7 @@ const props = defineProps<{
   disabled?: boolean;
   loading?: boolean;
   size?: "sm" | "md";
+  openOnMount?: boolean;
 }>();
 
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
@@ -30,14 +31,11 @@ const options = computed<MetaOption[]>(() => {
   const visible = selected && !rows.some((u) => u.id === selected.id)
     ? [selected, ...rows]
     : rows;
-  return [
-    { value: "", label: "Unassigned" },
-    ...visible.map((u) => ({
-      value: String(u.id),
-      label: u.username,
-      avatarUser: u,
-    })),
-  ];
+  return visible.map((u) => ({
+    value: String(u.id),
+    label: u.username,
+    avatarUser: u,
+  }));
 });
 </script>
 
@@ -50,6 +48,7 @@ const options = computed<MetaOption[]>(() => {
     :disabled="disabled"
     :loading="loading"
     :size="size"
+    :open-on-mount="openOnMount"
     @update:model-value="emit('update:modelValue', $event)"
   />
 </template>

@@ -31,6 +31,7 @@ import {
 } from '@/composables/useIssueDisplay'
 import { lsFiltersKey } from '@/constants/storage'
 import { assignableIssueUsers } from '@/utils/users'
+import { normalizeColumnWidths, type ColumnWidths } from '@/composables/useColumnWidths'
 
 // ── Negation helpers ────────────────────────────────────────────────────────
 export const NEG = '!'
@@ -78,6 +79,7 @@ export interface SavedFilters {
   sprints:  string[]
   epic:     string[]
   treeView: boolean
+  columnWidths: ColumnWidths
   sortKey?: string
   sortDir?: string
 }
@@ -94,6 +96,7 @@ export interface RawSavedFilters {
   sprints:  string[]
   epic:     string[]
   treeView: boolean
+  columnWidths?: unknown
   sortKey?: string
   sortDir?: string
 }
@@ -110,6 +113,7 @@ const EMPTY_FILTERS: SavedFilters = {
   sprints: [],
   epic: [],
   treeView: false,
+  columnWidths: {},
 }
 
 export function normalizeSavedFilters(input: Partial<RawSavedFilters> | null | undefined): SavedFilters {
@@ -125,6 +129,7 @@ export function normalizeSavedFilters(input: Partial<RawSavedFilters> | null | u
     sprints: toArr(input?.sprints),
     epic: toArr(input?.epic),
     treeView: input?.treeView === true,
+    columnWidths: normalizeColumnWidths(input?.columnWidths),
     sortKey: input?.sortKey || undefined,
     sortDir: input?.sortKey ? (input?.sortDir === 'desc' ? 'desc' : 'asc') : undefined,
   }
@@ -410,6 +415,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   }
 
   function saveFilters() {
+    const stored = readStoredColumnWidths()
     const f = normalizeSavedFilters({
       status:   filterStatus.value,
       priority: filterPriority.value,
@@ -422,6 +428,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       sprints:  filterSprints.value,
       epic:     filterEpic.value,
       treeView: treeView.value,
+      columnWidths: stored,
       sortKey:  opts.sortKey.value || undefined,
       sortDir:  opts.sortKey.value ? opts.sortDir.value : undefined,
     })
@@ -430,6 +437,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
 
   function currentFiltersJSON(): string {
     try {
+      const stored = readStoredColumnWidths()
       const f = normalizeSavedFilters({
         status:   filterStatus.value,
         priority: filterPriority.value,
@@ -442,11 +450,22 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
         sprints:  filterSprints.value,
         epic:     filterEpic.value,
         treeView: treeView.value,
+        columnWidths: stored,
         sortKey:  opts.sortKey.value || undefined,
         sortDir:  opts.sortKey.value ? opts.sortDir.value : undefined,
       })
       return JSON.stringify(f)
     } catch { return '{}' }
+  }
+
+  function readStoredColumnWidths(): ColumnWidths {
+    try {
+      const raw = localStorage.getItem(storageKey.value)
+      if (!raw) return {}
+      return normalizeSavedFilters(JSON.parse(raw)).columnWidths
+    } catch {
+      return {}
+    }
   }
 
   // ── filteredIssues computed ─────────────────────────────────────────────

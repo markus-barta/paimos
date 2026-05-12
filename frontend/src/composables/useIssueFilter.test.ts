@@ -15,6 +15,16 @@ describe('normalizeSavedFilters', () => {
       treeView: true,
     })
   })
+
+  it('normalizes persisted column widths alongside filters', () => {
+    expect(normalizeSavedFilters({
+      type: ['ticket'],
+      columnWidths: { title: 480, status: 20, bogus: 100 },
+    })).toMatchObject({
+      type: ['ticket'],
+      columnWidths: { title: 480, status: 92 },
+    })
+  })
 })
 
 describe('normalizeSavedFiltersJSON', () => {
@@ -29,6 +39,12 @@ describe('normalizeSavedFiltersJSON', () => {
     expect(JSON.parse(normalizeSavedFiltersJSON('{"type":["ticket"],"treeView":true}'))).toMatchObject({
       type: ['ticket'],
       treeView: true,
+    })
+  })
+
+  it('keeps valid columnWidths in saved view payloads', () => {
+    expect(JSON.parse(normalizeSavedFiltersJSON('{"columnWidths":{"assignee":142,"bad":200}}'))).toMatchObject({
+      columnWidths: { assignee: 142 },
     })
   })
 })

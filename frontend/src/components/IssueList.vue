@@ -24,7 +24,8 @@ import { useIssueContext } from '@/composables/useIssueContext'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
-import { normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
+import { normalizeSavedFilters, normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
+import { normalizeColumnWidths, type ColumnWidths } from '@/composables/useColumnWidths'
 import { useSprintNav } from '@/composables/useSprintNav'
 import { useTreeView } from '@/composables/useTreeView'
 import { useSelection } from '@/composables/useSelection'
@@ -94,6 +95,7 @@ const isAdmin   = computed(() => authStore.isAdmin)
 
 const colScope = computed(() => `project-${props.projectId ?? 'global'}`)
 const { ALL_COLUMNS, isVisible, toggle: toggleCol, reset: resetCols, setFromJSON: setColsFromJSON, toJSON: colsToJSON } = useColumnConfig(colScope)
+const columnWidths = ref<ColumnWidths>({})
 
 const colPanelOpen   = ref(false)
 const colPanelEl     = ref<HTMLElement | null>(null)
@@ -162,10 +164,55 @@ const {
   pickerProjects, pickerUsers, pickerTags, pickerCostUnits, pickerReleases, pickerSprints,
   clearAllFilters, removeChip, clearChipGroup,
   toggleChipNegation,
-  loadFilters, saveFilters, currentFiltersJSON,
+  loadFilters, saveFilters: saveBaseFilters, currentFiltersJSON: currentBaseFiltersJSON,
   switchComplexTab, setAssigneeAny,
   filterWatchSources,
 } = filterReal
+
+function currentFiltersJSON(): string {
+  try {
+    const f = normalizeSavedFilters(JSON.parse(currentBaseFiltersJSON()))
+    f.columnWidths = normalizeColumnWidths(columnWidths.value)
+    return JSON.stringify(f)
+  } catch {
+    return JSON.stringify(normalizeSavedFilters({ columnWidths: columnWidths.value }))
+  }
+}
+
+function saveFilters() {
+  saveBaseFilters()
+  persistColumnWidths()
+}
+
+function loadColumnWidthsFromFiltersJSON(raw: string | null | undefined) {
+  try {
+    columnWidths.value = normalizeSavedFilters(raw ? JSON.parse(raw) : {}).columnWidths
+  } catch {
+    columnWidths.value = {}
+  }
+}
+
+function loadColumnWidthsFromLocalStorage() {
+  loadColumnWidthsFromFiltersJSON(localStorage.getItem(lsFiltersKey(props.projectId)))
+}
+
+function persistColumnWidths() {
+  try {
+    localStorage.setItem(lsFiltersKey(props.projectId), currentFiltersJSON())
+  } catch { /* ignore */ }
+}
+
+function resizeColumn(key: string, width: number) {
+  columnWidths.value = normalizeColumnWidths({ ...columnWidths.value, [key]: width })
+  persistColumnWidths()
+}
+
+function resetColumnWidth(key: string) {
+  const next = { ...columnWidths.value }
+  delete next[key]
+  columnWidths.value = normalizeColumnWidths(next)
+  persistColumnWidths()
+}
 
 // ── Selection composable ──────────────────────────────────────────────────
 const { selectionMode, selectedIds, toggleSelectionMode, toggleSelect, toggleSelectAll, allSelected } = useSelection(filteredIssues)
@@ -397,7 +444,9 @@ function applyView(v: SavedView, closePanel = true) {
   applyingView = true
   setColsFromJSON(v.columns_json)
   try {
-    localStorage.setItem(lsFiltersKey(props.projectId), normalizeSavedFiltersJSON(v.filters_json))
+    const normalizedFilters = normalizeSavedFiltersJSON(v.filters_json)
+    localStorage.setItem(lsFiltersKey(props.projectId), normalizedFilters)
+    loadColumnWidthsFromFiltersJSON(normalizedFilters)
     loadFilters()
   } catch { /* ignore */ }
   if (v.id >= 0) {
@@ -484,7 +533,7 @@ function setEpicMode(m: EpicMode) {
 }
 
 // ── Filter persistence watchers ──────────────────────────────────────────
-onMounted(() => { loadFilters(); sprintNav.loadSprintNav() })
+onMounted(() => { loadFilters(); loadColumnWidthsFromLocalStorage(); sprintNav.loadSprintNav() })
 watch(filterWatchSources, () => { if (!applyingView) saveFilters() })
 watch([sortKey, sortDir], () => { if (!applyingView) saveFilters() })
 
@@ -1149,6 +1198,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :project-id="projectId"
         :sort-result="sortResult"
         :is-visible="isVisible"
+        :column-widths="columnWidths"
         :editing-cell="editingCell"
         :cell-edit-value="cellEditValue"
         :sprint-picker-search="sprintPickerSearch"
@@ -1189,6 +1239,8 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         @section-drop="onSectionDrop"
         @toggle-group-expand="toggleGroupExpand"
         @toggle-time-unit="toggleTimeUnit"
+        @resize-column="resizeColumn"
+        @reset-column-width="resetColumnWidth"
         @update:cell-edit-value="v => cellEditValue = v"
         @update:sprint-picker-search="v => sprintPickerSearch = v"
       />

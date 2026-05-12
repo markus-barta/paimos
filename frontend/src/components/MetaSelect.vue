@@ -43,6 +43,7 @@ const props = defineProps<{
   disabled?: boolean
   loading?: boolean
   size?: 'sm' | 'md'
+  openOnMount?: boolean
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -57,6 +58,16 @@ const selected = computed(() =>
   props.options.find(o => o.value === props.modelValue) ?? null
 )
 
+const hasExplicitEmptyOption = computed(() =>
+  props.options.some(o => o.value === '')
+)
+
+const showPlaceholderOption = computed(() => {
+  if (props.placeholder === undefined || hasExplicitEmptyOption.value) return false
+  const q = searchQuery.value.trim().toLowerCase()
+  return !q || props.placeholder.toLowerCase().includes(q)
+})
+
 const filteredOptions = computed(() => {
   if (!props.searchable || !searchQuery.value.trim()) return props.options
   const q = searchQuery.value.toLowerCase()
@@ -69,36 +80,42 @@ function select(value: string) {
   searchQuery.value = ''
 }
 
-function toggleOpen() {
+function openDropdown() {
   if (props.disabled || props.loading) return
-  open.value = !open.value
-  if (open.value) {
-    if (root.value) {
-      const rect = root.value.getBoundingClientRect()
-      // PAI-243: flip the dropdown above the trigger when there isn't
-      // enough room below it (e.g. status/priority cells in the bottom
-      // rows of a long table). Estimated panel height is the search row
-      // (~36px) plus the options scroll cap (240px) plus border/padding.
-      const margin = 8
-      const estimatedHeight = (props.searchable ? 36 : 0) + 240 + 12
-      const spaceBelow = window.innerHeight - rect.bottom - margin
-      const spaceAbove = rect.top - margin
-      const flipUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow
-      const usable = Math.max(120, Math.floor((flipUp ? spaceAbove : spaceBelow)))
-      dropdownPos.value = {
-        top: flipUp
-          ? Math.max(margin, rect.top - 4 - Math.min(estimatedHeight, usable)) + 'px'
-          : rect.bottom + 4 + 'px',
-        left: rect.left + 'px',
-        minWidth: Math.max(rect.width, 140) + 'px',
-        maxHeight: usable + 'px',
-      }
-    }
-    if (props.searchable) {
-      searchQuery.value = ''
-      nextTick(() => searchInput.value?.focus())
+  open.value = true
+  if (root.value) {
+    const rect = root.value.getBoundingClientRect()
+    // PAI-243: flip the dropdown above the trigger when there isn't
+    // enough room below it (e.g. status/priority cells in the bottom
+    // rows of a long table). Estimated panel height is the search row
+    // (~36px) plus the options scroll cap (240px) plus border/padding.
+    const margin = 8
+    const estimatedHeight = (props.searchable ? 36 : 0) + 240 + 12
+    const spaceBelow = window.innerHeight - rect.bottom - margin
+    const spaceAbove = rect.top - margin
+    const flipUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow
+    const usable = Math.max(120, Math.floor((flipUp ? spaceAbove : spaceBelow)))
+    dropdownPos.value = {
+      top: flipUp
+        ? Math.max(margin, rect.top - 4 - Math.min(estimatedHeight, usable)) + 'px'
+        : rect.bottom + 4 + 'px',
+      left: rect.left + 'px',
+      minWidth: Math.max(rect.width, 140) + 'px',
+      maxHeight: usable + 'px',
     }
   }
+  if (props.searchable) {
+    searchQuery.value = ''
+    nextTick(() => searchInput.value?.focus())
+  }
+}
+
+function toggleOpen() {
+  if (open.value) {
+    open.value = false
+    return
+  }
+  openDropdown()
 }
 
 function onOutsideClick(e: MouseEvent) {
@@ -111,7 +128,10 @@ function onOutsideClick(e: MouseEvent) {
   }
 }
 
-onMounted(() => document.addEventListener('mousedown', onOutsideClick))
+onMounted(() => {
+  document.addEventListener('mousedown', onOutsideClick)
+  if (props.openOnMount) nextTick(openDropdown)
+})
 onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
 </script>
 
@@ -159,7 +179,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
       <!-- Placeholder / "All" option -->
       <div class="ms-options-scroll">
       <button
-        v-if="placeholder !== undefined && !searchQuery"
+        v-if="showPlaceholderOption"
         type="button"
         class="ms-option"
         :class="{ active: modelValue === '' }"
