@@ -198,9 +198,15 @@ const formValid = computed(
 )
 
 const isArchived = computed(() => status.value === archivedStatusValue())
+const isActive = computed(() => status.value === activeStatusValue())
 
-function toggleArchived() {
-  status.value = isArchived.value ? activeStatusValue() : archivedStatusValue()
+// PAI-395 phase 2: explicit two-button toggle replaces the previous
+// label-flip button. setStatus is deliberate — clicking Active on a
+// `proposed` entry sets it to active (not silently archived, which is
+// what the old toggleArchived() did because isArchived was false on
+// proposed too).
+function setStatus(s: 'active' | 'archived') {
+  status.value = s === 'active' ? activeStatusValue() : archivedStatusValue()
 }
 
 // ── PAI-345: promotion (memory only) ───────────────────────────────
@@ -594,14 +600,28 @@ watch(
     </div>
 
     <div class="ke-actions">
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm"
-        :class="{ active: isArchived }"
-        @click="toggleArchived"
-      >
-        {{ isArchived ? 'Archived' : 'Active' }}
-      </button>
+      <!-- PAI-395 phase 2: segmented Active/Archived toggle. Both
+           states always visible; the current state carries `.active`.
+           On a `proposed` entry, neither button is active until the
+           user picks a transition. -->
+      <div class="ke-status-toggle" role="radiogroup" aria-label="Entry status">
+        <button
+          type="button"
+          role="radio"
+          :aria-checked="isActive"
+          class="btn btn-ghost btn-sm"
+          :class="{ active: isActive }"
+          @click="setStatus('active')"
+        >Active</button>
+        <button
+          type="button"
+          role="radio"
+          :aria-checked="isArchived"
+          class="btn btn-ghost btn-sm"
+          :class="{ active: isArchived }"
+          @click="setStatus('archived')"
+        >Archived</button>
+      </div>
       <span v-if="saveError" class="ke-error">{{ saveError }}</span>
       <span class="ke-actions-spacer" />
       <button type="button" class="btn btn-ghost btn-sm" @click="emit('cancel')">Cancel</button>
@@ -634,6 +654,7 @@ watch(
 .ke-body-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .ke-body-head > label { margin-bottom: 0; }
 .ke-body-mode { display: inline-flex; gap: .25rem; }
+.ke-status-toggle { display: inline-flex; gap: .25rem; }
 .ke-preview { padding: .65rem .75rem; min-height: 200px; border: 1px dashed var(--border); border-radius: 6px; background: var(--bg); font-size: 13px; line-height: 1.55; overflow: auto; }
 .ke-preview :deep(h1), .ke-preview :deep(h2), .ke-preview :deep(h3) { margin: .6rem 0 .3rem; font-weight: 700; }
 .ke-preview :deep(p) { margin: .35rem 0; }
