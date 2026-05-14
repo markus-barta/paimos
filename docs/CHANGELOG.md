@@ -5,6 +5,35 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.4] — 2026-05-15
+
+Knowledge editor toggle polish + archived-state dim (PAI-397
+follow-up to PAI-395).
+
+### Fixed
+
+- **PAI-397** — Edit/Preview and Active/Archived toggles in
+  `KnowledgeEntryEditor.vue` now show a visible active state.
+  PAIMOS's `.btn-ghost.btn-sm + .active` rule is defined per-view
+  (canonical at `IssueList.vue:1264`) and the editor was missing its
+  copy, so the `.active` class was being applied invisibly. State was
+  toggling correctly under the hood (Save persisted the right value),
+  but the buttons looked identical regardless of selection.
+
+### Changed
+
+- **PAI-397** — Edit/Preview and Active/Archived render as a proper
+  joined segmented control: outer rounded border, no gap, internal
+  divider, active button filled with `bp-blue-pale` + `bp-blue-dark`.
+  Subtle hover for inactive buttons. Replaces the previous "two loose
+  btn-ghost buttons with a gap" treatment.
+- **PAI-397** — Archived entries fade their content fields (title,
+  slug, metadata, body textarea/preview) at 55% opacity, matching the
+  existing `.pku-row--archived` treatment in the list. Status toggle,
+  action chrome, and the Active button stay full-strength so
+  un-archiving is one obvious click. Promote-to row deliberately
+  unchanged (different semantic — action verbs, not a state toggle).
+
 ## [3.4.3] — 2026-05-14
 
 Form polish — unified placeholder hint styling across native inputs
