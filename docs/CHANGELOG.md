@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1] — 2026-05-14
+
+Build-only patch on top of 3.4.0: the gosec baseline didn't follow the
+line-number shifts introduced by PAI-394's URL refactor, so the 3.4.0
+Docker image was never published. 3.4.1 carries the same code plus the
+refreshed baseline.
+
+### Fixed
+
+- Refresh `.gosec-baseline.txt` for PAI-394's line shifts in
+  `cmd/paimos/cmd_session_bundle.go`,
+  `cmd/paimos/sync/knowledge_resource.go`, and `handlers/tags.go`. No
+  new findings — only the (file, line, rule) tuples are updated.
+
 ## [3.4.0] — 2026-05-14
 
 Minor release for two agent-discoverability fixes. HTTP-only and MCP
