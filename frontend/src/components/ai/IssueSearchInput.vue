@@ -296,7 +296,9 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
   color: var(--text);
   min-width: 0;
 }
-.iss-input::placeholder { color: var(--text-muted); }
+/* PAI-396: drop the local color override so the global ::placeholder
+   rule (opacity .5 + .9em) applies; combining muted color with the
+   global opacity would render too dim. */
 .iss-search-spin {
   display: inline-flex; align-items: center;
   color: var(--text-muted);

@@ -196,6 +196,22 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(46, 109, 164, 0.15);
 }
 
+/* PAI-396: unified placeholder treatment. Empty-state hint text reads
+   as half-strength + slightly smaller than entered values so an empty
+   form is visually distinct from a filled one at a glance. Italic
+   was rejected for readability (sans-serif obliques + dyslexic
+   readers); size + opacity carry the signal without that cost. The
+   "revert on edit" semantic is automatic — placeholders disappear
+   the moment a character lands. Custom-select empty-state spans
+   (e.g. .meta-select-placeholder, .ms-label.muted in MetaSelect.vue)
+   apply the same opacity / size locally so the visual language
+   matches across native + custom inputs. */
+::placeholder {
+  opacity: 0.5;
+  font-size: 0.9em;
+  font-style: normal;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

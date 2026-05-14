@@ -264,7 +264,11 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   opacity: .7;
 }
 
-.meta-select-placeholder { color: var(--text-muted); }
+/* PAI-396: match the global ::placeholder treatment — inherit text
+   color, then dim and shrink. Same visual language as native
+   <input placeholder> so empty-state reads the same across native
+   and custom selects. */
+.meta-select-placeholder { opacity: 0.5; font-size: 0.9em; }
 .meta-select-chevron { font-size: 10px; color: var(--text-muted); margin-left: .2rem; }
 
 .meta-select-val {
@@ -354,6 +358,8 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   white-space: nowrap;
   min-width: 0;
 }
-.ms-label.muted { color: var(--text-muted); }
+/* PAI-396: placeholder echo inside the dropdown — same treatment as
+   the closed-state placeholder span above. */
+.ms-label.muted { opacity: 0.5; font-size: 0.9em; }
 .ms-arrow-icon { flex-shrink: 0; }
 </style>
