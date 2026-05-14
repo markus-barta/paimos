@@ -5,6 +5,56 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.2] — 2026-05-14
+
+Knowledge tab UX polish (PAI-395). The per-entry editor now opens in a
+pinned side panel mirroring `IssueSidePanel`, the Body field's mode
+switch and the Active/Archived control both render as segmented
+two-button toggles using the global `btn-ghost btn-sm + .active`
+vocabulary, and the markdown preview pane gets bounded height +
+explicit list-marker padding so bullets and ordered-list numbers stop
+clipping on the left.
+
+### Added
+
+- **PAI-395 phase 4** — `KnowledgeSidePanel.vue` mirrors the
+  `IssueSidePanel` chrome (overlay vs pinned modes, resize handle on
+  left edge with double-click reset, slide transition). Reuses
+  `useSidePanelWidth` + `useSidePanelPinned` so AppLayout's
+  right-inset math picks up the new panel for free. Selected
+  knowledge row gets a `.pku-row--selected` highlight while the panel
+  is open. Deep-link `?tab=knowledge&memory=<slug>` still
+  auto-opens the matching entry — now into the panel instead of
+  swapping the whole tab into editor mode.
+
+### Changed
+
+- **PAI-395 phase 1** — Body field's `Preview` / `Edit` toggle in
+  `KnowledgeEntryEditor.vue` is now two adjacent `btn-ghost btn-sm`
+  buttons with the active state highlighted. Identical idiom to the
+  `Promote to: [Project] [User] [Instance]` row one section up in the
+  same component (PAI-345).
+- **PAI-395 phase 2** — `Active` / `Archived` control at the bottom
+  of the editor is now a segmented toggle. Both states always visible;
+  `setStatus('active' | 'archived')` makes the transition explicit.
+- **PAI-395 phase 3** — `.ke-preview` gets `max-height: clamp(280px,
+  50vh, 640px)`, `:deep(ul, ol) { padding-left: 1.5em }` so list
+  markers stop clipping, border / background parity with the textarea
+  on Edit ↔ Preview toggle, and minimal styling for blockquote, hr,
+  table, th, td.
+- **PAI-395 phase 4** — `ProjectKnowledgeUnified.vue` no longer swaps
+  list ↔ editor mode; the list is always rendered and the panel is a
+  fixed-right sibling. Dead code removed: the `pku-editor-head` chrome
+  + the `mode` computed that drove the old branch.
+
+### Fixed
+
+- **PAI-395 phase 2** — Silent bug in the old `toggleArchived()` that
+  flipped `active ↔ archived` based on `isArchived` alone, silently
+  archiving a `proposed` entry when the toggle was clicked. The new
+  segmented toggle uses an explicit `setStatus()`; on a proposed entry
+  neither button is `.active` until the user picks a transition.
+
 ## [3.4.1] — 2026-05-14
 
 Build-only patch on top of 3.4.0: the gosec baseline didn't follow the
