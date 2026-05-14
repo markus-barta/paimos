@@ -523,14 +523,27 @@ watch(
     <div class="ke-field">
       <div class="ke-body-head">
         <label>Body <span class="ke-hint">markdown</span></label>
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
-          :class="{ active: previewEnabled }"
-          @click="previewEnabled = !previewEnabled"
-        >
-          {{ previewEnabled ? 'Edit' : 'Preview' }}
-        </button>
+        <!-- PAI-395 phase 1: segmented Edit/Preview toggle. Same idiom
+             as the Promote-to row below — both states always visible,
+             active one carries `.active`. -->
+        <div class="ke-body-mode" role="tablist" aria-label="Body mode">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="!previewEnabled"
+            class="btn btn-ghost btn-sm"
+            :class="{ active: !previewEnabled }"
+            @click="previewEnabled = false"
+          >Edit</button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="previewEnabled"
+            class="btn btn-ghost btn-sm"
+            :class="{ active: previewEnabled }"
+            @click="previewEnabled = true"
+          >Preview</button>
+        </div>
       </div>
       <textarea
         v-if="!previewEnabled"
@@ -620,6 +633,7 @@ watch(
 .ke-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 200px; resize: vertical; }
 .ke-body-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .ke-body-head > label { margin-bottom: 0; }
+.ke-body-mode { display: inline-flex; gap: .25rem; }
 .ke-preview { padding: .65rem .75rem; min-height: 200px; border: 1px dashed var(--border); border-radius: 6px; background: var(--bg); font-size: 13px; line-height: 1.55; overflow: auto; }
 .ke-preview :deep(h1), .ke-preview :deep(h2), .ke-preview :deep(h3) { margin: .6rem 0 .3rem; font-weight: 700; }
 .ke-preview :deep(p) { margin: .35rem 0; }
