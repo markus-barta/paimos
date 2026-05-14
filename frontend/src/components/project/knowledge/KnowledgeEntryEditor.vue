@@ -370,7 +370,7 @@ watch(
 </script>
 
 <template>
-  <div class="ke-form">
+  <div class="ke-form" :class="{ 'ke-form--archived': isArchived }">
     <div class="ke-row">
       <div class="ke-field">
         <label>Title</label>
@@ -653,8 +653,57 @@ watch(
 .ke-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 200px; resize: vertical; }
 .ke-body-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .ke-body-head > label { margin-bottom: 0; }
-.ke-body-mode { display: inline-flex; gap: .25rem; }
-.ke-status-toggle { display: inline-flex; gap: .25rem; }
+/* PAI-397: segmented control treatment for the Edit/Preview and
+   Active/Archived toggles. Joined into a single bordered unit with
+   an internal divider instead of two loose btn-ghost buttons. The
+   .active rule scoped inside each segment makes the selected state
+   visible — PAI-395 introduced these toggles but never defined the
+   .active styling locally (the canonical rule lives per-view in
+   IssueList.vue:1264), so the state was changing invisibly. */
+.ke-body-mode,
+.ke-status-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.ke-body-mode .btn,
+.ke-status-toggle .btn {
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  transition: background 0.12s, color 0.12s;
+}
+.ke-body-mode .btn:last-child,
+.ke-status-toggle .btn:last-child {
+  border-right: 0;
+}
+.ke-body-mode .btn:hover:not(.active),
+.ke-status-toggle .btn:hover:not(.active) {
+  background: color-mix(in srgb, var(--bp-blue) 6%, transparent);
+}
+.ke-body-mode .btn.active,
+.ke-status-toggle .btn.active {
+  background: var(--bp-blue-pale);
+  color: var(--bp-blue-dark);
+  font-weight: 600;
+}
+
+/* PAI-397: archived entries dim the content fields so the editor
+   gives the same visual signal as the list row (.pku-row--archived
+   uses opacity .55). Status toggle + action chrome stay full-strength
+   so the Active button is readable and clickable to un-archive. */
+.ke-form--archived .ke-field input,
+.ke-form--archived .ke-field select,
+.ke-form--archived .ke-field textarea,
+.ke-form--archived .ke-textarea,
+.ke-form--archived .ke-preview,
+.ke-form--archived .ke-ticket-chips,
+.ke-form--archived .ke-inline-toggle {
+  opacity: 0.55;
+}
 /* PAI-395 phase 3: bound preview height so it doesn't extend past
    the textarea visually; restore list-marker padding; align border /
    bg with the textarea so toggling Edit ↔ Preview doesn't reflow the
