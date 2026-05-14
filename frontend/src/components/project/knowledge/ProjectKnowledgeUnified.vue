@@ -17,10 +17,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
-import KnowledgeEntryEditor from './KnowledgeEntryEditor.vue'
+import KnowledgeSidePanel from './KnowledgeSidePanel.vue'
 import {
   activeStatusValue,
-  archivedStatusValue,
   createKnowledgeEntry,
   deleteKnowledgeEntry,
   isArchived,
@@ -29,6 +28,11 @@ import {
   updateKnowledgeEntry,
 } from '@/services/projectKnowledge'
 import { errMsg } from '@/api/client'
+import {
+  useSidePanelPinned,
+  setSidePanelVisible,
+  setSidePanelPinned,
+} from '@/composables/useSidePanelPinned'
 import type {
   KnowledgeCategory,
   KnowledgeEntry,
@@ -136,11 +140,38 @@ function openEntry(entry: KnowledgeEntry) {
   saveError.value = ''
 }
 
+// PAI-395 phase 4: backToList is now backToList-via-close-panel —
+// kept as the name because callers (deep-link watcher, save/delete
+// completion) all want the same semantics: drop the selection so
+// the panel closes and the list is the sole focus.
 function backToList() {
   editingEntry.value = null
   creatingCategory.value = null
   editorDraft.value = emptyDraft()
   saveError.value = ''
+}
+
+// PAI-395 phase 4: shared side-panel pinned + visible state.
+// AppLayout reads these singletons to inset .main when pinned + visible.
+const { pinned: panelPinned } = useSidePanelPinned()
+
+// Drive the global `visible` ref from the local selection + pin
+// state. Matches IssueList's `!!id || pinned` invariant: pinned
+// keeps the panel inset reserved even with no entry selected (the
+// panel then shows its "pick an entry" placeholder). On tab unmount
+// we drop visible regardless so AppLayout's inset retracts when the
+// surface is gone.
+watch(
+  [editingEntry, creatingCategory, panelPinned],
+  ([entry, creating, pinned]) => {
+    setSidePanelVisible(entry !== null || creating !== null || pinned)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => setSidePanelVisible(false))
+
+function onPanelPinUpdate(v: boolean) {
+  setSidePanelPinned(v)
 }
 
 async function load() {
@@ -225,14 +256,6 @@ const counts = computed<Record<KnowledgeCategory, number>>(() => {
 })
 
 const totalLoaded = computed(() => entries.value.length)
-
-// Mode: 'edit' when a non-null editingEntry, 'create' when a
-// creatingCategory is set, 'list' otherwise. Drives the template.
-const mode = computed<'list' | 'edit' | 'create'>(() => {
-  if (creatingCategory.value) return 'create'
-  if (editingEntry.value) return 'edit'
-  return 'list'
-})
 
 // Save handler — branches on create vs update by which state ref is
 // populated. Both go through the canonical convenience endpoints
@@ -329,8 +352,10 @@ watch(
     <LoadingText v-if="loading" label="Loading knowledge…" class="pku-empty" />
     <div v-else-if="loadError" class="pku-error">{{ loadError }}</div>
 
-    <!-- LIST mode ─────────────────────────────────────────── -->
-    <template v-else-if="mode === 'list'">
+    <!-- PAI-395 phase 4: list is always rendered; selection opens a
+         side-panel sibling instead of swapping the panel into edit
+         mode. -->
+    <template v-else>
       <header class="pku-header">
         <div class="pku-search-row">
           <div class="pku-search">
@@ -412,7 +437,14 @@ watch(
           v-for="e in filtered"
           :key="`${e.type}::${e.slug}`"
           class="pku-row"
-          :class="{ 'pku-row--archived': isArchived(e), 'pku-row--proposed': isProposed(e) }"
+          :class="{
+            'pku-row--archived': isArchived(e),
+            'pku-row--proposed': isProposed(e),
+            'pku-row--selected':
+              editingEntry !== null
+              && editingEntry.type === e.type
+              && editingEntry.slug === e.slug,
+          }"
           tabindex="0"
           @click="openEntry(e)"
           @keydown.enter="openEntry(e)"
@@ -436,46 +468,25 @@ watch(
       </div>
     </template>
 
-    <!-- EDIT / CREATE mode ─────────────────────────────────── -->
-    <template v-else>
-      <div class="pku-editor-head">
-        <button class="btn btn-ghost btn-sm" @click="backToList">
-          <AppIcon name="arrow-left" :size="13" /> Back
-        </button>
-        <span class="pku-editor-head__crumb">
-          <AppIcon
-            :name="CATEGORIES.find((c) => c.key === (creatingCategory ?? editingEntry?.type))?.icon ?? 'book-open'"
-            :size="13"
-          />
-          {{ labelFor[(creatingCategory ?? editingEntry?.type) as KnowledgeCategory] }}
-          <span v-if="editingEntry" class="pku-editor-head__slug">· {{ editingEntry.slug }}</span>
-          <span v-else class="pku-editor-head__new">· New</span>
-        </span>
-        <div class="pku-editor-head__spacer"></div>
-        <button
-          v-if="editingEntry && canWrite"
-          class="btn btn-ghost btn-sm danger"
-          :disabled="saving"
-          @click="onDelete"
-        >
-          Delete
-        </button>
-      </div>
-
-      <KnowledgeEntryEditor
-        :category="(creatingCategory ?? editingEntry!.type) as KnowledgeCategory"
-        :initial="editorDraft"
-        :current-slug="editingEntry?.slug ?? null"
-        :saving="saving"
-        :save-error="saveError"
-        :autosuggest-slug="creatingCategory !== null"
-        :entry-id="editingEntry?.id"
-        :project-id="projectId"
-        @save="onSave"
-        @cancel="backToList"
-        @promoted="backToList"
-      />
-    </template>
+    <!-- PAI-395 phase 4: side panel sibling. Mounts as fixed-right
+         via the IssueSidePanel chrome twin. AppLayout's right-inset
+         applies when pinned + visible (visible is driven by the
+         watcher in <script setup>). -->
+    <KnowledgeSidePanel
+      :entry="editingEntry"
+      :creating-category="creatingCategory"
+      :draft="editorDraft"
+      :saving="saving"
+      :save-error="saveError"
+      :pinned="panelPinned"
+      :can-write="canWrite"
+      :project-id="projectId"
+      @close="backToList"
+      @save="onSave"
+      @delete="onDelete"
+      @promoted="backToList"
+      @update:pinned="onPanelPinUpdate"
+    />
   </div>
 </template>
 
@@ -754,34 +765,15 @@ watch(
   color: var(--text-muted);
 }
 
-/* ── editor head (back + breadcrumb + delete) ──────────────── */
-.pku-editor-head {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  padding-bottom: .35rem;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: .55rem;
+/* PAI-395 phase 4: selected row highlight while the side panel is
+   open on this entry. Neutral blue-tint same as IssueList's selected
+   row. */
+.pku-row--selected {
+  background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
 }
-.pku-editor-head__crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: .35rem;
-  font-size: 12px;
-  color: var(--text-muted);
+.pku-row--selected:hover {
+  background: color-mix(in srgb, var(--bp-blue) 14%, transparent);
 }
-.pku-editor-head__slug {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  color: var(--text);
-}
-.pku-editor-head__new {
-  font-style: italic;
-  color: var(--text);
-}
-.pku-editor-head__spacer { flex: 1; }
-
-.btn-ghost.danger { color: #b42318; border-color: #fecdca; }
-.btn-ghost.danger:hover { background: #fef3f2; }
 
 /* ── responsive ──────────────────────────────────────────── */
 @media (max-width: 640px) {
