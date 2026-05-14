@@ -5,6 +5,27 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.3] — 2026-05-14
+
+Form polish — unified placeholder hint styling across native inputs
+and custom-select empty states.
+
+### Changed
+
+- **PAI-396** — Global `::placeholder` rule in `App.vue` sets
+  `opacity: 0.5` + `font-size: 0.9em` + `font-style: normal`.
+  Normalizes browser-default placeholder rendering (Firefox ≈1.0,
+  Chrome ≈0.54) and makes empty vs filled fields read distinctly
+  different at a glance. Padding-driven row height means the input
+  doesn't visibly resize when typing starts.
+- **PAI-396** — `MetaSelect.vue`'s `.meta-select-placeholder` and
+  `.ms-label.muted` drop the explicit `color: var(--text-muted)` and
+  adopt the same opacity + size treatment so custom-select empty
+  state matches native `<input placeholder>` visually.
+- **PAI-396** — `IssueSearchInput.vue:299` drops its local
+  `::placeholder` color override so the global rule applies (the
+  combination of muted color + global opacity rendered too dim).
+
 ## [3.4.2] — 2026-05-14
 
 Knowledge tab UX polish (PAI-395). The per-entry editor now opens in a
