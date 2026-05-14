@@ -655,11 +655,49 @@ watch(
 .ke-body-head > label { margin-bottom: 0; }
 .ke-body-mode { display: inline-flex; gap: .25rem; }
 .ke-status-toggle { display: inline-flex; gap: .25rem; }
-.ke-preview { padding: .65rem .75rem; min-height: 200px; border: 1px dashed var(--border); border-radius: 6px; background: var(--bg); font-size: 13px; line-height: 1.55; overflow: auto; }
-.ke-preview :deep(h1), .ke-preview :deep(h2), .ke-preview :deep(h3) { margin: .6rem 0 .3rem; font-weight: 700; }
+/* PAI-395 phase 3: bound preview height so it doesn't extend past
+   the textarea visually; restore list-marker padding; align border /
+   bg with the textarea so toggling Edit ↔ Preview doesn't reflow the
+   visual container. */
+.ke-preview {
+  padding: .85rem 1rem;
+  min-height: 200px;
+  max-height: clamp(280px, 50vh, 640px);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: auto;
+  box-sizing: border-box;
+}
+.ke-preview :deep(> :first-child) { margin-top: 0; }
+.ke-preview :deep(> :last-child) { margin-bottom: 0; }
+.ke-preview :deep(h1) { font-size: 1.45em; margin: .8rem 0 .35rem; font-weight: 700; }
+.ke-preview :deep(h2) { font-size: 1.2em;  margin: .7rem 0 .3rem;  font-weight: 700; }
+.ke-preview :deep(h3) { font-size: 1.05em; margin: .6rem 0 .25rem; font-weight: 700; }
 .ke-preview :deep(p) { margin: .35rem 0; }
+.ke-preview :deep(ul),
+.ke-preview :deep(ol) { padding-left: 1.5em; margin: .4rem 0; }
+.ke-preview :deep(li) { margin: .15rem 0; }
+.ke-preview :deep(li > ul),
+.ke-preview :deep(li > ol) { margin: .15rem 0; }
+.ke-preview :deep(blockquote) {
+  border-left: 3px solid var(--border);
+  padding: .1rem 0 .1rem .85rem;
+  margin: .55rem 0;
+  color: var(--text-muted);
+}
+.ke-preview :deep(hr) {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: .9rem 0;
+}
 .ke-preview :deep(code) { background: var(--bg-card); padding: 0 .25rem; border-radius: 3px; font-size: 12px; }
 .ke-preview :deep(pre) { background: var(--bg-card); padding: .5rem .65rem; border-radius: 6px; overflow: auto; }
+.ke-preview :deep(table) { border-collapse: collapse; margin: .5rem 0; font-size: 12.5px; }
+.ke-preview :deep(th),
+.ke-preview :deep(td) { border: 1px solid var(--border); padding: .3rem .5rem; }
 .ke-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
 .ke-actions-spacer { flex: 1; }
 .ke-error { color: #b42318; font-size: 12px; }
