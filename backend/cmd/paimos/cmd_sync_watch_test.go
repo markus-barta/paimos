@@ -44,11 +44,11 @@ func TestSyncWatch_ReceivesEventAndRenders(t *testing.T) {
 		// PAI-341 — knowledge plane list endpoints. Empty arrays so the
 		// per-kind Sync loop completes for kinds the watch isn't
 		// targeting.
-		case r.URL.Path == "/api/projects/7/memory",
-			r.URL.Path == "/api/projects/7/runbooks",
-			r.URL.Path == "/api/projects/7/external-systems",
-			r.URL.Path == "/api/projects/7/related-projects",
-			r.URL.Path == "/api/projects/7/guidelines":
+		case r.URL.Path == "/api/projects/7/knowledge?type=memory",
+			r.URL.Path == "/api/projects/7/knowledge?type=runbook",
+			r.URL.Path == "/api/projects/7/knowledge?type=external-system",
+			r.URL.Path == "/api/projects/7/knowledge?type=related-project",
+			r.URL.Path == "/api/projects/7/knowledge?type=guideline":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
 		case strings.HasSuffix(r.URL.Path, "/qa.json"):

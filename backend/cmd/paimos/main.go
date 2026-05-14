@@ -131,6 +131,7 @@ Get started:
 	cmd.AddCommand(sessionCmd())
 	// PAI-349: memory propose verb.
 	cmd.AddCommand(memoryCmd())
+	cmd.AddCommand(knowledgeCmd())
 	// PAI-330: skill render with adapter dispatch.
 	cmd.AddCommand(skillCmd())
 	// PAI-352: paimos onboard — human-readable briefing renderer.

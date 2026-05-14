@@ -26,7 +26,7 @@ package sync
 func NewMemoryResource() Resource {
 	return &knowledgeResource{
 		kind:        "memory",
-		urlAlias:    "memory",
+		urlSegment:  "memory",
 		cacheSubdir: "memory",
 	}
 }

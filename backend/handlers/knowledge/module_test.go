@@ -53,25 +53,34 @@ func TestValidateSlug(t *testing.T) {
 	}
 }
 
-func TestRouteByTypeAndPath(t *testing.T) {
+// TestURLSegmentRoundTripsAllTypes asserts that the URL segment for
+// every registered Module round-trips back to its discriminator via
+// TypeFromURLSegment. PAI-394 collapsed the per-alias mapping into
+// a mechanical underscore↔hyphen translation; the round-trip test
+// keeps the translation honest as Modules come and go.
+func TestURLSegmentRoundTripsAllTypes(t *testing.T) {
 	cases := []struct {
-		alias string
-		typ   string
+		seg string
+		typ string
 	}{
 		{"memory", "memory"},
-		{"runbooks", "runbook"},
-		{"external-systems", "external_system"},
-		{"related-projects", "related_project"},
-		{"guidelines", "guideline"},
+		{"runbook", "runbook"},
+		{"external-system", "external_system"},
+		{"related-project", "related_project"},
+		{"guideline", "guideline"},
 	}
 	for _, c := range cases {
-		t.Run(c.alias, func(t *testing.T) {
-			byPath, err := RouteByPath(c.alias)
-			if err != nil {
-				t.Fatalf("RouteByPath(%q): %v", c.alias, err)
+		t.Run(c.seg, func(t *testing.T) {
+			if URLSegmentForType(c.typ) != c.seg {
+				t.Fatalf("URLSegmentForType(%q) = %q, want %q",
+					c.typ, URLSegmentForType(c.typ), c.seg)
 			}
-			if byPath.Type() != c.typ {
-				t.Fatalf("RouteByPath(%q).Type() = %q, want %q", c.alias, byPath.Type(), c.typ)
+			got, err := TypeFromURLSegment(c.seg)
+			if err != nil {
+				t.Fatalf("TypeFromURLSegment(%q): %v", c.seg, err)
+			}
+			if got != c.typ {
+				t.Fatalf("TypeFromURLSegment(%q) = %q, want %q", c.seg, got, c.typ)
 			}
 			byType, err := RouteByType(c.typ)
 			if err != nil {
@@ -82,11 +91,41 @@ func TestRouteByTypeAndPath(t *testing.T) {
 			}
 		})
 	}
-	if _, err := RouteByPath("nonsense"); err == nil {
-		t.Fatal("expected error from RouteByPath on unknown alias")
+
+	// Rejection: legacy pluralized alias should NO LONGER match
+	// after PAI-394 — `runbooks` is not a canonical segment.
+	if _, err := TypeFromURLSegment("runbooks"); err == nil {
+		t.Fatal("expected error from TypeFromURLSegment on legacy pluralized alias")
 	}
+	// Rejection: completely unknown segment.
+	if _, err := TypeFromURLSegment("nonsense"); err == nil {
+		t.Fatal("expected error from TypeFromURLSegment on unknown segment")
+	}
+	// Rejection: non-knowledge SQL type.
 	if _, err := RouteByType("ticket"); err == nil {
 		t.Fatal("expected error from RouteByType on a non-knowledge type")
+	}
+}
+
+// TestReservedMemorySlugs guards PAI-394's reserved-slug contract:
+// memory entries whose slug would shadow a /knowledge/memory/...
+// subroute (references, stale, proposed) are rejected at validation
+// time. Other types have no reserved slugs.
+func TestReservedMemorySlugs(t *testing.T) {
+	reserved := []string{"references", "stale", "proposed"}
+	for _, slug := range reserved {
+		if !IsReservedSlug("memory", slug) {
+			t.Errorf("IsReservedSlug(\"memory\", %q) = false, want true", slug)
+		}
+		// Non-memory types share the namespace but aren't subject
+		// to the reservation — a runbook called `references` is
+		// not addressable via a literal subroute.
+		if IsReservedSlug("runbook", slug) {
+			t.Errorf("IsReservedSlug(\"runbook\", %q) = true, want false", slug)
+		}
+	}
+	if IsReservedSlug("memory", "feedback_alpha") {
+		t.Error("IsReservedSlug(\"memory\", \"feedback_alpha\") = true, want false")
 	}
 }
 

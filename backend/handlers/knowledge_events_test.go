@@ -81,11 +81,11 @@ func TestPublishKnowledgeChanged_DeliversAllFiveKinds(t *testing.T) {
 	}()
 
 	wantTypes := map[string]string{
-		"memory_changed":           "feedback_x",
-		"runbook_changed":          "deploy",
-		"external_system_changed":  "clickhouse",
-		"related_project_changed":  "frontend",
-		"guideline_changed":        "no-secrets",
+		"memory_changed":          "feedback_x",
+		"runbook_changed":         "deploy",
+		"external_system_changed": "clickhouse",
+		"related_project_changed": "frontend",
+		"guideline_changed":       "no-secrets",
 	}
 	got := map[string]string{}
 	deadline := time.Now().Add(3 * time.Second)
@@ -123,7 +123,7 @@ func TestPublishKnowledgeChanged_DeliversAllFiveKinds(t *testing.T) {
 func TestKnowledgeRevHandler_ReturnsStableHash(t *testing.T) {
 	ts := newTestServer(t)
 	projectID := createTestProject(t, ts, "RevTest", "RVT1")
-	createResp := ts.post(t, fmt.Sprintf("/api/projects/%d/memory", projectID), ts.adminCookie, map[string]any{
+	createResp := ts.post(t, fmt.Sprintf("/api/projects/%d/knowledge?type=memory", projectID), ts.adminCookie, map[string]any{
 		"slug":     "feedback_alpha",
 		"title":    "Feedback alpha",
 		"body":     "Some body.",
@@ -131,7 +131,7 @@ func TestKnowledgeRevHandler_ReturnsStableHash(t *testing.T) {
 	})
 	assertStatus(t, createResp, http.StatusCreated)
 
-	revPath := fmt.Sprintf("/api/projects/%d/memory/feedback_alpha.rev", projectID)
+	revPath := fmt.Sprintf("/api/projects/%d/knowledge/memory/feedback_alpha.rev", projectID)
 	resp1 := ts.get(t, revPath, ts.adminCookie)
 	defer resp1.Body.Close()
 	if resp1.StatusCode != http.StatusOK {
@@ -152,7 +152,7 @@ func TestKnowledgeRevHandler_ReturnsStableHash(t *testing.T) {
 	}
 
 	// 404 for a missing slug.
-	missing := ts.get(t, fmt.Sprintf("/api/projects/%d/memory/no_such_slug.rev", projectID), ts.adminCookie)
+	missing := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/no_such_slug.rev", projectID), ts.adminCookie)
 	defer missing.Body.Close()
 	if missing.StatusCode != http.StatusNotFound {
 		t.Errorf("missing slug status = %d, want 404", missing.StatusCode)
@@ -165,21 +165,21 @@ func TestKnowledgeRevHandler_ReturnsStableHash(t *testing.T) {
 func TestKnowledgeRevHandler_ChangesAfterEdit(t *testing.T) {
 	ts := newTestServer(t)
 	projectID := createTestProject(t, ts, "RevDelta", "RVT2")
-	createResp := ts.post(t, fmt.Sprintf("/api/projects/%d/runbooks", projectID), ts.adminCookie, map[string]any{
+	createResp := ts.post(t, fmt.Sprintf("/api/projects/%d/knowledge?type=runbook", projectID), ts.adminCookie, map[string]any{
 		"slug":  "deploy",
 		"title": "Deploy",
 		"body":  "v1 body.",
 	})
 	assertStatus(t, createResp, http.StatusCreated)
 
-	revPath := fmt.Sprintf("/api/projects/%d/runbooks/deploy.rev", projectID)
+	revPath := fmt.Sprintf("/api/projects/%d/knowledge/runbook/deploy.rev", projectID)
 	resp1 := ts.get(t, revPath, ts.adminCookie)
 	body1, _ := io.ReadAll(resp1.Body)
 	resp1.Body.Close()
 	rev1 := strings.TrimSpace(string(body1))
 
 	// Update the body — should bump the rev.
-	updateResp := ts.put(t, fmt.Sprintf("/api/projects/%d/runbooks/deploy", projectID), ts.adminCookie, map[string]any{
+	updateResp := ts.put(t, fmt.Sprintf("/api/projects/%d/knowledge/runbook/deploy", projectID), ts.adminCookie, map[string]any{
 		"title": "Deploy",
 		"body":  "v2 body, totally different.",
 	})
@@ -204,7 +204,7 @@ func TestKnowledgeWriteFlow_PublishesSSE(t *testing.T) {
 	projectID := createTestProject(t, ts, "WriteFlow", "WFL1")
 
 	// Seed an entry up-front so the test focuses on the UPDATE path.
-	createResp := ts.post(t, fmt.Sprintf("/api/projects/%d/memory", projectID), ts.adminCookie, map[string]any{
+	createResp := ts.post(t, fmt.Sprintf("/api/projects/%d/knowledge?type=memory", projectID), ts.adminCookie, map[string]any{
 		"slug":  "feedback_flow",
 		"title": "Initial",
 		"body":  "initial.",
@@ -237,7 +237,7 @@ func TestKnowledgeWriteFlow_PublishesSSE(t *testing.T) {
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		updateResp := ts.put(t,
-			fmt.Sprintf("/api/projects/%d/memory/feedback_flow", projectID),
+			fmt.Sprintf("/api/projects/%d/knowledge/memory/feedback_flow", projectID),
 			ts.adminCookie,
 			map[string]any{"title": "Updated", "body": "updated body."})
 		_ = updateResp.Body.Close()

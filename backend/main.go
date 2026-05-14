@@ -284,27 +284,29 @@ func main() {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
 
-			// PAI-338 (gated by PAI-346) — knowledge plane. Five
-			// resource paths funnel through one dispatcher per
-			// alias; each is the type-discriminating GET / POST /
-			// PUT / DELETE quintet over the issues table. Auth
+			// PAI-338 (gated by PAI-346) — knowledge plane. PAI-394
+			// collapsed the original five-alias surface
+			// (/memory, /runbooks, /external-systems, /related-
+			// projects, /guidelines) into one resource. The type
+			// discriminator lives in the URL path segment for
+			// reads, and in the request body for POST. Auth
 			// mirrors agents: read = project view, writes = admin
 			// (knowledge entries shape an agent's view of the
 			// project, so they're project-settings adjacent).
-			for _, alias := range knowledge.AllPathAliases() {
-				base := "/projects/{id}/" + alias
-				one := base + "/{slug}"
-				rev := one + ".rev"
-				r.With(auth.RequireProjectView).Get(base, knowledge.MakeListHandler(alias))
-				r.With(auth.RequireProjectView).Get(one, knowledge.MakeGetHandler(alias))
-				r.With(auth.RequireAdmin, auth.RequireProjectView).Post(base, knowledge.MakeCreateHandler(alias))
-				r.With(auth.RequireAdmin, auth.RequireProjectView).Put(one, knowledge.MakeUpdateHandler(alias))
-				r.With(auth.RequireAdmin, auth.RequireProjectView).Delete(one, knowledge.MakeDeleteHandler(alias))
-				// PAI-341 — cheap-poll .rev fallback for clients that
-				// can't hold an SSE connection. Mirrors the agent .rev
-				// shape (text/plain, 12-char hex hash).
-				r.With(auth.RequireProjectView).Get(rev, handlers.MakeKnowledgeRevHandler(alias))
-			}
+			//
+			// Memory-specific subroutes (PAI-347 decay tracking +
+			// PAI-349 admin review) live under /knowledge/memory/
+			// and are guarded against shadowing by the reserved-
+			// slug check in knowledge.IsReservedSlug.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge", knowledge.ListAllHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge", knowledge.CreateHandler)
+			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/proposed/stale", handlers.ListStaleProposedMemory)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}", knowledge.GetHandler)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}.rev", handlers.KnowledgeRevHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/knowledge/{type}/{slug}", knowledge.UpdateHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/knowledge/{type}/{slug}", knowledge.DeleteHandler)
 
 			// PAI-345 — cross-scope memory: user-scope and instance-scope
 			// CRUD parallels the project-scope endpoints above. The
@@ -329,14 +331,9 @@ func main() {
 			// handler (admin gate fires when promoting to instance).
 			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
 
-			// PAI-347 — memory reference-count tracking + decay-based
-			// archive proposals.
-			r.With(auth.RequireProjectView).Post("/projects/{id}/memory/references", handlers.BumpMemoryReferences)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
-			// PAI-349 — stale proposed-memory drafts (admin review surface).
-			// Read-only: admins drive archives via the existing PUT path
-			// after eyeballing the candidates.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/proposed/stale", handlers.ListStaleProposedMemory)
+			// PAI-394 moved PAI-347 + PAI-349 memory subroutes
+			// under /projects/{id}/knowledge/memory/... — see
+			// the unified knowledge mount block above.
 			// PAI-358: GET /projects/{id}/manifest, PUT
 			// /projects/{id}/manifest, and POST /projects/{id}/migrate-
 			// manifest-to-knowledge are gone — the legacy taxonomy is

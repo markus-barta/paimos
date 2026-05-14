@@ -27,7 +27,7 @@ package sync
 func NewRunbookResource() Resource {
 	return &knowledgeResource{
 		kind:        "runbook",
-		urlAlias:    "runbooks",
+		urlSegment:  "runbook",
 		cacheSubdir: "runbooks",
 	}
 }

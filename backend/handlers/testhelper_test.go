@@ -204,19 +204,16 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
 
-			// PAI-338 — knowledge plane. Mirror main.go. PAI-341 added
-			// the .rev polling endpoint per kind.
-			for _, alias := range knowledge.AllPathAliases() {
-				base := "/projects/{id}/" + alias
-				one := base + "/{slug}"
-				rev := one + ".rev"
-				r.With(auth.RequireProjectView).Get(base, knowledge.MakeListHandler(alias))
-				r.With(auth.RequireProjectView).Get(one, knowledge.MakeGetHandler(alias))
-				r.With(auth.RequireAdmin, auth.RequireProjectView).Post(base, knowledge.MakeCreateHandler(alias))
-				r.With(auth.RequireAdmin, auth.RequireProjectView).Put(one, knowledge.MakeUpdateHandler(alias))
-				r.With(auth.RequireAdmin, auth.RequireProjectView).Delete(one, knowledge.MakeDeleteHandler(alias))
-				r.With(auth.RequireProjectView).Get(rev, handlers.MakeKnowledgeRevHandler(alias))
-			}
+			// PAI-394 — unified knowledge surface. Mirror main.go.
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge", knowledge.ListAllHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge", knowledge.CreateHandler)
+			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/proposed/stale", handlers.ListStaleProposedMemory)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}", knowledge.GetHandler)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}.rev", handlers.KnowledgeRevHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/knowledge/{type}/{slug}", knowledge.UpdateHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/knowledge/{type}/{slug}", knowledge.DeleteHandler)
 
 			// PAI-345 — user / instance memory + promotion. Mirror main.go.
 			r.Get("/users/me/memory", handlers.ListUserMemory)
@@ -231,11 +228,8 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Delete("/instance/memory/{slug}", handlers.DeleteInstanceMemory)
 			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
 
-			// PAI-347 — memory reference-count tracking + decay.
-			r.With(auth.RequireProjectView).Post("/projects/{id}/memory/references", handlers.BumpMemoryReferences)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/stale", handlers.ListStaleMemory)
-			// PAI-349 — proposed-memory stale list.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/memory/proposed/stale", handlers.ListStaleProposedMemory)
+			// PAI-394 moved PAI-347 / PAI-349 memory subroutes
+			// under /knowledge/memory/ — registered above.
 			// PAI-358: manifest endpoints removed.
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)

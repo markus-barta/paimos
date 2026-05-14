@@ -80,12 +80,14 @@ func resolveBundleMode(raw string) (bundleMode, error) {
 // `files` and `json` outputs.
 //
 // PAI-345 + PAI-348 — both add CLI-side annotations:
-//   Scope  (PAI-345): "project"|"user"|"instance" — set by the
-//     bundle resolver based on which endpoint the entry came from
-//     so downstream agents can disambiguate cross-scope merges.
-//   Source (PAI-348): provenance for inherited entries (from
-//     related_projects[]). Never persisted server-side; the resolver
-//     fills it in when pulling cross-project inheritance.
+//
+//	Scope  (PAI-345): "project"|"user"|"instance" — set by the
+//	  bundle resolver based on which endpoint the entry came from
+//	  so downstream agents can disambiguate cross-scope merges.
+//	Source (PAI-348): provenance for inherited entries (from
+//	  related_projects[]). Never persisted server-side; the resolver
+//	  fills it in when pulling cross-project inheritance.
+//
 // Both use `omitempty` so own / project-scope entries stay free of
 // empty annotation noise.
 type knowledgeEntry struct {
@@ -135,7 +137,7 @@ var inheritableRoles = map[string]bool{
 // inheritableCategories enumerates the knowledge kinds PAI-348 inherits.
 // `external_systems` and `related_projects` are project-specific by
 // nature (PAI-348 §"Out-of-scope") so they never inherit.
-var inheritableCategories = []string{"memory", "runbooks", "guidelines"}
+var inheritableCategories = []string{"memory", "runbook", "guideline"}
 
 // bundlePayload is the canonical in-memory shape the resolver builds.
 // `Agent` is the canonical artifact JSON (PAI-329) — kept as
@@ -144,14 +146,14 @@ var inheritableCategories = []string{"memory", "runbooks", "guidelines"}
 // is post-filter (i.e. exactly the entries the bundle exposes to the
 // agent).
 type bundlePayload struct {
-	Project         projectSummary    `json:"project"`
-	Agent           json.RawMessage   `json:"agent"`
-	Memory          []knowledgeEntry  `json:"memory"`
-	Runbooks        []knowledgeEntry  `json:"runbooks"`
-	ExternalSystems []knowledgeEntry  `json:"external_systems"`
-	RelatedProjects []knowledgeEntry  `json:"related_projects"`
-	Guidelines      []knowledgeEntry  `json:"guidelines"`
-	FetchedAt       string            `json:"fetched_at"`
+	Project         projectSummary   `json:"project"`
+	Agent           json.RawMessage  `json:"agent"`
+	Memory          []knowledgeEntry `json:"memory"`
+	Runbooks        []knowledgeEntry `json:"runbooks"`
+	ExternalSystems []knowledgeEntry `json:"external_systems"`
+	RelatedProjects []knowledgeEntry `json:"related_projects"`
+	Guidelines      []knowledgeEntry `json:"guidelines"`
+	FetchedAt       string           `json:"fetched_at"`
 }
 
 // archivedStatus is the on-disk status value the knowledge plane uses
@@ -184,8 +186,8 @@ func isProposedEntry(e knowledgeEntry) bool {
 // block the filter logic needs. We probe with a tolerant struct so
 // the filter survives PAI-329 schema additions.
 type agentMetadata struct {
-	Name         string         `json:"name"`
-	Metadata     map[string]any `json:"metadata"`
+	Name     string         `json:"name"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 // agentEnvironments returns the (best-effort) list of environment
@@ -464,8 +466,11 @@ func filterAlwaysLive(entries []knowledgeEntry) []knowledgeEntry {
 }
 
 // fetchKnowledge fetches one knowledge category and decodes it.
+// PAI-394 unified surface — the legacy `alias` parameter is now
+// the URL segment (kebab singular) that travels as the `?type=`
+// query on the single /knowledge route.
 func fetchKnowledge(c *Client, projectID int64, alias string) ([]knowledgeEntry, error) {
-	body, err := c.do("GET", fmt.Sprintf("/api/projects/%d/%s", projectID, alias), nil)
+	body, err := c.do("GET", fmt.Sprintf("/api/projects/%d/knowledge?type=%s", projectID, alias), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -633,9 +638,9 @@ func fetchInheritedFromUpstream(c *Client, upstream relatedProjectRef) inherited
 		switch alias {
 		case "memory":
 			out.memory = annotated
-		case "runbooks":
+		case "runbook":
 			out.runbooks = annotated
-		case "guidelines":
+		case "guideline":
 			out.guidelines = annotated
 		}
 	}
@@ -875,19 +880,19 @@ func resolveBundle(c *Client, project projectSummary, agentName string, includeL
 	if err != nil {
 		return nil, err
 	}
-	rbRaw, err := fetchKnowledge(c, project.ID, "runbooks")
+	rbRaw, err := fetchKnowledge(c, project.ID, "runbook")
 	if err != nil {
 		return nil, err
 	}
-	exRaw, err := fetchKnowledge(c, project.ID, "external-systems")
+	exRaw, err := fetchKnowledge(c, project.ID, "external-system")
 	if err != nil {
 		return nil, err
 	}
-	rpRaw, err := fetchKnowledge(c, project.ID, "related-projects")
+	rpRaw, err := fetchKnowledge(c, project.ID, "related-project")
 	if err != nil {
 		return nil, err
 	}
-	glRaw, err := fetchKnowledge(c, project.ID, "guidelines")
+	glRaw, err := fetchKnowledge(c, project.ID, "guideline")
 	if err != nil {
 		return nil, err
 	}
@@ -975,7 +980,7 @@ func bumpMemoryReferences(c *Client, projectID int64, entries []knowledgeEntry) 
 		"source": "bundle",
 	}
 	_, err := c.do("POST",
-		fmt.Sprintf("/api/projects/%d/memory/references", projectID), body)
+		fmt.Sprintf("/api/projects/%d/knowledge/memory/references", projectID), body)
 	return err
 }
 

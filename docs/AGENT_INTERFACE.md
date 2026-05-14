@@ -43,7 +43,7 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 ### Caveat — current CLI coverage gaps
 
-The CLI today covers issue-CRUD, free-text search, batch issue create via `apply`, time entries, attachments, relations (add only), tag management + assignment, anchors, sync, skills, sessions, and project-context. **It does NOT yet cover** sprints, issue forensics (history/activity), memory CRUD, knowledge plane, comment delete, or the full issue lifecycle (clone/archive/restore/purge). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
+The CLI today covers issue-CRUD, free-text search, batch issue create via `apply`, time entries, attachments, relations (add only), tag management + assignment, anchors, sync, skills, sessions, project-context, and the unified knowledge plane (`paimos knowledge list|get|create|update|delete|promote` + `paimos knowledge memory bump-refs|stale|proposed-stale`, PAI-394). **It does NOT yet cover** sprints, issue forensics (history/activity), comment delete, or the full issue lifecycle (clone/archive/restore/purge). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
 
 > **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
 > See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
@@ -618,9 +618,8 @@ Remaining REST fallbacks are tier-2/admin surfaces:
 |---|---|---|
 | **Issue forensics** — history/activity/AI activity | REST only | PAI-373 follow-up |
 | **Sprints** — full lifecycle | REST/UI only | PAI-373 follow-up |
-| **Memory CRUD** — list/get/update/delete/promote | REST only (`memory propose` has CLI) | PAI-373 follow-up |
 | **Relations** — list/remove | partial CLI (add only) | PAI-373 follow-up |
-| **Knowledge plane** | REST only | PAI-373 follow-up |
+| **Knowledge plane** — full CRUD + memory subroutes | shipped via `paimos knowledge` (PAI-394) | — |
 | **Issue lifecycle** — clone/archive/restore/purge | REST/UI only | PAI-373 follow-up |
 
 If you find yourself reaching for `curl` outside this list, that's a new gap — file it as a child of PAI-373.

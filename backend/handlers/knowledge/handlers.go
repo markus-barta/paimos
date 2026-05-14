@@ -30,216 +30,338 @@ import (
 	"github.com/markus-barta/paimos/backend/db"
 )
 
-// MakeListHandler returns the GET handler for a single knowledge
-// type. Routed under /api/projects/:id/{alias}, it returns every
-// non-trashed entry of the matching type for the project, ordered
-// by slug. Empty array (never null) when the project has no
-// entries of this kind — clients can iterate without nil checks.
-func MakeListHandler(alias string) http.HandlerFunc {
-	mod, err := RouteByPath(alias)
-	if err != nil {
-		// init-time error — surface as a panic so misconfigured
-		// router wiring fails loudly.
-		panic(err)
+// ── HTTP handlers ───────────────────────────────────────────────
+//
+// PAI-394 collapsed the original five-alias surface
+// (`/memory`, `/runbooks`, `/external-systems`, `/related-projects`,
+// `/guidelines`) into one resource:
+//
+//     /api/projects/{id}/knowledge                # cross-type list
+//     /api/projects/{id}/knowledge/{type}/{slug}  # single entry
+//
+// {type} is the kebab URL form of the SQL discriminator (mechanical
+// underscore → hyphen). The handlers below read it from the chi
+// URL param at request time, so a new Module costs zero new routes.
+
+// ListAllHandler is the GET /api/projects/{id}/knowledge endpoint.
+// Returns every non-trashed knowledge entry across all five types
+// for the project, ordered by (type ASC, slug ASC). An optional
+// `?type=<kebab>` filter narrows to a single discriminator and
+// gives the convenience-endpoint feel that the old per-alias
+// surface used to provide.
+//
+// Empty array (never null) when there are no entries — clients can
+// iterate without a nil check.
+func ListAllHandler(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		writeError(w, "invalid project id", http.StatusBadRequest)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID, ok := projectIDFromRequest(r)
-		if !ok {
-			writeError(w, "invalid project id", http.StatusBadRequest)
+	typeFilter := strings.TrimSpace(r.URL.Query().Get("type"))
+	if typeFilter != "" {
+		typ, err := TypeFromURLSegment(typeFilter)
+		if err != nil {
+			writeError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		mod, _ := RouteByType(typ)
 		out, err := loadByType(projectID, mod)
 		if err != nil {
 			writeError(w, "query failed", http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
+		return
 	}
+	out, err := loadAllTypes(projectID)
+	if err != nil {
+		writeError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
-// MakeGetHandler returns the GET handler for a single entry.
-// Routed under /api/projects/:id/{alias}/:slug. Returns 404 when
-// no live entry matches (project_id, type, slug).
-func MakeGetHandler(alias string) http.HandlerFunc {
-	mod, err := RouteByPath(alias)
+// GetHandler is the GET /api/projects/{id}/knowledge/{type}/{slug}
+// endpoint. Resolves the Module from the URL segment per request,
+// then returns the single matching entry. 404 when no live row
+// matches (project_id, type, slug).
+func GetHandler(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		writeError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	mod, ok := moduleFromURL(w, r)
+	if !ok {
+		return
+	}
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if slug == "" {
+		writeError(w, "slug required", http.StatusBadRequest)
+		return
+	}
+	out, err := loadOneBySlug(projectID, mod, slug)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, "not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		panic(err)
+		writeError(w, "query failed", http.StatusInternalServerError)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID, ok := projectIDFromRequest(r)
-		if !ok {
-			writeError(w, "invalid project id", http.StatusBadRequest)
-			return
-		}
-		slug := strings.TrimSpace(chi.URLParam(r, "slug"))
-		if slug == "" {
-			writeError(w, "slug required", http.StatusBadRequest)
-			return
-		}
-		out, err := loadOneBySlug(projectID, mod, slug)
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, "not found", http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			writeError(w, "query failed", http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusOK, out)
-	}
+	writeJSON(w, http.StatusOK, out)
 }
 
-// MakeCreateHandler returns the POST handler. The slug is taken
-// from the request body (POST is collection-rooted). Validation
-// runs slug → title → per-type Module check. UNIQUE constraint
-// violations from the partial index map to 409.
-func MakeCreateHandler(alias string) http.HandlerFunc {
-	mod, err := RouteByPath(alias)
+// CreateHandler is the POST /api/projects/{id}/knowledge endpoint.
+// Unlike the legacy per-alias endpoints, type lives in the request
+// body so a single route serves every Module. Body shape:
+//
+//	{
+//	  "type":     "memory",          // required, kebab-or-snake — both accepted
+//	  "slug":     "feedback_alpha",  // required
+//	  "title":    "...",             // required
+//	  "body":     "...",             // optional
+//	  "status":   "backlog",         // optional, defaults to mod.DefaultStatus()
+//	  "metadata": {...}              // optional, per-Module shape
+//	}
+//
+// UNIQUE constraint violations on (project_id, type, slug) map to
+// 409. Reserved memory subroute slugs (PAI-394) are rejected at
+// 400 so they can't shadow `/knowledge/memory/references` etc.
+func CreateHandler(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		writeError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	var in struct {
+		Type     string         `json:"type"`
+		Slug     string         `json:"slug"`
+		Title    string         `json:"title"`
+		Body     string         `json:"body"`
+		Status   string         `json:"status"`
+		Metadata map[string]any `json:"metadata"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	// Type may travel in the body (canonical) or as a `?type=...`
+	// query parameter (convenience for URL-driven clients like
+	// curl one-liners and the `paimos knowledge create --type X`
+	// CLI). Body wins when both are present and they disagree.
+	rawType := strings.TrimSpace(in.Type)
+	if rawType == "" {
+		rawType = strings.TrimSpace(r.URL.Query().Get("type"))
+	}
+	mod, err := resolveBodyType(rawType)
 	if err != nil {
-		panic(err)
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID, ok := projectIDFromRequest(r)
-		if !ok {
-			writeError(w, "invalid project id", http.StatusBadRequest)
-			return
-		}
-		var in Input
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			writeError(w, "invalid body", http.StatusBadRequest)
-			return
-		}
-		if msg := validateInput(mod, in); msg != "" {
-			writeError(w, msg, http.StatusBadRequest)
-			return
-		}
-		// PAI-353 — when the parent `handlers` package has registered
-		// a hook, route the insert through it so the new issue picks
-		// up history-snapshot + mutation_log + system-tag side-effects.
-		// Falls back to the direct-SQL implementation when the hook is
-		// nil (sub-package tests, mostly).
-		insert := insertEntry
-		if CreateEntryHook != nil {
-			insert = CreateEntryHook
-		}
-		out, err := insert(r, projectID, mod, in)
-		if errors.Is(err, errSlugTaken) {
-			writeError(w, "slug already exists for this type", http.StatusConflict)
-			return
-		}
-		// PAI-349 — typed propose errors carry their own HTTP status
-		// (rate limit → 429, opt-out → 503). Surface the message verbatim
-		// so operators see the actionable guidance.
-		if err != nil {
-			if coded, ok := err.(httpCodedError); ok {
-				writeError(w, err.Error(), coded.HTTPStatus())
-				return
-			}
-			writeError(w, "insert failed", http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, http.StatusCreated, out)
+	payload := Input{
+		Slug:     in.Slug,
+		Title:    in.Title,
+		Body:     in.Body,
+		Status:   in.Status,
+		Metadata: in.Metadata,
 	}
+	if msg := validateInput(mod, payload); msg != "" {
+		writeError(w, msg, http.StatusBadRequest)
+		return
+	}
+	// PAI-353 — when the parent `handlers` package has registered
+	// a hook, route the insert through it so the new issue picks
+	// up history-snapshot + mutation_log + system-tag side-effects.
+	insert := insertEntry
+	if CreateEntryHook != nil {
+		insert = CreateEntryHook
+	}
+	out, err := insert(r, projectID, mod, payload)
+	if errors.Is(err, errSlugTaken) {
+		writeError(w, "slug already exists for this type", http.StatusConflict)
+		return
+	}
+	// PAI-349 — typed propose errors carry their own HTTP status
+	// (rate limit → 429, opt-out → 503). Surface verbatim.
+	if err != nil {
+		if coded, ok := err.(httpCodedError); ok {
+			writeError(w, err.Error(), coded.HTTPStatus())
+			return
+		}
+		writeError(w, "insert failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
 }
 
-// MakeUpdateHandler returns the PUT handler. The slug in the URL
-// identifies the row; the body's `slug` field, if provided,
-// renames it (the partial UNIQUE INDEX still enforces the
-// (type, slug, project_id) invariant). 404 when no row matches
-// the URL slug.
-func MakeUpdateHandler(alias string) http.HandlerFunc {
-	mod, err := RouteByPath(alias)
-	if err != nil {
-		panic(err)
+// UpdateHandler is the PUT /api/projects/{id}/knowledge/{type}/{slug}
+// endpoint. The {slug} in the URL identifies the row; the body's
+// `slug` field, if provided, renames it (the partial UNIQUE INDEX
+// still enforces (project_id, type, slug)).
+//
+// 404 when no row matches the URL pair; 409 on rename collision.
+// `type` in the body is allowed but must equal the URL type — we
+// reject cross-type updates so a `PUT /runbook/X` body can't
+// secretly promote the entry to a memory.
+func UpdateHandler(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		writeError(w, "invalid project id", http.StatusBadRequest)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID, ok := projectIDFromRequest(r)
-		if !ok {
-			writeError(w, "invalid project id", http.StatusBadRequest)
-			return
-		}
-		current := strings.TrimSpace(chi.URLParam(r, "slug"))
-		if current == "" {
-			writeError(w, "slug required", http.StatusBadRequest)
-			return
-		}
-		var in Input
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			writeError(w, "invalid body", http.StatusBadRequest)
-			return
-		}
-		// PUT semantics: URL slug is canonical when body omits it.
-		if strings.TrimSpace(in.Slug) == "" {
-			in.Slug = current
-		}
-		if msg := validateInput(mod, in); msg != "" {
-			writeError(w, msg, http.StatusBadRequest)
-			return
-		}
-		// PAI-353 — see the matching note on MakeCreateHandler. When
-		// the parent handlers package registers UpdateEntryHook, the
-		// knowledge UPDATE path goes through the canonical issue
-		// helpers (history snapshot, mutation_log, system tags).
-		update := updateEntry
-		if UpdateEntryHook != nil {
-			update = UpdateEntryHook
-		}
-		out, err := update(r, projectID, mod, current, in)
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, "not found", http.StatusNotFound)
-			return
-		}
-		if errors.Is(err, errSlugTaken) {
-			writeError(w, "slug already exists for this type", http.StatusConflict)
-			return
-		}
+	mod, ok := moduleFromURL(w, r)
+	if !ok {
+		return
+	}
+	current := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if current == "" {
+		writeError(w, "slug required", http.StatusBadRequest)
+		return
+	}
+	var in struct {
+		Type     string         `json:"type"`
+		Slug     string         `json:"slug"`
+		Title    string         `json:"title"`
+		Body     string         `json:"body"`
+		Status   string         `json:"status"`
+		Metadata map[string]any `json:"metadata"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(in.Type) != "" {
+		bodyMod, err := resolveBodyType(in.Type)
 		if err != nil {
-			writeError(w, "update failed", http.StatusInternalServerError)
+			writeError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, http.StatusOK, out)
+		if bodyMod.Type() != mod.Type() {
+			writeError(w, "body type does not match URL type", http.StatusBadRequest)
+			return
+		}
 	}
+	payload := Input{
+		Slug:     in.Slug,
+		Title:    in.Title,
+		Body:     in.Body,
+		Status:   in.Status,
+		Metadata: in.Metadata,
+	}
+	// PUT semantics: URL slug is canonical when body omits it.
+	if strings.TrimSpace(payload.Slug) == "" {
+		payload.Slug = current
+	}
+	if msg := validateInput(mod, payload); msg != "" {
+		writeError(w, msg, http.StatusBadRequest)
+		return
+	}
+	update := updateEntry
+	if UpdateEntryHook != nil {
+		update = UpdateEntryHook
+	}
+	out, err := update(r, projectID, mod, current, payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, errSlugTaken) {
+		writeError(w, "slug already exists for this type", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		writeError(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
-// MakeDeleteHandler returns the DELETE handler. Soft-delete only
-// — sets deleted_at + deleted_by, matching the existing
-// /api/issues/:id DELETE semantics so the Trash flow recovers
-// knowledge entries identically. 204 on hit, 404 on miss.
-func MakeDeleteHandler(alias string) http.HandlerFunc {
-	mod, err := RouteByPath(alias)
+// DeleteHandler is the DELETE /api/projects/{id}/knowledge/{type}/{slug}
+// endpoint. Soft-delete only — sets deleted_at + deleted_by, matching
+// the existing /api/issues/{id} DELETE semantics so the Trash flow
+// recovers knowledge entries identically. 204 on hit, 404 on miss.
+func DeleteHandler(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		writeError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	mod, ok := moduleFromURL(w, r)
+	if !ok {
+		return
+	}
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if slug == "" {
+		writeError(w, "slug required", http.StatusBadRequest)
+		return
+	}
+	del := deleteEntry
+	if DeleteEntryHook != nil {
+		del = DeleteEntryHook
+	}
+	n, err := del(r, projectID, mod, slug)
 	if err != nil {
-		panic(err)
+		writeError(w, "delete failed", http.StatusInternalServerError)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID, ok := projectIDFromRequest(r)
-		if !ok {
-			writeError(w, "invalid project id", http.StatusBadRequest)
-			return
-		}
-		slug := strings.TrimSpace(chi.URLParam(r, "slug"))
-		if slug == "" {
-			writeError(w, "slug required", http.StatusBadRequest)
-			return
-		}
-		// PAI-353 — see the matching note on MakeCreateHandler. The
-		// hook records the snapshot + mutation_log entry so trashed
-		// knowledge entries are first-class on the undo / history
-		// surface.
-		del := deleteEntry
-		if DeleteEntryHook != nil {
-			del = DeleteEntryHook
-		}
-		n, err := del(r, projectID, mod, slug)
-		if err != nil {
-			writeError(w, "delete failed", http.StatusInternalServerError)
-			return
-		}
-		if n == 0 {
-			writeError(w, "not found", http.StatusNotFound)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
+	if n == 0 {
+		writeError(w, "not found", http.StatusNotFound)
+		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── shared helpers ──────────────────────────────────────────────
+
+// moduleFromURL resolves the {type} chi URL param to a Module,
+// writing the appropriate 400 / 404 error response to w on failure.
+// The bool return tells the caller whether to continue.
+func moduleFromURL(w http.ResponseWriter, r *http.Request) (Module, bool) {
+	seg := strings.TrimSpace(chi.URLParam(r, "type"))
+	if seg == "" {
+		writeError(w, "type required", http.StatusBadRequest)
+		return nil, false
+	}
+	typ, err := TypeFromURLSegment(seg)
+	if err != nil {
+		// Unknown type — 404, since the URL space for this type
+		// genuinely doesn't exist. Distinguishes from a 400 on
+		// malformed input.
+		writeError(w, err.Error(), http.StatusNotFound)
+		return nil, false
+	}
+	mod, _ := RouteByType(typ)
+	return mod, true
+}
+
+// resolveBodyType accepts either the SQL discriminator
+// (`external_system`) or the kebab URL form (`external-system`)
+// in a request body's `type` field. We accept both because the
+// CLI and the SPA emit different shapes — the CLI thinks in URL
+// segments, the schema/SQL stores discriminators. Either is
+// unambiguously resolvable; we normalise here so handlers see
+// one type.
+func resolveBodyType(raw string) (Module, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("type required")
+	}
+	// Try direct discriminator first (no '-' present).
+	if mod, err := RouteByType(raw); err == nil {
+		return mod, nil
+	}
+	// Fall back to URL-segment interpretation. This rejects
+	// non-canonical mixes like `external_System` or
+	// `external--system` because TypeFromURLSegment requires a
+	// round-trip equality.
+	typ, err := TypeFromURLSegment(raw)
+	if err != nil {
+		return nil, errors.New("unknown knowledge type: " + raw)
+	}
+	mod, _ := RouteByType(typ)
+	return mod, nil
 }
 
 // deleteEntry is the direct-SQL fallback used when no hook is
@@ -273,13 +395,14 @@ func deleteEntry(r *http.Request, projectID int64, mod Module, slug string) (int
 var errSlugTaken = errors.New("slug already exists for this type")
 
 // validateInput bundles the shared (slug + title) checks with the
-// per-type Module check. Returns "" on success, an actionable
-// error string on failure — matches the project_agents.go style
-// so the caller can pass the message straight into the JSON
-// error response.
+// per-type Module check and the PAI-394 reserved-slug guard.
+// Returns "" on success, an actionable error string on failure.
 func validateInput(mod Module, in Input) string {
 	if err := ValidateSlug(in.Slug); err != nil {
 		return err.Error()
+	}
+	if IsReservedSlug(mod.Type(), in.Slug) {
+		return "slug is reserved for the unified subroute (rename it)"
 	}
 	if strings.TrimSpace(in.Title) == "" {
 		return "title required"
@@ -358,8 +481,7 @@ func updateEntry(r *http.Request, projectID int64, mod Module, currentSlug strin
 
 	// Use a status only when the caller supplied one — otherwise
 	// preserve the current value so the field acts like a partial
-	// PUT for status alone. Title / body / slug / metadata are
-	// always required (or defaulted) by validateInput.
+	// PUT for status alone.
 	statusUpdate := strings.TrimSpace(in.Status)
 
 	tx, err := db.DB.BeginTx(r.Context(), nil)
@@ -425,7 +547,44 @@ func loadByType(projectID int64, mod Module) ([]Output, error) {
 	defer rows.Close()
 	out := []Output{}
 	for rows.Next() {
-		o, err := scanOutput(rows, mod)
+		o, err := scanRowByType(rows, mod)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// loadAllTypes returns every live knowledge entry for the project,
+// across all five types, ordered by (type ASC, slug ASC). PAI-394
+// added this path so the unified GET /knowledge endpoint can serve
+// cross-type queries with one round-trip — clients no longer have
+// to issue five parallel requests to assemble a project's
+// knowledge view.
+//
+// Each row is scanned with the correct Module so per-type metadata
+// unmarshals into the canonical shape — mixing in one slice is
+// safe because Output carries the discriminator.
+func loadAllTypes(projectID int64) ([]Output, error) {
+	rows, err := db.DB.Query(`
+		SELECT id, project_id, type, COALESCE(slug,''), title, description,
+		       status, COALESCE(category_metadata,''), created_at, updated_at,
+		       reference_count, COALESCE(last_referenced_at,'')
+		  FROM issues
+		 WHERE project_id = ?
+		   AND type IN ('memory','runbook','external_system','related_project','guideline')
+		   AND deleted_at IS NULL
+		   AND slug       IS NOT NULL
+	  ORDER BY type ASC, slug ASC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Output{}
+	for rows.Next() {
+		o, err := scanRowAcrossTypes(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -448,7 +607,7 @@ func loadOneBySlug(projectID int64, mod Module, slug string) (Output, error) {
 		   AND slug       = ?
 		   AND deleted_at IS NULL
 	`, projectID, mod.Type(), slug)
-	return scanOutput(row, mod)
+	return scanRowByType(row, mod)
 }
 
 // LoadOneByID is the exported sibling of loadOneByID — same behavior,
@@ -466,16 +625,18 @@ func loadOneByID(id int64, mod Module) (Output, error) {
 		  FROM issues
 		 WHERE id = ?
 	`, id)
-	return scanOutput(row, mod)
+	return scanRowByType(row, mod)
 }
 
-// rowScanner abstracts *sql.Row vs *sql.Rows so scanOutput can
-// serve both single-row and list paths.
+// rowScanner abstracts *sql.Row vs *sql.Rows so the scan helpers
+// can serve both single-row and list paths.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanOutput(s rowScanner, mod Module) (Output, error) {
+// scanRowByType decodes a row into Output using a known Module.
+// Used by the type-filtered list and single-entry paths.
+func scanRowByType(s rowScanner, mod Module) (Output, error) {
 	var (
 		o       Output
 		metaRaw string
@@ -492,6 +653,36 @@ func scanOutput(s rowScanner, mod Module) (Output, error) {
 		// On corrupt JSON in the column, fall back to an empty
 		// map so the API stays usable. The corrupt bytes are
 		// preserved at the DB layer for an operator to inspect.
+		meta = map[string]any{}
+	}
+	o.Metadata = meta
+	return o, nil
+}
+
+// scanRowAcrossTypes is the cross-type list path. It first reads
+// the discriminator off the row, then looks up the matching Module
+// to unmarshal the per-type tail metadata.
+func scanRowAcrossTypes(s rowScanner) (Output, error) {
+	var (
+		o       Output
+		metaRaw string
+	)
+	if err := s.Scan(
+		&o.ID, &o.ProjectID, &o.Type, &o.Slug, &o.Title, &o.Body,
+		&o.Status, &metaRaw, &o.CreatedAt, &o.UpdatedAt,
+		&o.ReferenceCount, &o.LastReferencedAt,
+	); err != nil {
+		return o, err
+	}
+	mod, err := RouteByType(o.Type)
+	if err != nil {
+		// Shouldn't happen — the SQL WHERE clause guards the
+		// type column. Defensive fallback to an empty map.
+		o.Metadata = map[string]any{}
+		return o, nil
+	}
+	meta, err := mod.UnmarshalMeta(metaRaw)
+	if err != nil {
 		meta = map[string]any{}
 	}
 	o.Metadata = meta

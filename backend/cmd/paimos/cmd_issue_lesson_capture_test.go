@@ -77,8 +77,8 @@ func TestIssueUpdate_DraftMemoryFlow(t *testing.T) {
 	}
 
 	var (
-		mu     sync.Mutex
-		seen   []capturedRequest
+		mu   sync.Mutex
+		seen []capturedRequest
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +87,13 @@ func TestIssueUpdate_DraftMemoryFlow(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 		}
 		mu.Lock()
-		seen = append(seen, capturedRequest{method: r.Method, path: r.URL.Path, body: body})
+		// PAI-394 — record path+query so the call-order assertion
+		// can distinguish unified-knowledge POSTs by their type.
+		fullPath := r.URL.Path
+		if r.URL.RawQuery != "" {
+			fullPath = r.URL.Path + "?" + r.URL.RawQuery
+		}
+		seen = append(seen, capturedRequest{method: r.Method, path: fullPath, body: body})
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -95,7 +101,7 @@ func TestIssueUpdate_DraftMemoryFlow(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":42,"issue_key":"PAI-1","status":"done","project_id":6}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/PAI-1":
 			_, _ = w.Write([]byte(`{"id":42,"issue_key":"PAI-1","project_id":6}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/api/projects/6/memory":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/projects/6/knowledge" && r.URL.Query().Get("type") == "memory":
 			_, _ = w.Write([]byte(`{"id":555,"slug":"feedback_use_line_buffered_in_pipes"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/issues/PAI-1/relations":
 			w.WriteHeader(http.StatusCreated)
@@ -129,7 +135,7 @@ func TestIssueUpdate_DraftMemoryFlow(t *testing.T) {
 	want := []struct{ method, path string }{
 		{http.MethodPut, "/api/issues/PAI-1"},
 		{http.MethodGet, "/api/issues/PAI-1"},
-		{http.MethodPost, "/api/projects/6/memory"},
+		{http.MethodPost, "/api/projects/6/knowledge?type=memory"},
 		{http.MethodPost, "/api/issues/PAI-1/relations"},
 	}
 	for i, w := range want {

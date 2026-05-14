@@ -29,12 +29,12 @@ import (
 // stale-memory archive proposal endpoint.
 //
 // Surface under test:
-//   - POST /api/projects/:id/memory/references — bumps the counter
+//   - POST /api/projects/:id/knowledge/memory/references — bumps the counter
 //     and stamps last_referenced_at on every (project_id, type='memory')
 //     row whose id is in the body.
 //   - The auto-suggest path also bumps counts (covered indirectly via
 //     a follow-up read of the affected rows).
-//   - GET  /api/projects/:id/memory/stale — returns proposals when
+//   - GET  /api/projects/:id/knowledge/memory/stale — returns proposals when
 //     all three conditions hold (no recent ref + confidence ≤ medium +
 //     no in-flight originating ticket).
 
@@ -82,7 +82,7 @@ func TestBumpMemoryReferencesPersists(t *testing.T) {
 	}
 
 	resp := ts.post(t,
-		"/api/projects/"+itoa(projID)+"/memory/references",
+		"/api/projects/"+itoa(projID)+"/knowledge/memory/references",
 		ts.adminCookie,
 		map[string]any{"ids": []int64{mem1, mem2}, "source": "bundle"},
 	)
@@ -108,7 +108,7 @@ func TestBumpMemoryReferencesPersists(t *testing.T) {
 
 	// Second bump on mem1 only — counter doubles, mem2 untouched.
 	resp = ts.post(t,
-		"/api/projects/"+itoa(projID)+"/memory/references",
+		"/api/projects/"+itoa(projID)+"/knowledge/memory/references",
 		ts.adminCookie,
 		map[string]any{"ids": []int64{mem1}},
 	)
@@ -136,7 +136,7 @@ func TestBumpMemoryReferencesIgnoresCrossProject(t *testing.T) {
 
 	// Send memB's id into projA's endpoint — must be ignored.
 	resp := ts.post(t,
-		"/api/projects/"+itoa(projA)+"/memory/references",
+		"/api/projects/"+itoa(projA)+"/knowledge/memory/references",
 		ts.adminCookie,
 		map[string]any{"ids": []int64{memA, memB}},
 	)
@@ -157,7 +157,7 @@ func TestBumpMemoryReferencesEmptyBody(t *testing.T) {
 	ts := newTestServer(t)
 	projID := seedBatchProject(t, "PAI", "PAI")
 	resp := ts.post(t,
-		"/api/projects/"+itoa(projID)+"/memory/references",
+		"/api/projects/"+itoa(projID)+"/knowledge/memory/references",
 		ts.adminCookie,
 		map[string]any{"ids": []int64{}},
 	)
@@ -213,7 +213,7 @@ func TestSuggestEndpointBumpsCounter(t *testing.T) {
 }
 
 // TestStaleMemoryProposesOnlyEligible exercises every condition gate
-// of the /memory/stale endpoint:
+// of the /knowledge/memory/stale endpoint:
 //   - high-confidence rows are excluded.
 //   - rows whose originating ticket is in 'in-progress' / 'qa' are
 //     excluded even when they otherwise look stale.
@@ -295,7 +295,7 @@ func TestStaleMemoryProposesOnlyEligible(t *testing.T) {
 		t.Fatalf("backdate backcompat: %v", err)
 	}
 
-	resp := ts.get(t, "/api/projects/"+itoa(projID)+"/memory/stale", ts.adminCookie)
+	resp := ts.get(t, "/api/projects/"+itoa(projID)+"/knowledge/memory/stale", ts.adminCookie)
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("GET stale: status=%d body=%s", resp.StatusCode, b)
@@ -330,7 +330,7 @@ func TestStaleMemoryHonorsDaysOverride(t *testing.T) {
 	}
 
 	// days=90 (default) → no proposal (only 30 days old).
-	resp := ts.get(t, "/api/projects/"+itoa(projID)+"/memory/stale", ts.adminCookie)
+	resp := ts.get(t, "/api/projects/"+itoa(projID)+"/knowledge/memory/stale", ts.adminCookie)
 	var out []map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if len(out) != 0 {
@@ -338,7 +338,7 @@ func TestStaleMemoryHonorsDaysOverride(t *testing.T) {
 	}
 
 	// days=10 → proposal fires (30 > 10).
-	resp = ts.get(t, "/api/projects/"+itoa(projID)+"/memory/stale?days=10", ts.adminCookie)
+	resp = ts.get(t, "/api/projects/"+itoa(projID)+"/knowledge/memory/stale?days=10", ts.adminCookie)
 	out = nil
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if len(out) != 1 {
@@ -373,7 +373,7 @@ func TestStaleMemoryRespectsOriginatingTicketsArray(t *testing.T) {
 		t.Fatalf("backdate: %v", err)
 	}
 
-	resp := ts.get(t, "/api/projects/"+itoa(projID)+"/memory/stale", ts.adminCookie)
+	resp := ts.get(t, "/api/projects/"+itoa(projID)+"/knowledge/memory/stale", ts.adminCookie)
 	var out []map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	if len(out) != 0 {
@@ -395,7 +395,7 @@ func TestBundleEndpointBumpsViaCLIPath(t *testing.T) {
 	mem3 := seedMemory(t, projID, "bundle_three", "Bundle three", "x", `{}`)
 
 	resp := ts.post(t,
-		"/api/projects/"+itoa(projID)+"/memory/references",
+		"/api/projects/"+itoa(projID)+"/knowledge/memory/references",
 		ts.adminCookie,
 		map[string]any{
 			"ids":    []int64{mem1, mem2, mem3},

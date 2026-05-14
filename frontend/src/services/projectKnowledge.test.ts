@@ -72,11 +72,11 @@ describe('projectKnowledge service', () => {
     await listKnowledgeEntries(7, 'external_system')
     await listKnowledgeEntries(7, 'related_project')
     await listKnowledgeEntries(7, 'guideline')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/memory')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/runbooks')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/external-systems')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/related-projects')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/guidelines')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge?type=memory')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge?type=runbook')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge?type=external-system')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge?type=related-project')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge?type=guideline')
   })
 
   it('round-trips a single entry through CRUD', async () => {
@@ -87,7 +87,7 @@ describe('projectKnowledge service', () => {
     vi.mocked(api.delete).mockResolvedValue(undefined as never)
 
     await getKnowledgeEntry(7, 'memory', 'feedback_thread_dump')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/memory/feedback_thread_dump')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge/memory/feedback_thread_dump')
 
     await createKnowledgeEntry(7, 'memory', {
       slug: 'feedback_thread_dump',
@@ -95,7 +95,7 @@ describe('projectKnowledge service', () => {
       body: '',
       metadata: {},
     })
-    expect(api.post).toHaveBeenCalledWith('/projects/7/memory', expect.objectContaining({ slug: 'feedback_thread_dump' }))
+    expect(api.post).toHaveBeenCalledWith('/projects/7/knowledge?type=memory', expect.objectContaining({ slug: 'feedback_thread_dump' }))
 
     await updateKnowledgeEntry(7, 'memory', 'feedback_thread_dump', {
       slug: 'feedback_thread_dump',
@@ -104,18 +104,18 @@ describe('projectKnowledge service', () => {
       metadata: { confidence: 'high' },
     })
     expect(api.put).toHaveBeenCalledWith(
-      '/projects/7/memory/feedback_thread_dump',
+      '/projects/7/knowledge/memory/feedback_thread_dump',
       expect.objectContaining({ title: 'Thread dump (v2)' }),
     )
 
     await deleteKnowledgeEntry(7, 'memory', 'feedback_thread_dump')
-    expect(api.delete).toHaveBeenCalledWith('/projects/7/memory/feedback_thread_dump')
+    expect(api.delete).toHaveBeenCalledWith('/projects/7/knowledge/memory/feedback_thread_dump')
   })
 
   it('encodes slugs with reserved URI characters', async () => {
     vi.mocked(api.get).mockResolvedValue(undefined as never)
     await getKnowledgeEntry(7, 'runbook', 'has spaces')
-    expect(api.get).toHaveBeenCalledWith('/projects/7/runbooks/has%20spaces')
+    expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge/runbook/has%20spaces')
   })
 
   describe('validateKnowledgeSlug', () => {
@@ -168,7 +168,7 @@ describe('projectKnowledge service', () => {
       vi.mocked(api.put).mockResolvedValue(entry as never)
       await acceptProposedMemory(7, entry)
       expect(api.put).toHaveBeenCalledWith(
-        '/projects/7/memory/feedback_thread_dump',
+        '/projects/7/knowledge/memory/feedback_thread_dump',
         expect.objectContaining({ status: 'backlog', slug: 'feedback_thread_dump' }),
       )
     })
@@ -178,7 +178,7 @@ describe('projectKnowledge service', () => {
       vi.mocked(api.put).mockResolvedValue(entry as never)
       await rejectProposedMemory(7, entry)
       const call = vi.mocked(api.put).mock.calls[0]
-      expect(call[0]).toBe('/projects/7/memory/feedback_thread_dump')
+      expect(call[0]).toBe('/projects/7/knowledge/memory/feedback_thread_dump')
       const body = call[1] as { status: string; metadata: { archived_reason?: string; type?: string } }
       expect(body.status).toBe('cancelled')
       expect(body.metadata.archived_reason).toBe('rejected')
@@ -189,9 +189,9 @@ describe('projectKnowledge service', () => {
     it('listStaleProposedMemory hits /memory/proposed/stale with optional days', async () => {
       vi.mocked(api.get).mockResolvedValue([] as never)
       await listStaleProposedMemory(7)
-      expect(api.get).toHaveBeenCalledWith('/projects/7/memory/proposed/stale')
+      expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge/memory/proposed/stale')
       await listStaleProposedMemory(7, 14)
-      expect(api.get).toHaveBeenCalledWith('/projects/7/memory/proposed/stale?days=14')
+      expect(api.get).toHaveBeenCalledWith('/projects/7/knowledge/memory/proposed/stale?days=14')
     })
   })
 })

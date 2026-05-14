@@ -20,7 +20,8 @@
     { "name": "documents", "description": "Customer- and project-scoped documents" },
     { "name": "incidents", "description": "Incident log (PAI-116, NIS2 readiness)" },
     { "name": "gdpr", "description": "Per-subject export / erasure (PAI-117)" },
-    { "name": "schema", "description": "Self-describing schema + health" }
+    { "name": "schema", "description": "Self-describing schema + health" },
+    { "name": "knowledge", "description": "Unified knowledge plane (memory, runbook, guideline, external-system, related-project)" }
   ],
   "components": {
     "securitySchemes": {
@@ -43,6 +44,38 @@
         "required": ["error"],
         "properties": {
           "error": { "type": "string", "description": "Human-readable error message" }
+        }
+      },
+      "KnowledgeEntry": {
+        "type": "object",
+        "description": "PAI-394 unified knowledge entry shape. `type` is the SQL discriminator (snake_case). Returned by every read on /api/projects/{id}/knowledge.",
+        "required": ["id", "project_id", "type", "slug", "title", "status"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "project_id": { "type": "integer", "format": "int64" },
+          "type": { "type": "string", "enum": ["memory", "runbook", "guideline", "external_system", "related_project"] },
+          "slug": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "maxLength": 64 },
+          "title": { "type": "string" },
+          "body": { "type": "string", "description": "Markdown body" },
+          "status": { "type": "string", "description": "Issue status enum value (typically backlog / proposed / cancelled)" },
+          "metadata": { "type": "object", "additionalProperties": true, "description": "Per-type tail fields (schemaless on the server; per-Module validation runs on write)" },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" },
+          "reference_count": { "type": "integer", "description": "PAI-347 decay counter (memory only; 0 for other types)" },
+          "last_referenced_at": { "type": "string" }
+        }
+      },
+      "KnowledgeEntryInput": {
+        "type": "object",
+        "description": "Write shape for POST / PUT on the unified knowledge surface. `type` is required on POST (either kebab URL segment or snake_case discriminator); on PUT, the URL pins the type and a body type must match.",
+        "required": ["slug", "title"],
+        "properties": {
+          "type": { "type": "string", "description": "Knowledge type — `memory`, `runbook`, `guideline`, `external-system`/`external_system`, `related-project`/`related_project`" },
+          "slug": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "maxLength": 64 },
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "status": { "type": "string", "description": "Optional; defaults to the type's DefaultStatus" },
+          "metadata": { "type": "object", "additionalProperties": true }
         }
       },
       "User": {
@@ -517,6 +550,108 @@
         "tags": ["gdpr"],
         "summary": "Active retention policy (admin)",
         "responses": { "200": { "description": "Policy" } }
+      }
+    },
+    "/api/projects/{id}/knowledge": {
+      "get": {
+        "tags": ["knowledge"],
+        "summary": "List knowledge entries (all types or filtered)",
+        "description": "PAI-394 unified surface. Without `type`, returns every non-trashed knowledge entry across all five registered types. With `type=<segment>`, narrows to that type. Segments are kebab-singular: memory, runbook, guideline, external-system, related-project.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
+          { "name": "type", "in": "query", "required": false, "schema": { "type": "string", "enum": ["memory", "runbook", "guideline", "external-system", "related-project"] } }
+        ],
+        "responses": { "200": { "description": "Array of knowledge entries", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/KnowledgeEntry" } } } } } }
+      },
+      "post": {
+        "tags": ["knowledge"],
+        "summary": "Create a knowledge entry",
+        "description": "Type travels either in the body (`type` field, kebab segment or snake_case discriminator) or as a `?type=` query parameter — body wins on conflict.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
+          { "name": "type", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Convenience: matches body.type when both are present" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntryInput" } } }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntry" } } } },
+          "400": { "description": "Invalid type, slug, or per-type metadata" },
+          "409": { "description": "Slug already exists for this type in this project" }
+        }
+      }
+    },
+    "/api/projects/{id}/knowledge/{type}/{slug}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
+        { "name": "type", "in": "path", "required": true, "schema": { "type": "string", "enum": ["memory", "runbook", "guideline", "external-system", "related-project"] } },
+        { "name": "slug", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" } }
+      ],
+      "get": {
+        "tags": ["knowledge"],
+        "summary": "Fetch a single knowledge entry",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntry" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "tags": ["knowledge"],
+        "summary": "Replace a knowledge entry (rename via body.slug)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntryInput" } } }
+        },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntry" } } } },
+          "404": { "description": "Not found" },
+          "409": { "description": "Slug rename collides with an existing entry of the same type" }
+        }
+      },
+      "delete": {
+        "tags": ["knowledge"],
+        "summary": "Soft-delete (Trash) a knowledge entry",
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/projects/{id}/knowledge/memory/references": {
+      "post": {
+        "tags": ["knowledge"],
+        "summary": "Bump reference counters for memory entries (PAI-347)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "source": { "type": "string" } }, "required": ["ids"] } } }
+        },
+        "responses": { "200": { "description": "Counter update summary" } }
+      }
+    },
+    "/api/projects/{id}/knowledge/memory/stale": {
+      "get": {
+        "tags": ["knowledge"],
+        "summary": "Decay-based memory archive proposals (PAI-347)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
+          { "name": "days", "in": "query", "required": false, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Candidate memory entries" } }
+      }
+    },
+    "/api/projects/{id}/knowledge/memory/proposed/stale": {
+      "get": {
+        "tags": ["knowledge"],
+        "summary": "Stale bot-proposed memory drafts pending admin review (PAI-349)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
+          { "name": "days", "in": "query", "required": false, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Aged-out proposed drafts" } }
       }
     }
   }

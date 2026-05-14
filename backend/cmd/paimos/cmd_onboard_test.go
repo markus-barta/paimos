@@ -492,24 +492,31 @@ func startOnboardAPI(t *testing.T) *httptest.Server {
 					"metadata": {"environments": ["prod"]}
 				}
 			}`))
-		case r.Method == http.MethodGet && path == "/api/projects/42/memory":
-			_, _ = w.Write([]byte(`[
-				{"id":1,"project_id":42,"type":"memory","slug":"imac_rule","title":"Use imac for prod","body":"SSH imac.","status":"backlog","metadata":{"scope":"project","confidence":"high"},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && path == "/api/projects/42/runbooks":
-			_, _ = w.Write([]byte(`[
-				{"id":2,"project_id":42,"type":"runbook","slug":"deploy","title":"Deploy","body":"step 1","status":"backlog","metadata":{},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && path == "/api/projects/42/external-systems":
-			_, _ = w.Write([]byte(`[
-				{"id":3,"project_id":42,"type":"external_system","slug":"sentry","title":"Sentry","body":"errors","status":"backlog","metadata":{"url":"https://sentry.example"},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && path == "/api/projects/42/related-projects":
-			_, _ = w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && path == "/api/projects/42/guidelines":
-			_, _ = w.Write([]byte(`[
-				{"id":4,"project_id":42,"type":"guideline","slug":"tickets","title":"Every commit references PAI","body":"yes","status":"backlog","metadata":{"confidence":"high"},"created_at":"","updated_at":""}
-			]`))
+		// PAI-394 — unified knowledge surface. Single path; type
+		// rides on ?type=<seg>.
+		case r.Method == http.MethodGet && path == "/api/projects/42/knowledge":
+			switch r.URL.Query().Get("type") {
+			case "memory":
+				_, _ = w.Write([]byte(`[
+					{"id":1,"project_id":42,"type":"memory","slug":"imac_rule","title":"Use imac for prod","body":"SSH imac.","status":"backlog","metadata":{"scope":"project","confidence":"high"},"created_at":"","updated_at":""}
+				]`))
+			case "runbook":
+				_, _ = w.Write([]byte(`[
+					{"id":2,"project_id":42,"type":"runbook","slug":"deploy","title":"Deploy","body":"step 1","status":"backlog","metadata":{},"created_at":"","updated_at":""}
+				]`))
+			case "external-system":
+				_, _ = w.Write([]byte(`[
+					{"id":3,"project_id":42,"type":"external_system","slug":"sentry","title":"Sentry","body":"errors","status":"backlog","metadata":{"url":"https://sentry.example"},"created_at":"","updated_at":""}
+				]`))
+			case "related-project":
+				_, _ = w.Write([]byte(`[]`))
+			case "guideline":
+				_, _ = w.Write([]byte(`[
+					{"id":4,"project_id":42,"type":"guideline","slug":"tickets","title":"Every commit references PAI","body":"yes","status":"backlog","metadata":{"confidence":"high"},"created_at":"","updated_at":""}
+				]`))
+			default:
+				_, _ = w.Write([]byte(`[]`))
+			}
 		case r.Method == http.MethodGet && path == "/api/projects/42/issues":
 			_, _ = w.Write([]byte(`[
 				{"issue_key":"BON26-100","title":"Refresh deploy creds","status":"done","updated_at":"2026-05-07T18:00:00Z"},
@@ -517,7 +524,7 @@ func startOnboardAPI(t *testing.T) *httptest.Server {
 			]`))
 		case r.Method == http.MethodGet && path == "/api/auth/me":
 			_, _ = w.Write([]byte(`{"user":{"id":7,"username":"mba"}}`))
-		case r.Method == http.MethodPost && strings.HasSuffix(path, "/memory/references"):
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/knowledge/memory/references"):
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{}`))
 		default:

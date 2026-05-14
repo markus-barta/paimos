@@ -276,15 +276,15 @@ func startBundleAPIWithRelated(t *testing.T, hits *bundleHits, upstreamURL, upst
 				"agent": {"name": "ops", "metadata": {}},
 				"repos": [], "environments": [], "deploy_recipes": []
 			}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/memory":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "memory":
 			_, _ = w.Write([]byte(`[
 				{"id":1,"project_id":42,"type":"memory","slug":"own_rule","title":"Own rule","body":"BON26 own","status":"backlog","metadata":{},"created_at":"","updated_at":""}
 			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/runbooks":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "runbook":
 			_, _ = w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/external-systems":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "external-system":
 			_, _ = w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/related-projects":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "related-project":
 			body := `[{
 				"id":7,"project_id":42,"type":"related_project","slug":"upstream_pai",
 				"title":"Upstream paimos","body":"","status":"backlog",
@@ -292,7 +292,7 @@ func startBundleAPIWithRelated(t *testing.T, hits *bundleHits, upstreamURL, upst
 				"created_at":"","updated_at":""
 			}]`
 			_, _ = w.Write([]byte(body))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/guidelines":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "guideline":
 			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/auth/me":
 			_, _ = w.Write([]byte(`{"user":{"id":7,"username":"mba"}}`))
@@ -314,17 +314,17 @@ func startUpstreamAPI(t *testing.T, projectKey string) *httptest.Server {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
 			_, _ = w.Write([]byte(`[{"id":99,"key":"` + projectKey + `"}]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/memory":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/knowledge" && r.URL.Query().Get("type") == "memory":
 			_, _ = w.Write([]byte(`[
 				{"id":100,"project_id":99,"type":"memory","slug":"use_paimos_cli","title":"Use paimos CLI not curl","body":"Always go through paimos CLI.","status":"backlog","metadata":{},"created_at":"","updated_at":""},
 				{"id":101,"project_id":99,"type":"memory","slug":"private_lesson","title":"Project-internal","body":"don't share","status":"backlog","metadata":{"inherit":false},"created_at":"","updated_at":""},
 				{"id":102,"project_id":99,"type":"memory","slug":"explicit_inherit","title":"Explicit","body":"Yes inherit","status":"backlog","metadata":{"inherit":true},"created_at":"","updated_at":""}
 			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/runbooks":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/knowledge" && r.URL.Query().Get("type") == "runbook":
 			_, _ = w.Write([]byte(`[
 				{"id":110,"project_id":99,"type":"runbook","slug":"deploy_paimos","title":"Deploy paimos","body":"step 1","status":"backlog","metadata":{},"created_at":"","updated_at":""}
 			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/guidelines":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/knowledge" && r.URL.Query().Get("type") == "guideline":
 			_, _ = w.Write([]byte(`[
 				{"id":120,"project_id":99,"type":"guideline","slug":"prod_not_live","title":"Prod naming","body":"Use prod","status":"backlog","metadata":{},"created_at":"","updated_at":""}
 			]`))
@@ -485,12 +485,16 @@ func TestSessionStart_BundleFull_DeclarationOrder(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/projects":
 			_, _ = w.Write([]byte(`[{"id":50,"key":"AAA"}]`))
-		case "/api/projects/50/memory":
-			_, _ = w.Write([]byte(`[
-				{"id":1,"project_id":50,"type":"memory","slug":"from_aaa","title":"From AAA","body":"","status":"backlog","metadata":{},"created_at":"","updated_at":""}
-			]`))
-		case "/api/projects/50/runbooks", "/api/projects/50/guidelines":
-			_, _ = w.Write([]byte(`[]`))
+		case "/api/projects/50/knowledge":
+			// PAI-394 — unified surface; type rides on ?type=.
+			switch r.URL.Query().Get("type") {
+			case "memory":
+				_, _ = w.Write([]byte(`[
+					{"id":1,"project_id":50,"type":"memory","slug":"from_aaa","title":"From AAA","body":"","status":"backlog","metadata":{},"created_at":"","updated_at":""}
+				]`))
+			default:
+				_, _ = w.Write([]byte(`[]`))
+			}
 		default:
 			http.Error(w, "unmocked", http.StatusNotFound)
 		}
@@ -501,12 +505,15 @@ func TestSessionStart_BundleFull_DeclarationOrder(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/projects":
 			_, _ = w.Write([]byte(`[{"id":60,"key":"BBB"}]`))
-		case "/api/projects/60/memory":
-			_, _ = w.Write([]byte(`[
-				{"id":2,"project_id":60,"type":"memory","slug":"from_bbb","title":"From BBB","body":"","status":"backlog","metadata":{},"created_at":"","updated_at":""}
-			]`))
-		case "/api/projects/60/runbooks", "/api/projects/60/guidelines":
-			_, _ = w.Write([]byte(`[]`))
+		case "/api/projects/60/knowledge":
+			switch r.URL.Query().Get("type") {
+			case "memory":
+				_, _ = w.Write([]byte(`[
+					{"id":2,"project_id":60,"type":"memory","slug":"from_bbb","title":"From BBB","body":"","status":"backlog","metadata":{},"created_at":"","updated_at":""}
+				]`))
+			default:
+				_, _ = w.Write([]byte(`[]`))
+			}
 		default:
 			http.Error(w, "unmocked", http.StatusNotFound)
 		}
@@ -522,15 +529,17 @@ func TestSessionStart_BundleFull_DeclarationOrder(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"name":"ops"}]`))
 		case "/api/projects/42/agents/ops.json":
 			_, _ = w.Write([]byte(`{"agent":{"name":"ops","metadata":{}},"repos":[],"environments":[],"deploy_recipes":[]}`))
-		case "/api/projects/42/memory", "/api/projects/42/runbooks",
-			"/api/projects/42/external-systems", "/api/projects/42/guidelines":
-			_, _ = w.Write([]byte(`[]`))
-		case "/api/projects/42/related-projects":
-			body := `[
-				{"id":1,"project_id":42,"type":"related_project","slug":"a_aaa","title":"AAA","body":"","status":"backlog","metadata":{"key":"AAA","instance_url":"` + upA.URL + `","role":"upstream-tool"},"created_at":"","updated_at":""},
-				{"id":2,"project_id":42,"type":"related_project","slug":"b_bbb","title":"BBB","body":"","status":"backlog","metadata":{"key":"BBB","instance_url":"` + upB.URL + `","role":"philosophy"},"created_at":"","updated_at":""}
-			]`
-			_, _ = w.Write([]byte(body))
+		case "/api/projects/42/knowledge":
+			switch r.URL.Query().Get("type") {
+			case "related-project":
+				body := `[
+					{"id":1,"project_id":42,"type":"related_project","slug":"a_aaa","title":"AAA","body":"","status":"backlog","metadata":{"key":"AAA","instance_url":"` + upA.URL + `","role":"upstream-tool"},"created_at":"","updated_at":""},
+					{"id":2,"project_id":42,"type":"related_project","slug":"b_bbb","title":"BBB","body":"","status":"backlog","metadata":{"key":"BBB","instance_url":"` + upB.URL + `","role":"philosophy"},"created_at":"","updated_at":""}
+				]`
+				_, _ = w.Write([]byte(body))
+			default:
+				_, _ = w.Write([]byte(`[]`))
+			}
 		case "/api/auth/me":
 			_, _ = w.Write([]byte(`{"user":{"id":7}}`))
 		default:

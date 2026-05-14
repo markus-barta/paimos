@@ -24,7 +24,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 )
@@ -54,13 +53,19 @@ func startProposeFakeAPI(t *testing.T, cap *proposeCapture) *httptest.Server {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
 			_, _ = w.Write([]byte(`[{"id":42,"key":"BON26"}]`))
-		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/memory"):
+		case r.Method == http.MethodPost && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "memory":
 			body, _ := io.ReadAll(r.Body)
 			var parsed map[string]any
 			_ = json.Unmarshal(body, &parsed)
 			cap.mu.Lock()
+			// PAI-394 — record path+query so the assertion can
+			// distinguish unified-surface requests by their type.
+			fullPath := r.URL.Path
+			if r.URL.RawQuery != "" {
+				fullPath = r.URL.Path + "?" + r.URL.RawQuery
+			}
 			cap.posts = append(cap.posts, proposePOST{
-				Path:    r.URL.Path,
+				Path:    fullPath,
 				Body:    parsed,
 				Headers: r.Header.Clone(),
 			})
@@ -108,8 +113,8 @@ func TestMemoryPropose_PayloadShape(t *testing.T) {
 		t.Fatalf("expected 1 POST, got %d", len(cap.posts))
 	}
 	post := cap.posts[0]
-	if post.Path != "/api/projects/42/memory" {
-		t.Errorf("path = %q, want /api/projects/42/memory", post.Path)
+	if post.Path != "/api/projects/42/knowledge?type=memory" {
+		t.Errorf("path = %q, want /api/projects/42/knowledge?type=memory", post.Path)
 	}
 	// Status must be 'proposed' on the wire.
 	if status, _ := post.Body["status"].(string); status != "proposed" {

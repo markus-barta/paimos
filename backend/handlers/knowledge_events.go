@@ -46,7 +46,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -160,48 +159,54 @@ func knowledgeRevForOutput(out knowledge.Output) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-// MakeKnowledgeRevHandler returns the .rev polling-fallback handler
-// for a knowledge URL alias. Routed under
-// /api/projects/{id}/{alias}/{slug}.rev. Plain text response (the
-// 12-char hex hash) so curl users can compare without a JSON parser.
+// KnowledgeRevHandler serves /api/projects/{id}/knowledge/{type}/
+// {slug}.rev — a cheap-poll fallback for clients that can't hold an
+// SSE connection. Plain text response (the 12-char hex hash) so
+// curl users can compare without a JSON parser.
 //
-// The factory shape mirrors knowledge.MakeListHandler so the router
-// wiring stays uniform across the alias loop.
+// PAI-394 rewrote this from a per-alias factory into a single
+// handler that resolves the Module from the URL {type} segment per
+// request, matching the rest of the unified knowledge surface.
 //
-// Auth is project-view only — same gate as the GET-by-slug path. The
-// .rev never leaks anything beyond the fact that a slug exists, but
-// keeping the gate consistent removes a per-route bookkeeping burden.
-func MakeKnowledgeRevHandler(alias string) http.HandlerFunc {
-	mod, err := knowledge.RouteByPath(alias)
+// Auth is project-view only — same gate as the GET-by-slug path.
+// The .rev never leaks anything beyond the fact that a slug exists,
+// but keeping the gate consistent removes a per-route bookkeeping
+// burden.
+func KnowledgeRevHandler(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	seg := strings.TrimSpace(chi.URLParam(r, "type"))
+	if seg == "" {
+		jsonError(w, "type required", http.StatusBadRequest)
+		return
+	}
+	typ, err := knowledge.TypeFromURLSegment(seg)
 	if err != nil {
-		// init-time misconfiguration — fail loudly.
-		panic(fmt.Errorf("knowledge .rev handler: %w", err))
+		jsonError(w, err.Error(), http.StatusNotFound)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID, ok := projectIDFromRequest(r)
-		if !ok {
-			jsonError(w, "invalid project id", http.StatusBadRequest)
-			return
-		}
-		slug := strings.TrimSpace(chi.URLParam(r, "slug"))
-		if slug == "" {
-			jsonError(w, "slug required", http.StatusBadRequest)
-			return
-		}
-		out, err := loadKnowledgeBySlug(projectID, mod, slug)
-		if errors.Is(err, sql.ErrNoRows) {
-			jsonError(w, "not found", http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			jsonError(w, "query failed", http.StatusInternalServerError)
-			return
-		}
-		rev := knowledgeRevForOutput(out)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte(rev + "\n"))
+	mod, _ := knowledge.RouteByType(typ)
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if slug == "" {
+		jsonError(w, "slug required", http.StatusBadRequest)
+		return
 	}
+	out, err := loadKnowledgeBySlug(projectID, mod, slug)
+	if errors.Is(err, sql.ErrNoRows) {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	rev := knowledgeRevForOutput(out)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(rev + "\n"))
 }
 
 // loadKnowledgeBySlug reads a single live knowledge entry. Duplicates

@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/markus-barta/paimos/backend/handlers/knowledge"
 )
 
 // SchemaVersion is the authoritative version of the API schema payload.
@@ -33,6 +34,11 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.3.0 (PAI-394): added `knowledge` block (registered types,
+// URL segments, default statuses, entry shape, route map) and
+// `enums.knowledge_types`. Marks the collapse of the five
+// per-type knowledge URLs into one unified `/knowledge` resource
+// so agents can discover the new surface without reading source.
 // 1.2.2 (PAI-393): added `enums.tag_colors`, the canonical 12-value
 // tag color palette. Sourced from handlers.TagColorPalette so the
 // schema and the server-side validator can't drift. Closes the
@@ -44,7 +50,7 @@ import (
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.2.2"
+const SchemaVersion = "1.3.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -54,6 +60,7 @@ type SchemaPayload struct {
 	Entities    map[string]SchemaEntity        `json:"entities"`
 	Conventions map[string]string              `json:"conventions"`
 	Scopes      []auth.ScopeDef                `json:"scopes"`
+	Knowledge   *SchemaKnowledge               `json:"knowledge,omitempty"`
 }
 
 // SchemaEntity describes the create/update shape for a given entity type.
@@ -63,6 +70,30 @@ type SchemaEntity struct {
 	Required []string `json:"required"`
 	Optional []string `json:"optional"`
 	KeyShape string   `json:"key_shape,omitempty"`
+}
+
+// SchemaKnowledge documents the unified `/api/projects/{id}/knowledge`
+// surface introduced by PAI-394. Agents reading this block know
+// every knowledge type the server recognises (`Types`), what shape
+// to send (`EntryShape`), and which URL each verb hits (`Routes`).
+// Populated at init() from the knowledge sub-package so a new
+// Module costs zero schema edits.
+type SchemaKnowledge struct {
+	Types      []SchemaKnowledgeType `json:"types"`
+	EntryShape SchemaEntity          `json:"entry_shape"`
+	Routes     map[string]string     `json:"routes"`
+}
+
+// SchemaKnowledgeType is one row of SchemaKnowledge.Types. Type is
+// the SQL discriminator stored in `issues.type`; URLSegment is the
+// kebab form used in URL paths (mechanical underscore → hyphen).
+// Label is the human-readable name surfaced by the SPA; DefaultStatus
+// is the value the server stamps when a create request omits status.
+type SchemaKnowledgeType struct {
+	Type          string `json:"type"`
+	URLSegment    string `json:"url_segment"`
+	Label         string `json:"label"`
+	DefaultStatus string `json:"default_status"`
 }
 
 // Schema is the compile-time-constant API schema. Backend enum changes
@@ -166,6 +197,47 @@ func init() {
 	// SSoT; we copy it so a downstream mutation of Schema.Enums can't
 	// reach back and clobber the validator's palette.
 	Schema.Enums["tag_colors"] = append([]string{}, TagColorPalette...)
+	// PAI-394: enumerate knowledge types in `enums.knowledge_types`
+	// and build the rich `knowledge` block sourced from the
+	// registered Modules. The block documents the unified
+	// /knowledge surface so agents can discover everything they
+	// need without reading the source — closes the OpenAPI gap
+	// noted in PAI-394's filing.
+	types := knowledge.AllTypes()
+	Schema.Enums["knowledge_types"] = append([]string{}, types...)
+	rows := make([]SchemaKnowledgeType, 0, len(types))
+	for _, typ := range types {
+		mod, err := knowledge.RouteByType(typ)
+		if err != nil {
+			// Should not happen — AllTypes() returns only
+			// registered discriminators. Skip defensively rather
+			// than panic; the binary booting is more important
+			// than a single missing schema row.
+			continue
+		}
+		rows = append(rows, SchemaKnowledgeType{
+			Type:          mod.Type(),
+			URLSegment:    knowledge.URLSegmentForType(mod.Type()),
+			Label:         mod.Label(),
+			DefaultStatus: mod.DefaultStatus(),
+		})
+	}
+	Schema.Knowledge = &SchemaKnowledge{
+		Types: rows,
+		EntryShape: SchemaEntity{
+			Required: []string{"type", "slug", "title"},
+			Optional: []string{"body", "status", "metadata"},
+		},
+		Routes: map[string]string{
+			"list":   "GET /api/projects/{id}/knowledge",
+			"filter": "GET /api/projects/{id}/knowledge?type={url_segment}",
+			"get":    "GET /api/projects/{id}/knowledge/{type}/{slug}",
+			"rev":    "GET /api/projects/{id}/knowledge/{type}/{slug}.rev",
+			"create": "POST /api/projects/{id}/knowledge",
+			"update": "PUT /api/projects/{id}/knowledge/{type}/{slug}",
+			"delete": "DELETE /api/projects/{id}/knowledge/{type}/{slug}",
+		},
+	}
 	b, err := json.MarshalIndent(&Schema, "", "  ")
 	if err != nil {
 		// Unreachable in practice — Schema is a literal with only maps,

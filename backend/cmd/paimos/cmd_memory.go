@@ -133,6 +133,7 @@ Use --dry-run to print the request payload without hitting the API.`,
 			}
 
 			payload := map[string]any{
+				"type":     "memory", // PAI-394 — discriminator on the unified surface
 				"slug":     slug,
 				"title":    strings.TrimSpace(title),
 				"body":     bodyContent,
@@ -152,7 +153,7 @@ Use --dry-run to print the request payload without hitting the API.`,
 			if err != nil {
 				return reportError(err)
 			}
-			respBody, err := client.do("POST", fmt.Sprintf("/api/projects/%d/memory", projectID), payload)
+			respBody, err := client.do("POST", fmt.Sprintf("/api/projects/%d/knowledge?type=memory", projectID), payload)
 			if err != nil {
 				return reportError(err)
 			}

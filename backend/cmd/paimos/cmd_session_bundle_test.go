@@ -58,14 +58,14 @@ func TestFilterMemory_ScopeAndEnvironment(t *testing.T) {
 		// 4 — env-filtered, matches agent → passes.
 		{Slug: "prod-rule", Title: "prod rule", Status: "backlog",
 			Metadata: map[string]any{
-				"scope":                    "project",
-				"applies_to_environments":  []any{"prod", "staging"},
+				"scope":                   "project",
+				"applies_to_environments": []any{"prod", "staging"},
 			}},
 		// 5 — env-filtered, mismatched → DROPPED.
 		{Slug: "staging-only", Title: "staging only", Status: "backlog",
 			Metadata: map[string]any{
-				"scope":                    "project",
-				"applies_to_environments":  []any{"staging"},
+				"scope":                   "project",
+				"applies_to_environments": []any{"staging"},
 			}},
 		// 6 — archived (cancelled) → DROPPED.
 		{Slug: "old", Title: "old", Status: "cancelled",
@@ -326,7 +326,14 @@ func (b *bundleHits) record(path string) {
 func startBundleAPI(t *testing.T, hits *bundleHits) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.record(r.Method + " " + r.URL.Path)
+		// PAI-394 — record path+query so the cache-shortcircuit
+		// test can distinguish per-type hits on the unified
+		// /knowledge route from each other.
+		full := r.URL.Path
+		if r.URL.RawQuery != "" {
+			full = r.URL.Path + "?" + r.URL.RawQuery
+		}
+		hits.record(r.Method + " " + full)
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
@@ -345,30 +352,36 @@ func startBundleAPI(t *testing.T, hits *bundleHits) *httptest.Server {
 				"environments": [],
 				"deploy_recipes": []
 			}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/memory":
-			_, _ = w.Write([]byte(`[
-				{"id":1,"project_id":42,"type":"memory","slug":"prod-host","title":"Prod host alias","body":"Use 'imac' not 'laptop'.","status":"backlog","metadata":{"scope":"project"},"created_at":"","updated_at":""},
-				{"id":2,"project_id":42,"type":"memory","slug":"staging-only","title":"Staging note","body":"…","status":"backlog","metadata":{"scope":"project","applies_to_environments":["staging"]},"created_at":"","updated_at":""},
-				{"id":3,"project_id":42,"type":"memory","slug":"old-rule","title":"old rule","body":"…","status":"cancelled","metadata":{},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/runbooks":
-			_, _ = w.Write([]byte(`[
-				{"id":4,"project_id":42,"type":"runbook","slug":"deploy","title":"Deploy","body":"step 1","status":"backlog","metadata":{"related_agents":["ops"]},"created_at":"","updated_at":""},
-				{"id":5,"project_id":42,"type":"runbook","slug":"qa-only","title":"QA only","body":"…","status":"backlog","metadata":{"related_agents":["qa"]},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/external-systems":
-			_, _ = w.Write([]byte(`[
-				{"id":6,"project_id":42,"type":"external_system","slug":"sentry","title":"Sentry","body":"errors","status":"backlog","metadata":{"url":"https://sentry.example"},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/related-projects":
-			_, _ = w.Write([]byte(`[
-				{"id":7,"project_id":42,"type":"related_project","slug":"sister","title":"Sister project","body":"linked","status":"backlog","metadata":{"key":"BON27"},"created_at":"","updated_at":""}
-			]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/guidelines":
-			_, _ = w.Write([]byte(`[
-				{"id":8,"project_id":42,"type":"guideline","slug":"prod-naming","title":"Prod naming","body":"Use 'prod' not 'live'.","status":"backlog","metadata":{"applies_to_agents":["ops"]},"created_at":"","updated_at":""},
-				{"id":9,"project_id":42,"type":"guideline","slug":"qa-only-rule","title":"qa only","body":"…","status":"backlog","metadata":{"applies_to_agents":["qa"]},"created_at":"","updated_at":""}
-			]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge":
+			// PAI-394 unified surface — type rides on ?type=<seg>.
+			switch r.URL.Query().Get("type") {
+			case "memory":
+				_, _ = w.Write([]byte(`[
+					{"id":1,"project_id":42,"type":"memory","slug":"prod-host","title":"Prod host alias","body":"Use 'imac' not 'laptop'.","status":"backlog","metadata":{"scope":"project"},"created_at":"","updated_at":""},
+					{"id":2,"project_id":42,"type":"memory","slug":"staging-only","title":"Staging note","body":"…","status":"backlog","metadata":{"scope":"project","applies_to_environments":["staging"]},"created_at":"","updated_at":""},
+					{"id":3,"project_id":42,"type":"memory","slug":"old-rule","title":"old rule","body":"…","status":"cancelled","metadata":{},"created_at":"","updated_at":""}
+				]`))
+			case "runbook":
+				_, _ = w.Write([]byte(`[
+					{"id":4,"project_id":42,"type":"runbook","slug":"deploy","title":"Deploy","body":"step 1","status":"backlog","metadata":{"related_agents":["ops"]},"created_at":"","updated_at":""},
+					{"id":5,"project_id":42,"type":"runbook","slug":"qa-only","title":"QA only","body":"…","status":"backlog","metadata":{"related_agents":["qa"]},"created_at":"","updated_at":""}
+				]`))
+			case "external-system":
+				_, _ = w.Write([]byte(`[
+					{"id":6,"project_id":42,"type":"external_system","slug":"sentry","title":"Sentry","body":"errors","status":"backlog","metadata":{"url":"https://sentry.example"},"created_at":"","updated_at":""}
+				]`))
+			case "related-project":
+				_, _ = w.Write([]byte(`[
+					{"id":7,"project_id":42,"type":"related_project","slug":"sister","title":"Sister project","body":"linked","status":"backlog","metadata":{"key":"BON27"},"created_at":"","updated_at":""}
+				]`))
+			case "guideline":
+				_, _ = w.Write([]byte(`[
+					{"id":8,"project_id":42,"type":"guideline","slug":"prod-naming","title":"Prod naming","body":"Use 'prod' not 'live'.","status":"backlog","metadata":{"applies_to_agents":["ops"]},"created_at":"","updated_at":""},
+					{"id":9,"project_id":42,"type":"guideline","slug":"qa-only-rule","title":"qa only","body":"…","status":"backlog","metadata":{"applies_to_agents":["qa"]},"created_at":"","updated_at":""}
+				]`))
+			default:
+				_, _ = w.Write([]byte(`[]`))
+			}
 		case r.Method == http.MethodGet && r.URL.Path == "/api/auth/me":
 			_, _ = w.Write([]byte(`{"user":{"id":7,"username":"mba"}}`))
 		default:
@@ -655,7 +668,7 @@ func TestSessionStart_BundleFull_CacheShortCircuit(t *testing.T) {
 
 	// Snapshot which endpoints were hit and how often.
 	hits.mu.Lock()
-	firstMemoryHits := hits.endpoints["GET /api/projects/42/memory"]
+	firstMemoryHits := hits.endpoints["GET /api/projects/42/knowledge?type=memory"]
 	hits.mu.Unlock()
 	if firstMemoryHits != 1 {
 		t.Fatalf("first run hit /memory %d times, want 1", firstMemoryHits)
@@ -672,7 +685,7 @@ func TestSessionStart_BundleFull_CacheShortCircuit(t *testing.T) {
 		t.Fatalf("second (cached) run: %v", err)
 	}
 	hits.mu.Lock()
-	secondMemoryHits := hits.endpoints["GET /api/projects/42/memory"]
+	secondMemoryHits := hits.endpoints["GET /api/projects/42/knowledge?type=memory"]
 	hits.mu.Unlock()
 	if secondMemoryHits != 1 {
 		t.Errorf("second run re-hit /memory (count=%d, want 1)", secondMemoryHits)
@@ -690,7 +703,7 @@ func TestSessionStart_BundleFull_CacheShortCircuit(t *testing.T) {
 		t.Fatalf("third (refresh) run: %v", err)
 	}
 	hits.mu.Lock()
-	thirdMemoryHits := hits.endpoints["GET /api/projects/42/memory"]
+	thirdMemoryHits := hits.endpoints["GET /api/projects/42/knowledge?type=memory"]
 	hits.mu.Unlock()
 	if thirdMemoryHits != 2 {
 		t.Errorf("--refresh did not force re-fetch (count=%d, want 2)", thirdMemoryHits)

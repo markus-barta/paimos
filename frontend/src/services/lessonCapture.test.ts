@@ -90,7 +90,7 @@ describe("lessonCapture service", () => {
     // Memory POST.
     expect(api.post).toHaveBeenNthCalledWith(
       1,
-      "/projects/6/memory",
+      "/projects/6/knowledge?type=memory",
       expect.objectContaining({
         slug: "feedback_use_line_buffered_in_pipes",
         title: "Use --line-buffered in pipes",

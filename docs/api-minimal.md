@@ -221,11 +221,44 @@ GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix
 
 `/projects/:id/repos`, `/projects/:id/anchors`,
 `/projects/:id/graph`, `/projects/:id/retrieve`, and `/issues/:id/anchors`
-form the project-context layer for agents. Knowledge entries (memory,
-runbook, external_system, related_project, guideline) live as issues
-under PAI-338 and are queried via the regular issue endpoints + the
-per-type convenience endpoints under `/projects/:id/{memory|runbooks|
-external-systems|related-projects|guidelines}`.
+form the project-context layer for agents.
+
+## Knowledge
+
+Knowledge entries (memory, runbook, external_system, related_project,
+guideline) live as issues with a discriminator on `issues.type` and
+are addressed through one unified surface (PAI-394):
+
+```
+GET    /projects/:id/knowledge                          list all types
+GET    /projects/:id/knowledge?type=<seg>               filtered list
+GET    /projects/:id/knowledge/<type>/<slug>            single entry
+GET    /projects/:id/knowledge/<type>/<slug>.rev        cheap-poll rev hash
+POST   /projects/:id/knowledge                          { type, slug, title, body?, status?, metadata? }
+PUT    /projects/:id/knowledge/<type>/<slug>            full replacement (PATCH → 405)
+DELETE /projects/:id/knowledge/<type>/<slug>            soft-delete
+```
+
+`<type>` (and the `?type=` value) is the kebab-singular URL segment:
+`memory`, `runbook`, `guideline`, `external-system`, `related-project`.
+Request bodies accept either the URL segment or the SQL discriminator
+(`external_system`) in their `type` field.
+
+Memory-specific subroutes — slugs `references`, `stale`, `proposed`
+are reserved server-side so they can't shadow a real entry:
+
+```
+POST /projects/:id/knowledge/memory/references          { ids: [...] }    bump decay counter
+GET  /projects/:id/knowledge/memory/stale[?days=N]      decay candidates
+GET  /projects/:id/knowledge/memory/proposed/stale[?days=N]   aged drafts
+```
+
+Cross-scope memory (out-of-project ownership) stays on its own surface
+(`/users/me/memory`, `/instance/memory`, `POST /memory/:slug/promote`).
+
+The discoverable schema at `GET /api/schema` exposes the registered
+type set under `enums.knowledge_types` and the full surface under
+the top-level `knowledge` block.
 
 - `repos` declares the mirrored/source repositories a project uses.
 - `anchors` ingests machine-generated issue-to-file locations per repo.

@@ -256,7 +256,7 @@ func TestStaleProposed_SurfacesOldDrafts(t *testing.T) {
 	}
 
 	// Pull the stale list with a 14-day threshold.
-	resp := ts.get(t, fmt.Sprintf("/api/projects/%d/memory/proposed/stale?days=14", projectID), ts.adminCookie)
+	resp := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/proposed/stale?days=14", projectID), ts.adminCookie)
 	assertStatus(t, resp, http.StatusOK)
 
 	body, err := io.ReadAll(resp.Body)

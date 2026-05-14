@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/markus-barta/paimos/backend/handlers/knowledge"
 )
 
 // TestSchemaPayloadHash is the "nobody edits the schema without bumping
@@ -37,8 +38,8 @@ import (
 // The hash is computed over the marshaled schemaJSON bytes (including the
 // version string), so a version bump alone also shifts it.
 func TestSchemaPayloadHash(t *testing.T) {
-	const expectedVersion = "1.2.2"
-	const expectedHash = "f8691dac10fb7e5039c94032f1fc5cadce313cdc4327d553e5405ec402e76948"
+	const expectedVersion = "1.3.0"
+	const expectedHash = "9470819d3c3d2a9a897c4b1b6f7ad9d397d09765f09d4e416594e274b60ad925"
 
 	if handlers.SchemaVersion != expectedVersion {
 		t.Errorf("SchemaVersion = %q, test expects %q — update either the code or the test constant",
@@ -65,6 +66,61 @@ func TestSchemaPayloadHash(t *testing.T) {
 			"  expected: %s\n"+
 			"If the change is intentional, bump SchemaVersion in schema.go "+
 			"AND update expectedHash in this test.", got, expectedHash)
+	}
+}
+
+// TestSchemaKnowledgeBlockMatchesRegistry asserts the discoverable
+// `knowledge` block lists every registered Module and that each
+// row's (type, url_segment, label, default_status) matches the
+// runtime values. PAI-394 collapsed five URLs into one resource;
+// this test makes sure the discoverable description and the actual
+// routing logic stay in lockstep so a future Module addition can't
+// silently miss the schema.
+func TestSchemaKnowledgeBlockMatchesRegistry(t *testing.T) {
+	block := handlers.Schema.Knowledge
+	if block == nil {
+		t.Fatal("Schema.Knowledge missing — PAI-394 regression")
+	}
+	wantTypes := knowledge.AllTypes()
+	if len(block.Types) != len(wantTypes) {
+		t.Fatalf("knowledge.types length = %d, want %d", len(block.Types), len(wantTypes))
+	}
+	for i, typ := range wantTypes {
+		row := block.Types[i]
+		if row.Type != typ {
+			t.Errorf("knowledge.types[%d].type = %q, want %q", i, row.Type, typ)
+		}
+		mod, err := knowledge.RouteByType(typ)
+		if err != nil {
+			t.Fatalf("RouteByType(%q): %v", typ, err)
+		}
+		if row.URLSegment != knowledge.URLSegmentForType(typ) {
+			t.Errorf("knowledge.types[%d].url_segment = %q, want %q", i, row.URLSegment, knowledge.URLSegmentForType(typ))
+		}
+		if row.Label != mod.Label() {
+			t.Errorf("knowledge.types[%d].label = %q, want %q", i, row.Label, mod.Label())
+		}
+		if row.DefaultStatus != mod.DefaultStatus() {
+			t.Errorf("knowledge.types[%d].default_status = %q, want %q", i, row.DefaultStatus, mod.DefaultStatus())
+		}
+	}
+	// The enums mirror must list the same types — single source of
+	// truth check at both ends.
+	enumTypes := handlers.Schema.Enums["knowledge_types"]
+	if len(enumTypes) != len(wantTypes) {
+		t.Fatalf("enums.knowledge_types length = %d, want %d", len(enumTypes), len(wantTypes))
+	}
+	for i, typ := range wantTypes {
+		if enumTypes[i] != typ {
+			t.Errorf("enums.knowledge_types[%d] = %q, want %q", i, enumTypes[i], typ)
+		}
+	}
+	// Required routes must be advertised. Specific routes are an
+	// API contract; any rename here would silently break clients.
+	for _, key := range []string{"list", "filter", "get", "rev", "create", "update", "delete"} {
+		if _, ok := block.Routes[key]; !ok {
+			t.Errorf("knowledge.routes[%q] missing", key)
+		}
 	}
 }
 

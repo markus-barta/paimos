@@ -22,7 +22,7 @@ package sync
 func NewRelatedProjectResource() Resource {
 	return &knowledgeResource{
 		kind:        "related_project",
-		urlAlias:    "related-projects",
+		urlSegment:  "related-project",
 		cacheSubdir: "related-projects",
 	}
 }

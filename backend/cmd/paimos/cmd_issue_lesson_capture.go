@@ -138,12 +138,16 @@ func runDraftMemoryFlow(client *Client, ref, rule, why, whyFile, how, howFile, m
 		"title": rule,
 		"body":  memBody,
 		"metadata": map[string]any{
-			"type":                 memType,
-			"tags":                 tags,
-			"originating_tickets":  originating,
+			"type":                memType,
+			"tags":                tags,
+			"originating_tickets": originating,
 		},
 	}
-	memPath := fmt.Sprintf("/api/projects/%d/memory", *ticket.ProjectID)
+	// PAI-394 unified surface — type travels as a query parameter
+	// so the URL self-documents the operation; the body stays free
+	// of the discriminator so it round-trips cleanly through the
+	// GET-by-slug response shape.
+	memPath := fmt.Sprintf("/api/projects/%d/knowledge?type=memory", *ticket.ProjectID)
 	memRaw, err := client.do("POST", memPath, createBody)
 	if err != nil {
 		return fmt.Errorf("create memory: %w", err)
@@ -166,11 +170,11 @@ func runDraftMemoryFlow(client *Client, ref, rule, why, whyFile, how, howFile, m
 
 	if flagJSON {
 		return emitJSON(map[string]any{
-			"ok":             true,
-			"memory_id":      mem.ID,
-			"memory_slug":    mem.Slug,
-			"linked_to":      ref,
-			"link_relation":  "applies_to_memory",
+			"ok":            true,
+			"memory_id":     mem.ID,
+			"memory_slug":   mem.Slug,
+			"linked_to":     ref,
+			"link_relation": "applies_to_memory",
 		})
 	}
 	fmt.Fprintf(stdout, "✓ captured lesson as memory %q (linked to %s)\n", mem.Slug, ref)

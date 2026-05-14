@@ -61,38 +61,97 @@ type issueListItem struct {
 	Title string `json:"title"`
 }
 
-func knowledgeURL(projectID int64, alias string) string {
-	return fmt.Sprintf("/api/projects/%d/%s", projectID, alias)
+// knowledgeBaseURL is the collection URL for the unified
+// /api/projects/{id}/knowledge surface (PAI-394). POSTs and the
+// cross-type list both hit this path; the per-type filter rides on
+// a `?type=<seg>` query parameter rather than the URL grammar.
+func knowledgeBaseURL(projectID int64) string {
+	return fmt.Sprintf("/api/projects/%d/knowledge", projectID)
 }
 
-func knowledgeEntryURL(projectID int64, alias, slug string) string {
-	return fmt.Sprintf("/api/projects/%d/%s/%s", projectID, alias, slug)
+// legacyAliasToSeg maps the pre-PAI-394 URL aliases to the new
+// canonical kebab-singular URL segments. Tests authored before the
+// collapse still call helpers with the old alias strings; this is
+// the one place that translation lives so the call-site churn stays
+// minimal. New tests should pass URL segments directly.
+var legacyAliasToSeg = map[string]string{
+	"memory":           "memory",
+	"runbooks":         "runbook",
+	"external-systems": "external-system",
+	"related-projects": "related-project",
+	"guidelines":       "guideline",
+}
+
+// segFromAlias normalises either a legacy alias or a new URL
+// segment to its canonical form. Used internally by knowledgeURL
+// so callers don't have to know which family of test they're in.
+func segFromAlias(alias string) string {
+	if seg, ok := legacyAliasToSeg[alias]; ok {
+		return seg
+	}
+	return alias
+}
+
+// knowledgeURL is the per-type collection URL. For GET requests it
+// behaves like the legacy alias path — `GET /knowledge?type=...`
+// returns exactly the entries of that type. POSTs MUST use
+// knowledgeBaseURL + knowledgePostBody so the discriminator lands
+// in the body and the create handler can route it.
+func knowledgeURL(projectID int64, aliasOrSeg string) string {
+	return knowledgeListURL(projectID, segFromAlias(aliasOrSeg))
+}
+
+// knowledgeListURL returns the filtered-list URL for a given URL
+// type segment (kebab-case, singular — e.g. "external-system").
+// Used in the tests that want to assert "exactly the entries of
+// type X are listed."
+func knowledgeListURL(projectID int64, typeSeg string) string {
+	return knowledgeBaseURL(projectID) + "?type=" + typeSeg
+}
+
+// knowledgeEntryURL is the canonical single-entry URL —
+// /api/projects/{id}/knowledge/{type}/{slug}.
+func knowledgeEntryURL(projectID int64, typeSeg, slug string) string {
+	return fmt.Sprintf("/api/projects/%d/knowledge/%s/%s", projectID, typeSeg, slug)
+}
+
+// knowledgePostBody returns the POST body with `type` populated so
+// the single-route create endpoint can dispatch to the right
+// Module. The remaining keys round-trip into the unified shape.
+func knowledgePostBody(typeSeg string, payload map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{"type": typeSeg}
+	for k, v := range payload {
+		out[k] = v
+	}
+	return out
 }
 
 func TestKnowledge_CRUDRoundTripPerType(t *testing.T) {
 	cases := []struct {
-		alias string
-		typ   string
+		seg   string // URL segment (kebab, singular)
+		typ   string // SQL discriminator (snake)
 		extra map[string]interface{}
 	}{
 		{"memory", "memory", map[string]interface{}{"category": "feedback"}},
-		{"runbooks", "runbook", map[string]interface{}{"steps": 5}},
-		{"external-systems", "external_system", map[string]interface{}{"url": "https://sentry.example.com/org"}},
-		{"related-projects", "related_project", map[string]interface{}{"instance_url": "https://acme.example.com"}},
-		{"guidelines", "guideline", map[string]interface{}{}},
+		{"runbook", "runbook", map[string]interface{}{"steps": 5}},
+		{"external-system", "external_system", map[string]interface{}{"url": "https://sentry.example.com/org"}},
+		{"related-project", "related_project", map[string]interface{}{"instance_url": "https://acme.example.com"}},
+		{"guideline", "guideline", map[string]interface{}{}},
 	}
 	for _, tc := range cases {
-		t.Run(tc.alias, func(t *testing.T) {
+		t.Run(tc.seg, func(t *testing.T) {
 			ts := newTestServer(t)
-			projectID := createTestProject(t, ts, "K "+tc.alias, "K"+tc.alias[:2])
+			projectID := createTestProject(t, ts, "K "+tc.seg, "K"+tc.seg[:2])
 
-			// Create
-			createResp := ts.post(t, knowledgeURL(projectID, tc.alias), ts.adminCookie, map[string]interface{}{
+			// Create — POST goes to the base /knowledge URL with
+			// the discriminator in the body. PAI-394 collapsed the
+			// five per-type endpoints; type now travels in data.
+			createResp := ts.post(t, knowledgeBaseURL(projectID), ts.adminCookie, knowledgePostBody(tc.seg, map[string]interface{}{
 				"slug":     "first_entry",
 				"title":    "First entry",
 				"body":     "Some body text.",
 				"metadata": tc.extra,
-			})
+			}))
 			assertStatus(t, createResp, http.StatusCreated)
 			var created knowledgeEntry
 			decode(t, createResp, &created)
@@ -110,7 +169,7 @@ func TestKnowledge_CRUDRoundTripPerType(t *testing.T) {
 			}
 
 			// Get-by-slug
-			getResp := ts.get(t, knowledgeEntryURL(projectID, tc.alias, "first_entry"), ts.adminCookie)
+			getResp := ts.get(t, knowledgeEntryURL(projectID, tc.seg, "first_entry"), ts.adminCookie)
 			assertStatus(t, getResp, http.StatusOK)
 			var got knowledgeEntry
 			decode(t, getResp, &got)
@@ -119,7 +178,7 @@ func TestKnowledge_CRUDRoundTripPerType(t *testing.T) {
 			}
 
 			// List
-			listResp := ts.get(t, knowledgeURL(projectID, tc.alias), ts.adminCookie)
+			listResp := ts.get(t, knowledgeURL(projectID, tc.seg), ts.adminCookie)
 			assertStatus(t, listResp, http.StatusOK)
 			var listed []knowledgeEntry
 			decode(t, listResp, &listed)
@@ -128,7 +187,7 @@ func TestKnowledge_CRUDRoundTripPerType(t *testing.T) {
 			}
 
 			// Update — change title + body, keep slug.
-			updResp := ts.put(t, knowledgeEntryURL(projectID, tc.alias, "first_entry"), ts.adminCookie, map[string]interface{}{
+			updResp := ts.put(t, knowledgeEntryURL(projectID, tc.seg, "first_entry"), ts.adminCookie, map[string]interface{}{
 				"slug":     "first_entry",
 				"title":    "Updated entry",
 				"body":     "New body.",
@@ -148,11 +207,11 @@ func TestKnowledge_CRUDRoundTripPerType(t *testing.T) {
 			}
 
 			// Delete (soft)
-			delResp := ts.del(t, knowledgeEntryURL(projectID, tc.alias, "first_entry"), ts.adminCookie)
+			delResp := ts.del(t, knowledgeEntryURL(projectID, tc.seg, "first_entry"), ts.adminCookie)
 			assertStatus(t, delResp, http.StatusNoContent)
 
 			// And it's gone from the list
-			afterResp := ts.get(t, knowledgeURL(projectID, tc.alias), ts.adminCookie)
+			afterResp := ts.get(t, knowledgeURL(projectID, tc.seg), ts.adminCookie)
 			assertStatus(t, afterResp, http.StatusOK)
 			var afterDelete []knowledgeEntry
 			decode(t, afterResp, &afterDelete)
@@ -161,7 +220,7 @@ func TestKnowledge_CRUDRoundTripPerType(t *testing.T) {
 			}
 
 			// And get-by-slug returns 404
-			missing := ts.get(t, knowledgeEntryURL(projectID, tc.alias, "first_entry"), ts.adminCookie)
+			missing := ts.get(t, knowledgeEntryURL(projectID, tc.seg, "first_entry"), ts.adminCookie)
 			assertStatus(t, missing, http.StatusNotFound)
 		})
 	}

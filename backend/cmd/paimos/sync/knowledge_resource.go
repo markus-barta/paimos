@@ -76,25 +76,29 @@ type knowledgeResource struct {
 	// kind is the registry key (e.g. "memory"). Stable lower_snake_case.
 	kind string
 
-	// urlAlias is the URL alias the server's convenience endpoints
-	// expose (e.g. "memory", "runbooks", "external-systems"). Distinct
-	// from kind because the server pluralises some aliases.
-	urlAlias string
+	// urlSegment is the kebab-singular URL segment the unified
+	// /knowledge surface accepts (PAI-394). Examples: "memory",
+	// "runbook", "external-system", "related-project", "guideline".
+	// Distinct from kind only when the discriminator contains an
+	// underscore (external_system ↔ external-system).
+	urlSegment string
 
 	// cacheSubdir is the directory name under .paimos/cache/<project>/
-	// where the kind's slugs land on disk. Conventionally matches the
-	// URL alias for human discoverability (e.g. .paimos/cache/PAI/runbooks/).
+	// where the kind's slugs land on disk. Kept on the legacy
+	// plural form so existing on-disk caches don't get orphaned by
+	// the URL collapse.
 	cacheSubdir string
 }
 
 // Kind returns the registry key.
 func (k *knowledgeResource) Kind() string { return k.kind }
 
-// Endpoint returns the list endpoint for the kind. Used by the .rev
-// polling fallback's project-scoped enumeration; Sync also hits this
-// to get the slug list.
+// Endpoint returns the filtered-list endpoint for the kind on the
+// unified /knowledge surface (PAI-394). Used by the .rev polling
+// fallback's project-scoped enumeration; Sync also hits this to
+// get the slug list.
 func (k *knowledgeResource) Endpoint(projectID int64) string {
-	return fmt.Sprintf("/api/projects/%d/%s", projectID, k.urlAlias)
+	return fmt.Sprintf("/api/projects/%d/knowledge?type=%s", projectID, k.urlSegment)
 }
 
 // LocalPath returns the cache target. Layout is
@@ -178,7 +182,7 @@ func (k *knowledgeResource) Sync(
 // through KnowledgeEntry so the caller path stays identical.
 func (k *knowledgeResource) fetchEntries(c SyncClient, projectID int64, selectName string) ([]KnowledgeEntry, error) {
 	if name := strings.TrimSpace(selectName); name != "" {
-		body, err := c.Get(fmt.Sprintf("/api/projects/%d/%s/%s", projectID, k.urlAlias, url.PathEscape(name)))
+		body, err := c.Get(fmt.Sprintf("/api/projects/%d/knowledge/%s/%s", projectID, k.urlSegment, url.PathEscape(name)))
 		if err != nil {
 			return nil, fmt.Errorf("fetch %s %q: %w", k.kind, name, err)
 		}

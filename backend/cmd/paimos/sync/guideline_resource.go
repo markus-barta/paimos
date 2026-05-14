@@ -22,7 +22,7 @@ package sync
 func NewGuidelineResource() Resource {
 	return &knowledgeResource{
 		kind:        "guideline",
-		urlAlias:    "guidelines",
+		urlSegment:  "guideline",
 		cacheSubdir: "guidelines",
 	}
 }

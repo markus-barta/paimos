@@ -38,15 +38,12 @@ func startFakeSyncAPI(t *testing.T) *httptest.Server {
 			body := strings.ReplaceAll(fakeArtifactJSON, `"name": "qa"`, `"name": "ops"`)
 			body = strings.ReplaceAll(body, `"slash_command_name": "qa"`, `"slash_command_name": "ops"`)
 			_, _ = w.Write([]byte(body))
-		// PAI-341 — knowledge-plane lists. The init/pull/check verbs
-		// iterate every registered kind, so the fake server has to
-		// answer empty arrays for the five knowledge aliases or those
-		// loops fail before reaching the skill leg.
-		case "/api/projects/7/memory",
-			"/api/projects/7/runbooks",
-			"/api/projects/7/external-systems",
-			"/api/projects/7/related-projects",
-			"/api/projects/7/guidelines":
+		// PAI-394 — unified knowledge surface. The init/pull/check
+		// verbs iterate every registered kind; each fetches via
+		// `/api/projects/{id}/knowledge?type=<seg>`, which arrives
+		// here as a single Path with the discriminator in the
+		// query string. One case covers all five types.
+		case "/api/projects/7/knowledge":
 			_, _ = w.Write([]byte(`[]`))
 		default:
 			http.Error(w, `{"error":"unexpected route: `+r.URL.Path+`"}`, http.StatusNotFound)
@@ -253,16 +250,22 @@ func TestSyncInit_PullsKnowledgePlaneEndToEnd(t *testing.T) {
 			body := strings.ReplaceAll(fakeArtifactJSON, `"name": "qa"`, `"name": "ops"`)
 			body = strings.ReplaceAll(body, `"slash_command_name": "qa"`, `"slash_command_name": "ops"`)
 			_, _ = w.Write([]byte(body))
-		case "/api/projects/7/memory":
-			_, _ = w.Write([]byte(`[{"id":1,"project_id":7,"type":"memory","slug":"feedback_x","title":"Mem","body":"m","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
-		case "/api/projects/7/runbooks":
-			_, _ = w.Write([]byte(`[{"id":2,"project_id":7,"type":"runbook","slug":"deploy","title":"Run","body":"r","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
-		case "/api/projects/7/external-systems":
-			_, _ = w.Write([]byte(`[{"id":3,"project_id":7,"type":"external_system","slug":"ch","title":"Ext","body":"e","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
-		case "/api/projects/7/related-projects":
-			_, _ = w.Write([]byte(`[{"id":4,"project_id":7,"type":"related_project","slug":"frontend","title":"Rel","body":"l","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
-		case "/api/projects/7/guidelines":
-			_, _ = w.Write([]byte(`[{"id":5,"project_id":7,"type":"guideline","slug":"no-secrets","title":"Gd","body":"g","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+		case "/api/projects/7/knowledge":
+			// PAI-394 unified surface — type comes in on ?type=<seg>.
+			switch r.URL.Query().Get("type") {
+			case "memory":
+				_, _ = w.Write([]byte(`[{"id":1,"project_id":7,"type":"memory","slug":"feedback_x","title":"Mem","body":"m","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+			case "runbook":
+				_, _ = w.Write([]byte(`[{"id":2,"project_id":7,"type":"runbook","slug":"deploy","title":"Run","body":"r","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+			case "external-system":
+				_, _ = w.Write([]byte(`[{"id":3,"project_id":7,"type":"external_system","slug":"ch","title":"Ext","body":"e","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+			case "related-project":
+				_, _ = w.Write([]byte(`[{"id":4,"project_id":7,"type":"related_project","slug":"frontend","title":"Rel","body":"l","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+			case "guideline":
+				_, _ = w.Write([]byte(`[{"id":5,"project_id":7,"type":"guideline","slug":"no-secrets","title":"Gd","body":"g","status":"backlog","metadata":{},"created_at":"","updated_at":""}]`))
+			default:
+				http.Error(w, `{"error":"unexpected ?type: `+r.URL.Query().Get("type")+`"}`, http.StatusNotFound)
+			}
 		default:
 			http.Error(w, `{"error":"unexpected route: `+r.URL.Path+`"}`, http.StatusNotFound)
 		}

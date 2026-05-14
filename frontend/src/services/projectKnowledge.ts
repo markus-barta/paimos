@@ -7,18 +7,17 @@
  * published by the Free Software Foundation, version 3.
  */
 
-// PAI-339. Thin service layer over the convenience endpoints PAI-338
-// shipped under /api/projects/:id/{memory|runbooks|external-systems|
-// related-projects|guidelines}. The shape is identical across the
-// five sibling endpoints — only the URL alias differs — so this file
-// keeps a single helper per HTTP verb that takes the alias as a
-// discriminator, matching the dispatcher pattern on the backend
-// (RouteByPath in handlers/knowledge/dispatcher.go).
+// PAI-339 + PAI-394. Thin service layer over the unified knowledge
+// surface (`/api/projects/{id}/knowledge`). Type is a kebab URL
+// segment on the per-entry path and a `?type=<seg>` query parameter
+// on the collection endpoints; everything funnels through one set
+// of helpers so adding a sixth knowledge category costs nothing in
+// this layer.
 //
-// PAI-353 is in flight in parallel and consolidates the backend write
-// paths through UpdateIssue so knowledge edits inherit history +
-// mutation_log + attribution. The frontend talks to the convenience
-// endpoints regardless — the change is server-side only.
+// PAI-353 consolidates the backend write paths through UpdateIssue
+// so knowledge edits inherit history + mutation_log + attribution.
+// The frontend talks to the unified endpoint regardless — the
+// per-type behaviour is server-side only.
 
 import { api } from "@/api/client";
 import type {
@@ -26,7 +25,7 @@ import type {
   KnowledgeEntry,
   KnowledgeEntryInput,
 } from "@/types";
-import { KNOWLEDGE_PATH_ALIAS } from "@/types";
+import { KNOWLEDGE_URL_SEGMENT } from "@/types";
 
 // Mirrors the backend's slug constraint (handlers/knowledge/module.go).
 // Echoed in the UI so users see errors before submit; the server is
@@ -62,8 +61,8 @@ export function suggestSlug(title: string): string {
   return normalized.slice(0, SLUG_MAX_LEN);
 }
 
-function aliasFor(category: KnowledgeCategory): string {
-  return KNOWLEDGE_PATH_ALIAS[category];
+function segFor(category: KnowledgeCategory): string {
+  return KNOWLEDGE_URL_SEGMENT[category];
 }
 
 export function listKnowledgeEntries(
@@ -71,7 +70,7 @@ export function listKnowledgeEntries(
   category: KnowledgeCategory,
 ): Promise<KnowledgeEntry[]> {
   return api.get<KnowledgeEntry[]>(
-    `/projects/${projectId}/${aliasFor(category)}`,
+    `/projects/${projectId}/knowledge?type=${segFor(category)}`,
   );
 }
 
@@ -81,7 +80,7 @@ export function getKnowledgeEntry(
   slug: string,
 ): Promise<KnowledgeEntry> {
   return api.get<KnowledgeEntry>(
-    `/projects/${projectId}/${aliasFor(category)}/${encodeURIComponent(slug)}`,
+    `/projects/${projectId}/knowledge/${segFor(category)}/${encodeURIComponent(slug)}`,
   );
 }
 
@@ -91,7 +90,7 @@ export function createKnowledgeEntry(
   payload: KnowledgeEntryInput,
 ): Promise<KnowledgeEntry> {
   return api.post<KnowledgeEntry>(
-    `/projects/${projectId}/${aliasFor(category)}`,
+    `/projects/${projectId}/knowledge?type=${segFor(category)}`,
     payload,
   );
 }
@@ -103,7 +102,7 @@ export function updateKnowledgeEntry(
   payload: KnowledgeEntryInput,
 ): Promise<KnowledgeEntry> {
   return api.put<KnowledgeEntry>(
-    `/projects/${projectId}/${aliasFor(category)}/${encodeURIComponent(currentSlug)}`,
+    `/projects/${projectId}/knowledge/${segFor(category)}/${encodeURIComponent(currentSlug)}`,
     payload,
   );
 }
@@ -114,7 +113,7 @@ export function deleteKnowledgeEntry(
   slug: string,
 ): Promise<void> {
   return api.delete(
-    `/projects/${projectId}/${aliasFor(category)}/${encodeURIComponent(slug)}`,
+    `/projects/${projectId}/knowledge/${segFor(category)}/${encodeURIComponent(slug)}`,
   );
 }
 
@@ -169,7 +168,7 @@ export function listStaleMemory(
 ): Promise<StaleMemoryProposal[]> {
   const qs = days && days > 0 ? `?days=${days}` : "";
   return api.get<StaleMemoryProposal[]>(
-    `/projects/${projectId}/memory/stale${qs}`,
+    `/projects/${projectId}/knowledge/memory/stale${qs}`,
   );
 }
 
@@ -183,7 +182,7 @@ export function bumpMemoryReferences(
   source = "ui",
 ): Promise<{ updated: number }> {
   return api.post<{ updated: number }>(
-    `/projects/${projectId}/memory/references`,
+    `/projects/${projectId}/knowledge/memory/references`,
     { ids: memoryIds, source },
   );
 }
@@ -276,6 +275,6 @@ export function listStaleProposedMemory(
 ): Promise<StaleProposedMemoryProposal[]> {
   const qs = days && days > 0 ? `?days=${days}` : "";
   return api.get<StaleProposedMemoryProposal[]>(
-    `/projects/${projectId}/memory/proposed/stale${qs}`,
+    `/projects/${projectId}/knowledge/memory/proposed/stale${qs}`,
   );
 }

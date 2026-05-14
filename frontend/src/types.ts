@@ -338,15 +338,17 @@ export type KnowledgeCategory =
   | 'related_project'
   | 'guideline'
 
-// URL-aliases for the convenience endpoints. Differ from the SQL
-// discriminators (memory→memory, runbook→runbooks, etc.) — kept here
-// in one place so callers don't construct paths by hand.
-export const KNOWLEDGE_PATH_ALIAS: Record<KnowledgeCategory, string> = {
+// URL segment per knowledge category — the kebab-singular form
+// the unified /api/projects/{id}/knowledge surface accepts (PAI-394).
+// External-facing callers should prefer KNOWLEDGE_URL_SEGMENT over
+// the SQL discriminator when building URLs so the wire form stays
+// consistent across the codebase.
+export const KNOWLEDGE_URL_SEGMENT: Record<KnowledgeCategory, string> = {
   memory: 'memory',
-  runbook: 'runbooks',
-  external_system: 'external-systems',
-  related_project: 'related-projects',
-  guideline: 'guidelines',
+  runbook: 'runbook',
+  external_system: 'external-system',
+  related_project: 'related-project',
+  guideline: 'guideline',
 }
 
 export interface KnowledgeEntry {

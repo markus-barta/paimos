@@ -24,7 +24,7 @@ package sync
 func NewExternalSystemResource() Resource {
 	return &knowledgeResource{
 		kind:        "external_system",
-		urlAlias:    "external-systems",
+		urlSegment:  "external-system",
 		cacheSubdir: "external-systems",
 	}
 }

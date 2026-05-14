@@ -89,7 +89,7 @@ func TestKnowledgeResource_SyncWritesCachedFile(t *testing.T) {
 	res := NewMemoryResource().(*knowledgeResource)
 	c := &fakeClient{
 		routes: map[string][]byte{
-			"/api/projects/7/memory": []byte(fakeKnowledgeListJSON("memory", "alpha", "beta")),
+			"/api/projects/7/knowledge?type=memory": []byte(fakeKnowledgeListJSON("memory", "alpha", "beta")),
 		},
 	}
 	work := t.TempDir()
@@ -132,7 +132,7 @@ func TestKnowledgeResource_SecondSyncIsUnchanged(t *testing.T) {
 	res := NewRunbookResource().(*knowledgeResource)
 	c := &fakeClient{
 		routes: map[string][]byte{
-			"/api/projects/7/runbooks": []byte(fakeKnowledgeListJSON("runbook", "deploy")),
+			"/api/projects/7/knowledge?type=runbook": []byte(fakeKnowledgeListJSON("runbook", "deploy")),
 		},
 	}
 	work := t.TempDir()
@@ -155,7 +155,7 @@ func TestKnowledgeResource_SelectName(t *testing.T) {
 	res := NewExternalSystemResource().(*knowledgeResource)
 	c := &fakeClient{
 		routes: map[string][]byte{
-			"/api/projects/7/external-systems/clickhouse": []byte(fakeKnowledgeEntryJSON("external_system", "clickhouse", "ClickHouse Cluster", "Used for analytics.")),
+			"/api/projects/7/knowledge/external-system/clickhouse": []byte(fakeKnowledgeEntryJSON("external_system", "clickhouse", "ClickHouse Cluster", "Used for analytics.")),
 		},
 	}
 	work := t.TempDir()
@@ -170,7 +170,7 @@ func TestKnowledgeResource_SelectName(t *testing.T) {
 	}
 	// Verify list endpoint was NOT called.
 	for _, p := range c.getCalls {
-		if p == "/api/projects/7/external-systems" {
+		if p == "/api/projects/7/knowledge?type=external-system" {
 			t.Errorf("list endpoint should be skipped on selectName, got call %q", p)
 		}
 	}
@@ -180,7 +180,7 @@ func TestKnowledgeResource_CheckReportsDriftStates(t *testing.T) {
 	res := NewGuidelineResource().(*knowledgeResource)
 	c := &fakeClient{
 		routes: map[string][]byte{
-			"/api/projects/7/guidelines": []byte(fakeKnowledgeListJSON("guideline", "no-secrets-in-logs")),
+			"/api/projects/7/knowledge?type=guideline": []byte(fakeKnowledgeListJSON("guideline", "no-secrets-in-logs")),
 		},
 	}
 	work := t.TempDir()
@@ -245,14 +245,14 @@ func TestKnowledgeResource_RenderIsStable(t *testing.T) {
 	// drift detection on the second sync.
 	res := NewMemoryResource().(*knowledgeResource)
 	entry := KnowledgeEntry{
-		Slug:    "feedback_xyz",
-		Title:   "Memory under test",
-		Body:    "Some markdown body.",
-		Status:  "done",
-		Type:    "memory",
+		Slug:   "feedback_xyz",
+		Title:  "Memory under test",
+		Body:   "Some markdown body.",
+		Status: "done",
+		Type:   "memory",
 		Metadata: map[string]any{
-			"zeta": "last",
-			"alpha": 1,
+			"zeta":   "last",
+			"alpha":  1,
 			"middle": []any{"x", "y"},
 		},
 		UpdatedAt: "2026-05-01 12:00:00",
@@ -298,7 +298,7 @@ func TestKnowledgeResource_SyncContextCancellation(t *testing.T) {
 	res := NewMemoryResource().(*knowledgeResource)
 	c := &fakeClient{
 		routes: map[string][]byte{
-			"/api/projects/7/memory": []byte(fakeKnowledgeListJSON("memory", "a", "b", "c")),
+			"/api/projects/7/knowledge?type=memory": []byte(fakeKnowledgeListJSON("memory", "a", "b", "c")),
 		},
 	}
 	work := t.TempDir()
@@ -314,11 +314,11 @@ func TestKnowledgeResource_SyncContextCancellation(t *testing.T) {
 
 func TestEventKind_HandlesAllFiveKnowledgeKinds(t *testing.T) {
 	cases := map[string]string{
-		"memory_changed":           "memory",
-		"runbook_changed":          "runbook",
-		"external_system_changed":  "external_system",
-		"related_project_changed":  "related_project",
-		"guideline_changed":        "guideline",
+		"memory_changed":          "memory",
+		"runbook_changed":         "runbook",
+		"external_system_changed": "external_system",
+		"related_project_changed": "related_project",
+		"guideline_changed":       "guideline",
 	}
 	for in, want := range cases {
 		if got := EventKind(in); got != want {
