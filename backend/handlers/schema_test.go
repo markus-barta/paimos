@@ -37,8 +37,8 @@ import (
 // The hash is computed over the marshaled schemaJSON bytes (including the
 // version string), so a version bump alone also shifts it.
 func TestSchemaPayloadHash(t *testing.T) {
-	const expectedVersion = "1.2.1"
-	const expectedHash = "1e68fc1139da5c6f3e0857aa260270191195001f3cf6af87fb854d1f2023cb10"
+	const expectedVersion = "1.2.2"
+	const expectedHash = "f8691dac10fb7e5039c94032f1fc5cadce313cdc4327d553e5405ec402e76948"
 
 	if handlers.SchemaVersion != expectedVersion {
 		t.Errorf("SchemaVersion = %q, test expects %q — update either the code or the test constant",
@@ -65,6 +65,36 @@ func TestSchemaPayloadHash(t *testing.T) {
 			"  expected: %s\n"+
 			"If the change is intentional, bump SchemaVersion in schema.go "+
 			"AND update expectedHash in this test.", got, expectedHash)
+	}
+}
+
+// TestSchemaTagColorsMatchValidator asserts the discoverable
+// tag_colors enum equals the server-side TagColorPalette
+// element-for-element, including order. The whole point of PAI-393
+// is that the schema and the validator can't drift; this test makes
+// the contract explicit so a future edit to one without the other
+// fails CI.
+func TestSchemaTagColorsMatchValidator(t *testing.T) {
+	got, ok := handlers.Schema.Enums["tag_colors"]
+	if !ok {
+		t.Fatal("Schema.Enums[\"tag_colors\"] missing — PAI-393 regression")
+	}
+	want := handlers.TagColorPalette
+	if len(got) != len(want) {
+		t.Fatalf("tag_colors length = %d, want %d (drift between schema and validator)", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("tag_colors[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	// Membership round-trip: every published value must be accepted
+	// by the validator. Catches the case where someone adds a value
+	// to the slice but forgets to rebuild validColorSet.
+	for _, c := range got {
+		if !handlers.IsValidTagColor(c) {
+			t.Errorf("tag_colors lists %q but IsValidTagColor rejects it", c)
+		}
 	}
 }
 

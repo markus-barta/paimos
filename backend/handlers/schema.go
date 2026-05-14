@@ -33,13 +33,18 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.2.2 (PAI-393): added `enums.tag_colors`, the canonical 12-value
+// tag color palette. Sourced from handlers.TagColorPalette so the
+// schema and the server-side validator can't drift. Closes the
+// discoverability gap for HTTP-only and MCP agents who couldn't
+// learn the allowed palette without reading source.
 // 1.2.1 (PAI-275): added discoverable repo/release/anchor/tag entities
 // for project workspace metadata CLI consumers.
 // 1.2.0 (PAI-379): added the top-level `scopes` block so agents can
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.2.1"
+const SchemaVersion = "1.2.2"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -71,6 +76,9 @@ var Schema = SchemaPayload{
 		"priority": {"low", "medium", "high"},
 		"type":     {"epic", "cost_unit", "release", "sprint", "ticket", "task"},
 		"relation": {"groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related"},
+		// tag_colors is populated in init() from handlers.TagColorPalette
+		// so the schema can never drift from the server-side validator.
+		"tag_colors": nil,
 	},
 	// Transitions are RECOMMENDED, not enforced — the backend currently
 	// accepts any→any so humans can fix mistakes without a ceremony. The
@@ -154,6 +162,10 @@ func init() {
 	// PAI-379: populate the scopes block from the auth catalog so the
 	// runtime check and the discoverable schema can never drift.
 	Schema.Scopes = auth.ScopeCatalog()
+	// PAI-393: same trick for the tag-color palette. The slice is the
+	// SSoT; we copy it so a downstream mutation of Schema.Enums can't
+	// reach back and clobber the validator's palette.
+	Schema.Enums["tag_colors"] = append([]string{}, TagColorPalette...)
 	b, err := json.MarshalIndent(&Schema, "", "  ")
 	if err != nil {
 		// Unreachable in practice — Schema is a literal with only maps,

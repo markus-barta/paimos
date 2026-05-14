@@ -31,11 +31,37 @@ import (
 	"github.com/markus-barta/paimos/backend/models"
 )
 
-// ValidColors is the allowed palette — enforced server-side.
-var ValidColors = map[string]bool{
-	"gray": true, "slate": true, "blue": true, "indigo": true,
-	"purple": true, "pink": true, "red": true, "orange": true,
-	"yellow": true, "green": true, "teal": true, "cyan": true,
+// TagColorPalette is the allowed tag-color set, in canonical order
+// (neutrals → blues → warms → greens → cools). The slice is the
+// single source of truth: schema discovery (handlers.Schema.Enums)
+// reads it directly at init, so adding or reordering a value here
+// propagates to /api/schema without any duplication.
+//
+// Order matters for two reasons: (1) the schema response preserves
+// it so clients can render the palette in a stable, designer-
+// approved sequence; (2) tests assert that the schema enum equals
+// the slice element-for-element.
+var TagColorPalette = []string{
+	"gray", "slate", "blue", "indigo",
+	"purple", "pink", "red", "orange",
+	"yellow", "green", "teal", "cyan",
+}
+
+// validColorSet is the O(1) membership index derived from
+// TagColorPalette at init. Kept unexported because the canonical
+// shape callers should reference is the slice.
+var validColorSet = func() map[string]struct{} {
+	out := make(map[string]struct{}, len(TagColorPalette))
+	for _, c := range TagColorPalette {
+		out[c] = struct{}{}
+	}
+	return out
+}()
+
+// IsValidTagColor reports whether color is in the canonical palette.
+func IsValidTagColor(color string) bool {
+	_, ok := validColorSet[color]
+	return ok
 }
 
 // ── Tag CRUD ────────────────────────────────────────────────────────────────
@@ -114,7 +140,7 @@ func CreateTag(w http.ResponseWriter, r *http.Request) {
 	if body.Color == "" {
 		body.Color = "gray"
 	}
-	if !ValidColors[body.Color] {
+	if !IsValidTagColor(body.Color) {
 		jsonError(w, "invalid color", http.StatusBadRequest)
 		return
 	}
@@ -149,7 +175,7 @@ func UpdateTag(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid body", http.StatusBadRequest)
 		return
 	}
-	if body.Color != nil && !ValidColors[*body.Color] {
+	if body.Color != nil && !IsValidTagColor(*body.Color) {
 		jsonError(w, "invalid color", http.StatusBadRequest)
 		return
 	}

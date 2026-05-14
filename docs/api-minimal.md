@@ -171,7 +171,7 @@ GET    /access-audit                              admin — grant/update/revoke 
 
 ```
 GET    /tags
-POST   /tags                        admin only
+POST   /tags                        admin only — {name, color?, description?}
 PUT    /tags/:id                    admin only
 DELETE /tags/:id                    admin only
 POST   /issues/:id/tags             {tag_id}
@@ -182,6 +182,20 @@ DELETE /projects/:id/tags/:tag_id
 GET    /system-tag-rules
 PUT    /system-tag-rules            admin only
 ```
+
+`color` is constrained to a fixed 12-value palette (paired
+background+foreground rendered by the SPA). Hex codes and arbitrary
+CSS color names are rejected with `400 invalid color`. The canonical
+list, in display order, is:
+
+```
+gray, slate, blue, indigo, purple, pink,
+red, orange, yellow, green, teal, cyan
+```
+
+The same list is discoverable at `GET /api/schema` →
+`enums.tag_colors` since schema version `1.2.2` — clients should
+prefer the schema over hard-coding the values.
 
 ## Views
 
