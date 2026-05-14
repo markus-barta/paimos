@@ -5,6 +5,48 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] — 2026-05-14
+
+Minor release for two agent-discoverability fixes. HTTP-only and MCP
+agents can now learn the tag color palette and the knowledge surface
+from `/api/schema` alone — no more source-diving or trial-and-error
+against `400 invalid color`. The five-alias knowledge plane collapses
+into one resource so adding a new knowledge type costs zero new URLs.
+
+### Added
+
+- `enums.tag_colors` on `GET /api/schema` lists the canonical 12-value
+  tag color palette. Sourced from `handlers.TagColorPalette` so the
+  schema and the server-side validator can't drift (PAI-393).
+- `knowledge` block on `GET /api/schema` documents the unified
+  knowledge surface — registered types, per-type label and default
+  status, request shape, and the full route map. Populated at init
+  from the module registry so new knowledge types appear without a
+  schema edit (PAI-394).
+- `enums.knowledge_types` mirrors the same list as a plain enum for
+  clients that prefer the older shape (PAI-394).
+- `paimos knowledge` CLI family: `list`, `get`, `create`, `update`,
+  `delete`, `promote`, plus `paimos knowledge memory bump-refs / stale
+  / proposed-stale` for the memory-specific subroutes (PAI-394).
+- OpenAPI surface (`/api/openapi.json`) registers the unified
+  `/knowledge` paths with `KnowledgeEntry` and `KnowledgeEntryInput`
+  schemas (PAI-394).
+
+### Changed
+
+- **Breaking — HTTP only.** The five per-type knowledge URLs
+  (`/api/projects/{id}/memory`, `/runbooks`, `/external-systems`,
+  `/related-projects`, `/guidelines`) collapse into one resource:
+  `/api/projects/{id}/knowledge[?type=<seg>]` for collections,
+  `/api/projects/{id}/knowledge/{type}/{slug}` for entries. Type is
+  the kebab-singular URL segment (`memory`, `runbook`, `guideline`,
+  `external-system`, `related-project`); the SQL discriminator is
+  unchanged. Memory subroutes move under `/knowledge/memory/`. The
+  CLI and the SPA migrate transparently; HTTP-only callers must
+  update their paths. No data migration required — `issues.type` is
+  already the discriminator (PAI-394).
+- Schema version bumped 1.2.2 → 1.3.0.
+
 ## [3.3.1] — 2026-05-12
 
 Patch polish for the issue table's inline-edit and saved-view ergonomics.
