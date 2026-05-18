@@ -36,7 +36,7 @@ func TestLieferberichtPDF_NonBMPRunesDoNotPanic(t *testing.T) {
 			}},
 		}},
 	}
-	pdf := renderLieferberichtPDF(report, "en")
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: "en", Cols: defaultLBColSet()})
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		t.Fatalf("output: %v", err)
@@ -76,7 +76,7 @@ func TestResolveBrandingLogoForPDF_SVG(t *testing.T) {
 
 	// End-to-end: render a minimal report with the SVG-derived logo bytes.
 	report := &lbReport{ProjectKey: "X", Groups: []lbGroup{{EpicKey: "E", Issues: []lbIssue{{IssueKey: "X-1", Title: "t"}}}}}
-	pdf := renderLieferberichtPDF(report, "en")
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: "en", Cols: defaultLBColSet()})
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		t.Fatalf("pdf output: %v", err)
@@ -95,7 +95,7 @@ func TestLieferberichtPDF_LocaleSwitch(t *testing.T) {
 	}
 	for _, lang := range []string{"en", "de", "fr"} {
 		var buf bytes.Buffer
-		if err := renderLieferberichtPDF(report, lang).Output(&buf); err != nil {
+		if err := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: defaultLBColSet()}).Output(&buf); err != nil {
 			t.Fatalf("lang=%s output: %v", lang, err)
 		}
 		if buf.Len() < 1000 {
@@ -112,6 +112,34 @@ func TestLieferberichtPDF_LocaleSwitch(t *testing.T) {
 	}
 	if resolveLBLang("fr").HeaderTitle != "Delivery report" {
 		t.Fatalf("fr should fall back to en HeaderTitle")
+	}
+}
+
+// PAI-400 + PAI-401: empty column set must still render (no panic) and the
+// subtotal/grand-total rows fall back to the "{N} issues" presentation when
+// no numeric columns are visible.
+func TestLieferberichtPDF_NoNumericColumnsRenders(t *testing.T) {
+	report := &lbReport{
+		ProjectKey: "X",
+		Groups: []lbGroup{
+			{EpicKey: "E1", Issues: []lbIssue{{IssueKey: "X-1", Title: "a"}, {IssueKey: "X-2", Title: "b"}}},
+			{EpicKey: "E2", Issues: []lbIssue{{IssueKey: "X-3", Title: "c"}}},
+		},
+	}
+	for _, tc := range []struct{ name string; cols lbColSet }{
+		{"all-hidden", lbColSet{}},
+		{"only-eur", lbColSet{AREUR: true}},
+		{"all-visible", defaultLBColSet()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := renderLieferberichtPDF(report, lbRenderOpts{Lang: "en", Cols: tc.cols}).Output(&buf); err != nil {
+				t.Fatalf("output: %v", err)
+			}
+			if buf.Len() < 1000 {
+				t.Fatalf("suspiciously small PDF: %d bytes", buf.Len())
+			}
+		})
 	}
 }
 

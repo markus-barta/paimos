@@ -61,7 +61,14 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pdf := renderLieferberichtPDF(report, lang)
+	colsQuery := r.URL.Query().Get("cols")
+	var colSet lbColSet
+	if colsQuery == "" {
+		colSet = defaultLBColSet()
+	} else {
+		colSet = parseLBColSet(colsQuery)
+	}
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet})
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -152,8 +159,11 @@ func descriptionText(desc, summary string) string {
 	return d
 }
 
-func renderLieferberichtPDF(report *lbReport, lang string) *fpdf.Fpdf {
+func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
+	lang := opts.Lang
 	msgs := resolveLBLang(lang)
+	visible := opts.Cols
+	anyNumeric := visible.AnyVisible()
 	pdf := fpdf.New("L", "mm", "A4", "")
 	pdf.SetAutoPageBreak(true, 12)
 	pdf.SetMargins(10, 10, 10)
@@ -218,11 +228,23 @@ func renderLieferberichtPDF(report *lbReport, lang string) *fpdf.Fpdf {
 		{msgs.ColSummary, 68, "L"},     // 2 — multiline
 		{msgs.ColDescription, 80, "L"}, // 3 — multiline
 		{msgs.ColStatus, 18, "L"},      // 4
-		{msgs.ColSP, 10, "R"},          // 5
-		{msgs.ColHours, 10, "R"},       // 6
-		{msgs.ColARSP, 14, "R"},        // 7
-		{msgs.ColARHours, 14, "R"},     // 8
-		{msgs.ColAREUR, 18, "R"},       // 9
+		{msgs.ColSP, 10, "R"},          // 5 — visible.SP
+		{msgs.ColHours, 10, "R"},       // 6 — visible.H
+		{msgs.ColARSP, 14, "R"},        // 7 — visible.ARSP
+		{msgs.ColARHours, 14, "R"},     // 8 — visible.ARH
+		{msgs.ColAREUR, 18, "R"},       // 9 — visible.AREUR
+	}
+
+	// PAI-400: hidden numeric columns release their width to the Description
+	// column (index 3) so the page still fills horizontally. The 5 identity
+	// columns (Key/Type/Summary/Description/Status) are always visible.
+	numericVisible := [5]bool{visible.SP, visible.H, visible.ARSP, visible.ARH, visible.AREUR}
+	for i, vis := range numericVisible {
+		idx := 5 + i
+		if !vis {
+			cols[3].w += cols[idx].w
+			cols[idx].w = 0
+		}
 	}
 
 	totalW := 0.0
@@ -389,34 +411,21 @@ func renderLieferberichtPDF(report *lbReport, lang string) *fpdf.Fpdf {
 			pdf.CellFormat(cols[4].w-1, lineH, statusLabel(issue.Status), "", 0, "L", false, 0, "")
 			x += cols[4].w
 
-			// Col 5: SP
-			drawCellBorder(x, rowY, cols[5].w, rh)
-			pdf.SetXY(x, rowY+0.8)
-			pdf.CellFormat(cols[5].w-0.5, lineH, fmtOptDE(issue.EstimateLp), "", 0, "R", false, 0, "")
-			x += cols[5].w
-
-			// Col 6: h
-			drawCellBorder(x, rowY, cols[6].w, rh)
-			pdf.SetXY(x, rowY+0.8)
-			pdf.CellFormat(cols[6].w-0.5, lineH, fmtOptDE(issue.EstimateHours), "", 0, "R", false, 0, "")
-			x += cols[6].w
-
-			// Col 7: AR SP
-			drawCellBorder(x, rowY, cols[7].w, rh)
-			pdf.SetXY(x, rowY+0.8)
-			pdf.CellFormat(cols[7].w-0.5, lineH, fmtOptDE(issue.ArLp), "", 0, "R", false, 0, "")
-			x += cols[7].w
-
-			// Col 8: AR h
-			drawCellBorder(x, rowY, cols[8].w, rh)
-			pdf.SetXY(x, rowY+0.8)
-			pdf.CellFormat(cols[8].w-0.5, lineH, fmtOptDE(issue.ArHours), "", 0, "R", false, 0, "")
-			x += cols[8].w
-
-			// Col 9: AR EUR
-			drawCellBorder(x, rowY, cols[9].w, rh)
-			pdf.SetXY(x, rowY+0.8)
-			pdf.CellFormat(cols[9].w-0.5, lineH, fmtDE(issue.ArEur), "", 0, "R", false, 0, "")
+			// Numeric columns (PAI-400) — drawn only when visible.
+			drawNumeric := func(idx int, text string) {
+				if cols[idx].w <= 0 {
+					return
+				}
+				drawCellBorder(x, rowY, cols[idx].w, rh)
+				pdf.SetXY(x, rowY+0.8)
+				pdf.CellFormat(cols[idx].w-0.5, lineH, text, "", 0, "R", false, 0, "")
+				x += cols[idx].w
+			}
+			drawNumeric(5, fmtOptDE(issue.EstimateLp))
+			drawNumeric(6, fmtOptDE(issue.EstimateHours))
+			drawNumeric(7, fmtOptDE(issue.ArLp))
+			drawNumeric(8, fmtOptDE(issue.ArHours))
+			drawNumeric(9, fmtDE(issue.ArEur))
 
 			// Advance Y
 			pdf.SetXY(marginL, rowY+rh)
@@ -435,21 +444,28 @@ func renderLieferberichtPDF(report *lbReport, lang string) *fpdf.Fpdf {
 		subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
 		pdf.SetXY(marginL, subY+0.8)
 		pdf.CellFormat(subLabelW-0.5, lineH, msgs.Subtotal, "", 0, "R", false, 0, "")
-		x := marginL + subLabelW
-		pdf.SetXY(x, subY+0.8)
-		pdf.CellFormat(cols[5].w-0.5, lineH, fmtDE(g.Subtotal.EstimateLp), "", 0, "R", false, 0, "")
-		x += cols[5].w
-		pdf.SetXY(x, subY+0.8)
-		pdf.CellFormat(cols[6].w-0.5, lineH, fmtDE(g.Subtotal.EstimateHours), "", 0, "R", false, 0, "")
-		x += cols[6].w
-		pdf.SetXY(x, subY+0.8)
-		pdf.CellFormat(cols[7].w-0.5, lineH, fmtDE(g.Subtotal.ArLp), "", 0, "R", false, 0, "")
-		x += cols[7].w
-		pdf.SetXY(x, subY+0.8)
-		pdf.CellFormat(cols[8].w-0.5, lineH, fmtDE(g.Subtotal.ArHours), "", 0, "R", false, 0, "")
-		x += cols[8].w
-		pdf.SetXY(x, subY+0.8)
-		pdf.CellFormat(cols[9].w-0.5, lineH, fmtDE(g.Subtotal.ArEur), "", 0, "R", false, 0, "")
+		if anyNumeric {
+			x := marginL + subLabelW
+			drawSubCell := func(idx int, text string) {
+				if cols[idx].w <= 0 {
+					return
+				}
+				pdf.SetXY(x, subY+0.8)
+				pdf.CellFormat(cols[idx].w-0.5, lineH, text, "", 0, "R", false, 0, "")
+				x += cols[idx].w
+			}
+			drawSubCell(5, fmtDE(g.Subtotal.EstimateLp))
+			drawSubCell(6, fmtDE(g.Subtotal.EstimateHours))
+			drawSubCell(7, fmtDE(g.Subtotal.ArLp))
+			drawSubCell(8, fmtDE(g.Subtotal.ArHours))
+			drawSubCell(9, fmtDE(g.Subtotal.ArEur))
+		} else {
+			// PAI-401: no numeric columns visible → show "{N} <issuesUnit>" in
+			// the freed-up area to the right of the label.
+			countW := totalW - subLabelW
+			pdf.SetXY(marginL+subLabelW, subY+0.8)
+			pdf.CellFormat(countW-0.5, lineH, lbIssueCountLabel(len(g.Issues), lang), "", 0, "R", false, 0, "")
+		}
 		pdf.SetXY(marginL, subY+subH)
 		pdf.SetFont("DejaVu", "", 6.5)
 	}
@@ -466,21 +482,31 @@ func renderLieferberichtPDF(report *lbReport, lang string) *fpdf.Fpdf {
 	subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
 	pdf.SetXY(marginL, gtY+1)
 	pdf.CellFormat(subLabelW-0.5, lineH+0.5, msgs.GrandTotal, "", 0, "R", false, 0, "")
-	x := marginL + subLabelW
-	pdf.SetXY(x, gtY+1)
-	pdf.CellFormat(cols[5].w-0.5, lineH+0.5, fmtDE(report.GrandTotal.EstimateLp), "", 0, "R", false, 0, "")
-	x += cols[5].w
-	pdf.SetXY(x, gtY+1)
-	pdf.CellFormat(cols[6].w-0.5, lineH+0.5, fmtDE(report.GrandTotal.EstimateHours), "", 0, "R", false, 0, "")
-	x += cols[6].w
-	pdf.SetXY(x, gtY+1)
-	pdf.CellFormat(cols[7].w-0.5, lineH+0.5, fmtDE(report.GrandTotal.ArLp), "", 0, "R", false, 0, "")
-	x += cols[7].w
-	pdf.SetXY(x, gtY+1)
-	pdf.CellFormat(cols[8].w-0.5, lineH+0.5, fmtDE(report.GrandTotal.ArHours), "", 0, "R", false, 0, "")
-	x += cols[8].w
-	pdf.SetXY(x, gtY+1)
-	pdf.CellFormat(cols[9].w-0.5, lineH+0.5, fmtDE(report.GrandTotal.ArEur), "", 0, "R", false, 0, "")
+	if anyNumeric {
+		x := marginL + subLabelW
+		drawGtCell := func(idx int, text string) {
+			if cols[idx].w <= 0 {
+				return
+			}
+			pdf.SetXY(x, gtY+1)
+			pdf.CellFormat(cols[idx].w-0.5, lineH+0.5, text, "", 0, "R", false, 0, "")
+			x += cols[idx].w
+		}
+		drawGtCell(5, fmtDE(report.GrandTotal.EstimateLp))
+		drawGtCell(6, fmtDE(report.GrandTotal.EstimateHours))
+		drawGtCell(7, fmtDE(report.GrandTotal.ArLp))
+		drawGtCell(8, fmtDE(report.GrandTotal.ArHours))
+		drawGtCell(9, fmtDE(report.GrandTotal.ArEur))
+	} else {
+		// PAI-401: count total issues across all groups.
+		var total int
+		for _, g := range report.Groups {
+			total += len(g.Issues)
+		}
+		countW := totalW - subLabelW
+		pdf.SetXY(marginL+subLabelW, gtY+1)
+		pdf.CellFormat(countW-0.5, lineH+0.5, lbIssueCountLabel(total, lang), "", 0, "R", false, 0, "")
+	}
 
 	return pdf
 }

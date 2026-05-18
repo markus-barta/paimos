@@ -130,3 +130,51 @@ func formatLBTimestamp(t time.Time, lang string) string {
 func lbIssueCountLabel(n int, lang string) string {
 	return fmt.Sprintf("%d %s", n, resolveLBLang(lang).IssuesUnit)
 }
+
+// lbColSet controls which numeric columns the Lieferbericht PDF renders
+// (PAI-400). The five Key/Type/Summary/Description/Status identity columns
+// are always present; this set governs only the numeric tail.
+type lbColSet struct {
+	SP    bool
+	H     bool
+	ARSP  bool
+	ARH   bool
+	AREUR bool
+}
+
+// AnyVisible reports whether any numeric column is visible.
+func (s lbColSet) AnyVisible() bool { return s.SP || s.H || s.ARSP || s.ARH || s.AREUR }
+
+// defaultLBColSet returns the back-compat "show everything" set used when the
+// request has no `?cols=` query param.
+func defaultLBColSet() lbColSet { return lbColSet{SP: true, H: true, ARSP: true, ARH: true, AREUR: true} }
+
+// parseLBColSet reads a comma-separated `?cols=` query value into an lbColSet.
+// Accepted tokens (case-insensitive): sp, h, ar_sp, ar_h, ar_eur. Unknown
+// tokens are silently ignored. An empty input yields the zero set (nothing
+// visible).
+func parseLBColSet(s string) lbColSet {
+	var set lbColSet
+	for _, tok := range strings.Split(s, ",") {
+		switch strings.ToLower(strings.TrimSpace(tok)) {
+		case "sp":
+			set.SP = true
+		case "h":
+			set.H = true
+		case "ar_sp":
+			set.ARSP = true
+		case "ar_h":
+			set.ARH = true
+		case "ar_eur":
+			set.AREUR = true
+		}
+	}
+	return set
+}
+
+// lbRenderOpts bundles per-request rendering options so the renderer signature
+// stays stable as new toggles are added.
+type lbRenderOpts struct {
+	Lang string
+	Cols lbColSet
+}
