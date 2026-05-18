@@ -332,22 +332,23 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// Build report key for header (e.g. "PB-ASC2501-02").
 	reportKey := fmt.Sprintf("PB-%s", report.ProjectKey)
 
-	// Header — logo left (PAI-403: h=6mm, auto width, vertically centered with
-	// the title text at y≈5.5 / height 4 → both share vertical midline y=7.5).
-	// Title gets a clear 14mm reserved area for the logo regardless of branding
-	// aspect ratio; date/time pinned right.
+	// Header — logo left, capped small enough that it cannot bleed into the
+	// table header. Title gets a clear reserved area for the logo regardless
+	// of branding aspect ratio; date/time is pinned right.
 	pdf.SetHeaderFuncMode(func() {
+		const logoH = 4.8
+		const logoY = 4.2
 		if useLogoSVG {
 			setDrawRGB(pdf, palette.Primary)
 			pdf.SetLineWidth(0.25)
 			pdf.SetLineCapStyle("round")
 			pdf.SetLineJoinStyle("round")
-			pdf.SetXY(marginL, 4)
-			pdf.SVGBasicWrite(logoSVG, 6/logoSVG.Ht)
+			pdf.SetXY(marginL, logoY)
+			pdf.SVGBasicWrite(logoSVG, logoH/logoSVG.Ht)
 			pdf.SetLineCapStyle("butt")
 			pdf.SetLineJoinStyle("miter")
 		} else {
-			pdf.ImageOptions("logo", marginL, 4, 0, 6, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
+			pdf.ImageOptions("logo", marginL, logoY, 0, logoH, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 		}
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetTextColor(0, 0, 0)
@@ -359,7 +360,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		pdf.SetXY(pageW-10-60, 5.5)
 		pdf.CellFormat(60, 4, formatLBTimestamp(time.Now(), lang), "", 0, "R", false, 0, "")
 		pdf.SetTextColor(0, 0, 0)
-		pdf.SetY(13)
+		pdf.SetY(16)
 	}, true)
 
 	// Footer — localized page number ("Seite N/M" / "Page N of M").
@@ -703,17 +704,26 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	}
 
 	pdf.SetY(gtY + gtH + 5)
-	drawProjektberichtConfirmation(pdf, opts, palette, marginL, usableW)
+	drawProjektberichtConfirmation(pdf, report, opts, palette, marginL, usableW)
 
 	return pdf
 }
 
-func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, opts lbRenderOpts, palette lbPDFPalette, marginL, usableW float64) {
+type projectReportParty struct {
+	Title string
+	Lines []string
+}
+
+func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, report *lbReport, opts lbRenderOpts, palette lbPDFPalette, marginL, usableW float64) {
 	_, pageH := pdf.GetPageSize()
-	if pdf.GetY()+55 > pageH-12 {
+	if pdf.GetY()+112 > pageH-12 {
 		pdf.AddPage()
 	}
 	y := pdf.GetY()
+
+	drawProjektberichtParties(pdf, report, palette, marginL, usableW)
+	y = pdf.GetY() + 5
+
 	pdf.SetFont("DejaVu", "B", 8)
 	setTextRGB(pdf, palette.PrimaryDark)
 	pdf.SetXY(marginL, y)
@@ -722,33 +732,13 @@ func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, opts lbRenderOpts, palette l
 
 	pdf.SetFont("DejaVu", "", 6.8)
 	setTextRGB(pdf, rgbColor{})
-	text := "Der Kunde bestätigt mit seiner Unterschrift oder digitalen Bestätigung, dass die in diesem Projektbericht angeführten Lieferungen vereinbarungsgemäß bereitgestellt wurden. Bekannte offene Punkte sind im Projekt nachvollziehbar dokumentiert."
-	if opts.Lang == "en" {
-		text = "By signing or digitally confirming this project report, the customer confirms that the deliveries listed in this report have been provided as agreed. Known open items are documented in the project."
-	}
+	text := "Der Kunde bestätigt hiermit, dass die in diesem Projektbericht angeführten Leistungen vereinbarungsgemäß erbracht bzw. bereitgestellt wurden, und nimmt diese – mit Ausnahme etwaiger in der Anlage dokumentierter offener Punkte – hiermit ab und übernimmt sie. Darüber hinausgehende Mängel sind dem Kunden nach derzeitigem Kenntnisstand nicht bekannt. Etwaige in der Anlage angeführte bekannte offene Punkte und allfällige Mängel sind dem Kunden bereits vor Abgabe dieser Bestätigung im Projekt nachvollziehbar dokumentiert oder per E-Mail zur Verfügung gestellt worden."
 	pdf.SetXY(marginL, y)
-	pdf.MultiCell(usableW-50, 3.4, text, "", "L", false)
+	pdf.MultiCell(usableW, 3.4, text, "", "L", false)
 
-	if opts.AcceptanceURL != "" {
-		if qrBytes, err := projektberichtQRPNG(opts.AcceptanceURL, 160); err == nil {
-			name := "projektbericht-qr-" + opts.ReportCode
-			pdf.RegisterImageOptionsReader(name, fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(qrBytes))
-			if pdf.Error() == nil {
-				pdf.ImageOptions(name, marginL+usableW-34, y-2, 28, 28, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, opts.AcceptanceURL)
-			} else {
-				pdf.ClearError()
-			}
-		}
-		pdf.SetFont("DejaVu", "", 5.8)
-		setTextRGB(pdf, palette.Primary)
-		pdf.SetXY(marginL+usableW-48, y+28)
-		pdf.MultiCell(46, 3, opts.AcceptanceURL, "", "R", false)
-		setTextRGB(pdf, rgbColor{})
-	}
-
-	y += 24
+	y = pdf.GetY() + 10
 	pdf.SetFont("DejaVu", "", 6.5)
-	lineY := y + 10
+	lineY := y
 	colW := (usableW - 16) / 3
 	labels := []string{"Ort, Datum", "Name und Funktion/Rolle in BLOCKSCHRIFT", "Firmenmäßige Unterschrift oder digitale Signatur"}
 	if opts.Lang == "en" {
@@ -761,6 +751,199 @@ func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, opts lbRenderOpts, palette l
 		pdf.SetXY(x, lineY+1.5)
 		pdf.CellFormat(colW, 3, label, "", 0, "L", false, 0, "")
 	}
+
+	if opts.AcceptanceURL != "" {
+		qrY := lineY + 12
+		const qrSize = 24.0
+		qrX := marginL + usableW - qrSize
+		if qrBytes, err := projektberichtQRPNG(opts.AcceptanceURL, 160); err == nil {
+			name := "projektbericht-qr-" + opts.ReportCode
+			pdf.RegisterImageOptionsReader(name, fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(qrBytes))
+			if pdf.Error() == nil {
+				pdf.ImageOptions(name, qrX, qrY, qrSize, qrSize, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, opts.AcceptanceURL)
+			} else {
+				pdf.ClearError()
+			}
+		}
+		pdf.SetFont("DejaVu", "", 5.8)
+		setTextRGB(pdf, palette.Primary)
+		pdf.SetXY(marginL+usableW-56, qrY+qrSize+2)
+		pdf.MultiCell(56, 3, opts.AcceptanceURL, "", "R", false)
+		setTextRGB(pdf, rgbColor{})
+		pdf.SetY(qrY + qrSize + 8)
+	}
+}
+
+func drawProjektberichtParties(pdf *fpdf.Fpdf, report *lbReport, palette lbPDFPalette, marginL, usableW float64) {
+	customer := projectReportCustomerParty(report)
+	contractor := projectReportContractorParty()
+
+	pdf.SetFont("DejaVu", "B", 8)
+	setTextRGB(pdf, palette.PrimaryDark)
+	pdf.SetX(marginL)
+	pdf.CellFormat(usableW, 5, "Vertragspartner", "", 0, "L", false, 0, "")
+	pdf.SetY(pdf.GetY() + 5)
+
+	colGap := 8.0
+	colW := (usableW - colGap) / 2
+	y := pdf.GetY()
+	drawProjectReportPartyBox(pdf, customer, palette, marginL, y, colW)
+	drawProjectReportPartyBox(pdf, contractor, palette, marginL+colW+colGap, y, colW)
+	pdf.SetY(y + projectReportPartyBoxHeight(customer, contractor) + 1)
+	setTextRGB(pdf, rgbColor{})
+}
+
+func drawProjectReportPartyBox(pdf *fpdf.Fpdf, party projectReportParty, palette lbPDFPalette, x, y, w float64) {
+	h := projectReportPartyBoxHeight(party)
+	setDrawRGB(pdf, palette.TableRowBorder)
+	pdf.Rect(x, y, w, h, "D")
+	setFillRGB(pdf, palette.PrimaryPale)
+	pdf.Rect(x, y, w, 5, "F")
+
+	pdf.SetFont("DejaVu", "B", 6.5)
+	setTextRGB(pdf, palette.PrimaryDark)
+	pdf.SetXY(x+1.2, y+0.9)
+	pdf.CellFormat(w-2.4, 3, party.Title, "", 0, "L", false, 0, "")
+
+	pdf.SetFont("DejaVu", "", 6.2)
+	setTextRGB(pdf, rgbColor{})
+	lineY := y + 6.2
+	for _, line := range party.Lines {
+		pdf.SetXY(x+1.2, lineY)
+		pdf.CellFormat(w-2.4, 3, smartTruncate(line, 86), "", 0, "L", false, 0, "")
+		lineY += 3.4
+	}
+}
+
+func projectReportPartyBoxHeight(parties ...projectReportParty) float64 {
+	maxLines := 1
+	for _, p := range parties {
+		if len(p.Lines) > maxLines {
+			maxLines = len(p.Lines)
+		}
+	}
+	return 6.2 + float64(maxLines)*3.4 + 1.5
+}
+
+func projectReportCustomerParty(report *lbReport) projectReportParty {
+	party := projectReportParty{Title: "Auftraggeber / Kunde"}
+	var project *models.Project
+	var customer *models.Customer
+	if report != nil && report.ProjectID > 0 {
+		project = getProjectByID(report.ProjectID)
+		if project != nil && project.CustomerID != nil {
+			customer = getCustomerByID(*project.CustomerID)
+		}
+	}
+
+	name := ""
+	if customer != nil {
+		name = strings.TrimSpace(customer.Name)
+	}
+	if name == "" && project != nil {
+		name = firstNonEmpty(project.CustomerName, project.CustomerLabel)
+	}
+	if name == "" && report != nil {
+		name = firstNonEmpty(report.ProjectName, report.ProjectKey)
+	}
+	if name == "" {
+		name = "Kunde"
+	}
+	party.Lines = append(party.Lines, name)
+
+	if customer != nil {
+		if address := projectReportCustomerAddress(customer); address != "" {
+			party.Lines = append(party.Lines, address)
+		}
+		if vat := strings.TrimSpace(customer.VATID); vat != "" {
+			party.Lines = append(party.Lines, "UID/VAT: "+vat)
+		}
+		if contact := projectReportCustomerContact(customer); contact != "" {
+			party.Lines = append(party.Lines, "Kontakt: "+contact)
+		}
+	}
+	if report != nil {
+		projectName := firstNonEmpty(report.ProjectName, report.ProjectKey)
+		if projectName != "" {
+			if strings.TrimSpace(report.ProjectKey) != "" && projectName != report.ProjectKey {
+				party.Lines = append(party.Lines, "Projekt: "+report.ProjectKey+" - "+projectName)
+			} else {
+				party.Lines = append(party.Lines, "Projekt: "+projectName)
+			}
+		}
+	}
+	return party
+}
+
+func projectReportContractorParty() projectReportParty {
+	return projectReportParty{
+		Title: "Auftragnehmer",
+		Lines: []string{
+			"BYTEPOETS GmbH",
+			"Gadollaplatz 1, 8010 Graz, Austria",
+			"UID: ATU65885358, FN: 349730i",
+			"FB Gericht: Landesgericht für ZRS Graz",
+			"Geschäftsführer: Ing. Markus Barta",
+			"office@bytepoets.com, +43 664 606 97 100",
+		},
+	}
+}
+
+func projectReportCustomerAddress(c *models.Customer) string {
+	if c == nil {
+		return ""
+	}
+	if address := compactAddress(c.BillingAddressStreet, c.BillingAddressZip, c.BillingAddressCity, c.BillingAddressCountry); address != "" {
+		return address
+	}
+	if address := compactAddress(c.VisitAddressStreet, c.VisitAddressZip, "", c.Country); address != "" {
+		return address
+	}
+	return joinNonEmpty(c.Address, c.Country)
+}
+
+func projectReportCustomerContact(c *models.Customer) string {
+	if c == nil {
+		return ""
+	}
+	contact := strings.TrimSpace(c.ContactName)
+	if email := strings.TrimSpace(c.ContactEmail); email != "" {
+		if contact != "" {
+			contact += " <" + email + ">"
+		} else {
+			contact = email
+		}
+	}
+	return contact
+}
+
+func compactAddress(street, zip, city, country string) string {
+	street = strings.TrimSpace(street)
+	zip = strings.TrimSpace(zip)
+	city = strings.TrimSpace(city)
+	country = strings.TrimSpace(country)
+	zipCity := joinNonEmpty(zip, city)
+	return joinNonEmpty(street, zipCity, country)
+}
+
+func joinNonEmpty(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+func firstNonEmpty(parts ...string) string {
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			return part
+		}
+	}
+	return ""
 }
 
 func drawProjektberichtIntro(pdf *fpdf.Fpdf, report *lbReport, palette lbPDFPalette, marginL, usableW float64) {

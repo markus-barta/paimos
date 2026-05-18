@@ -152,7 +152,7 @@ func TestLieferberichtPDF_LocaleSwitch(t *testing.T) {
 	if resolveLBLang("en").StatusDelivered != "Delivered" {
 		t.Fatalf("en StatusDelivered = %q", resolveLBLang("en").StatusDelivered)
 	}
-	if resolveLBLang("fr").HeaderTitle != "Delivery report" {
+	if resolveLBLang("fr").HeaderTitle != "Project report" {
 		t.Fatalf("fr should fall back to en HeaderTitle")
 	}
 }

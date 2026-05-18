@@ -39,7 +39,7 @@ type lbLang struct {
 
 var lbMessages = map[string]lbLang{
 	"en": {
-		HeaderTitle:      "Delivery report",
+		HeaderTitle:      "Project report",
 		StatusDelivered:  "Delivered",
 		StatusInProgress: "In progress",
 		StatusPlanned:    "Planned",
@@ -59,7 +59,7 @@ var lbMessages = map[string]lbLang{
 		IssuesUnit:       "issues",
 	},
 	"de": {
-		HeaderTitle:      "Lieferbericht",
+		HeaderTitle:      "Projektbericht",
 		StatusDelivered:  "Geliefert",
 		StatusInProgress: "Umsetzung",
 		StatusPlanned:    "Geplant",
