@@ -145,6 +145,10 @@ export default {
       to: 'To',
       language: 'Report language',
       columns: 'Columns',
+      tags: 'Tags',
+      tagsAll: 'All tags',
+      status: 'Status',
+      statusAny: 'Any status',
     },
     scope: {
       allOpen: 'All open',

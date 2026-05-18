@@ -145,6 +145,10 @@ export default {
       to: 'Bis',
       language: 'Berichtssprache',
       columns: 'Spalten',
+      tags: 'Tags',
+      tagsAll: 'Alle Tags',
+      status: 'Status',
+      statusAny: 'Alle Status',
     },
     scope: {
       allOpen: 'Alle offenen',

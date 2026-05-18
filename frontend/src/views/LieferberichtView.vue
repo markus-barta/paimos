@@ -7,6 +7,8 @@ import { LS_LIEFERBERICHT_COLS, LS_LIEFERBERICHT_LANG } from '@/constants/storag
 import AppIcon from '@/components/AppIcon.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
+import TagChip from '@/components/TagChip.vue'
+import type { Tag } from '@/types'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -31,19 +33,38 @@ const selectedSprint = ref('')
 const fromDate = ref('')
 const toDate = ref('')
 
-// ── Sprints (loaded when project changes) ────────────────────────────────────
+// ── Sprints + tags (loaded when project changes) ─────────────────────────────
 interface Sprint { id: number; title: string }
 const sprints = ref<Sprint[]>([])
+const projectTags = ref<Tag[]>([])
 
 watch(selectedProject, async (pid) => {
   sprints.value = []
   selectedSprint.value = ''
+  projectTags.value = []
+  filterTagIDs.value = []
   if (!pid) return
-  try {
-    const all = await api.get<Sprint[]>('/sprints')
-    sprints.value = all
-  } catch { /* empty */ }
+  try { sprints.value = await api.get<Sprint[]>('/sprints') } catch { /* empty */ }
+  try { projectTags.value = await api.get<Tag[]>(`/projects/${pid}/tags`) } catch { /* empty */ }
 })
+
+// ── Tag + status filters (PAI-404) ───────────────────────────────────────────
+// Multi-select chips. Empty array → no narrowing; otherwise filters AND on top
+// of the scope preset, so picking statuses excluded by scope=all_open yields
+// no rows (acceptable — user should switch scope).
+const filterTagIDs = ref<number[]>([])
+const filterStatuses = ref<string[]>([])
+const allStatuses = ['new', 'backlog', 'in-progress', 'qa', 'done', 'delivered', 'accepted', 'invoiced', 'cancelled'] as const
+function toggleTagID(id: number) {
+  const i = filterTagIDs.value.indexOf(id)
+  if (i === -1) filterTagIDs.value.push(id)
+  else filterTagIDs.value.splice(i, 1)
+}
+function toggleStatus(s: string) {
+  const i = filterStatuses.value.indexOf(s)
+  if (i === -1) filterStatuses.value.push(s)
+  else filterStatuses.value.splice(i, 1)
+}
 
 const sprintOptions = computed<MetaOption[]>(() =>
   sprints.value.map(s => ({ value: String(s.id), label: s.title }))
@@ -128,6 +149,10 @@ function buildParams(includeCols: boolean): string {
   }
   params.set('lang', reportLang.value)
   if (includeCols) params.set('cols', visibleColsParam.value)
+  // PAI-404: tag + status filters. Omit when empty to keep URLs short and
+  // preserve back-compat.
+  if (filterTagIDs.value.length > 0) params.set('tag_ids', filterTagIDs.value.join(','))
+  if (filterStatuses.value.length > 0) params.set('statuses', filterStatuses.value.join(','))
   return params.toString()
 }
 
@@ -238,6 +263,36 @@ const totalIssues = computed(() => report.value?.groups.reduce((n, g) => n + g.i
         <label class="lb-col-check"><input type="checkbox" v-model="cols.arSp" /> {{ t('lieferbericht.table.arSp') }}</label>
         <label class="lb-col-check"><input type="checkbox" v-model="cols.arH" /> {{ t('lieferbericht.table.arHours') }}</label>
         <label class="lb-col-check"><input type="checkbox" v-model="cols.arEur" /> {{ t('lieferbericht.table.arEur') }} EUR</label>
+      </div>
+    </div>
+
+    <!-- PAI-404: Tag filter (chips). Hidden when project has no tags. -->
+    <div v-if="projectTags.length > 0" class="lb-filter-group lb-chips">
+      <label>{{ t('lieferbericht.filters.tags') }}</label>
+      <div class="lb-chip-toggles">
+        <button
+          v-for="tg in projectTags"
+          :key="tg.id"
+          :class="['lb-chip-btn', { 'lb-chip-btn--on': filterTagIDs.includes(tg.id) }]"
+          type="button"
+          @click="toggleTagID(tg.id)"
+        >
+          <TagChip :tag="tg" />
+        </button>
+      </div>
+    </div>
+
+    <!-- PAI-404: Status filter (chips). -->
+    <div class="lb-filter-group lb-chips">
+      <label>{{ t('lieferbericht.filters.status') }}</label>
+      <div class="lb-chip-toggles">
+        <button
+          v-for="s in allStatuses"
+          :key="s"
+          :class="['lb-chip-btn', 'lb-status-pill', `lb-status-pill--${s}`, { 'lb-chip-btn--on': filterStatuses.includes(s) }]"
+          type="button"
+          @click="toggleStatus(s)"
+        >{{ t(`status.${s}`) }}</button>
       </div>
     </div>
 
@@ -364,6 +419,32 @@ const totalIssues = computed(() => report.value?.groups.reduce((n, g) => n + g.i
 .lb-col-toggles { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; padding: .35rem 0; }
 .lb-col-check { display: inline-flex; align-items: center; gap: .3rem; font-size: 12px; color: var(--text); cursor: pointer; text-transform: none; letter-spacing: normal; font-weight: 400; }
 .lb-col-check input { margin: 0; cursor: pointer; }
+
+/* Tag + status chip toggles (PAI-404). Off = muted/outlined; on = full color. */
+.lb-chips { flex-basis: 100%; }
+.lb-chip-toggles { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; padding: .25rem 0; }
+.lb-chip-btn {
+  background: transparent; border: 1px solid transparent; padding: 0;
+  border-radius: 20px; cursor: pointer; line-height: 0; opacity: 0.5;
+  transition: opacity .12s ease;
+}
+.lb-chip-btn:hover { opacity: 0.85; }
+.lb-chip-btn--on { opacity: 1; border-color: var(--bp-blue); box-shadow: 0 0 0 1px var(--bp-blue); }
+
+/* Status pills */
+.lb-status-pill {
+  font-size: 11px; font-weight: 600; padding: .2rem .6rem;
+  border-radius: 20px; line-height: 1.6;
+  background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+  font-family: inherit;
+}
+.lb-status-pill--done,
+.lb-status-pill--delivered,
+.lb-status-pill--accepted,
+.lb-status-pill--invoiced { background: #EEFEEF; color: #1f6f2f; }
+.lb-status-pill--in-progress,
+.lb-status-pill--qa { background: #ECF5F8; color: #1f4d75; }
+.lb-status-pill--cancelled { background: #fde8e8; color: #7a1f1f; text-decoration: line-through; }
 
 .lb-error { font-size: 13px; color: #c0392b; background: #fde8e8; padding: .5rem .75rem; border-radius: var(--radius); margin-top: 1rem; }
 .lb-empty { text-align: center; padding: 3rem 1rem; color: var(--text-muted); font-size: 13px; }

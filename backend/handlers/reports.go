@@ -69,7 +69,14 @@ type lbReport struct {
 
 // ── Query helper ─────────────────────────────────────────────────────────────
 
-func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate string) (*lbReport, error) {
+// lbFilters bundles the optional narrowing filters layered on top of the
+// scope preset (PAI-404). Each is stacked with AND; empty slices are skipped.
+type lbFilters struct {
+	TagIDs   []int64
+	Statuses []string
+}
+
+func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate string, filters lbFilters) (*lbReport, error) {
 	// Load project
 	var projectKey, projectName string
 	if err := db.DB.QueryRow("SELECT key, name FROM projects WHERE id=?", projectID).Scan(&projectKey, &projectName); err != nil {
@@ -112,6 +119,28 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 
 	default: // all_open
 		where = append(where, "i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')")
+	}
+
+	// PAI-404: tag filter — issue must carry at least one of the selected tags.
+	if len(filters.TagIDs) > 0 {
+		ph := make([]string, 0, len(filters.TagIDs))
+		for _, id := range filters.TagIDs {
+			ph = append(ph, "?")
+			args = append(args, id)
+		}
+		where = append(where, "i.id IN (SELECT issue_id FROM issue_tags WHERE tag_id IN ("+strings.Join(ph, ",")+"))")
+	}
+
+	// PAI-404: explicit status filter, AND-ed on top of scope's default. Picking
+	// a status excluded by scope=all_open's default-OUT list yields no rows —
+	// expected; users wanting "delivered only" should switch to scope=date_range.
+	if len(filters.Statuses) > 0 {
+		ph := make([]string, 0, len(filters.Statuses))
+		for _, s := range filters.Statuses {
+			ph = append(ph, "?")
+			args = append(args, s)
+		}
+		where = append(where, "i.status IN ("+strings.Join(ph, ",")+")")
 	}
 
 	query := `
@@ -231,6 +260,27 @@ func roundTo(v float64, places int) float64 {
 
 // ── JSON handler ─────────────────────────────────────────────────────────────
 
+// parseLBFilters reads the PAI-404 narrowing filters from the request query.
+// Empty values yield empty slices (skipped in WHERE).
+func parseLBFilters(r *http.Request) lbFilters {
+	var f lbFilters
+	if raw := r.URL.Query().Get("tag_ids"); raw != "" {
+		for _, s := range strings.Split(raw, ",") {
+			if id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64); err == nil && id > 0 {
+				f.TagIDs = append(f.TagIDs, id)
+			}
+		}
+	}
+	if raw := r.URL.Query().Get("statuses"); raw != "" {
+		for _, s := range strings.Split(raw, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				f.Statuses = append(f.Statuses, s)
+			}
+		}
+	}
+	return f
+}
+
 // GET /api/projects/{id}/reports/lieferbericht
 func GetLieferbericht(w http.ResponseWriter, r *http.Request) {
 	projectID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -247,7 +297,7 @@ func GetLieferbericht(w http.ResponseWriter, r *http.Request) {
 	fromDate := r.URL.Query().Get("from")
 	toDate := r.URL.Query().Get("to")
 
-	report, err := buildLieferbericht(projectID, scope, sprintIDs, fromDate, toDate)
+	report, err := buildLieferbericht(projectID, scope, sprintIDs, fromDate, toDate, parseLBFilters(r))
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return

@@ -55,7 +55,7 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 	toDate := r.URL.Query().Get("to")
 	lang := r.URL.Query().Get("lang")
 
-	report, err := buildLieferbericht(projectID, scope, sprintIDs, fromDate, toDate)
+	report, err := buildLieferbericht(projectID, scope, sprintIDs, fromDate, toDate, parseLBFilters(r))
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
