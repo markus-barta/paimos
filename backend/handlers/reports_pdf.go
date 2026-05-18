@@ -160,8 +160,11 @@ func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
 	pdf.AddUTF8FontFromBytes("DejaVu", "", dejaVuSansTTF)
 	pdf.AddUTF8FontFromBytes("DejaVu", "B", dejaVuSansBoldTTF)
 
-	// Register logo
-	pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(logoPNG))
+	// Register logo — prefers the active instance branding (PAI-399). On any
+	// resolution failure, resolveBrandingLogoForPDF returns the embedded
+	// PAIMOS mark so the PDF never breaks.
+	logoBytes, logoImgType := resolveBrandingLogoForPDF()
+	pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: logoImgType}, bytes.NewReader(logoBytes))
 
 	// A4 landscape = 297mm wide. Margins: 10mm each side → usable 277mm.
 	const pageW = 297.0

@@ -9,6 +9,8 @@ package handlers
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -41,5 +43,56 @@ func TestLieferberichtPDF_NonBMPRunesDoNotPanic(t *testing.T) {
 	}
 	if buf.Len() < 1000 {
 		t.Fatalf("suspiciously small PDF: %d bytes", buf.Len())
+	}
+}
+
+// PAI-399: branding logo is read from $DATA_DIR/branding.json + branding-assets/.
+// Test verifies the resolver picks up an SVG upload, rasterizes it, and the
+// resulting PDF embeds the rendered bytes without panicking.
+func TestResolveBrandingLogoForPDF_SVG(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DATA_DIR", dir)
+
+	cfg := `{"logo":"/brand/logo.svg"}`
+	if err := os.WriteFile(filepath.Join(dir, "branding.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatalf("write branding.json: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "branding-assets"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1f4d75"/></svg>`
+	if err := os.WriteFile(filepath.Join(dir, "branding-assets", "logo.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatalf("write svg: %v", err)
+	}
+
+	data, imgType := resolveBrandingLogoForPDF()
+	if imgType != "PNG" {
+		t.Fatalf("expected SVG to rasterize to PNG, got %s", imgType)
+	}
+	// PNG magic is "\x89PNG\r\n\x1a\n"
+	if len(data) < 8 || string(data[1:4]) != "PNG" {
+		t.Fatalf("expected PNG bytes, got %q...", data[:min(8, len(data))])
+	}
+
+	// End-to-end: render a minimal report with the SVG-derived logo bytes.
+	report := &lbReport{ProjectKey: "X", Groups: []lbGroup{{EpicKey: "E", Issues: []lbIssue{{IssueKey: "X-1", Title: "t"}}}}}
+	pdf := renderLieferberichtPDF(report)
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		t.Fatalf("pdf output: %v", err)
+	}
+}
+
+// Defense: a missing branding config falls back to the embedded logo so PDF
+// rendering keeps working out of the box.
+func TestResolveBrandingLogoForPDF_FallbackOnMissing(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir()) // no branding.json inside
+
+	data, imgType := resolveBrandingLogoForPDF()
+	if imgType != "PNG" {
+		t.Fatalf("expected fallback PNG, got %s", imgType)
+	}
+	if !bytes.Equal(data, logoPNG) {
+		t.Fatalf("expected embedded fallback bytes")
 	}
 }
