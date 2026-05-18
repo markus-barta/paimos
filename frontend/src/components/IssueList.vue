@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onUnmounted, defineExpose, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSort } from '@/composables/useSort'
 import type { ColDefs } from '@/composables/useSort'
 import { useRouter, useRoute } from 'vue-router'
@@ -15,7 +15,6 @@ import { storeToRefs } from 'pinia'
 import type { Issue, Tag, SavedView, Sprint, User } from '@/types'
 import type { Project } from '@/types'
 import { useViews, getLastViewId, setLastViewId } from '@/composables/useViews'
-import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useColumnConfig } from '@/composables/useColumnConfig'
 import { useTimeUnit } from '@/composables/useTimeUnit'
@@ -25,7 +24,7 @@ import { useIssueContext } from '@/composables/useIssueContext'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
-import { isNeg, normalizeSavedFilters, normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
+import { isNeg, posOf, normalizeSavedFilters, normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
 import { normalizeColumnWidths, type ColumnWidths } from '@/composables/useColumnWidths'
 import { useSprintNav } from '@/composables/useSprintNav'
 import { useTreeView } from '@/composables/useTreeView'
@@ -72,8 +71,6 @@ const props = defineProps<{
 }>()
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
-const { t } = useI18n()
-
 const emit = defineEmits<{
   created: [issue: Issue]
   updated: [issue: Issue]
@@ -83,6 +80,7 @@ const emit = defineEmits<{
   'view-applied':    [viewId: number]
   'views-changed':   []
   'load-all':         []
+  'server-filter-change': [query: string]
 }>()
 
 const router = useRouter()
@@ -159,10 +157,12 @@ watch(filterReal.showArchivedSprints, v => { showArchivedSprintsRef.value = v })
 const {
   filterStatus, filterPriority, filterType, filterCostUnit, filterRelease,
   filterAssignee, filterTags, filterProjects, filterSprints, filterEpic,
+  filterDateField, filterDateFrom, filterDateTo,
   showArchivedSprints, treeView, filterPanelOpen,
   complexTab, complexTabSearch,
   availableTags, assignableUsers, complexTabs, complexBadge,
   activeFilterCount, filterChipGroups, filteredIssues,
+  dateFilterActive, effectiveDateField,
   assigneeIsAny,
   pickerProjects, pickerUsers, pickerTags, pickerCostUnits, pickerReleases, pickerSprints,
   clearAllFilters, removeChip, clearChipGroup,
@@ -178,15 +178,53 @@ const {
 const exportModalOpen = ref(false)
 const lbUnsupportedActive = computed(() => {
   const out: string[] = []
-  if (filterPriority.value.length > 0) out.push('priority')
-  if (filterType.value.length > 0)     out.push('type')
-  if (filterAssignee.value.length > 0) out.push('assignee')
-  if (filterCostUnit.value.length > 0) out.push('cost unit')
-  if (filterRelease.value.length > 0)  out.push('release')
+  if (filterAssignee.value.some(isNeg)) out.push('excluded assignee')
   if (filterSprints.value.some(isNeg)) out.push('excluded sprint')
   if (filterEpic.value.length > 0)     out.push('epic')
   return out
 })
+
+function appendSignedList(params: URLSearchParams, key: string, values: string[], opts: { numeric?: boolean; positivesOnly?: boolean } = {}) {
+  const out: string[] = []
+  for (const raw of values) {
+    const neg = isNeg(raw)
+    if (opts.positivesOnly && neg) continue
+    const value = posOf(raw)
+    if (opts.numeric) {
+      const n = Number(value)
+      if (!Number.isInteger(n) || n <= 0) continue
+    }
+    out.push(neg ? `!${value}` : value)
+  }
+  if (out.length > 0) params.set(key, out.join(','))
+}
+
+const serverFilterQuery = computed(() => {
+  const params = new URLSearchParams()
+  appendSignedList(params, 'status', filterStatus.value)
+  appendSignedList(params, 'priority', filterPriority.value)
+  appendSignedList(params, 'type', filterType.value)
+  appendSignedList(params, 'cost_unit', filterCostUnit.value)
+  appendSignedList(params, 'release', filterRelease.value)
+  appendSignedList(params, 'tags', filterTags.value, { numeric: true, positivesOnly: true })
+  appendSignedList(params, 'sprints', filterSprints.value, { numeric: true, positivesOnly: true })
+  appendSignedList(params, 'assignee_id', filterAssignee.value, { positivesOnly: true })
+  appendSignedList(params, 'project_ids', filterProjects.value, { numeric: true, positivesOnly: true })
+  if (dateFilterActive.value) {
+    params.set('date_field', effectiveDateField.value || 'completed')
+    if (filterDateFrom.value) params.set('date_from', filterDateFrom.value)
+    if (filterDateTo.value) params.set('date_to', filterDateTo.value)
+  }
+  return params.toString()
+})
+
+function openLieferberichtExport() {
+  if (props.projectId !== undefined) exportModalOpen.value = true
+}
+
+function showToast(message: string, duration = 4000) {
+  flash(message, duration)
+}
 
 function currentFiltersJSON(): string {
   try {
@@ -259,6 +297,9 @@ async function selectAllMatching() {
     params.set('ids_only', '1')
     const q = searchQuery.value.trim()
     if (q.length >= 2) params.set('q', q)
+    for (const [key, value] of new URLSearchParams(serverFilterQuery.value)) {
+      params.set(key, value)
+    }
     const resp = await api.get<{ ids: number[]; total: number; truncated: boolean; cap: number }>(
       `/issues?${params.toString()}`,
     )
@@ -554,6 +595,7 @@ function setEpicMode(m: EpicMode) {
 // ── Filter persistence watchers ──────────────────────────────────────────
 onMounted(() => { loadFilters(); loadColumnWidthsFromLocalStorage(); sprintNav.loadSprintNav() })
 watch(filterWatchSources, () => { if (!applyingView) saveFilters() })
+watch(serverFilterQuery, (query) => emit('server-filter-change', query), { immediate: true })
 watch([sortKey, sortDir], () => { if (!applyingView) saveFilters() })
 
 // ── Table appearance ──────────────────────────────────────────────────────
@@ -949,7 +991,7 @@ onMounted(() => {
   onUnmounted(() => ro.disconnect())
 })
 
-defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCount, filteredIssues, openCreate, applyView })
+defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCount, filteredIssues, openCreate, applyView, openLieferberichtExport, showToast })
 </script>
 
 <template>
@@ -1101,17 +1143,6 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
              Documents / Cooperation aux-panel toggles, PAI-145). Lives next
              to Tree/Flat so toggles all share one visual cluster. -->
         <slot name="toolbar-extra" />
-        <!-- PAI-405: Export → Lieferbericht PDF. Project-scoped only; the
-             global cross-project IssueList has no single project to bind. -->
-        <button
-          v-if="projectId !== undefined"
-          class="btn btn-ghost btn-sm"
-          @click="exportModalOpen = true"
-          :title="t('lieferbericht.exportModal.issueListAction')"
-        >
-          <AppIcon name="download" :size="12" />
-          {{ t('lieferbericht.exportModal.issueListAction') }}
-        </button>
         <button
           ref="colBtnEl"
           :class="['btn btn-ghost btn-sm filter-btn', { active: colPanelOpen }]"
@@ -1161,6 +1192,9 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       :filter-release="filterRelease"
       :filter-sprints="filterSprints"
       :filter-epic="filterEpic"
+      :filter-date-field="filterDateField"
+      :filter-date-from="filterDateFrom"
+      :filter-date-to="filterDateTo"
       :show-archived-sprints="showArchivedSprints"
       :complex-tab="complexTab"
       :complex-tab-search="complexTabSearch"
@@ -1186,6 +1220,9 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       @update:filter-release="v => filterRelease = v"
       @update:filter-sprints="v => filterSprints = v"
       @update:filter-epic="v => filterEpic = v"
+      @update:filter-date-field="v => filterDateField = v"
+      @update:filter-date-from="v => filterDateFrom = v"
+      @update:filter-date-to="v => filterDateTo = v"
       @update:show-archived-sprints="v => showArchivedSprints = v"
       @update:complex-tab="v => complexTab = v"
       @update:complex-tab-search="v => complexTabSearch = v"
@@ -1425,8 +1462,16 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       :open="exportModalOpen"
       :project-id="projectId"
       :filter-status="filterStatus"
+      :filter-type="filterType"
+      :filter-priority="filterPriority"
+      :filter-assignee="filterAssignee"
+      :filter-cost-unit="filterCostUnit"
+      :filter-release="filterRelease"
       :filter-tags="filterTags"
       :filter-sprints="filterSprints"
+      :date-field="effectiveDateField"
+      :date-from="filterDateFrom"
+      :date-to="filterDateTo"
       :unsupported-active="lbUnsupportedActive"
       @close="exportModalOpen = false"
     />

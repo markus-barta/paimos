@@ -78,6 +78,14 @@ type lbFilters struct {
 	ExcludeTagIDs   []int64
 	Statuses        []string
 	ExcludeStatuses []string
+	DateField       string
+	DateFrom        string
+	DateTo          string
+	Type            string
+	Priority        string
+	CostUnit        string
+	Release         string
+	AssigneeID      string
 }
 
 func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate string, filters lbFilters) (*lbReport, error) {
@@ -161,6 +169,19 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			args = append(args, s)
 		}
 		where = append(where, "i.status NOT IN ("+strings.Join(ph, ",")+")")
+	}
+	where, args = appendLBMultiFilter(where, args, "i.priority", filters.Priority)
+	where, args = appendLBMultiFilter(where, args, "i.type", filters.Type)
+	where, args = appendLBMultiFilter(where, args, "i.cost_unit", filters.CostUnit)
+	where, args = appendLBMultiFilter(where, args, "i.release", filters.Release)
+	where, args = appendLBAssigneeFilter(where, args, filters.AssigneeID)
+
+	if filters.DateField != "" && (filters.DateFrom != "" || filters.DateTo != "") {
+		dateWhere, dateArgs := issueDateWhereSQL(filters.DateField, filters.DateFrom, filters.DateTo)
+		if dateWhere != "" {
+			where = append(where, dateWhere)
+			args = append(args, dateArgs...)
+		}
 	}
 
 	query := `
@@ -320,7 +341,104 @@ func parseLBFilters(r *http.Request) lbFilters {
 			}
 		}
 	}
+	f.DateField = strings.TrimSpace(r.URL.Query().Get("date_field"))
+	f.DateFrom = strings.TrimSpace(r.URL.Query().Get("date_from"))
+	f.DateTo = strings.TrimSpace(r.URL.Query().Get("date_to"))
+	f.Type = strings.TrimSpace(r.URL.Query().Get("type"))
+	f.Priority = strings.TrimSpace(r.URL.Query().Get("priority"))
+	f.CostUnit = strings.TrimSpace(r.URL.Query().Get("cost_unit"))
+	f.Release = strings.TrimSpace(r.URL.Query().Get("release"))
+	f.AssigneeID = strings.TrimSpace(r.URL.Query().Get("assignee_id"))
 	return f
+}
+
+func appendLBMultiFilter(where []string, args []any, col, raw string) ([]string, []any) {
+	if raw == "" {
+		return where, args
+	}
+	query, nextArgs := applyMultiFilter("", args, col, raw)
+	clause := strings.TrimPrefix(query, " AND ")
+	if clause != "" {
+		where = append(where, clause)
+	}
+	return where, nextArgs
+}
+
+func appendLBAssigneeFilter(where []string, args []any, raw string) ([]string, []any) {
+	if raw == "" {
+		return where, args
+	}
+	vals := splitCSV(raw)
+	hasUnassigned := false
+	ids := []string{}
+	for _, v := range vals {
+		if strings.HasPrefix(v, "!") {
+			continue
+		}
+		if v == "unassigned" {
+			hasUnassigned = true
+		} else if _, err := strconv.ParseInt(v, 10, 64); err == nil {
+			ids = append(ids, v)
+		}
+	}
+	if len(ids) == 0 && !hasUnassigned {
+		return where, args
+	}
+	ph := make([]string, 0, len(ids))
+	for _, id := range ids {
+		ph = append(ph, "?")
+		args = append(args, id)
+	}
+	if len(ids) > 0 && hasUnassigned {
+		where = append(where, "(i.assignee_id IN ("+strings.Join(ph, ",")+") OR i.assignee_id IS NULL)")
+	} else if len(ids) > 0 {
+		where = append(where, "i.assignee_id IN ("+strings.Join(ph, ",")+")")
+	} else {
+		where = append(where, "i.assignee_id IS NULL")
+	}
+	return where, args
+}
+
+func issueDateWhereSQL(field, from, to string) (string, []any) {
+	args := []any{}
+	if field == "completed" {
+		where := `i.status IN ('done','delivered','accepted','invoiced') AND i.id IN (
+			SELECT issue_id FROM (
+				SELECT
+					h.issue_id,
+					h.changed_at,
+					json_extract(h.snapshot, '$.status') AS new_status,
+					LAG(json_extract(h.snapshot, '$.status'))
+						OVER (PARTITION BY h.issue_id ORDER BY h.changed_at, h.id) AS prev_status
+				FROM issue_history h
+			)
+			WHERE new_status IN ('done','delivered','accepted','invoiced')
+			  AND (prev_status IS NULL OR prev_status != new_status)`
+		if from != "" {
+			where += " AND changed_at >= ?"
+			args = append(args, from)
+		}
+		if to != "" {
+			where += " AND changed_at < ?"
+			args = append(args, issueDateToExclusive(to))
+		}
+		where += ")"
+		return where, args
+	}
+	col := issueDateColumn(field)
+	if col == "" {
+		return "", nil
+	}
+	where := []string{}
+	if from != "" {
+		where = append(where, col+" >= ?")
+		args = append(args, from)
+	}
+	if to != "" {
+		where = append(where, col+" < ?")
+		args = append(args, issueDateToExclusive(to))
+	}
+	return strings.Join(where, " AND "), args
 }
 
 // GET /api/projects/{id}/reports/lieferbericht

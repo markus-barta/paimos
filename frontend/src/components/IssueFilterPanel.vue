@@ -6,7 +6,7 @@ import type { Project } from '@/types'
 import {
   NEG, isNeg, toggleFilter, toggleFilterCheckbox,
   OTHER_STATUS_SENTINEL,
-  TYPE_OPTIONS, STATUS_OPTIONS, PRIORITY_OPTIONS,
+  TYPE_OPTIONS, STATUS_OPTIONS, PRIORITY_OPTIONS, DATE_FIELD_OPTIONS,
 } from '@/composables/useIssueFilter'
 import type { ComplexTabKey } from '@/composables/useIssueFilter'
 
@@ -22,6 +22,9 @@ const props = defineProps<{
   filterRelease: string[]
   filterSprints: string[]
   filterEpic: string[]
+  filterDateField: string
+  filterDateFrom: string
+  filterDateTo: string
   showArchivedSprints: boolean
   // Tab state
   complexTab: ComplexTabKey
@@ -52,6 +55,9 @@ const emit = defineEmits<{
   'update:filterRelease': [val: string[]]
   'update:filterSprints': [val: string[]]
   'update:filterEpic': [val: string[]]
+  'update:filterDateField': [val: string]
+  'update:filterDateFrom': [val: string]
+  'update:filterDateTo': [val: string]
   'update:showArchivedSprints': [val: boolean]
   'update:complexTab': [val: ComplexTabKey]
   'update:complexTabSearch': [val: string]
@@ -131,6 +137,42 @@ const emit = defineEmits<{
               <span :class="{ 'fp-label--neg': filterPriority.includes(NEG+opt.value) }">{{ opt.label }}</span>
               <span v-if="filterPriority.includes(NEG+opt.value)" class="fp-neg-badge">NOT</span>
             </div>
+          </div>
+
+          <!-- Date range -->
+          <div class="fp-group fp-date-group">
+            <div class="fp-group-label">Date</div>
+            <select
+              class="fp-select"
+              :value="filterDateField"
+              @change="emit('update:filterDateField', ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">Any date</option>
+              <option v-for="opt in DATE_FIELD_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <div class="fp-date-row">
+              <input
+                class="fp-date-input"
+                type="date"
+                :value="filterDateFrom"
+                @input="emit('update:filterDateFrom', ($event.target as HTMLInputElement).value)"
+              />
+              <span class="fp-date-sep">to</span>
+              <input
+                class="fp-date-input"
+                type="date"
+                :value="filterDateTo"
+                @input="emit('update:filterDateTo', ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+            <button
+              v-if="filterDateField || filterDateFrom || filterDateTo"
+              type="button"
+              class="fp-date-clear"
+              @click="emit('update:filterDateField', ''); emit('update:filterDateFrom', ''); emit('update:filterDateTo', '')"
+            >
+              Clear date
+            </button>
           </div>
         </div>
       </div>
@@ -277,7 +319,7 @@ const emit = defineEmits<{
 .fp-vdivider { width: 1px; background: var(--border); align-self: stretch; margin: 0 1.25rem; flex-shrink: 0; }
 .fp-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .6rem; }
 
-.fp-grid { display: grid; grid-template-columns: repeat(3, minmax(110px, auto)); gap: .75rem 1.5rem; }
+.fp-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, auto)); gap: .75rem 1.5rem; }
 .fp-group { display: flex; flex-direction: column; gap: .3rem; }
 .fp-group-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: .2rem; }
 .fp-option {
@@ -325,6 +367,23 @@ const emit = defineEmits<{
   background: var(--bg); color: var(--text); outline: none;
 }
 .fp-search:focus { border-color: var(--bp-blue); }
+.fp-select,
+.fp-date-input {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: .25rem .45rem; font-size: 12px; font-family: inherit;
+  background: var(--bg); color: var(--text); outline: none;
+}
+.fp-select:focus,
+.fp-date-input:focus { border-color: var(--bp-blue); }
+.fp-date-group { min-width: 180px; }
+.fp-date-row { display: flex; align-items: center; gap: .35rem; }
+.fp-date-input { width: 7.8rem; min-width: 0; }
+.fp-date-sep { font-size: 11px; color: var(--text-muted); }
+.fp-date-clear {
+  align-self: flex-start; background: none; border: none; padding: 0;
+  color: var(--bp-blue); font-size: 11px; font-family: inherit; cursor: pointer;
+}
+.fp-date-clear:hover { text-decoration: underline; }
 .fp-picker-list {
   display: flex; flex-direction: column; gap: .05rem;
   max-height: 200px; overflow-y: auto; padding-right: .25rem;

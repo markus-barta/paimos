@@ -131,7 +131,8 @@ const loading       = ref(true)
 const issueListRef  = ref<InstanceType<typeof IssueList> | null>(null)
 const exporting     = ref(false)
 const projectIssueQuery = computed(() => search.scope === 'project' ? search.query : '')
-const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value))
+const projectServerFilterQuery = ref('')
+const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value))
 const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
 let projectLoadRequestSeq = 0
 let projectIssueRequestSeq = 0
@@ -170,6 +171,11 @@ function onOverflowKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && overflowOpen.value) closeOverflow()
 }
 function onMenuExport() { closeOverflow(); void exportCSV() }
+function onMenuLieferbericht() {
+  closeOverflow()
+  primaryTab.value = 'issues'
+  void nextTick(() => issueListRef.value?.openLieferberichtExport())
+}
 function onMenuImport() { closeOverflow(); triggerImport() }
 function onMenuEdit() { closeOverflow(); openEdit() }
 
@@ -559,10 +565,11 @@ async function load() {
   loading.value = true
   resetWorkspaceState()
   const loadQuery = projectIssueQuery.value
-  const data = await loadProjectDetailData(projectId.value, loadQuery)
+  const loadFilters = projectServerFilterQuery.value
+  const data = await loadProjectDetailData(projectId.value, loadQuery, loadFilters)
   if (request !== projectLoadRequestSeq) return
   project.value = data.project
-  if (loadQuery === projectIssueQuery.value) {
+  if (loadQuery === projectIssueQuery.value && loadFilters === projectServerFilterQuery.value) {
     issues.value = data.issues
     await issueFreshness.prime(data.issues)
   } else {
@@ -576,6 +583,7 @@ async function load() {
   customers.value = data.customers
   // activeTabId is set by IssueList's view-applied emit (MRU-based)
   loading.value   = false
+  void nextTick(applyLieferberichtHandoffFromRoute)
 }
 
 onMounted(() => {
@@ -593,7 +601,7 @@ watch(() => route.params.id, (newId, oldId) => {
 
 async function replaceProjectIssues(q: string): Promise<boolean> {
   const request = ++projectIssueRequestSeq
-  const nextIssues = await loadProjectIssues(projectId.value, q)
+  const nextIssues = await loadProjectIssues(projectId.value, q, projectServerFilterQuery.value)
   if (request !== projectIssueRequestSeq) return false
   issues.value = nextIssues
   await issueFreshness.prime(nextIssues)
@@ -607,6 +615,51 @@ watch(trimmedProjectIssueQuery, (q) => {
     void replaceProjectIssues(q)
   }, 150)
 })
+
+function onServerFilterChange(query: string) {
+  if (projectServerFilterQuery.value === query) return
+  projectServerFilterQuery.value = query
+  void replaceProjectIssues(projectIssueQuery.value)
+}
+
+function applyLieferberichtHandoffFromRoute() {
+  if (route.query.report !== 'lieferbericht') return
+  primaryTab.value = 'issues'
+  if (!issueListRef.value) {
+    void nextTick(applyLieferberichtHandoffFromRoute)
+    return
+  }
+  const dateField = typeof route.query.date_field === 'string' ? route.query.date_field : 'completed'
+  const dateFrom = typeof route.query.date_from === 'string' ? route.query.date_from : ''
+  const dateTo = typeof route.query.date_to === 'string' ? route.query.date_to : ''
+  const filters = {
+    type: ['ticket', 'task'],
+    status: ['done', 'delivered', 'accepted', 'invoiced'],
+    dateField,
+    dateFrom,
+    dateTo,
+    treeView: false,
+  }
+  issueListRef.value.applyView({
+    id: -700,
+    user_id: 0,
+    owner_username: 'system',
+    title: 'Lieferbericht',
+    description: 'Delivery report filter preset.',
+    columns_json: '[]',
+    filters_json: JSON.stringify(filters),
+    is_shared: true,
+    is_admin_default: false,
+    sort_order: 0,
+    hidden: false,
+    pinned: null,
+    created_at: '',
+    updated_at: '',
+  }, false)
+  issueListRef.value.showToast('Lieferbericht uses the issue list filters. Adjust filters, then use ⋯ → Export Lieferbericht PDF.')
+}
+
+watch(() => route.query.report, () => nextTick(applyLieferberichtHandoffFromRoute))
 
 function onCreated(issue: Issue) {
   issues.value.push(issue)
@@ -740,6 +793,10 @@ watch(
             <AppIcon v-else name="loader" :size="14" class="spin" />
             <span>{{ exporting ? 'Preparing download…' : 'Export CSV' }}</span>
           </button>
+          <button class="pd-overflow-item" @click="onMenuLieferbericht">
+            <AppIcon name="file-down" :size="14" />
+            <span>Export Lieferbericht PDF</span>
+          </button>
           <button v-if="isAdmin && canEditProject" class="pd-overflow-item" :disabled="importing" @click="onMenuImport">
             <AppIcon name="download" :size="14" />
             <span>Import CSV</span>
@@ -807,6 +864,7 @@ watch(
           @deleted="onDeleted"
           @view-applied="onViewApplied"
           @views-changed="refreshViews"
+          @server-filter-change="onServerFilterChange"
         />
       </template>
 

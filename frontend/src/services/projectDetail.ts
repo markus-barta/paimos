@@ -30,9 +30,12 @@ export interface ProjectPurgeUser {
   username: string
 }
 
-export function buildProjectIssuesUrl(projectId: number, query: string): string {
+export function buildProjectIssuesUrl(projectId: number, query: string, filters = ''): string {
   const q = query.trim()
-  return `/projects/${projectId}/issues?fields=list${q.length >= 2 ? `&q=${encodeURIComponent(q)}` : ''}`
+  const params = new URLSearchParams(filters)
+  params.set('fields', 'list')
+  if (q.length >= 2) params.set('q', q)
+  return `/projects/${projectId}/issues?${params.toString().replace(/\+/g, '%20')}`
 }
 
 export function buildProjectCsvExportUrl(projectId: number, selectedIds: number[]): string {
@@ -43,10 +46,10 @@ export function buildProjectCsvExportUrl(projectId: number, selectedIds: number[
   return url
 }
 
-export async function loadProjectDetailData(projectId: number, query: string): Promise<ProjectDetailData> {
+export async function loadProjectDetailData(projectId: number, query: string, filters = ''): Promise<ProjectDetailData> {
   const [project, issues, users, costUnits, releases, allTags, allViews, customers] = await Promise.all([
     api.get<Project>(`/projects/${projectId}`),
-    api.get<Issue[]>(buildProjectIssuesUrl(projectId, query)),
+    api.get<Issue[]>(buildProjectIssuesUrl(projectId, query, filters)),
     api.get<User[]>('/users'),
     api.get<string[]>(`/projects/${projectId}/cost-units`).catch(() => []),
     api.get<string[]>(`/projects/${projectId}/releases`).catch(() => []),
@@ -67,8 +70,8 @@ export async function loadProjectDetailData(projectId: number, query: string): P
   }
 }
 
-export function loadProjectIssues(projectId: number, query: string): Promise<Issue[]> {
-  return api.get<Issue[]>(buildProjectIssuesUrl(projectId, query))
+export function loadProjectIssues(projectId: number, query: string, filters = ''): Promise<Issue[]> {
+  return api.get<Issue[]>(buildProjectIssuesUrl(projectId, query, filters))
 }
 
 export async function uploadProjectLogo(projectId: number, file: File): Promise<Project> {

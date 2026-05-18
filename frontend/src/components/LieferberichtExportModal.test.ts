@@ -37,13 +37,31 @@ function mountModal(props: {
   open: boolean
   projectId: number
   filterStatus: string[]
+  filterType?: string[]
+  filterPriority?: string[]
+  filterAssignee?: string[]
+  filterCostUnit?: string[]
+  filterRelease?: string[]
   filterTags: string[]
   filterSprints: string[]
+  dateField?: string
+  dateFrom?: string
+  dateTo?: string
   unsupportedActive: string[]
 }) {
   const el = document.createElement('div')
   document.body.appendChild(el)
-  const app = createApp(LieferberichtExportModal, props)
+  const app = createApp(LieferberichtExportModal, {
+    filterType: [],
+    filterPriority: [],
+    filterAssignee: [],
+    filterCostUnit: [],
+    filterRelease: [],
+    dateField: '',
+    dateFrom: '',
+    dateTo: '',
+    ...props,
+  })
   app.use(i18n)
   app.mount(el)
   return {
@@ -71,8 +89,16 @@ describe('LieferberichtExportModal', () => {
       open: true,
       projectId: 7,
       filterStatus: ['!done', 'qa', OTHER_STATUS_SENTINEL, `!${OTHER_STATUS_SENTINEL}`],
+      filterType: ['ticket', '!epic'],
+      filterPriority: ['high'],
+      filterAssignee: ['4', '!5'],
+      filterCostUnit: ['Ops'],
+      filterRelease: ['May'],
       filterTags: ['12', '!34', 'bad', '!0'],
       filterSprints: ['5'],
+      dateField: 'completed',
+      dateFrom: '2026-05-01',
+      dateTo: '2026-05-31',
       unsupportedActive: [],
     })
     await settle()
@@ -88,7 +114,15 @@ describe('LieferberichtExportModal', () => {
     expect(url.searchParams.get('scope')).toBe('sprint')
     expect(url.searchParams.get('sprint_ids')).toBe('5')
     expect(url.searchParams.get('statuses')).toBe('!done,qa')
+    expect(url.searchParams.get('type')).toBe('ticket,!epic')
+    expect(url.searchParams.get('priority')).toBe('high')
+    expect(url.searchParams.get('assignee_id')).toBe('4')
+    expect(url.searchParams.get('cost_unit')).toBe('Ops')
+    expect(url.searchParams.get('release')).toBe('May')
     expect(url.searchParams.get('tag_ids')).toBe('12,!34')
+    expect(url.searchParams.get('date_field')).toBe('completed')
+    expect(url.searchParams.get('date_from')).toBe('2026-05-01')
+    expect(url.searchParams.get('date_to')).toBe('2026-05-31')
 
     mounted.unmount()
   })

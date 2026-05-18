@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/models"
@@ -531,7 +532,82 @@ func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
 			query += " AND i.id IN (SELECT target_id FROM issue_relations WHERE type='sprint' AND source_id IN (" + ph + "))"
 		}
 	}
+	query, args = applyIssueDateFilter(query, args, q)
 	return query, args
+}
+
+func applyIssueDateFilter(query string, args []any, q url.Values) (string, []any) {
+	field := strings.TrimSpace(q.Get("date_field"))
+	from := strings.TrimSpace(q.Get("date_from"))
+	to := strings.TrimSpace(q.Get("date_to"))
+	if field == "" || (from == "" && to == "") {
+		return query, args
+	}
+
+	if field == "completed" {
+		query += ` AND i.status IN ('done','delivered','accepted','invoiced') AND i.id IN (
+			SELECT issue_id FROM (
+				SELECT
+					h.issue_id,
+					h.changed_at,
+					json_extract(h.snapshot, '$.status') AS new_status,
+					LAG(json_extract(h.snapshot, '$.status'))
+						OVER (PARTITION BY h.issue_id ORDER BY h.changed_at, h.id) AS prev_status
+				FROM issue_history h
+			)
+			WHERE new_status IN ('done','delivered','accepted','invoiced')
+			  AND (prev_status IS NULL OR prev_status != new_status)`
+		if from != "" {
+			query += " AND changed_at >= ?"
+			args = append(args, from)
+		}
+		if to != "" {
+			query += " AND changed_at < ?"
+			args = append(args, issueDateToExclusive(to))
+		}
+		query += ")"
+		return query, args
+	}
+
+	col := issueDateColumn(field)
+	if col == "" {
+		return query, args
+	}
+	if from != "" {
+		query += " AND " + col + " >= ?"
+		args = append(args, from)
+	}
+	if to != "" {
+		query += " AND " + col + " < ?"
+		args = append(args, issueDateToExclusive(to))
+	}
+	return query, args
+}
+
+func issueDateColumn(field string) string {
+	switch field {
+	case "created":
+		return "i.created_at"
+	case "updated":
+		return "i.updated_at"
+	case "accepted":
+		return "i.accepted_at"
+	case "invoiced":
+		return "i.invoiced_at"
+	case "start":
+		return "i.start_date"
+	case "end":
+		return "i.end_date"
+	default:
+		return ""
+	}
+}
+
+func issueDateToExclusive(raw string) string {
+	if t, err := time.Parse("2006-01-02", raw); err == nil {
+		return t.AddDate(0, 0, 1).Format("2006-01-02")
+	}
+	return raw + " 23:59:59"
 }
 
 // applyMultiFilter handles comma-separated values with optional ! negation prefix.

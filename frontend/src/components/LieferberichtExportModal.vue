@@ -28,10 +28,18 @@ const props = defineProps<{
   projectId: number
   /** Status keys from IssueList's filterStatus. */
   filterStatus: string[]
+  filterType: string[]
+  filterPriority: string[]
+  filterAssignee: string[]
+  filterCostUnit: string[]
+  filterRelease: string[]
   /** Tag IDs as strings, from IssueList's filterTags. */
   filterTags: string[]
   /** Sprint IDs as strings, from IssueList's filterSprints. */
   filterSprints: string[]
+  dateField: string
+  dateFrom: string
+  dateTo: string
   /** Friction notice list — IssueList filter keys with active values that
    *  the Lieferbericht endpoint doesn't yet honor. Shown to the user so
    *  they aren't silently lost. */
@@ -114,6 +122,21 @@ function download() {
   if (tagIDs.length > 0) params.set('tag_ids', tagIDs.join(','))
   const statuses = encodeSignedList(props.filterStatus, { numeric: false, dropOtherStatus: true })
   if (statuses.length > 0) params.set('statuses', statuses.join(','))
+  const types = encodeSignedList(props.filterType, { numeric: false })
+  if (types.length > 0) params.set('type', types.join(','))
+  const priorities = encodeSignedList(props.filterPriority, { numeric: false })
+  if (priorities.length > 0) params.set('priority', priorities.join(','))
+  const assignees = encodeSignedList(props.filterAssignee, { numeric: false }).filter(v => !isNeg(v))
+  if (assignees.length > 0) params.set('assignee_id', assignees.join(','))
+  const costUnits = encodeSignedList(props.filterCostUnit, { numeric: false })
+  if (costUnits.length > 0) params.set('cost_unit', costUnits.join(','))
+  const releases = encodeSignedList(props.filterRelease, { numeric: false })
+  if (releases.length > 0) params.set('release', releases.join(','))
+  if (props.dateField && (props.dateFrom || props.dateTo)) {
+    params.set('date_field', props.dateField)
+    if (props.dateFrom) params.set('date_from', props.dateFrom)
+    if (props.dateTo) params.set('date_to', props.dateTo)
+  }
   window.open(`/api/projects/${props.projectId}/reports/lieferbericht/pdf?${params.toString()}`, '_blank')
   emit('close')
 }

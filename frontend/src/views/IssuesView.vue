@@ -42,11 +42,15 @@ provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 const trimmedSearchQuery = computed(() => search.query.trim())
+const serverFilterQuery = ref('')
 const freshnessLimit = computed(() => Math.max(PAGE, issues.value.length || PAGE))
 const issuesPath = computed(() => {
-  let url = `/issues?fields=list&limit=${freshnessLimit.value}&offset=0`
-  if (trimmedSearchQuery.value.length >= 2) url += `&q=${encodeURIComponent(trimmedSearchQuery.value)}`
-  return url
+  const params = new URLSearchParams(serverFilterQuery.value)
+  params.set('fields', 'list')
+  params.set('limit', String(freshnessLimit.value))
+  params.set('offset', '0')
+  if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
+  return `/issues?${params.toString()}`
 })
 let issueRequestSeq = 0
 let searchReloadTimer: ReturnType<typeof setTimeout> | null = null
@@ -173,8 +177,12 @@ async function fetchIssues(limit: number, replace = false) {
   const offset = replace ? 0 : issues.value.length
   const request = ++issueRequestSeq
   try {
-    let url = `/issues?fields=list&limit=${limit}&offset=${offset}`
-    if (trimmedSearchQuery.value.length >= 2) url += `&q=${encodeURIComponent(trimmedSearchQuery.value)}`
+    const params = new URLSearchParams(serverFilterQuery.value)
+    params.set('fields', 'list')
+    params.set('limit', String(limit))
+    params.set('offset', String(offset))
+    if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
+    const url = `/issues?${params.toString()}`
     const data = await api.get<IssueEnvelope>(url)
     if (request !== issueRequestSeq) return
     if (replace) {
@@ -226,6 +234,12 @@ watch(trimmedSearchQuery, () => {
     void fetchIssues(PAGE, true)
   }, 150)
 })
+
+function onServerFilterChange(query: string) {
+  if (serverFilterQuery.value === query) return
+  serverFilterQuery.value = query
+  void fetchIssues(PAGE, true)
+}
 
 // ── Infinite scroll sentinel ──────────────────────────────────────────────────
 const scrollSentinel = ref<HTMLElement | null>(null)
@@ -315,6 +329,7 @@ function onDeleted(id: number) {
         @created="onCreated"
         @updated="onUpdated"
         @deleted="onDeleted"
+        @server-filter-change="onServerFilterChange"
       />
 
       <div v-if="!isSearchMode && showEmptyFilterBanner" class="empty-filter-banner">

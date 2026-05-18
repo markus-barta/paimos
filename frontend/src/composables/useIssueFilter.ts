@@ -78,6 +78,9 @@ export interface SavedFilters {
   projects: string[]
   sprints:  string[]
   epic:     string[]
+  dateField: string
+  dateFrom:  string
+  dateTo:    string
   treeView: boolean
   columnWidths: ColumnWidths
   sortKey?: string
@@ -95,6 +98,9 @@ export interface RawSavedFilters {
   projects: string[]
   sprints:  string[]
   epic:     string[]
+  dateField?: string
+  dateFrom?:  string
+  dateTo?:    string
   treeView: boolean
   columnWidths?: unknown
   sortKey?: string
@@ -112,6 +118,9 @@ const EMPTY_FILTERS: SavedFilters = {
   projects: [],
   sprints: [],
   epic: [],
+  dateField: '',
+  dateFrom: '',
+  dateTo: '',
   treeView: false,
   columnWidths: {},
 }
@@ -128,6 +137,9 @@ export function normalizeSavedFilters(input: Partial<RawSavedFilters> | null | u
     projects: toArr(input?.projects),
     sprints: toArr(input?.sprints),
     epic: toArr(input?.epic),
+    dateField: normalizeDateField(input?.dateField),
+    dateFrom: normalizeDateInput(input?.dateFrom),
+    dateTo: normalizeDateInput(input?.dateTo),
     treeView: input?.treeView === true,
     columnWidths: normalizeColumnWidths(input?.columnWidths),
     sortKey: input?.sortKey || undefined,
@@ -171,9 +183,27 @@ export const PRIORITY_OPTIONS: MetaOption[] = [
   { value: 'low',    label: PRIORITY_LABEL.low,    iconName: PRIORITY_ICON.low,    arrowColor: PRIORITY_COLOR.low    },
 ]
 
+export const DATE_FIELD_OPTIONS: MetaOption[] = [
+  { value: 'completed', label: 'Completed' },
+  { value: 'created',   label: 'Created' },
+  { value: 'updated',   label: 'Updated' },
+  { value: 'accepted',  label: 'Accepted' },
+  { value: 'invoiced',  label: 'Invoiced' },
+  { value: 'start',     label: 'Start date' },
+  { value: 'end',       label: 'End date' },
+]
+
 function toArr(v: string | string[] | undefined): string[] {
   if (!v) return []
   return Array.isArray(v) ? v : [v]
+}
+
+function normalizeDateField(v: string | undefined): string {
+  return typeof v === 'string' && DATE_FIELD_OPTIONS.some(o => o.value === v) ? v : ''
+}
+
+function normalizeDateInput(v: string | undefined): string {
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''
 }
 
 function splitFilter(arr: string[]) {
@@ -186,6 +216,29 @@ function splitFilter(arr: string[]) {
 function statusMatches(issueStatus: string, val: string): boolean {
   if (val === OTHER_STATUS_SENTINEL) return !KNOWN_STATUSES.has(issueStatus)
   return issueStatus === val
+}
+
+function issueDateValue(issue: Issue, field: string): string {
+  switch (field) {
+    case 'created': return issue.created_at ?? ''
+    case 'updated': return issue.updated_at ?? ''
+    case 'accepted': return issue.accepted_at ?? ''
+    case 'invoiced': return issue.invoiced_at ?? ''
+    case 'start': return issue.start_date ?? ''
+    case 'end': return issue.end_date ?? ''
+    case 'completed':
+      if (!['done', 'delivered', 'accepted', 'invoiced'].includes(issue.status)) return ''
+      return issue.invoiced_at ?? issue.accepted_at ?? issue.updated_at ?? ''
+    default: return ''
+  }
+}
+
+function issueDateMatches(issue: Issue, field: string, from: string, to: string): boolean {
+  const value = issueDateValue(issue, field).slice(0, 10)
+  if (!value) return false
+  if (from && value < from) return false
+  if (to && value > to) return false
+  return true
 }
 
 export interface UseIssueFilterOptions {
@@ -219,6 +272,9 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   const filterProjects = ref<string[]>([])
   const filterSprints  = ref<string[]>([])
   const filterEpic     = ref<string[]>([])
+  const filterDateField = ref('')
+  const filterDateFrom  = ref('')
+  const filterDateTo    = ref('')
   const showArchivedSprints = ref(false)
   const treeView = ref(false)
 
@@ -276,14 +332,19 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   const activeFilterCount = computed(() =>
     filterStatus.value.length + filterPriority.value.length + filterType.value.length +
     filterCostUnit.value.length + filterRelease.value.length + filterAssignee.value.length +
-    filterTags.value.length + filterProjects.value.length + filterSprints.value.length + filterEpic.value.length
+    filterTags.value.length + filterProjects.value.length + filterSprints.value.length + filterEpic.value.length +
+    (dateFilterActive.value ? 1 : 0)
   )
 
   function clearAllFilters() {
     filterStatus.value = []; filterPriority.value = []; filterType.value = []
     filterCostUnit.value = []; filterRelease.value = []; filterAssignee.value = []
     filterTags.value = []; filterProjects.value = []; filterSprints.value = []; filterEpic.value = []
+    filterDateField.value = ''; filterDateFrom.value = ''; filterDateTo.value = ''
   }
+
+  const dateFilterActive = computed(() => !!(filterDateField.value || filterDateFrom.value || filterDateTo.value))
+  const effectiveDateField = computed(() => filterDateField.value || (dateFilterActive.value ? 'completed' : ''))
 
   // ── Filter chip groups ──────────────────────────────────────────────────
   const filterChipGroups = computed<ChipGroup[]>(() => {
@@ -326,6 +387,20 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       const e = opts.issues.value.find(i => String(i.id) === v)
       return e ? `Epic: ${e.issue_key} ${e.title}` : `Epic: ${v}`
     })
+    if (dateFilterActive.value) {
+      const field = DATE_FIELD_OPTIONS.find(o => o.value === effectiveDateField.value)?.label ?? 'Date'
+      const range = filterDateFrom.value && filterDateTo.value
+        ? `${filterDateFrom.value}..${filterDateTo.value}`
+        : filterDateFrom.value
+          ? `from ${filterDateFrom.value}`
+          : filterDateTo.value
+            ? `to ${filterDateTo.value}`
+            : 'any date'
+      groups.push({
+        group: 'date',
+        chips: [{ label: `${field}: ${range}`, group: 'date', value: 'date', negated: false }],
+      })
+    }
 
     return groups
   })
@@ -342,6 +417,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       case 'release':  filterRelease.value  = filterRelease.value.filter(v => v !== value);  break
       case 'sprint':   filterSprints.value  = filterSprints.value.filter(v => v !== value);  break
       case 'epic':     filterEpic.value     = filterEpic.value.filter(v => v !== value);     break
+      case 'date':     filterDateField.value = ''; filterDateFrom.value = ''; filterDateTo.value = ''; break
     }
   }
 
@@ -357,6 +433,7 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       case 'release':  filterRelease.value  = []; break
       case 'sprint':   filterSprints.value  = []; break
       case 'epic':     filterEpic.value     = []; break
+      case 'date':     filterDateField.value = ''; filterDateFrom.value = ''; filterDateTo.value = ''; break
     }
   }
 
@@ -403,6 +480,9 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       filterProjects.value = f.projects
       filterSprints.value  = f.sprints
       filterEpic.value     = f.epic
+      filterDateField.value = f.dateField
+      filterDateFrom.value  = f.dateFrom
+      filterDateTo.value    = f.dateTo
       treeView.value       = f.treeView
       if (f.sortKey) {
         opts.sortKey.value = f.sortKey
@@ -427,6 +507,9 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       projects: filterProjects.value,
       sprints:  filterSprints.value,
       epic:     filterEpic.value,
+      dateField: filterDateField.value,
+      dateFrom:  filterDateFrom.value,
+      dateTo:    filterDateTo.value,
       treeView: treeView.value,
       columnWidths: stored,
       sortKey:  opts.sortKey.value || undefined,
@@ -449,6 +532,9 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
         projects: filterProjects.value,
         sprints:  filterSprints.value,
         epic:     filterEpic.value,
+        dateField: filterDateField.value,
+        dateFrom:  filterDateFrom.value,
+        dateTo:    filterDateTo.value,
         treeView: treeView.value,
         columnWidths: stored,
         sortKey:  opts.sortKey.value || undefined,
@@ -536,6 +622,9 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
         if (pos.length && !pos.includes(parentID)) return false
         if (neg.includes(parentID)) return false
       }
+      if (dateFilterActive.value && !issueDateMatches(i, effectiveDateField.value, filterDateFrom.value, filterDateTo.value)) {
+        return false
+      }
       return true
     })
   })
@@ -601,18 +690,20 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   )
 
   // Watchers array for parent to register
-  const filterWatchSources = [filterStatus, filterPriority, filterType, filterCostUnit, filterRelease, filterAssignee, filterTags, filterProjects, filterSprints, treeView] as const
+  const filterWatchSources = [filterStatus, filterPriority, filterType, filterCostUnit, filterRelease, filterAssignee, filterTags, filterProjects, filterSprints, filterEpic, filterDateField, filterDateFrom, filterDateTo, treeView] as const
 
   return {
     // Refs
     filterStatus, filterPriority, filterType, filterCostUnit, filterRelease,
     filterAssignee, filterTags, filterProjects, filterSprints, filterEpic,
+    filterDateField, filterDateFrom, filterDateTo,
     showArchivedSprints, treeView, filterPanelOpen,
     complexTab, complexTabSearch,
 
     // Computed
     availableTags, assignableUsers, complexTabs, complexBadge,
     activeFilterCount, filterChipGroups, filteredIssues,
+    dateFilterActive, effectiveDateField,
     assigneeIsAny,
     pickerProjects, pickerUsers, pickerTags, pickerCostUnits, pickerReleases, pickerSprints,
 
