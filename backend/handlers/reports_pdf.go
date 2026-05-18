@@ -174,11 +174,17 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	pdf.AddUTF8FontFromBytes("DejaVu", "", dejaVuSansTTF)
 	pdf.AddUTF8FontFromBytes("DejaVu", "B", dejaVuSansBoldTTF)
 
-	// Register logo — prefers the active instance branding (PAI-399). On any
-	// resolution failure, resolveBrandingLogoForPDF returns the embedded
-	// PAIMOS mark so the PDF never breaks.
+	// Register logo — prefers the active instance branding (PAI-399), with
+	// magic-byte sniffing inside the resolver to reject corrupt assets
+	// (PAI-406). Belt-and-suspenders: if fpdf still fails to register the
+	// bytes (e.g. valid magic but truncated payload), drop the stale error
+	// and re-register the embedded fallback so the PDF never 500s.
 	logoBytes, logoImgType := resolveBrandingLogoForPDF()
 	pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: logoImgType}, bytes.NewReader(logoBytes))
+	if pdf.Error() != nil {
+		pdf.ClearError()
+		pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(logoPNG))
+	}
 
 	// A4 landscape = 297mm wide. Margins: 10mm each side → usable 277mm.
 	const pageW = 297.0

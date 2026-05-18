@@ -65,12 +65,16 @@ func resolveBrandingLogoForPDF() (data []byte, imgType string) {
 		return logoPNG, "PNG"
 	}
 
-	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".png":
+	// PAI-406: never trust the on-disk extension alone — a corrupt or
+	// misclassified file would slip through to fpdf and surface as 500. Sniff
+	// the magic bytes; only return what we actually recognize, otherwise fall
+	// back to the embedded mark.
+	switch sniffImageFormat(raw) {
+	case "png":
 		return raw, "PNG"
-	case ".jpg", ".jpeg":
+	case "jpg":
 		return raw, "JPG"
-	case ".svg":
+	case "svg":
 		if pngBytes, err := rasterizeSVG(raw, 256); err == nil {
 			return pngBytes, "PNG"
 		}
@@ -78,6 +82,26 @@ func resolveBrandingLogoForPDF() (data []byte, imgType string) {
 	default:
 		return logoPNG, "PNG"
 	}
+}
+
+// sniffImageFormat returns "png", "jpg", "svg", "ico", or "" based on the
+// leading bytes of the file. Used by the PDF logo resolver and by the
+// branding upload handler so we never trust the client's declared
+// Content-Type or the filename extension alone.
+func sniffImageFormat(data []byte) string {
+	if len(data) >= 8 && bytes.Equal(data[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		return "png"
+	}
+	if len(data) >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff {
+		return "jpg"
+	}
+	if len(data) >= 4 && bytes.Equal(data[:4], []byte{0x00, 0x00, 0x01, 0x00}) {
+		return "ico"
+	}
+	if looksLikeSVG(data) {
+		return "svg"
+	}
+	return ""
 }
 
 // rasterizeSVG renders an SVG to a PNG at the given pixel width, preserving

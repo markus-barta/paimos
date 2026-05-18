@@ -156,6 +156,55 @@ func TestLieferberichtPDF_NoNumericColumnsRenders(t *testing.T) {
 	}
 }
 
+// PAI-406: corrupt or misclassified raster bytes on disk must not 500 the
+// PDF. The resolver sniffs the magic bytes and falls back to the embedded
+// logo when they don't match a format we can hand to fpdf.
+func TestResolveBrandingLogoForPDF_CorruptBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		filename string
+		bytes    []byte
+	}{
+		{"png ext but garbage bytes", "logo.png", []byte("not a real PNG, just text")},
+		{"svg ext but truncated", "logo.svg", []byte{0x00, 0x00, 0xff}},
+		{"jpg ext but tiny", "logo.jpg", []byte{0x00}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("DATA_DIR", dir)
+			cfg := `{"logo":"/brand/` + tc.filename + `"}`
+			if err := os.WriteFile(filepath.Join(dir, "branding.json"), []byte(cfg), 0o644); err != nil {
+				t.Fatalf("write cfg: %v", err)
+			}
+			if err := os.MkdirAll(filepath.Join(dir, "branding-assets"), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "branding-assets", tc.filename), tc.bytes, 0o644); err != nil {
+				t.Fatalf("write asset: %v", err)
+			}
+			data, imgType := resolveBrandingLogoForPDF()
+			if imgType != "PNG" || !bytes.Equal(data, logoPNG) {
+				t.Fatalf("expected embedded fallback for corrupt %s; got imgType=%s len(data)=%d", tc.name, imgType, len(data))
+			}
+		})
+	}
+}
+
+func TestSniffImageFormat(t *testing.T) {
+	cases := map[string][]byte{
+		"png": {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00},
+		"jpg": {0xff, 0xd8, 0xff, 0xe0, 0x00},
+		"ico": {0x00, 0x00, 0x01, 0x00, 0x01},
+		"svg": []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>`),
+		"":    []byte("not a real image"),
+	}
+	for want, in := range cases {
+		if got := sniffImageFormat(in); got != want {
+			t.Errorf("sniffImageFormat(%q…) = %q, want %q", in[:min(len(in), 8)], got, want)
+		}
+	}
+}
+
 // Defense: a missing branding config falls back to the embedded logo so PDF
 // rendering keeps working out of the box.
 func TestResolveBrandingLogoForPDF_FallbackOnMissing(t *testing.T) {

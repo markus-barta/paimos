@@ -301,23 +301,26 @@ func uploadBrandingAsset(w http.ResponseWriter, r *http.Request, baseName string
 		return
 	}
 
-	// Prefer client-declared content-type, fall back to sniffing. http.DetectContentType
-	// can't recognise SVG reliably (it returns text/xml), so we cross-check
-	// against the filename extension for SVGs.
-	ct := header.Header.Get("Content-Type")
-	if ct == "" || ct == "application/octet-stream" {
-		ct = http.DetectContentType(data)
+	// PAI-406: sniff the actual bytes; never trust the multipart-declared
+	// Content-Type or the filename extension. A spoofed header pointing at
+	// the wrong format would let a misclassified asset reach disk and break
+	// downstream consumers (notably the Lieferbericht PDF resolver).
+	sniffed := sniffImageFormat(data)
+	if sniffed == "" {
+		jsonError(w, "unsupported file type (could not detect PNG/JPEG/SVG/ICO from content)", http.StatusBadRequest)
+		return
 	}
-	// SVG fallback: the filename says .svg and the content begins with
-	// <svg or <?xml. Covers the common case where clients send a generic type.
-	if _, ok := accept[ct]; !ok {
-		if strings.EqualFold(filepath.Ext(header.Filename), ".svg") && looksLikeSVG(data) {
-			ct = "image/svg+xml"
-		}
-	}
-	ext, ok := accept[ct]
+	// Map sniffed format → MIME the accept-list keys on, then to the
+	// on-disk extension we keep.
+	sniffedMime := map[string]string{
+		"png": "image/png",
+		"jpg": "image/jpeg",
+		"svg": "image/svg+xml",
+		"ico": "image/x-icon",
+	}[sniffed]
+	ext, ok := accept[sniffedMime]
 	if !ok {
-		jsonError(w, "unsupported file type: "+ct, http.StatusBadRequest)
+		jsonError(w, "unsupported file type for this slot: "+sniffedMime, http.StatusBadRequest)
 		return
 	}
 
