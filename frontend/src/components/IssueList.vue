@@ -342,6 +342,7 @@ const ISSUE_COLS: ColDefs<Issue> = {
   jira_id:      { value: i => i.jira_id ?? '',             type: 'string' },
   jira_version: { value: i => i.jira_version ?? '',        type: 'string' },
   jira_text:    { value: i => i.jira_text ?? '',           type: 'string' },
+  report_summary: { value: i => i.report_summary ?? '',    type: 'string' },
 }
 
 const sortResult = useSort(filteredIssues, ISSUE_COLS)
@@ -1395,10 +1396,14 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       @done="onBulkChangeDone"
     />
 
-    <!-- PAI-418 / PAI-424. Bulk Generate Report Summary modal. -->
+    <!-- PAI-418 / PAI-424. Bulk Generate Report Summary modal.
+         inScopeIssues feeds the PAI-438 / PAI-441 skip-filled +
+         exclude-terminal toggles so the modal can pre-filter the
+         user's selection by status + existing-summary state. -->
     <BulkGenerateSummaryModal
       :open="showBulkSummary"
       :issue-ids="bulkSummaryIds"
+      :in-scope-issues="filteredIssues"
       @close="showBulkSummary = false"
       @updated="issue => emit('updated', issue)"
       @done="onBulkSummaryDone"

@@ -18,8 +18,8 @@ G124	MEDIUM	HIGH	auth/oidc.go	179	http.Cookie missing or has insecure Secure, Ht
 G124	MEDIUM	HIGH	auth/oidc.go	316	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G124	MEDIUM	HIGH	auth/totp.go	277	http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 G202	MEDIUM	HIGH	auth/auth.go	339-348	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/ai_papertrail.go	341-366	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/ai_papertrail.go	533-556	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/ai_papertrail.go	375-400	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/ai_papertrail.go	567-590	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/ai_prompts.go	258	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/applicable_memories.go	420-423	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/contacts.go	332	SQL string concatenation
@@ -99,9 +99,9 @@ G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	196	Expect WriteFile permis
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	203	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/logo.go	87	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/profile.go	188	Expect WriteFile permissions to be 0600 or less
-G701	HIGH	HIGH	handlers/ai_papertrail.go	337	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/ai_papertrail.go	367	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/ai_papertrail.go	557	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/ai_papertrail.go	371	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/ai_papertrail.go	401	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/ai_papertrail.go	591	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_aggregation.go	121	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_aggregation.go	69	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_etag.go	17	SQL injection via taint analysis
@@ -122,9 +122,9 @@ G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	68	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	89	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	707	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	807	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	818	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	709	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	809	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	820	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis

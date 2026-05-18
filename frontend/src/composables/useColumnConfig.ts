@@ -66,6 +66,11 @@ export const ALL_COLUMNS: ColumnDef[] = [
   { key: 'jira_version', label: 'Jira Version', pinned: false },
   { key: 'jira_text',    label: 'Jira Text',    pinned: false },
   { key: 'booked_hours', label: 'Booked',       pinned: false },
+  // PAI-447. Customer-facing report summary (Projektbericht). Opt-in
+  // — most lists don't need it visible at a glance, but it's the
+  // fastest way to see which rows are still missing a summary
+  // before exporting.
+  { key: 'report_summary', label: 'Report summary', pinned: false },
   { key: 'actions',      label: 'Actions',      pinned: true  },
 ]
 
@@ -80,6 +85,7 @@ const DEFAULT_HIDDEN = new Set<string>([
   'start_date', 'end_date', 'group_state', 'sprint_state',
   'jira_id', 'jira_version', 'jira_text',
   'booked_hours',
+  'report_summary',
 ])
 
 import { lsColumnsKey as LS_KEY } from '@/constants/storage'

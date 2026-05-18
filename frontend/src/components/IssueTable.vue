@@ -278,6 +278,7 @@ onUnmounted(stopColumnResize)
       <col v-if="isVisible('jira_version')" :style="colStyle('jira_version')" />
       <col v-if="isVisible('jira_text')" :style="colStyle('jira_text')" />
       <col v-if="isVisible('booked_hours')" :style="colStyle('booked_hours')" />
+      <col v-if="isVisible('report_summary')" :style="colStyle('report_summary')" />
       <col :style="colStyle('actions')" />
     </colgroup>
     <thead v-if="!compact">
@@ -312,6 +313,7 @@ onUnmounted(stopColumnResize)
         <th v-if="isVisible('jira_version')" v-bind="headerProps('jira_version', true)">Jira Version <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_version')" :size="11" /></span></th>
         <th v-if="isVisible('jira_text')" v-bind="headerProps('jira_text', true)">Jira Text <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('jira_text')" :size="11" /></span></th>
         <th v-if="isVisible('booked_hours')" v-bind="headerProps('booked_hours', true)">Booked <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('booked_hours')" :size="11" /></span></th>
+        <th v-if="isVisible('report_summary')" v-bind="headerProps('report_summary', true)">Report summary <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('report_summary')" :size="11" /></span></th>
         <th v-bind="headerProps('actions')" class="col-actions">Actions</th>
       </tr>
     </thead>
@@ -601,6 +603,7 @@ onUnmounted(stopColumnResize)
         <td v-if="!compact && isVisible('jira_version')" class="meta-cell">{{ i.jira_version || '—' }}</td>
         <td v-if="!compact && isVisible('jira_text')" class="meta-cell">{{ i.jira_text || '—' }}</td>
         <td v-if="!compact && isVisible('booked_hours')" class="meta-cell booked-cell">{{ i.booked_hours > 0 ? formatHours(i.booked_hours, 'table') : '—' }}</td>
+        <td v-if="!compact && isVisible('report_summary')" class="meta-cell report-summary-cell" :title="i.report_summary || ''">{{ i.report_summary || '—' }}</td>
         <td class="col-actions" @click.stop>
           <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
         </td>
@@ -781,6 +784,7 @@ onUnmounted(stopColumnResize)
 }
 .meta-cell { color: var(--text-muted); white-space: nowrap; font-size: 12px; }
 .booked-cell { color: var(--bp-green, #16a34a); font-weight: 600; }
+.report-summary-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; color: var(--text); }
 
 .tags-th { white-space: nowrap; }
 .tags-cell { vertical-align: middle; }

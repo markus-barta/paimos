@@ -342,6 +342,7 @@ func buildRouter() http.Handler {
 			r.Get("/ai/calls/me", handlers.AIListMyCalls)
 			r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
 			r.Post("/ai/action", handlers.AIAction)
+			r.Get("/ai/bulk-cost-estimate", handlers.AIBulkCostEstimate)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
 
 			r.Get("/search", handlers.Search)

@@ -260,10 +260,14 @@ function download() {
 
     <!-- PAI-418 / PAI-423. Generate missing bulk modal, layered on top
          of the export modal. Closes back to the export modal so the
-         user can immediately download with the freshly-filled rows. -->
+         user can immediately download with the freshly-filled rows.
+         inScopeIssues is forwarded so the bulk modal's PAI-438 /
+         PAI-441 filter toggles can look up status + existing-summary
+         state. -->
     <BulkGenerateSummaryModal
       :open="showBulkGen"
       :issue-ids="bulkGenIds"
+      :in-scope-issues="props.inScopeIssues"
       @close="showBulkGen = false"
       @updated="(issue) => emit('updated', issue)"
       @done="showBulkGen = false"

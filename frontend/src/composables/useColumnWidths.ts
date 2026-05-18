@@ -32,6 +32,11 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   jira_version: 128,
   jira_text: 220,
   booked_hours: 116,
+  // PAI-447. Customer-facing report summary. Wider than `jira_text`
+  // because content is full sentences (Apple-style or exec-style),
+  // not key/value snippets — needs room to render legibly when
+  // selected.
+  report_summary: 320,
   actions: 118,
 }
 
@@ -52,6 +57,7 @@ const MAX_WIDTHS: Record<string, number> = {
   epic: 360,
   sprint: 420,
   jira_text: 520,
+  report_summary: 680,
   actions: 180,
 }
 

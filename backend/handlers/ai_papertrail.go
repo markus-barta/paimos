@@ -157,16 +157,52 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 	}
 }
 
+// lookupAICallCostMicroUSD returns the per-call cost in micro-USD for
+// the given model + token counts. PAI-448: hardened against two
+// historical bug-sources:
+//
+//   1. The old implementation walked only the six "curated" buckets
+//      (Free / OpenWeights / Frontier / Value / Cheapest / Fastest).
+//      Any model that ended up actually being called but wasn't in
+//      a curated bucket (admin-pinned, rotated out, custom) silently
+//      returned 0 cost.
+//   2. modelsCache.payload was nil until the SPA first hit
+//      /api/ai/models. AI calls issued during the cold-cache window
+//      recorded 0 cost forever.
+//
+// We now build a flat ID-keyed view (across every bucket, deduped)
+// and fall back to staticFallbackPayload when the live cache hasn't
+// been hydrated. The unit math is unchanged — and worth restating:
+// PricingPromptPerMtok is USD per million tokens, multiplied by raw
+// token count gives micro-USD directly (USD/Mtok × tokens =
+// USD × tokens/Mtok = USD × tokens/1e6 = 1e-6 USD = micro-USD).
 func lookupAICallCostMicroUSD(model string, promptTokens, completionTokens int) int64 {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return 0
 	}
+	m, ok := findModelByID(model)
+	if !ok {
+		return 0
+	}
+	cost := m.PricingPromptPerMtok*float64(promptTokens) + m.PricingCompletionPerMtok*float64(completionTokens)
+	return int64(math.Round(cost))
+}
+
+// findModelByID returns the pickedModel for an ID across every
+// curated bucket, with a static-fallback safety net for the
+// cold-cache window. Exported (to the package) so other handlers
+// — e.g. the bulk cost-estimate endpoint — share the same lookup.
+func findModelByID(id string) (pickedModel, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return pickedModel{}, false
+	}
 	modelsCache.mu.RLock()
 	payload := modelsCache.payload
 	modelsCache.mu.RUnlock()
 	if payload == nil {
-		return 0
+		payload = staticFallbackPayload(0)
 	}
 	for _, bucket := range [][]pickedModel{
 		payload.Categories.Free,
@@ -177,14 +213,12 @@ func lookupAICallCostMicroUSD(model string, promptTokens, completionTokens int) 
 		payload.Categories.Fastest,
 	} {
 		for _, m := range bucket {
-			if m.ID != model {
-				continue
+			if m.ID == id {
+				return m, true
 			}
-			cost := m.PricingPromptPerMtok*float64(promptTokens) + m.PricingCompletionPerMtok*float64(completionTokens)
-			return int64(math.Round(cost))
 		}
 	}
-	return 0
+	return pickedModel{}, false
 }
 
 func parseAICallContext(raw json.RawMessage) (projectID, customerID, cooperationID *int64) {

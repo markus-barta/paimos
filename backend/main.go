@@ -590,6 +590,8 @@ func main() {
 			// with action="optimize". The frontend useAiOptimize
 			// composable was updated to call the dispatcher.
 			r.Post("/ai/action", handlers.AIAction)
+			// PAI-449: pre-run cost estimate for bulk AI flows.
+			r.Get("/ai/bulk-cost-estimate", handlers.AIBulkCostEstimate)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
 
 			// Integrations (admin only for write)
