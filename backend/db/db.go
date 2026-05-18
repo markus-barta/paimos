@@ -4563,6 +4563,62 @@ func migrate(db *sql.DB) error {
 				('super_admin', 'auth.impersonation.end'),
 				('super_admin', 'auth.impersonation.action')`,
 		}},
+
+		// M107 / PAI-407: Projektbericht snapshots and report-facing
+		// project metadata. A snapshot is immutable evidence of the exact
+		// issue set shown in a generated report; acceptance later acts on
+		// that frozen issue_ids_json, not on a live filter.
+		{107, []string{
+			`ALTER TABLE project_cooperation ADD COLUMN report_contract_basis TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE project_cooperation ADD COLUMN report_terms_url TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE project_cooperation ADD COLUMN report_objection_period_days INTEGER NOT NULL DEFAULT 30`,
+			`ALTER TABLE project_cooperation ADD COLUMN report_customer_responsibilities TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE project_cooperation ADD COLUMN report_contractor_responsibilities TEXT NOT NULL DEFAULT ''`,
+			`CREATE TABLE IF NOT EXISTS project_report_permissions (
+				id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				person_name    TEXT NOT NULL DEFAULT '',
+				company        TEXT NOT NULL DEFAULT '',
+				role_label     TEXT NOT NULL DEFAULT '',
+				may_approve    INTEGER NOT NULL DEFAULT 0,
+				may_deliver    INTEGER NOT NULL DEFAULT 0,
+				may_accept     INTEGER NOT NULL DEFAULT 0,
+				sort_order     INTEGER NOT NULL DEFAULT 0,
+				created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_project_report_permissions_project
+			 ON project_report_permissions(project_id, sort_order, id)`,
+			`CREATE TABLE IF NOT EXISTS project_report_snapshots (
+				id              INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				code            TEXT NOT NULL UNIQUE,
+				report_key      TEXT NOT NULL DEFAULT '',
+				report_type     TEXT NOT NULL DEFAULT 'projektbericht',
+				lang            TEXT NOT NULL DEFAULT '',
+				filter_query     TEXT NOT NULL DEFAULT '',
+				issue_ids_json  TEXT NOT NULL DEFAULT '[]',
+				total_issues    INTEGER NOT NULL DEFAULT 0,
+				pdf_sha256      TEXT NOT NULL DEFAULT '',
+				status          TEXT NOT NULL DEFAULT 'generated'
+				                CHECK(status IN ('generated','accepted','void')),
+				signed_document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+				signed_at       TEXT,
+				signer_name     TEXT NOT NULL DEFAULT '',
+				signer_company  TEXT NOT NULL DEFAULT '',
+				signer_role     TEXT NOT NULL DEFAULT '',
+				accepted_at     TEXT,
+				accepted_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				accept_summary_json TEXT NOT NULL DEFAULT '{}',
+				created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_project_report_snapshots_project
+			 ON project_report_snapshots(project_id, created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_project_report_snapshots_code
+			 ON project_report_snapshots(code)`,
+		}},
 	}
 
 	for _, m := range migrations {

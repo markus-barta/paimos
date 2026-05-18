@@ -644,8 +644,8 @@ function applyLieferberichtHandoffFromRoute() {
     id: -700,
     user_id: 0,
     owner_username: 'system',
-    title: 'Lieferbericht',
-    description: 'Delivery report filter preset.',
+    title: 'Projektbericht',
+    description: 'Project report filter preset.',
     columns_json: '[]',
     filters_json: JSON.stringify(filters),
     is_shared: true,
@@ -656,7 +656,7 @@ function applyLieferberichtHandoffFromRoute() {
     created_at: '',
     updated_at: '',
   }, false)
-  issueListRef.value.showToast('Lieferbericht uses the issue list filters. Adjust filters, then use ⋯ → Export Lieferbericht PDF.')
+  issueListRef.value.showToast('Projektbericht uses the issue list filters. Adjust filters, then use ⋯ → Export Projektbericht PDF.')
 }
 
 watch(() => route.query.report, () => nextTick(applyLieferberichtHandoffFromRoute))
@@ -795,7 +795,7 @@ watch(
           </button>
           <button class="pd-overflow-item" @click="onMenuLieferbericht">
             <AppIcon name="file-down" :size="14" />
-            <span>Export Lieferbericht PDF</span>
+            <span>Export Projektbericht PDF</span>
           </button>
           <button v-if="isAdmin && canEditProject" class="pd-overflow-item" :disabled="importing" @click="onMenuImport">
             <AppIcon name="download" :size="14" />

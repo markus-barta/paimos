@@ -29,6 +29,7 @@ declare module "vue-router" {
     public?: boolean;
     adminOnly?: boolean;
     portal?: boolean;
+    acceptance?: boolean;
     projectIdParam?: string;
     // PAI-274 / PAI-361: views that own their internal scroll container
     // (e.g. lists with sticky headers and frozen columns) opt into a
@@ -58,6 +59,11 @@ const router = createRouter({
       path: "/reset/:token",
       component: () => import("@/views/ResetPasswordView.vue"),
       meta: { public: true },
+    },
+    {
+      path: "/accept/:code",
+      component: () => import("@/views/ProjectReportAcceptView.vue"),
+      meta: { acceptance: true },
     },
     {
       // PAI-321: forced first-login change-password screen. The guard
@@ -142,6 +148,10 @@ const router = createRouter({
       path: "/reporting/lieferbericht",
       component: () => import("@/views/LieferberichtView.vue"),
     },
+    {
+      path: "/reporting/projektbericht",
+      component: () => import("@/views/LieferberichtView.vue"),
+    },
     ...(import.meta.env.DEV
       ? [
           {
@@ -192,6 +202,7 @@ router.beforeEach(async (to) => {
   if (
     auth.user?.role === "external" &&
     !to.meta.portal &&
+    !to.meta.acceptance &&
     !to.meta.public &&
     to.path !== "/login"
   ) {

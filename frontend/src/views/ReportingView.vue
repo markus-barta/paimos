@@ -5,8 +5,8 @@ import AppIcon from '@/components/AppIcon.vue'
 const reports = [
   {
     id: 'lieferbericht',
-    title: 'Lieferbericht',
-    description: 'Delivery report — issues grouped by epic with AR calculations, subtotals, and PDF export.',
+    title: 'Projektbericht',
+    description: 'Project report — issues grouped by epic with AR calculations, subtotals, PDF export, and acceptance workflow.',
     icon: 'file-text',
     to: '/reporting/lieferbericht',
   },

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 106
+const latestSchemaVersion = 107
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -110,6 +110,8 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"project_agents",
 		"project_environments",
 		"project_deploy_recipes",
+		"project_report_permissions",
+		"project_report_snapshots",
 		"role_permissions",
 		"super_admin_audit",
 	} {
@@ -149,6 +151,12 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "users", "role_key") {
 		t.Fatal("expected users.role_key to exist (PAI-336 / M105)")
+	}
+	if !columnExists(t, db, "project_cooperation", "report_contract_basis") {
+		t.Fatal("expected project_cooperation.report_contract_basis to exist (PAI-407 / M107)")
+	}
+	if !columnExists(t, db, "project_cooperation", "report_customer_responsibilities") {
+		t.Fatal("expected project_cooperation.report_customer_responsibilities to exist (PAI-407 / M107)")
 	}
 	// PAI-324 / M93 — agent + session attribution on history snapshots.
 	if !columnExists(t, db, "issue_history", "agent_name") {
@@ -252,6 +260,9 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_super_admin_audit_capability",
 		"idx_sessions_actor_user",
 		"idx_sessions_acting_as_user",
+		"idx_project_report_permissions_project",
+		"idx_project_report_snapshots_project",
+		"idx_project_report_snapshots_code",
 	} {
 		found, err := SchemaHasIndex(db, index)
 		if err != nil {

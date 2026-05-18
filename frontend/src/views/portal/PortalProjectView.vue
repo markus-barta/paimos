@@ -9,6 +9,7 @@ import { useBranding } from '@/composables/useBranding'
 import StatusDot from '@/components/StatusDot.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
+import type { ProjectReportSnapshot } from '@/types'
 
 interface PortalProject {
   id: number; key: string; name: string; description: string; status: string
@@ -39,6 +40,7 @@ const projectId = Number(route.params.id)
 const project = ref<PortalProject | null>(null)
 const issues = ref<PortalIssue[]>([])
 const summary = ref<PortalSummary | null>(null)
+const reports = ref<ProjectReportSnapshot[]>([])
 const loading = ref(true)
 
 // Filter tabs: all, open (in-progress), review (done), accepted
@@ -113,14 +115,16 @@ watch(() => search.query, () => { fetchIssues() })
 
 onMounted(async () => {
   try {
-    const [p, iss, s] = await Promise.all([
+    const [p, iss, s, reps] = await Promise.all([
       api.get<PortalProject>(`/portal/projects/${projectId}`),
       api.get<PortalIssue[]>(`/portal/projects/${projectId}/issues${search.query.length >= 2 ? '?q=' + encodeURIComponent(search.query) : ''}`),
       api.get<PortalSummary>(`/portal/projects/${projectId}/summary`),
+      api.get<ProjectReportSnapshot[]>(`/portal/projects/${projectId}/projektberichte`),
     ])
     project.value = p
     issues.value = iss
     summary.value = s
+    reports.value = reps
   } catch { /* ignore */ }
   loading.value = false
 })
@@ -168,8 +172,6 @@ const STATUS_ICONS: Record<string, string> = {
   'cancelled': 'x-circle',
 }
 
-const today = new Date().toISOString().slice(0, 10)
-
 // Tab counts
 const openCount = computed(() => issues.value.filter(i => i.status === 'new' || i.status === 'backlog' || i.status === 'in-progress' || i.status === 'qa').length)
 const reviewCount = computed(() => issues.value.filter(i => i.status === 'done' || i.status === 'delivered').length)
@@ -191,15 +193,34 @@ const acceptedCount = computed(() => issues.value.filter(i => i.status === 'acce
           </div>
         </div>
         <div class="header-actions">
-          <a :href="`/api/portal/projects/${projectId}/acceptance-report?date=${today}`"
-             target="_blank" class="btn btn-ghost btn-sm report-link">
-            <AppIcon name="file-text" :size="13" /> {{ $t('portal.summary.report') }}
-          </a>
           <button class="btn btn-primary" @click="showRequestModal = true">{{ $t('portal.newRequest') }}</button>
         </div>
       </div>
       <p v-if="project.description" class="project-desc">{{ project.description }}</p>
     </div>
+
+    <section v-if="reports.length" class="reports-panel">
+      <header class="reports-head">
+        <div>
+          <h2>{{ $t('portal.summary.report') }}</h2>
+          <p>PDFs und Abnahme-Links für diesen Projektbericht.</p>
+        </div>
+      </header>
+      <div class="report-row" v-for="report in reports.slice(0, 5)" :key="report.id">
+        <div>
+          <strong>{{ report.report_key }}</strong>
+          <span>{{ report.total_issues }} Tickets · {{ report.status === 'accepted' ? 'abgenommen' : 'offen' }}</span>
+        </div>
+        <div class="report-actions">
+          <a class="btn btn-ghost btn-sm" :href="`/api/projektberichte/${report.code}/pdf`" target="_blank">
+            <AppIcon name="download" :size="13" /> PDF
+          </a>
+          <router-link class="btn btn-primary btn-sm" :to="`/accept/${report.code}`">
+            <AppIcon name="shield-check" :size="13" /> Öffnen
+          </router-link>
+        </div>
+      </div>
+    </section>
 
     <!-- Summary cards with icons -->
     <div class="summary-row" v-if="summary">
@@ -303,7 +324,7 @@ const acceptedCount = computed(() => issues.value.filter(i => i.status === 'acce
             <td @click.stop>
               <span v-if="issue.status === 'invoiced'" class="accepted-badge">{{ $t('portal.invoicedLabel', 'Invoiced') }}</span>
               <span v-else-if="issue.status === 'accepted'" class="accepted-badge">{{ $t('portal.acceptedLabel') }}</span>
-              <button v-else-if="issue.status === 'done'" class="btn btn-ghost btn-sm" @click="acceptIssue(issue)">
+              <button v-else-if="issue.status === 'done' || issue.status === 'delivered'" class="btn btn-ghost btn-sm" @click="acceptIssue(issue)">
                 {{ $t('portal.accept') }}
               </button>
             </td>
@@ -325,7 +346,7 @@ const acceptedCount = computed(() => issues.value.filter(i => i.status === 'acce
               <td @click.stop>
                 <span v-if="parent.status === 'invoiced'" class="accepted-badge">{{ $t('portal.invoicedLabel', 'Invoiced') }}</span>
                 <span v-else-if="parent.status === 'accepted'" class="accepted-badge">{{ $t('portal.acceptedLabel') }}</span>
-                <button v-else-if="parent.status === 'done'" class="btn btn-ghost btn-sm" @click="acceptIssue(parent)">{{ $t('portal.accept') }}</button>
+                <button v-else-if="parent.status === 'done' || parent.status === 'delivered'" class="btn btn-ghost btn-sm" @click="acceptIssue(parent)">{{ $t('portal.accept') }}</button>
               </td>
             </tr>
             <tr v-for="child in childrenOf(parent.id)" :key="child.id"
@@ -343,7 +364,7 @@ const acceptedCount = computed(() => issues.value.filter(i => i.status === 'acce
               <td @click.stop>
                 <span v-if="child.status === 'invoiced'" class="accepted-badge">{{ $t('portal.invoicedLabel', 'Invoiced') }}</span>
                 <span v-else-if="child.status === 'accepted'" class="accepted-badge">{{ $t('portal.acceptedLabel') }}</span>
-                <button v-else-if="child.status === 'done'" class="btn btn-ghost btn-sm" @click="acceptIssue(child)">{{ $t('portal.accept') }}</button>
+                <button v-else-if="child.status === 'done' || child.status === 'delivered'" class="btn btn-ghost btn-sm" @click="acceptIssue(child)">{{ $t('portal.accept') }}</button>
               </td>
             </tr>
           </template>
@@ -400,7 +421,34 @@ const acceptedCount = computed(() => issues.value.filter(i => i.status === 'acce
 }
 .project-name { font-size: 20px; font-weight: 700; }
 .project-desc { font-size: 13px; color: var(--text-muted); margin-top: .5rem; }
-.report-link { display: inline-flex; align-items: center; gap: .3rem; }
+.reports-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+.reports-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .8rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.reports-head h2 { font-size: 14px; margin: 0; }
+.reports-head p { margin: .15rem 0 0; font-size: 12px; color: var(--text-muted); }
+.report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .7rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.report-row:last-child { border-bottom: 0; }
+.report-row strong { display: block; font-size: 13px; }
+.report-row span { display: block; color: var(--text-muted); font-size: 12px; }
+.report-actions { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Summary cards */
 .summary-row { display: flex; gap: .75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }

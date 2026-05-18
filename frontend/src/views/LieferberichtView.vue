@@ -50,7 +50,7 @@ function openIssueList() {
 
 <template>
   <Teleport defer to="#app-header-left">
-    <span class="ah-title">Lieferbericht</span>
+    <span class="ah-title">Projektbericht</span>
     <span class="ah-subtitle">Uses project issue-list filters</span>
   </Teleport>
 

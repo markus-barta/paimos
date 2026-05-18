@@ -177,7 +177,9 @@ func parseLBColSet(s string) lbColSet {
 // lbRenderOpts bundles per-request rendering options so the renderer signature
 // stays stable as new toggles are added.
 type lbRenderOpts struct {
-	Lang    string
-	Cols    lbColSet
-	BaseURL string
+	Lang          string
+	Cols          lbColSet
+	BaseURL       string
+	ReportCode    string
+	AcceptanceURL string
 }

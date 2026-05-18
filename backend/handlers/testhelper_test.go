@@ -146,6 +146,10 @@ func buildRouter() http.Handler {
 				w.Write([]byte(`{"label":"TEST","hostname":"test"}`))
 			})
 			r.Get("/brandings", handlers.ListBrandings)
+			r.Get("/projektberichte/accept/{code}", handlers.GetProjectReportAcceptance)
+			r.Post("/projektberichte/accept/{code}", handlers.AcceptProjectReport)
+			r.Put("/projektberichte/accept/{code}/signed", handlers.LinkProjectReportSignedArtifact)
+			r.Get("/projektberichte/{code}/pdf", handlers.GetProjectReportPDF)
 			r.Get("/logos/{filename}", func(w http.ResponseWriter, req *http.Request) {
 				// Same — just a stub that returns 200 so the authed
 				// probe doesn't get a 404 disguising a routing bug.
@@ -168,6 +172,7 @@ func buildRouter() http.Handler {
 			r.Post("/portal/projects/{id}/requests", handlers.PortalSubmitRequest)
 			r.Post("/portal/issues/{id}/accept", handlers.PortalAcceptIssue)
 			r.Get("/portal/projects/{id}/summary", handlers.PortalProjectSummary)
+			r.Get("/portal/projects/{id}/projektberichte", handlers.ListProjectReports)
 		})
 
 		// Internal (blocked for external)
@@ -366,6 +371,11 @@ func buildRouter() http.Handler {
 			// Reports
 			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht", handlers.GetLieferbericht)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht/pdf", handlers.GetLieferberichtPDF)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/projektberichte", handlers.ListProjectReports)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/report-permissions", handlers.ListProjectReportPermissions)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/report-permissions", handlers.PutProjectReportPermissions)
 
 			// Attachments
 			r.Get("/issues/{id}/attachments", handlers.ListAttachments)

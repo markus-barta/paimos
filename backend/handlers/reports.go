@@ -86,6 +86,7 @@ type lbFilters struct {
 	CostUnit        string
 	Release         string
 	AssigneeID      string
+	IssueIDs        []int64
 }
 
 func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate string, filters lbFilters) (*lbReport, error) {
@@ -175,6 +176,20 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 	where, args = appendLBMultiFilter(where, args, "i.cost_unit", filters.CostUnit)
 	where, args = appendLBMultiFilter(where, args, "i.release", filters.Release)
 	where, args = appendLBAssigneeFilter(where, args, filters.AssigneeID)
+	if len(filters.IssueIDs) > 0 {
+		ph := make([]string, 0, len(filters.IssueIDs))
+		for _, id := range filters.IssueIDs {
+			if id <= 0 {
+				continue
+			}
+			ph = append(ph, "?")
+			args = append(args, id)
+		}
+		if len(ph) == 0 {
+			return nil, fmt.Errorf("no valid issue ids")
+		}
+		where = append(where, "i.id IN ("+strings.Join(ph, ",")+")")
+	}
 
 	if filters.DateField != "" && (filters.DateFrom != "" || filters.DateTo != "") {
 		dateWhere, dateArgs := issueDateWhereSQL(filters.DateField, filters.DateFrom, filters.DateTo)

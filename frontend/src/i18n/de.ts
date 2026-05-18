@@ -37,7 +37,7 @@ export default {
       total: 'Gesamt',
       estimate: 'Schätzung',
       arCost: 'AR Kosten',
-      report: 'Abnahmebericht',
+      report: 'Projektberichte',
     },
     reject: 'Ablehnen',
     invoicedLabel: 'Verrechnet',
@@ -133,8 +133,8 @@ export default {
     undo: 'Rückgängig',
   },
   lieferbericht: {
-    title: 'Lieferbericht',
-    subtitle: 'Lieferbericht — Tickets gruppiert nach Epic mit AR-Berechnung.',
+    title: 'Projektbericht',
+    subtitle: 'Projektbericht — Tickets gruppiert nach Epic mit AR-Berechnung.',
     filters: {
       project: 'Projekt',
       projectPlaceholder: 'Projekt wählen…',
@@ -185,10 +185,10 @@ export default {
     empty: 'Keine Tickets passen zu den gewählten Filtern.',
     errorGenerate: 'Bericht konnte nicht erzeugt werden.',
     exportModal: {
-      title: 'Lieferbericht-PDF exportieren',
+      title: 'Projektbericht-PDF exportieren',
       cancel: 'Abbrechen',
-      ignoredFiltersPrefix: 'Folgende IssueList-Filter werden vom Lieferbericht-Endpoint (noch) nicht unterstützt und ignoriert:',
-      issueListAction: 'Export → Lieferbericht-PDF',
+      ignoredFiltersPrefix: 'Folgende IssueList-Filter werden vom Projektbericht-Endpoint (noch) nicht unterstützt und ignoriert:',
+      issueListAction: 'Export → Projektbericht-PDF',
     },
   },
   undo: {

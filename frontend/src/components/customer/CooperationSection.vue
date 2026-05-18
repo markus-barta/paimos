@@ -21,7 +21,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useMarkdown } from '@/composables/useMarkdown'
-import type { CooperationMetadata } from '@/types'
+import type { CooperationMetadata, ProjectReportPermission } from '@/types'
 // PAI-146 expansion: AI optimize on the cooperation freeform fields.
 // SLA text gets a "preserve every number verbatim" reminder; the
 // cooperation notes get a "preserve named systems and ownership
@@ -62,6 +62,8 @@ const loadError = ref('')
 
 const editing = ref(false)
 const draft = ref<CooperationMetadata | null>(null)
+const permissions = ref<ProjectReportPermission[]>([])
+const permissionDraft = ref<ProjectReportPermission[]>([])
 const saving = ref(false)
 const saveError = ref('')
 
@@ -100,7 +102,10 @@ const populated = computed(() => {
   return !!(d.engagement_type || d.code_ownership || d.env_responsibility
             || d.has_sla || d.uptime_sla || d.response_time_sla
             || d.backup_responsible || d.oncall
-            || d.sla_details || d.cooperation_notes)
+            || d.sla_details || d.cooperation_notes
+            || d.report_contract_basis || d.report_terms_url
+            || d.report_customer_responsibilities || d.report_contractor_responsibilities
+            || permissions.value.length > 0)
 })
 
 watch(populated, (v) => emit('populated', v), { immediate: true })
@@ -109,7 +114,12 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    data.value = await api.get<CooperationMetadata>(`/projects/${props.projectId}/cooperation`)
+    const [coop, perms] = await Promise.all([
+      api.get<CooperationMetadata>(`/projects/${props.projectId}/cooperation`),
+      api.get<ProjectReportPermission[]>(`/projects/${props.projectId}/report-permissions`),
+    ])
+    data.value = normalizeCoop(coop)
+    permissions.value = perms
   } catch (e: unknown) {
     loadError.value = errMsg(e, 'Failed to load cooperation profile.')
   } finally {
@@ -123,12 +133,14 @@ function startEdit() {
   if (!data.value) return
   // Deep-enough clone — no nested objects, so spread is sufficient.
   draft.value = { ...data.value }
+  permissionDraft.value = permissions.value.map((p) => ({ ...p }))
   saveError.value = ''
   editing.value = true
 }
 function cancelEdit() {
   editing.value = false
   draft.value = null
+  permissionDraft.value = []
   saveError.value = ''
 }
 async function save() {
@@ -136,17 +148,51 @@ async function save() {
   saving.value = true
   saveError.value = ''
   try {
-    data.value = await api.put<CooperationMetadata>(
+    data.value = normalizeCoop(await api.put<CooperationMetadata>(
       `/projects/${props.projectId}/cooperation`,
       draft.value,
+    ))
+    permissions.value = await api.put<ProjectReportPermission[]>(
+      `/projects/${props.projectId}/report-permissions`,
+      permissionDraft.value,
     )
     editing.value = false
     draft.value = null
+    permissionDraft.value = []
   } catch (e: unknown) {
     saveError.value = errMsg(e, 'Save failed.')
   } finally {
     saving.value = false
   }
+}
+
+function normalizeCoop(c: CooperationMetadata): CooperationMetadata {
+  return {
+    ...c,
+    report_contract_basis: c.report_contract_basis ?? '',
+    report_terms_url: c.report_terms_url ?? '',
+    report_objection_period_days: c.report_objection_period_days || 30,
+    report_customer_responsibilities: c.report_customer_responsibilities ?? '',
+    report_contractor_responsibilities: c.report_contractor_responsibilities ?? '',
+  }
+}
+
+function addPermissionRow() {
+  permissionDraft.value.push({
+    id: 0,
+    project_id: props.projectId,
+    person_name: '',
+    company: '',
+    role_label: '',
+    may_approve: false,
+    may_deliver: false,
+    may_accept: true,
+    sort_order: permissionDraft.value.length,
+  })
+}
+
+function removePermissionRow(index: number) {
+  permissionDraft.value.splice(index, 1)
 }
 
 // ── Markdown rendering for view mode ────────────────────────────────
@@ -244,6 +290,30 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
         </header>
         <div class="coop-md" v-html="notesHtml" />
       </div>
+
+      <div v-if="data.report_contract_basis || data.report_terms_url || permissions.length" class="coop-notes">
+        <header class="coop-subhead">
+          <AppIcon name="file-check-2" :size="14" />
+          <span>Projektbericht</span>
+        </header>
+        <div class="coop-grid">
+          <div v-if="data.report_contract_basis" class="coop-field">
+            <span class="coop-field-label">Grundlage</span>
+            <span>{{ data.report_contract_basis }}</span>
+          </div>
+          <div v-if="data.report_terms_url" class="coop-field">
+            <span class="coop-field-label">AGB / Terms</span>
+            <span>{{ data.report_terms_url }}</span>
+          </div>
+        </div>
+        <div v-if="permissions.length" class="coop-permissions-view">
+          <div v-for="p in permissions" :key="p.id || `${p.person_name}-${p.company}`" class="coop-permission-pill">
+            <strong>{{ p.person_name || p.company }}</strong>
+            <span>{{ p.role_label }}</span>
+            <em>{{ [p.may_approve ? 'Freigabe' : '', p.may_deliver ? 'Lieferung' : '', p.may_accept ? 'Abnahme' : ''].filter(Boolean).join(' · ') }}</em>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Edit mode ──────────────────────────────────────────── -->
@@ -330,6 +400,56 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
         <textarea v-model="draft.cooperation_notes" rows="4"
                   placeholder="Data retention, special arrangements, anything else worth knowing." />
         <AiSurfaceFeedback host-key="cooperation:notes" :apply="applyCooperationAiResult" />
+      </div>
+
+      <div class="coop-form-sla">
+        <header class="coop-subhead">
+          <AppIcon name="file-check-2" :size="14" />
+          <span>Projektbericht metadata</span>
+        </header>
+        <div class="coop-form-grid">
+          <div class="coop-form-field">
+            <label>Contract basis</label>
+            <input v-model="draft.report_contract_basis" type="text" placeholder="e.g. Angebot A-123 / Rahmenvertrag" />
+          </div>
+          <div class="coop-form-field">
+            <label>AGB / terms URL</label>
+            <input v-model="draft.report_terms_url" type="url" placeholder="https://…" />
+          </div>
+          <div class="coop-form-field">
+            <label>Objection period days</label>
+            <input v-model.number="draft.report_objection_period_days" type="number" min="1" step="1" />
+          </div>
+          <div class="coop-form-field coop-form-fullwidth">
+            <label>Customer responsibilities</label>
+            <textarea v-model="draft.report_customer_responsibilities" rows="3" />
+          </div>
+          <div class="coop-form-field coop-form-fullwidth">
+            <label>BYTEPOETS responsibilities</label>
+            <textarea v-model="draft.report_contractor_responsibilities" rows="3" />
+          </div>
+        </div>
+
+        <div class="coop-permissions-edit">
+          <div class="coop-field-label-row">
+            <label>Report permissions</label>
+            <button type="button" class="btn btn-ghost btn-sm" @click="addPermissionRow">
+              <AppIcon name="plus" :size="14" /> Add
+            </button>
+          </div>
+          <div v-for="(p, idx) in permissionDraft" :key="idx" class="coop-permission-row">
+            <input v-model="p.person_name" placeholder="Person" />
+            <input v-model="p.company" placeholder="Company" />
+            <input v-model="p.role_label" placeholder="Role" />
+            <label><input type="checkbox" v-model="p.may_approve" /> Freigabe</label>
+            <label><input type="checkbox" v-model="p.may_deliver" /> Lieferung</label>
+            <label><input type="checkbox" v-model="p.may_accept" /> Abnahme</label>
+            <button type="button" class="btn btn-ghost btn-sm" @click="removePermissionRow(idx)">
+              <AppIcon name="trash-2" :size="14" />
+            </button>
+          </div>
+          <p v-if="permissionDraft.length === 0" class="coop-form-hint">No report permission rows configured.</p>
+        </div>
       </div>
 
       <p v-if="saveError" class="coop-error">{{ saveError }}</p>
@@ -475,6 +595,41 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
 }
 .coop-form-toggles { display: flex; flex-direction: column; gap: .5rem; justify-content: center; }
 .coop-form-actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .25rem; }
+.coop-permissions-view {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .75rem;
+}
+.coop-permission-pill {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .45rem .6rem;
+  background: var(--bg-card);
+  font-size: 12px;
+}
+.coop-permission-pill strong,
+.coop-permission-pill span,
+.coop-permission-pill em { display: block; }
+.coop-permission-pill em { color: var(--text-muted); font-style: normal; }
+.coop-permissions-edit { display: flex; flex-direction: column; gap: .5rem; }
+.coop-permission-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) auto auto auto auto;
+  gap: .4rem;
+  align-items: center;
+}
+.coop-permission-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.coop-form-hint { margin: 0; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 900px) {
+  .coop-permission-row { grid-template-columns: 1fr; }
+}
 .label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--text-muted); }
 textarea { resize: vertical; min-height: 70px; }
 </style>

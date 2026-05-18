@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -146,6 +147,106 @@ func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	if string(body[:5]) != "%PDF-" {
 		t.Errorf("not a valid PDF: starts with %q", string(body[:5]))
 	}
+}
+
+func TestProjektberichtSnapshotAcceptanceFlow(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Snapshot Project",
+		"key":  "PBS",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	createIssue := func(title, status string) int64 {
+		t.Helper()
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
+			"title":  title,
+			"type":   "ticket",
+			"status": status,
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		return responseID(t, resp)
+	}
+	doneID := createIssue("Ready for acceptance", "done")
+	deliveredID := createIssue("Already delivered", "delivered")
+	backlogID := createIssue("Not yet ready", "backlog")
+
+	req, err := http.NewRequest(http.MethodGet, ts.srv.URL+fmt.Sprintf("/api/projects/%d/reports/projektbericht/pdf?scope=date_range&statuses=done,delivered,backlog&snapshot=1", projectID), nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Cookie", ts.adminCookie)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "pm.bytepoets.com")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET projektbericht pdf: %v", err)
+	}
+	assertStatus(t, resp, http.StatusOK)
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "PB-PBS") {
+		t.Fatalf("Content-Disposition=%q, want PB-PBS filename", cd)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	resp = ts.get(t, fmt.Sprintf("/api/projects/%d/projektberichte", projectID), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	defer resp.Body.Close()
+	var snaps []struct {
+		Code              string         `json:"code"`
+		Status            string         `json:"status"`
+		AcceptanceURL     string         `json:"acceptance_url"`
+		EligibleCount     int            `json:"eligible_count"`
+		SkippedCount      int            `json:"skipped_count"`
+		AlreadyFinalCount int            `json:"already_final_count"`
+		AcceptSummary     map[string]int `json:"accept_summary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&snaps); err != nil {
+		t.Fatalf("decode snapshots: %v", err)
+	}
+	if len(snaps) != 1 {
+		t.Fatalf("snapshot count=%d, want 1", len(snaps))
+	}
+	if snaps[0].Code == "" || !strings.Contains(snaps[0].AcceptanceURL, "/accept/"+snaps[0].Code) {
+		t.Fatalf("bad acceptance URL for snapshot: code=%q url=%q", snaps[0].Code, snaps[0].AcceptanceURL)
+	}
+	if snaps[0].EligibleCount != 2 || snaps[0].SkippedCount != 1 || snaps[0].AlreadyFinalCount != 0 {
+		t.Fatalf("counts eligible/skipped/final=%d/%d/%d, want 2/1/0", snaps[0].EligibleCount, snaps[0].SkippedCount, snaps[0].AlreadyFinalCount)
+	}
+
+	resp = ts.post(t, "/api/projektberichte/accept/"+snaps[0].Code, ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusOK)
+	defer resp.Body.Close()
+	var accepted struct {
+		Status        string         `json:"status"`
+		AcceptSummary map[string]int `json:"accept_summary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&accepted); err != nil {
+		t.Fatalf("decode accepted snapshot: %v", err)
+	}
+	if accepted.Status != "accepted" || accepted.AcceptSummary["accepted"] != 2 || accepted.AcceptSummary["skipped"] != 1 {
+		t.Fatalf("accept result status=%q summary=%v, want accepted with 2 accepted / 1 skipped", accepted.Status, accepted.AcceptSummary)
+	}
+
+	assertIssueStatus := func(id int64, want string) {
+		t.Helper()
+		var got string
+		if err := db.DB.QueryRow(`SELECT status FROM issues WHERE id=?`, id).Scan(&got); err != nil {
+			t.Fatalf("issue %d status query: %v", id, err)
+		}
+		if got != want {
+			t.Fatalf("issue %d status=%q, want %q", id, got, want)
+		}
+	}
+	assertIssueStatus(doneID, "accepted")
+	assertIssueStatus(deliveredID, "accepted")
+	assertIssueStatus(backlogID, "backlog")
+
+	resp = ts.get(t, "/api/projektberichte/"+snaps[0].Code+"/pdf", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
 }
 
 func TestLieferberichtPDF_ManyIssues(t *testing.T) {

@@ -206,6 +206,10 @@ func main() {
 			r.Get("/brandings", handlers.ListBrandings)
 			r.Get("/logos/{filename}", serveLogoHandler)
 			r.Get("/avatars/{filename}", serveAvatarHandler)
+			r.Get("/projektberichte/accept/{code}", handlers.GetProjectReportAcceptance)
+			r.Post("/projektberichte/accept/{code}", handlers.AcceptProjectReport)
+			r.Put("/projektberichte/accept/{code}/signed", handlers.LinkProjectReportSignedArtifact)
+			r.Get("/projektberichte/{code}/pdf", handlers.GetProjectReportPDF)
 		})
 
 		// Portal (external + admin)
@@ -225,6 +229,7 @@ func main() {
 			r.Post("/portal/issues/{id}/undo-accept", handlers.PortalUndoAccept)
 			r.Post("/portal/issues/{id}/undo-reject", handlers.PortalUndoReject)
 			r.Get("/portal/projects/{id}/summary", handlers.PortalProjectSummary)
+			r.Get("/portal/projects/{id}/projektberichte", handlers.ListProjectReports)
 			r.Get("/portal/projects/{id}/acceptance-report", handlers.AcceptanceReport)
 		})
 
@@ -357,6 +362,11 @@ func main() {
 			r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-report", handlers.AcceptanceReport)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht", handlers.GetLieferbericht)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht/pdf", handlers.GetLieferberichtPDF)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/projektberichte", handlers.ListProjectReports)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/report-permissions", handlers.ListProjectReportPermissions)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/report-permissions", handlers.PutProjectReportPermissions)
 			// Project accruals (Vorräte) — admin only
 			r.With(auth.RequireAdmin).Get("/reports/accruals", handlers.GetAccruals)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv/preflight", handlers.ImportCSVPreflight)

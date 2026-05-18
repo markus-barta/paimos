@@ -37,7 +37,7 @@ export default {
       total: 'Total',
       estimate: 'Estimate',
       arCost: 'AR Cost',
-      report: 'Acceptance Report',
+      report: 'Project reports',
     },
     reject: 'Reject',
     invoicedLabel: 'Invoiced',
@@ -133,8 +133,8 @@ export default {
     undo: 'Undo',
   },
   lieferbericht: {
-    title: 'Delivery report',
-    subtitle: 'Delivery report — issues grouped by epic with AR calculations.',
+    title: 'Project report',
+    subtitle: 'Project report — issues grouped by epic with AR calculations.',
     filters: {
       project: 'Project',
       projectPlaceholder: 'Select project…',
@@ -185,10 +185,10 @@ export default {
     empty: 'No issues match the selected filters.',
     errorGenerate: 'Failed to generate report.',
     exportModal: {
-      title: 'Export Lieferbericht PDF',
+      title: 'Export project report PDF',
       cancel: 'Cancel',
-      ignoredFiltersPrefix: 'These IssueList filters are not (yet) supported by the Lieferbericht endpoint and will be ignored:',
-      issueListAction: 'Export → Lieferbericht PDF',
+      ignoredFiltersPrefix: 'These IssueList filters are not (yet) supported by the project-report endpoint and will be ignored:',
+      issueListAction: 'Export → Project report PDF',
     },
   },
   undo: {

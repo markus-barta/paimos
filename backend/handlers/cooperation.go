@@ -67,7 +67,7 @@ func GetCooperation(w http.ResponseWriter, r *http.Request) {
 	}
 	if c == nil {
 		// Empty defaults so the frontend can render the form straight away.
-		jsonOK(w, models.CooperationMetadata{ProjectID: pid})
+		jsonOK(w, models.CooperationMetadata{ProjectID: pid, ReportObjectionPeriodDays: 30})
 		return
 	}
 	jsonOK(w, c)
@@ -118,9 +118,11 @@ func PutCooperation(w http.ResponseWriter, r *http.Request) {
 			has_sla, uptime_sla, response_time_sla,
 			backup_responsible, oncall,
 			sla_details, cooperation_notes,
+			report_contract_basis, report_terms_url, report_objection_period_days,
+			report_customer_responsibilities, report_contractor_responsibilities,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT(project_id) DO UPDATE SET
 			engagement_type    = excluded.engagement_type,
 			code_ownership     = excluded.code_ownership,
@@ -132,6 +134,11 @@ func PutCooperation(w http.ResponseWriter, r *http.Request) {
 			oncall             = excluded.oncall,
 			sla_details        = excluded.sla_details,
 			cooperation_notes  = excluded.cooperation_notes,
+			report_contract_basis = excluded.report_contract_basis,
+			report_terms_url = excluded.report_terms_url,
+			report_objection_period_days = excluded.report_objection_period_days,
+			report_customer_responsibilities = excluded.report_customer_responsibilities,
+			report_contractor_responsibilities = excluded.report_contractor_responsibilities,
 			updated_at         = excluded.updated_at
 	`,
 		pid,
@@ -142,6 +149,11 @@ func PutCooperation(w http.ResponseWriter, r *http.Request) {
 		body.UptimeSLA, body.ResponseTimeSLA,
 		coopBoolInt(body.BackupResponsible), coopBoolInt(body.OnCall),
 		body.SLADetails, body.CooperationNotes,
+		body.ReportContractBasis,
+		body.ReportTermsURL,
+		normalizedObjectionPeriod(body.ReportObjectionPeriodDays),
+		body.ReportCustomerResponsibilities,
+		body.ReportContractorResponsibilities,
 	)
 	if err != nil {
 		jsonError(w, "save failed", http.StatusInternalServerError)
@@ -166,6 +178,8 @@ func loadCooperation(projectID int64) (*models.CooperationMetadata, error) {
 		       has_sla, uptime_sla, response_time_sla,
 		       backup_responsible, oncall,
 		       sla_details, cooperation_notes,
+		       report_contract_basis, report_terms_url, report_objection_period_days,
+		       report_customer_responsibilities, report_contractor_responsibilities,
 		       created_at, updated_at
 		FROM project_cooperation WHERE project_id=?
 	`, projectID).Scan(
@@ -173,6 +187,8 @@ func loadCooperation(projectID int64) (*models.CooperationMetadata, error) {
 		&hasSLA, &c.UptimeSLA, &c.ResponseTimeSLA,
 		&backup, &oncall,
 		&c.SLADetails, &c.CooperationNotes,
+		&c.ReportContractBasis, &c.ReportTermsURL, &c.ReportObjectionPeriodDays,
+		&c.ReportCustomerResponsibilities, &c.ReportContractorResponsibilities,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -184,6 +200,7 @@ func loadCooperation(projectID int64) (*models.CooperationMetadata, error) {
 	c.HasSLA = hasSLA != 0
 	c.BackupResponsible = backup != 0
 	c.OnCall = oncall != 0
+	c.ReportObjectionPeriodDays = normalizedObjectionPeriod(c.ReportObjectionPeriodDays)
 	return &c, nil
 }
 
@@ -202,4 +219,11 @@ func coopBoolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func normalizedObjectionPeriod(days int) int {
+	if days <= 0 {
+		return 30
+	}
+	return days
 }

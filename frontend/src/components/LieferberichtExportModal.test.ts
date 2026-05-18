@@ -110,7 +110,8 @@ describe('LieferberichtExportModal', () => {
     const [rawURL, target] = open.mock.calls[0]
     const url = new URL(String(rawURL), 'http://paimos.test')
     expect(target).toBe('_blank')
-    expect(url.pathname).toBe('/api/projects/7/reports/lieferbericht/pdf')
+    expect(url.pathname).toBe('/api/projects/7/reports/projektbericht/pdf')
+    expect(url.searchParams.get('snapshot')).toBe('1')
     expect(url.searchParams.get('scope')).toBe('sprint')
     expect(url.searchParams.get('sprint_ids')).toBe('5')
     expect(url.searchParams.get('statuses')).toBe('!done,qa')

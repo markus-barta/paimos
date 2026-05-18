@@ -118,6 +118,7 @@ function download() {
   }
   params.set('lang', lang.value)
   params.set('cols', colsParam.value)
+  params.set('snapshot', '1')
   const tagIDs = encodeSignedList(props.filterTags, { numeric: true })
   if (tagIDs.length > 0) params.set('tag_ids', tagIDs.join(','))
   const statuses = encodeSignedList(props.filterStatus, { numeric: false, dropOtherStatus: true })
@@ -137,7 +138,7 @@ function download() {
     if (props.dateFrom) params.set('date_from', props.dateFrom)
     if (props.dateTo) params.set('date_to', props.dateTo)
   }
-  window.open(`/api/projects/${props.projectId}/reports/lieferbericht/pdf?${params.toString()}`, '_blank')
+  window.open(`/api/projects/${props.projectId}/reports/projektbericht/pdf?${params.toString()}`, '_blank')
   emit('close')
 }
 </script>

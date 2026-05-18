@@ -20,6 +20,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,8 +29,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/boombuler/barcode"
+	"github.com/boombuler/barcode/qr"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pdf/fpdf"
+	"github.com/markus-barta/paimos/backend/models"
 )
 
 //go:embed assets/logo.png
@@ -73,19 +77,44 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 	} else {
 		colSet = defaultLBColSet()
 	}
-	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet, BaseURL: reportRequestBaseURL(r)})
+	var reportCode string
+	var acceptURL string
+	if r.URL.Query().Get("snapshot") == "1" {
+		reportCode = randHex(5)
+		acceptURL = acceptanceURLForCode(r, reportCode)
+	}
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet, BaseURL: reportRequestBaseURL(r), ReportCode: reportCode, AcceptanceURL: acceptURL})
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		jsonError(w, "pdf generation failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if reportCode != "" {
+		if err := createProjectReportSnapshot(r, report, lang, r.URL.RawQuery, reportCode, buf.Bytes()); err != nil {
+			jsonError(w, "report snapshot failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
-	filename := fmt.Sprintf("LB-%s %s.pdf", report.ProjectKey, time.Now().Format("2006-01-02"))
+	filename := fmt.Sprintf("PB-%s %s.pdf", report.ProjectKey, time.Now().Format("2006-01-02"))
+	writePDFBytesResponse(w, buf.Bytes(), filename)
+}
+
+func writePDFResponse(w http.ResponseWriter, pdf *fpdf.Fpdf, filename string) {
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		jsonError(w, "pdf generation failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writePDFBytesResponse(w, buf.Bytes(), filename)
+}
+
+func writePDFBytesResponse(w http.ResponseWriter, body []byte, filename string) {
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
-	w.Write(buf.Bytes())
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.Write(body)
 }
 
 // fmtDE formats a float with German decimal separator (comma).
@@ -300,8 +329,8 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	const usableW = pageW - marginL - marginR
 	const lineH = 3.0 // line height for MultiCell rows
 
-	// Build report key for header (e.g. "LB-ASC2501-02")
-	lbKey := fmt.Sprintf("LB-%s", report.ProjectKey)
+	// Build report key for header (e.g. "PB-ASC2501-02").
+	reportKey := fmt.Sprintf("PB-%s", report.ProjectKey)
 
 	// Header — logo left (PAI-403: h=6mm, auto width, vertically centered with
 	// the title text at y≈5.5 / height 4 → both share vertical midline y=7.5).
@@ -323,7 +352,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetXY(marginL+16, 5.5)
-		pdf.CellFormat(120, 4, fmt.Sprintf("%s %s", msgs.HeaderTitle, lbKey), "", 0, "L", false, 0, "")
+		pdf.CellFormat(120, 4, fmt.Sprintf("%s %s", msgs.HeaderTitle, reportKey), "", 0, "L", false, 0, "")
 		// Date + time right-aligned, vertically aligned with the title.
 		pdf.SetFont("DejaVu", "", 7)
 		pdf.SetTextColor(80, 80, 80)
@@ -438,6 +467,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		}
 	}
 
+	drawProjektberichtIntro(pdf, report, palette, marginL, usableW)
 	drawHeader()
 
 	statusLabel := func(status string) string {
@@ -672,5 +702,175 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		pdf.CellFormat(countCellW-0.5, lineH+0.5, lbIssueCountLabel(total, lang), "", 0, "R", false, 0, "")
 	}
 
+	pdf.SetY(gtY + gtH + 5)
+	drawProjektberichtConfirmation(pdf, opts, palette, marginL, usableW)
+
 	return pdf
+}
+
+func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, opts lbRenderOpts, palette lbPDFPalette, marginL, usableW float64) {
+	_, pageH := pdf.GetPageSize()
+	if pdf.GetY()+55 > pageH-12 {
+		pdf.AddPage()
+	}
+	y := pdf.GetY()
+	pdf.SetFont("DejaVu", "B", 8)
+	setTextRGB(pdf, palette.PrimaryDark)
+	pdf.SetXY(marginL, y)
+	pdf.CellFormat(usableW, 5, "Bestätigung und Abnahme", "", 0, "L", false, 0, "")
+	y += 6
+
+	pdf.SetFont("DejaVu", "", 6.8)
+	setTextRGB(pdf, rgbColor{})
+	text := "Der Kunde bestätigt mit seiner Unterschrift oder digitalen Bestätigung, dass die in diesem Projektbericht angeführten Lieferungen vereinbarungsgemäß bereitgestellt wurden. Bekannte offene Punkte sind im Projekt nachvollziehbar dokumentiert."
+	if opts.Lang == "en" {
+		text = "By signing or digitally confirming this project report, the customer confirms that the deliveries listed in this report have been provided as agreed. Known open items are documented in the project."
+	}
+	pdf.SetXY(marginL, y)
+	pdf.MultiCell(usableW-50, 3.4, text, "", "L", false)
+
+	if opts.AcceptanceURL != "" {
+		if qrBytes, err := projektberichtQRPNG(opts.AcceptanceURL, 160); err == nil {
+			name := "projektbericht-qr-" + opts.ReportCode
+			pdf.RegisterImageOptionsReader(name, fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(qrBytes))
+			if pdf.Error() == nil {
+				pdf.ImageOptions(name, marginL+usableW-34, y-2, 28, 28, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, opts.AcceptanceURL)
+			} else {
+				pdf.ClearError()
+			}
+		}
+		pdf.SetFont("DejaVu", "", 5.8)
+		setTextRGB(pdf, palette.Primary)
+		pdf.SetXY(marginL+usableW-48, y+28)
+		pdf.MultiCell(46, 3, opts.AcceptanceURL, "", "R", false)
+		setTextRGB(pdf, rgbColor{})
+	}
+
+	y += 24
+	pdf.SetFont("DejaVu", "", 6.5)
+	lineY := y + 10
+	colW := (usableW - 16) / 3
+	labels := []string{"Ort, Datum", "Name und Funktion/Rolle in BLOCKSCHRIFT", "Firmenmäßige Unterschrift oder digitale Signatur"}
+	if opts.Lang == "en" {
+		labels = []string{"Place, date", "Name and role in block letters", "Company signature or digital signature"}
+	}
+	for i, label := range labels {
+		x := marginL + float64(i)*(colW+8)
+		setDrawRGB(pdf, palette.TableRowBorder)
+		pdf.Line(x, lineY, x+colW, lineY)
+		pdf.SetXY(x, lineY+1.5)
+		pdf.CellFormat(colW, 3, label, "", 0, "L", false, 0, "")
+	}
+}
+
+func drawProjektberichtIntro(pdf *fpdf.Fpdf, report *lbReport, palette lbPDFPalette, marginL, usableW float64) {
+	var coop *models.CooperationMetadata
+	var perms []projectReportPermission
+	if report.ProjectID > 0 {
+		coop, _ = loadCooperation(report.ProjectID)
+		perms, _ = loadProjectReportPermissions(report.ProjectID)
+	}
+	pdf.SetFont("DejaVu", "B", 8)
+	setTextRGB(pdf, palette.PrimaryDark)
+	pdf.SetXY(marginL, pdf.GetY())
+	pdf.CellFormat(usableW, 5, "1. Grundlagen", "", 0, "L", false, 0, "")
+	pdf.SetY(pdf.GetY() + 5)
+
+	pdf.SetFont("DejaVu", "", 6.5)
+	setTextRGB(pdf, rgbColor{})
+	basis := ""
+	terms := ""
+	period := 30
+	if coop != nil {
+		basis = strings.TrimSpace(coop.ReportContractBasis)
+		terms = strings.TrimSpace(coop.ReportTermsURL)
+		period = normalizedObjectionPeriod(coop.ReportObjectionPeriodDays)
+	}
+	text := fmt.Sprintf("Dieser Projektbericht dokumentiert den Stand und die Lieferungen des Projekts %s. Die angeführten Lieferungen beziehen sich auf den ausgewählten Berichtsumfang.", report.ProjectKey)
+	if basis != "" {
+		text += " Grundlage: " + basis + "."
+	}
+	if terms != "" {
+		text += " AGB: " + terms + "."
+	}
+	text += fmt.Sprintf(" Sofern vereinbart, gilt eine schriftliche Rückmeldung innerhalb von %d Tagen.", period)
+	pdf.SetX(marginL)
+	pdf.MultiCell(usableW, 3.2, text, "", "L", false)
+	pdf.SetY(pdf.GetY() + 2)
+
+	pdf.SetFont("DejaVu", "B", 8)
+	setTextRGB(pdf, palette.PrimaryDark)
+	pdf.SetX(marginL)
+	pdf.CellFormat(usableW, 5, "2. Berechtigungen", "", 0, "L", false, 0, "")
+	pdf.SetY(pdf.GetY() + 5)
+
+	if len(perms) == 0 {
+		pdf.SetFont("DejaVu", "", 6.5)
+		setTextRGB(pdf, rgbColor{r: 120, g: 120, b: 120})
+		pdf.SetX(marginL)
+		pdf.CellFormat(usableW, 4, "Keine projektspezifischen Bericht-Berechtigungen hinterlegt.", "", 0, "L", false, 0, "")
+		pdf.SetY(pdf.GetY() + 5)
+		setTextRGB(pdf, rgbColor{})
+		return
+	}
+
+	headers := []string{"Person", "Unternehmen", "Funktion", "Freigabe", "Lieferung", "Abnahme"}
+	widths := []float64{42, 45, 58, 22, 22, 22}
+	extra := usableW
+	for _, w := range widths {
+		extra -= w
+	}
+	if extra > 0 {
+		widths[2] += extra
+	}
+	pdf.SetFont("DejaVu", "B", 6.2)
+	setFillRGB(pdf, palette.PrimaryPale)
+	setTextRGB(pdf, palette.PrimaryDark)
+	y := pdf.GetY()
+	x := marginL
+	for i, h := range headers {
+		pdf.SetXY(x, y)
+		pdf.CellFormat(widths[i], 4.5, " "+h, "", 0, "L", true, 0, "")
+		x += widths[i]
+	}
+	pdf.SetY(y + 4.5)
+	pdf.SetFont("DejaVu", "", 6.2)
+	setTextRGB(pdf, rgbColor{})
+	for _, p := range perms {
+		y = pdf.GetY()
+		x = marginL
+		values := []string{p.PersonName, p.Company, p.RoleLabel, yesNoDE(p.MayApprove), yesNoDE(p.MayDeliver), yesNoDE(p.MayAccept)}
+		for i, v := range values {
+			setDrawRGB(pdf, palette.TableRowBorder)
+			pdf.Rect(x, y, widths[i], 4.2, "D")
+			pdf.SetXY(x+0.5, y+0.6)
+			pdf.CellFormat(widths[i]-1, 3, smartTruncate(v, 42), "", 0, "L", false, 0, "")
+			x += widths[i]
+		}
+		pdf.SetY(y + 4.2)
+	}
+	pdf.SetY(pdf.GetY() + 4)
+}
+
+func yesNoDE(v bool) string {
+	if v {
+		return "JA"
+	}
+	return "NEIN"
+}
+
+func projektberichtQRPNG(value string, size int) ([]byte, error) {
+	code, err := qr.Encode(value, qr.M, qr.Auto)
+	if err != nil {
+		return nil, err
+	}
+	scaled, err := barcode.Scale(code, size, size)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, scaled); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

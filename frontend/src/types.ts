@@ -164,8 +164,56 @@ export interface CooperationMetadata {
   oncall: boolean
   sla_details: string
   cooperation_notes: string
+  report_contract_basis: string
+  report_terms_url: string
+  report_objection_period_days: number
+  report_customer_responsibilities: string
+  report_contractor_responsibilities: string
   created_at?: string
   updated_at?: string
+}
+
+export interface ProjectReportPermission {
+  id: number
+  project_id: number
+  person_name: string
+  company: string
+  role_label: string
+  may_approve: boolean
+  may_deliver: boolean
+  may_accept: boolean
+  sort_order: number
+}
+
+export interface ProjectReportSnapshot {
+  id: number
+  project_id: number
+  project_key: string
+  project_name: string
+  code: string
+  report_key: string
+  report_type: string
+  lang: string
+  filter_query: string
+  issue_ids: number[]
+  total_issues: number
+  pdf_sha256: string
+  status: 'generated' | 'accepted' | 'void'
+  signed_document_id: number | null
+  signed_at: string | null
+  signer_name: string
+  signer_company: string
+  signer_role: string
+  accepted_at: string | null
+  accepted_by: number | null
+  accept_summary: Record<string, number>
+  acceptance_url: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  eligible_count?: number
+  already_final_count?: number
+  skipped_count?: number
 }
 
 export interface Attachment {

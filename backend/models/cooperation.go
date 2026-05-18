@@ -26,18 +26,24 @@ type CooperationMetadata struct {
 	// URL param, so callers don't need to pass it in the request body.
 	ProjectID int64 `json:"project_id"`
 
-	EngagementType    *string `json:"engagement_type"`     // consultancy | project_delivery | managed_service | retainer
-	CodeOwnership     *string `json:"code_ownership"`      // client_repo | own_repo | mixed
-	EnvResponsibility *string `json:"env_responsibility"`  // dev_staging | dev_staging_prod | full_stack
+	EngagementType    *string `json:"engagement_type"`    // consultancy | project_delivery | managed_service | retainer
+	CodeOwnership     *string `json:"code_ownership"`     // client_repo | own_repo | mixed
+	EnvResponsibility *string `json:"env_responsibility"` // dev_staging | dev_staging_prod | full_stack
 
-	HasSLA             bool   `json:"has_sla"`
-	UptimeSLA          string `json:"uptime_sla"`
-	ResponseTimeSLA    string `json:"response_time_sla"`
-	BackupResponsible  bool   `json:"backup_responsible"`
-	OnCall             bool   `json:"oncall"`
+	HasSLA            bool   `json:"has_sla"`
+	UptimeSLA         string `json:"uptime_sla"`
+	ResponseTimeSLA   string `json:"response_time_sla"`
+	BackupResponsible bool   `json:"backup_responsible"`
+	OnCall            bool   `json:"oncall"`
 
 	SLADetails       string `json:"sla_details"`
 	CooperationNotes string `json:"cooperation_notes"`
+
+	ReportContractBasis              string `json:"report_contract_basis"`
+	ReportTermsURL                   string `json:"report_terms_url"`
+	ReportObjectionPeriodDays        int    `json:"report_objection_period_days"`
+	ReportCustomerResponsibilities   string `json:"report_customer_responsibilities"`
+	ReportContractorResponsibilities string `json:"report_contractor_responsibilities"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
