@@ -29,8 +29,11 @@ G202	MEDIUM	HIGH	handlers/csv.go	100	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/customers.go	395-400	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/incidents.go	94-101	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues.go	257-262	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	258-263	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues.go	303-312	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	304-313	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues.go	343-354	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/issues.go	344-355	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	217	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	97	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_write.go	742	SQL string concatenation
@@ -42,6 +45,7 @@ G202	MEDIUM	HIGH	handlers/project_context.go	840	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	166-183	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/reports.go	187-204	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/super_admin_audit.go	143-153	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	472-478	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	510-516	SQL string concatenation
@@ -109,6 +113,7 @@ G701	HIGH	HIGH	handlers/issues_list.go	100	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	221	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/reports.go	206	SQL injection via taint analysis
 G703	HIGH	HIGH	db/db.go	70	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
