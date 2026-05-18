@@ -5,6 +5,76 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.8] — 2026-05-18
+
+Lieferbericht filter + export polish: in-place tag/status filters on
+the dedicated report screen, plus an Export → Lieferbericht PDF entry
+point on the IssueList that reuses the user's already-active filter
+state. Bundles fixes for two visual bugs introduced with v3.4.6's
+column toggles, and hardens the branding logo path against corrupt
+uploads.
+
+### Added
+
+- **PAI-404** — Lieferbericht filter bar gains two new chip-toggle
+  rows: **Tags** (loaded from `/projects/{id}/tags`, project-scoped)
+  and **Status** (the 9 canonical status keys, using existing
+  `status.*` i18n labels and the report's row-color vocabulary).
+  Backend accepts `?tag_ids=` and `?statuses=` on both
+  `GET /api/projects/{id}/reports/lieferbericht` and its `/pdf`
+  variant; filters AND on top of the scope preset rather than
+  replacing it (status excluded by scope=all_open's default still
+  doesn't show up — switch to scope=date_range for "delivered only"
+  style narrowing).
+
+- **PAI-405** — Export → Lieferbericht PDF action on the IssueList
+  toolbar (project-scoped only; the cross-project view has no single
+  project to bind to). Opens a small modal with the language picker
+  and the 5 numeric column checkboxes, pre-populated from the same
+  `paimos:lieferbericht:*` localStorage prefs the dedicated report
+  view uses (so the user's prior choices carry over). On download,
+  the IssueList's `filterStatus` → `?statuses=`, `filterTags` →
+  `?tag_ids=`, and `filterSprints` → `?scope=sprint&sprint_ids=…`
+  (or `scope=date_range` with no dates when no sprint is active, so
+  the explicit status filter is authoritative). Active IssueList
+  filters that don't yet map to the report endpoint (priority,
+  type, assignee, cost unit, release, epic) are surfaced as a
+  notice in the modal rather than silently dropped.
+
+### Fixed
+
+- **PAI-403** — Lieferbericht PDF visual regressions from v3.4.6:
+  - **Header** — the branding logo and "Lieferbericht LB-XXX" title
+    no longer collide / float vertically. Logo bumped to h=6mm (auto
+    width) at origin (marginL, 4); title text moved to marginL+16,
+    y=5.5 so both share the same vertical midline at y≈7.5.
+  - **Hidden column headers ghost-extending** — the header loop used
+    to call `pdf.CellFormat(0, …)` for hidden numeric columns; fpdf
+    interprets `w==0` as "fill to right margin", so e.g. the `AR EUR`
+    header painted across the page edge even with the column off. The
+    loop now `continue`s past `c.w <= 0`.
+  - **Count-only subtotal/grand-total overdraw** — with all numeric
+    columns hidden, Description had absorbed their full width and
+    `subLabelW == totalW`, so the count cell got width 0 (which fpdf
+    treats as full-remaining-width) and overdrew the right-aligned
+    label. Replaced with a fixed 38mm count cell carved off the right
+    of `totalW`; both label and count stay right-aligned within
+    their own cell.
+
+- **PAI-406** — Branding logo path no longer 500s the PDF on corrupt
+  or misclassified uploads:
+  - Resolver in `reports_logo.go` switched on file extension alone
+    and handed raw bytes to fpdf. New `sniffImageFormat([]byte) →
+    "png"|"jpg"|"svg"|"ico"|""` validates by magic bytes; mismatch
+    returns the embedded `logoPNG` fallback so the PDF always
+    renders. Belt-and-suspenders: the renderer probes `pdf.Error()`
+    after `RegisterImageOptionsReader` and re-registers the embedded
+    mark if fpdf still rejected the bytes.
+  - Upload classifier in `branding.go` no longer trusts the
+    multipart-declared Content-Type (which a client can spoof) or
+    the filename extension. Classifies strictly by the same byte
+    sniff and rejects with 400 when nothing matches.
+
 ## [3.4.7] — 2026-05-18
 
 ### Fixed
