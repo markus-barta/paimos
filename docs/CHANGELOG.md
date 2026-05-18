@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.11] — 2026-05-18
+
+### Fixed
+
+- **PAI-419** — `paimos issue update --status <terminal> --close-note ...`
+  now resolves issue keys to numeric ids before performing the status update,
+  close-note comment, and lesson-capture follow-up. This avoids mixed key/id
+  write paths and keeps close-note failures attributable to the comment step
+  instead of the status update.
+
 ## [3.4.10] — 2026-05-18
 
 Projektbericht acceptance workflow on top of the Lieferbericht report work.
