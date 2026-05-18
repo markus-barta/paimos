@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import type { Issue } from "@/types";
+
+const { t } = useI18n();
 
 defineProps<{
   issue: Issue;
@@ -60,8 +63,8 @@ defineProps<{
       v-if="['epic', 'cost_unit', 'ticket'].includes(issue.type)"
     >
       <p class="body-label">
-        Report summary
-        <span class="body-label-hint">(Projektbericht · Kundenfassung)</span>
+        {{ t('reportSummary.label') }}
+        <span class="body-label-hint">{{ t('reportSummary.labelHint') }}</span>
       </p>
       <div
         v-if="issue.report_summary"

@@ -97,6 +97,13 @@ type Context struct {
 	ProjectName  string
 	ParentEpic   string // formatted as "PAI-100 — Title", optional
 	FieldName    string // "description" | "acceptance_criteria" | "notes" | …
+	// PAI-436. Some actions (customer_rewrite, exec_summary) read
+	// from the issue's description + AC as the source text rather
+	// than the field the menu is bound to. Loading these here at
+	// dispatch time lets the handlers skip a redundant DB query +
+	// re-auth round-trip.
+	Description        string
+	AcceptanceCriteria string
 }
 
 // BuildSystemPrompt returns the full system message: the fixed wrapper

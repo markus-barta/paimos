@@ -78,10 +78,10 @@ function initialLang(): Lang {
 // "report" = issue.report_summary, with description fallback + a
 //            visible "[keine Kundenfassung]" tag for missing rows
 type TextSource = 'tech' | 'report'
-const textSourceOptions: MetaOption[] = [
-  { value: 'tech', label: 'Technical (description)' },
-  { value: 'report', label: 'Report summary (customer-facing)' },
-]
+const textSourceOptions = computed<MetaOption[]>(() => ([
+  { value: 'tech', label: t('lieferbericht.exportModal.textSourceTech') },
+  { value: 'report', label: t('lieferbericht.exportModal.textSourceReport') },
+]))
 function initialTextSource(): TextSource {
   const stored = localStorage.getItem(LS_LIEFERBERICHT_TEXT_SOURCE)
   return stored === 'report' ? 'report' : 'tech'
@@ -207,24 +207,21 @@ function download() {
   <AppModal :open="open" :title="t('lieferbericht.exportModal.title')" max-width="480px" @close="emit('close')">
     <div class="lb-export">
       <div class="lb-export-row">
-        <label class="lb-export-label">Text source</label>
+        <label class="lb-export-label">{{ t('lieferbericht.exportModal.textSource') }}</label>
         <MetaSelect v-model="textSource" :options="textSourceOptions" />
         <p class="lb-export-hint" v-if="textSource === 'report'">
-          Uses each ticket's customer-facing Report summary. Rows without one fall back to the technical description, prefixed with <code>[keine Kundenfassung]</code>.
+          {{ t('lieferbericht.exportModal.textSourceReportHint') }} <code>[keine Kundenfassung]</code>.
         </p>
         <div class="lb-export-coverage" v-if="showCoverageLine">
           <template v-if="missingSummaryIssues.length === 0">
             <span class="lb-export-coverage--ok">
-              ✓ All {{ inScopeReportableTotal }} in-scope ticket{{ inScopeReportableTotal === 1 ? '' : 's' }} have a report summary.
+              ✓ {{ t('lieferbericht.exportModal.coverageAllOk', { count: inScopeReportableTotal }) }}
             </span>
           </template>
           <template v-else>
-            <span>
-              <strong>{{ missingSummaryIssues.length }}</strong>
-              of {{ inScopeReportableTotal }} in-scope ticket{{ inScopeReportableTotal === 1 ? '' : 's' }} missing a report summary.
-            </span>
+            <span>{{ t('lieferbericht.exportModal.coverageMissing', { missing: missingSummaryIssues.length, total: inScopeReportableTotal }) }}</span>
             <button type="button" class="btn btn-ghost btn-sm" @click="openGenerateMissing">
-              Generate missing →
+              {{ t('lieferbericht.exportModal.generateMissing') }}
             </button>
           </template>
         </div>

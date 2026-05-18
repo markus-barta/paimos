@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSort } from '@/composables/useSort'
+
+const { t } = useI18n()
 import type { ColDefs } from '@/composables/useSort'
 import { useRouter, useRoute } from 'vue-router'
 import AppModal from '@/components/AppModal.vue'
@@ -1130,10 +1133,10 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         <button
           v-if="selectionMode && selectedIds.size > 0"
           class="btn btn-ghost btn-sm"
-          title="Generate a customer-facing report summary on each selected issue using AI."
+          :title="t('reportSummary.bulk.issueListButtonTitle')"
           @click="openBulkSummary"
         >
-          Generate report summary (AI)
+          {{ t('reportSummary.bulk.issueListButton') }}
         </button>
         <button
           v-if="isAdmin && selectionMode && selectedIds.size > 0"

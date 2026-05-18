@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   useRoute,
   useRouter,
   RouterLink,
   onBeforeRouteLeave,
 } from "vue-router";
+
+const { t } = useI18n();
 import { useAuthStore } from "@/stores/auth";
 import IssueList from "@/components/IssueList.vue";
 import AppIcon from "@/components/AppIcon.vue";
@@ -1390,12 +1393,12 @@ async function cancelEdit() {
           <IssueTextEditField
             v-if="['epic', 'cost_unit', 'ticket'].includes(form.type)"
             v-model="form.report_summary"
-            label="Report summary"
+            :label="t('reportSummary.label')"
             field="report_summary"
             surface="customer"
             :host-key="`issue-detail:${issueId}:report_summary`"
             :issue-id="issueId"
-            placeholder="Kundenfassung für den Projektbericht — leer lassen und per AI generieren."
+            :placeholder="t('reportSummary.placeholder')"
             :rows="3"
             :is-monospace="isMonospace"
             :apply="applyAiResult"

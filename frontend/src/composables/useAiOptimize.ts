@@ -195,7 +195,11 @@ async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
 // it on customer-bound editors. The set is kept in lockstep with
 // the backend's customer-surface allow-list.
 function isCustomerField(field: string): boolean {
-  return field === 'customer_notes'
+  // PAI-418 / PAI-435: report_summary is the customer-facing
+  // Projektbericht field, populated by customer_rewrite +
+  // exec_summary. Belongs on the customer surface so the
+  // surface-guess defaults match the AiActionMenu binding.
+  return field === 'customer_notes' || field === 'report_summary'
       || field === 'cooperation_sla_details'
       || field === 'cooperation_notes'
 }

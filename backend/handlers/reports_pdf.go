@@ -365,12 +365,24 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// Build report key for header (e.g. "PB-ASC2501-02").
 	reportKey := fmt.Sprintf("PB-%s", report.ProjectKey)
 
-	// Header — logo left, capped small enough that it cannot bleed into the
-	// table header. Title gets a clear reserved area for the logo regardless
-	// of branding aspect ratio; date/time is pinned right.
+	// Header — logo left, title centered horizontally, date right.
+	// All three pieces share the same vertical mid-line so the eye
+	// reads them as a single row instead of staggered baselines.
+	//
+	// Layout math (mm, A4 landscape, pageW=297, marginL=10):
+	//   logo cap        h=4.8  at y=4.2  → midpoint 6.6
+	//   title cell      h=4    at y=4.6  → midpoint 6.6
+	//   date cell       h=4    at y=4.6  → midpoint 6.6
+	//   title cell width = 120; centered on the page:
+	//     x = (pageW - 120) / 2 = 88.5
+	//     align="C" so the text itself is centered in that cell
 	pdf.SetHeaderFuncMode(func() {
 		const logoH = 4.8
 		const logoY = 4.2
+		const textY = 4.6
+		const textH = 4.0
+		const titleW = 120.0
+		const dateW = 60.0
 		if useLogoSVG {
 			setDrawRGB(pdf, palette.Primary)
 			pdf.SetLineWidth(0.25)
@@ -385,13 +397,12 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		}
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetTextColor(0, 0, 0)
-		pdf.SetXY(marginL+16, 5.5)
-		pdf.CellFormat(120, 4, fmt.Sprintf("%s %s", msgs.HeaderTitle, reportKey), "", 0, "L", false, 0, "")
-		// Date + time right-aligned, vertically aligned with the title.
+		pdf.SetXY((pageW-titleW)/2, textY)
+		pdf.CellFormat(titleW, textH, fmt.Sprintf("%s %s", msgs.HeaderTitle, reportKey), "", 0, "C", false, 0, "")
 		pdf.SetFont("DejaVu", "", 7)
 		pdf.SetTextColor(80, 80, 80)
-		pdf.SetXY(pageW-10-60, 5.5)
-		pdf.CellFormat(60, 4, formatLBTimestamp(time.Now(), lang), "", 0, "R", false, 0, "")
+		pdf.SetXY(pageW-marginR-dateW, textY)
+		pdf.CellFormat(dateW, textH, formatLBTimestamp(time.Now(), lang), "", 0, "R", false, 0, "")
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetY(16)
 	}, true)
@@ -996,11 +1007,9 @@ func drawProjektberichtIntro(pdf *fpdf.Fpdf, report *lbReport, palette lbPDFPale
 	setTextRGB(pdf, rgbColor{})
 	basis := ""
 	terms := ""
-	period := 30
 	if coop != nil {
 		basis = strings.TrimSpace(coop.ReportContractBasis)
 		terms = strings.TrimSpace(coop.ReportTermsURL)
-		period = normalizedObjectionPeriod(coop.ReportObjectionPeriodDays)
 	}
 	text := fmt.Sprintf("Dieser Projektbericht dokumentiert den Stand und die Lieferungen des Projekts %s. Die angeführten Lieferungen beziehen sich auf den ausgewählten Berichtsumfang.", report.ProjectKey)
 	if basis != "" {
@@ -1009,7 +1018,7 @@ func drawProjektberichtIntro(pdf *fpdf.Fpdf, report *lbReport, palette lbPDFPale
 	if terms != "" {
 		text += " AGB: " + terms + "."
 	}
-	text += fmt.Sprintf(" Sofern vereinbart, gilt eine schriftliche Rückmeldung innerhalb von %d Tagen.", period)
+	text += " Für das Projekt wurde eine schriftliche Rückmeldung innerhalb von 21 Werktagen vereinbart. Sollte innerhalb dieser Frist weder eine schriftliche Abnahme erfolgen noch schriftlich Mängel geltend gemacht werden, gilt die gelieferte Funktionalität als mangelfrei abgenommen."
 	pdf.SetX(marginL)
 	pdf.MultiCell(usableW, 3.2, text, "", "L", false)
 	pdf.SetY(pdf.GetY() + 2)

@@ -101,6 +101,9 @@ func loadOptimizeContext(r *http.Request, issueID int64, field string) (ai.Conte
 		return c, nil
 	}
 
+	// PAI-436. Also surface description + acceptance_criteria so
+	// handlers that read the issue body as their source (e.g.
+	// customer_rewrite, exec_summary) don't need a second query.
 	const q = `
 SELECT
   i.project_id,
@@ -109,6 +112,8 @@ SELECT
   i.issue_number,
   i.type,
   i.title,
+  i.description,
+  i.acceptance_criteria,
   i.parent_id,
   COALESCE(pp.key, '') || CASE WHEN pp.id IS NULL THEN '' ELSE '-' END
     || COALESCE(parent.issue_number, '')             AS parent_key,
@@ -124,12 +129,14 @@ WHERE i.id = ? AND i.deleted_at IS NULL
 		projectKey, projectName string
 		issueNum                int
 		issueType, issueTitle   string
+		description, ac         string
 		parentID                sql.NullInt64
 		parentKey, parentTitle  string
 	)
 	err := db.DB.QueryRowContext(r.Context(), q, issueID).Scan(
 		&projectID, &projectKey, &projectName,
 		&issueNum, &issueType, &issueTitle,
+		&description, &ac,
 		&parentID, &parentKey, &parentTitle,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -151,6 +158,8 @@ WHERE i.id = ? AND i.deleted_at IS NULL
 	c.IssueType = issueType
 	c.IssueTitle = issueTitle
 	c.ProjectName = projectName
+	c.Description = description
+	c.AcceptanceCriteria = ac
 	if parentID.Valid {
 		switch {
 		case parentKey != "" && parentTitle != "":

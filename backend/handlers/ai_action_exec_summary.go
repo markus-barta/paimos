@@ -40,9 +40,12 @@ type execSummaryBody struct {
 }
 
 func execSummaryHandler(ax *aiActionContext) (any, string, int, int, string, error) {
-	src, ctxErr := customerOrExecSource(ax)
-	if ctxErr != nil {
-		return nil, "", 0, 0, "", ctxErr
+	if ax.IssueID <= 0 {
+		return nil, "", 0, 0, "", &userError{status: 400, msg: "issue_id is required for this action"}
+	}
+	description := strings.TrimSpace(ax.IssueData.Description)
+	if description == "" {
+		return nil, "", 0, 0, "", &userError{status: 400, msg: "issue has no description to summarise"}
 	}
 
 	systemPrompt := resolveActionPrompt("exec_summary")
@@ -51,8 +54,8 @@ func execSummaryHandler(ax *aiActionContext) (any, string, int, int, string, err
 	if ax.IssueData.IssueTitle != "" {
 		fmt.Fprintf(&u, "Titel des Tickets (Kontext, nicht wiederholen):\n%s\n\n", ax.IssueData.IssueTitle)
 	}
-	if src.AcceptanceCriteria != "" {
-		fmt.Fprintf(&u, "Akzeptanzkriterien (Kontext, kann Risiko/Compliance enthalten):\n%s\n\n", src.AcceptanceCriteria)
+	if ac := strings.TrimSpace(ax.IssueData.AcceptanceCriteria); ac != "" {
+		fmt.Fprintf(&u, "Akzeptanzkriterien (Kontext, kann Risiko/Compliance enthalten):\n%s\n\n", ac)
 	}
 	if strings.TrimSpace(ax.Text) != "" {
 		u.WriteString("Aktuelle Executive-Fassung (refine, nicht ersetzen):\n")
@@ -60,7 +63,7 @@ func execSummaryHandler(ax *aiActionContext) (any, string, int, int, string, err
 		u.WriteString("\n\n")
 	}
 	u.WriteString("Beschreibung des Tickets (Quelle):\n")
-	u.WriteString(src.Description)
+	u.WriteString(description)
 	u.WriteString("\n\nGib AUSSCHLIESSLICH die fertige Executive-Zusammenfassung zurück — 1–3 deutsche Sätze, keine Markdown-Fences.")
 
 	callCtx, cancel := context.WithTimeout(ax.Ctx, optimizeRequestTimeout)

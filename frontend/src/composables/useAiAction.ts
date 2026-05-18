@@ -203,7 +203,19 @@ async function loadActions(): Promise<void> {
 // text when we want a full before/after overlay. For these we pipe the call
 // through useAiOptimize so we get the existing accept/reject/retry
 // flow for free.
-const DIFF_OVERLAY_ACTIONS = new Set(['optimize', 'translate'])
+// PAI-418 + PAI-173. Actions whose backend response shape is
+// `{optimized: "..."}` — same as `optimize` — and whose UX matches
+// the diff-overlay review-and-accept flow. Newly-implemented
+// rewrite-style actions belong here; the generic action path is
+// reserved for actions with a structured response (suggest, spec_out,
+// find_parent, …) where a different UI applies the result.
+const DIFF_OVERLAY_ACTIONS = new Set([
+  'optimize',
+  'translate',
+  'tone_check',
+  'customer_rewrite',
+  'exec_summary',
+])
 
 // ── runner ────────────────────────────────────────────────────────
 async function run(args: RunArgs): Promise<void> {
@@ -290,7 +302,12 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
     })
     return
   }
-  if (args.action === 'translate' || args.action === 'tone_check') {
+  if (
+    args.action === 'translate' ||
+    args.action === 'tone_check' ||
+    args.action === 'customer_rewrite' ||
+    args.action === 'exec_summary'
+  ) {
     await optimize.runRewriteAction({
       action: args.action,
       subAction: args.subAction,

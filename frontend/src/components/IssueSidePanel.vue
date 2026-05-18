@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import LoadingText from "@/components/LoadingText.vue";
 import { ref, watch, computed, nextTick, onUnmounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+
+const { t } = useI18n();
 import AppIcon from "@/components/AppIcon.vue";
 import StatusDot from "@/components/StatusDot.vue";
 import NumericInput from "@/components/NumericInput.vue";
@@ -1091,10 +1094,8 @@ async function deleteTimeEntry(entry: TimeEntry) {
               v-if="['epic', 'cost_unit', 'ticket'].includes(issue.type)"
             >
               <p class="sp-body-label">
-                Report summary
-                <span class="sp-body-label-hint"
-                  >(Projektbericht · Kundenfassung)</span
-                >
+                {{ t('reportSummary.label') }}
+                <span class="sp-body-label-hint">{{ t('reportSummary.labelHint') }}</span>
               </p>
               <div
                 v-if="issue.report_summary"
@@ -1392,12 +1393,12 @@ async function deleteTimeEntry(entry: TimeEntry) {
               v-if="['epic', 'cost_unit', 'ticket'].includes(form.type)"
             >
               <div class="field-label-row">
-                <label>Report summary</label>
+                <label>{{ t('reportSummary.label') }}</label>
                 <AiActionMenu
                   surface="customer"
                   :host-key="`issue-side:${issue?.id ?? 0}:report_summary`"
                   field="report_summary"
-                  field-label="Report summary"
+                  :field-label="t('reportSummary.label')"
                   :issue-id="issue?.id ?? 0"
                   :text="() => form.report_summary"
                   :on-accept="onAiAccept('report_summary')"
@@ -1406,7 +1407,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
               <textarea
                 v-model="form.report_summary"
                 rows="3"
-                placeholder="Kundenfassung für den Projektbericht — leer lassen und per AI generieren."
+                :placeholder="t('reportSummary.placeholder')"
               />
               <AiSurfaceFeedback
                 :host-key="`issue-side:${issue?.id ?? 0}:report_summary`"
