@@ -115,6 +115,19 @@ func TestLieferberichtPDF_LocaleSwitch(t *testing.T) {
 	}
 }
 
+// PAI-400 + PAI-401: an explicit empty `cols=` query value resolves to the
+// zero lbColSet, not the default-all-on. The handler distinguishes "absent"
+// (back-compat → all visible) from "present but empty" (no numeric cols).
+func TestParseLBColSet_EmptyIsZeroSet(t *testing.T) {
+	got := parseLBColSet("")
+	if got.AnyVisible() {
+		t.Fatalf("expected empty input to yield zero set; got %+v", got)
+	}
+	if got := parseLBColSet("sp,ar_eur"); !(got.SP && got.AREUR && !got.H && !got.ARSP && !got.ARH) {
+		t.Fatalf("parseLBColSet(\"sp,ar_eur\") = %+v", got)
+	}
+}
+
 // PAI-400 + PAI-401: empty column set must still render (no panic) and the
 // subtotal/grand-total rows fall back to the "{N} issues" presentation when
 // no numeric columns are visible.

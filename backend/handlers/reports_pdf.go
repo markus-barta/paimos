@@ -61,12 +61,14 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	colsQuery := r.URL.Query().Get("cols")
+	// PAI-400: distinguish "param absent" (back-compat → all visible) from
+	// "param present but empty" (PAI-401 → zero numeric columns). url.Values.Get
+	// returns "" for both, so check the underlying slice directly.
 	var colSet lbColSet
-	if colsQuery == "" {
-		colSet = defaultLBColSet()
+	if _, present := r.URL.Query()["cols"]; present {
+		colSet = parseLBColSet(r.URL.Query().Get("cols"))
 	} else {
-		colSet = parseLBColSet(colsQuery)
+		colSet = defaultLBColSet()
 	}
 	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet})
 
