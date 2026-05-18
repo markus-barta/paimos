@@ -288,6 +288,70 @@ func TestIssueUpdateCombinedRequest_AssigneeIDIsNumeric(t *testing.T) {
 	}
 }
 
+func TestIssueUpdateCloseNoteResolvesKeyBeforeWrites(t *testing.T) {
+	var paths []string
+	var putBody map[string]any
+	var commentBody map[string]any
+	var handlerErr string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/PAI-410":
+			_, _ = w.Write([]byte(`{"id":1753,"issue_key":"PAI-410","status":"new"}`))
+		case r.Method == http.MethodPut && r.URL.Path == "/api/issues/1753":
+			if err := json.NewDecoder(r.Body).Decode(&putBody); err != nil {
+				handlerErr = fmt.Sprintf("decode put: %v", err)
+				http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":1753,"issue_key":"PAI-410","status":"delivered"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/issues/1753/comments":
+			if err := json.NewDecoder(r.Body).Decode(&commentBody); err != nil {
+				handlerErr = fmt.Sprintf("decode comment: %v", err)
+				http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":99,"body":"ok"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/1753/lesson-capture-prompt":
+			_, _ = w.Write([]byte(`{"triggered":false}`))
+		default:
+			handlerErr = fmt.Sprintf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.Error(w, `{"error":"unexpected request"}`, http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	if _, _, err := executeCLIForTest(t,
+		"issue", "update", "PAI-410",
+		"--status", "delivered",
+		"--close-note", "Delivered in v3.4.10 on ppm.",
+	); err != nil {
+		t.Fatalf("executeCLIForTest: %v", err)
+	}
+	if handlerErr != "" {
+		t.Fatal(handlerErr)
+	}
+	wantPaths := []string{
+		"GET /api/issues/PAI-410",
+		"PUT /api/issues/1753",
+		"POST /api/issues/1753/comments",
+		"GET /api/issues/1753/lesson-capture-prompt",
+	}
+	if strings.Join(paths, "\n") != strings.Join(wantPaths, "\n") {
+		t.Fatalf("paths:\n%s\nwant:\n%s", strings.Join(paths, "\n"), strings.Join(wantPaths, "\n"))
+	}
+	if putBody["status"] != "delivered" {
+		t.Fatalf("put status=%v, want delivered", putBody["status"])
+	}
+	body, _ := commentBody["body"].(string)
+	if !strings.Contains(body, "**Close note** (status → delivered):") || !strings.Contains(body, "Delivered in v3.4.10 on ppm.") {
+		t.Fatalf("comment body=%q", body)
+	}
+}
+
 func TestIssueCreateParentRefSendsNumericID(t *testing.T) {
 	for _, parentRef := range []string{"PAI-1", "101"} {
 		parentRef := parentRef

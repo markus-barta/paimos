@@ -278,9 +278,9 @@ func buildRouter() http.Handler {
 			r.Post("/projects/{id}/tags", handlers.AddTagToProject)
 			r.Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
 
-			r.Get("/issues/{id}/comments", handlers.ListComments)
-			r.Post("/issues/{id}/comments", handlers.CreateComment)
-			r.Delete("/comments/{id}", handlers.DeleteComment)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/comments", handlers.CreateComment)
+			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
 
 			r.Get("/tags", handlers.ListTags)
 			r.With(auth.RequireAdmin).Post("/tags", handlers.CreateTag)

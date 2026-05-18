@@ -240,15 +240,15 @@ func issueUpdateCmd() *cobra.Command {
 		// is set on a terminal-status transition, the CLI will create
 		// a memory entry on the project and link it back to the
 		// closing ticket via the same /relations endpoint the UI uses.
-		draftMemory     bool
-		memoryRule      string
-		memoryWhy       string
-		memoryWhyFile   string
-		memoryHow       string
-		memoryHowFile   string
-		memoryType      string
-		memoryTags      string
-		memorySlug      string
+		draftMemory   bool
+		memoryRule    string
+		memoryWhy     string
+		memoryWhyFile string
+		memoryHow     string
+		memoryHowFile string
+		memoryType    string
+		memoryTags    string
+		memorySlug    string
 	)
 	c := &cobra.Command{
 		Use:   "update <ref>",
@@ -371,9 +371,18 @@ Use --dry-run to print the payload without sending.`,
 				return emitJSON(out)
 			}
 
+			writeRef := ref
+			if closeNoteVal != "" {
+				issueID, err := resolveIssueRefToID(client, ref)
+				if err != nil {
+					return reportError(fmt.Errorf("resolve issue for close-note: %w", err))
+				}
+				writeRef = strconv.FormatInt(issueID, 10)
+			}
+
 			// Execute update.
 			if len(body) > 0 {
-				raw, err := client.do("PUT", "/api/issues/"+url.PathEscape(ref), body)
+				raw, err := client.do("PUT", "/api/issues/"+url.PathEscape(writeRef), body)
 				if err != nil {
 					return reportError(err)
 				}
@@ -388,7 +397,7 @@ Use --dry-run to print the payload without sending.`,
 			// style/filter it without a dedicated schema change for v1.
 			if closeNoteVal != "" {
 				commentBody := fmt.Sprintf("**Close note** (status → %s):\n\n%s", status, closeNoteVal)
-				if _, err := client.do("POST", "/api/issues/"+url.PathEscape(ref)+"/comments",
+				if _, err := client.do("POST", "/api/issues/"+url.PathEscape(writeRef)+"/comments",
 					map[string]any{"body": commentBody}); err != nil {
 					return reportError(fmt.Errorf("status updated, but close-note comment failed: %w", err))
 				}
@@ -405,13 +414,13 @@ Use --dry-run to print the payload without sending.`,
 			//    server says this ticket teaches a lesson. Doesn't block.
 			if status != "" && terminalStatuses[status] {
 				if draftMemory {
-					if err := runDraftMemoryFlow(client, ref, memoryRule,
+					if err := runDraftMemoryFlow(client, writeRef, memoryRule,
 						memoryWhy, memoryWhyFile, memoryHow, memoryHowFile,
 						memoryType, memoryTags, memorySlug); err != nil {
 						return reportError(err)
 					}
 				} else if !flagJSON {
-					maybePrintLessonCaptureHint(client, ref)
+					maybePrintLessonCaptureHint(client, writeRef)
 				}
 			}
 
