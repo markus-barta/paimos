@@ -41,7 +41,7 @@ G202	MEDIUM	HIGH	handlers/mutation_log.go	812-819	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	840	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/reports.go	117-133	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/reports.go	166-183	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/super_admin_audit.go	143-153	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	472-478	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	510-516	SQL string concatenation
@@ -55,7 +55,7 @@ G301	MEDIUM	HIGH	cmd/paimos/cmd_skill.go	496	Expect directory permissions to be 
 G301	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	301	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	db/db.go	70	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/branding.go	221	Expect directory permissions to be 0750 or less
-G301	MEDIUM	HIGH	handlers/branding.go	325	Expect directory permissions to be 0750 or less
+G301	MEDIUM	HIGH	handlers/branding.go	328	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/dev_testreports_service.go	189	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/logo.go	77	Expect directory permissions to be 0750 or less
 G301	MEDIUM	HIGH	handlers/profile.go	182	Expect directory permissions to be 0750 or less
@@ -83,6 +83,8 @@ G304	MEDIUM	HIGH	handlers/branding.go	135	Potential file inclusion via variable
 G304	MEDIUM	HIGH	handlers/branding.go	94	Potential file inclusion via variable
 G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	49	Potential file inclusion via variable
 G304	MEDIUM	HIGH	handlers/dev_testreports_service.go	77	Potential file inclusion via variable
+G304	MEDIUM	HIGH	handlers/reports_logo.go	68	Potential file inclusion via variable
+G304	MEDIUM	HIGH	handlers/reports_logo.go	89	Potential file inclusion via variable
 G304	MEDIUM	HIGH	secretvault/vault.go	142	Potential file inclusion via variable
 G306	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	288	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1071	Expect WriteFile permissions to be 0600 or less
@@ -91,7 +93,7 @@ G306	MEDIUM	HIGH	cmd/paimos/cmd_session_bundle.go	1164	Expect WriteFile permissi
 G306	MEDIUM	HIGH	cmd/paimos/cmd_skill.go	500	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	cmd/paimos/sync/skill_resource.go	305	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/branding.go	238	Expect WriteFile permissions to be 0600 or less
-G306	MEDIUM	HIGH	handlers/branding.go	341	Expect WriteFile permissions to be 0600 or less
+G306	MEDIUM	HIGH	handlers/branding.go	344	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	192	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	196	Expect WriteFile permissions to be 0600 or less
 G306	MEDIUM	HIGH	handlers/dev_testreports_service.go	203	Expect WriteFile permissions to be 0600 or less
@@ -111,12 +113,14 @@ G703	HIGH	HIGH	db/db.go	70	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	243	Path traversal via taint analysis
-G703	HIGH	HIGH	handlers/branding.go	400	Path traversal via taint analysis
-G703	HIGH	HIGH	handlers/branding.go	415	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	403	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/branding.go	418	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	94	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/reports_logo.go	68	Path traversal via taint analysis
+G703	HIGH	HIGH	handlers/reports_logo.go	89	Path traversal via taint analysis
 G703	HIGH	HIGH	main.go	697	Path traversal via taint analysis
 G703	HIGH	HIGH	main.go	797	Path traversal via taint analysis
 G703	HIGH	HIGH	main.go	808	Path traversal via taint analysis
