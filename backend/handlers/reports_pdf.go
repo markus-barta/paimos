@@ -188,17 +188,20 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// Build report key for header (e.g. "LB-ASC2501-02")
 	lbKey := fmt.Sprintf("LB-%s", report.ProjectKey)
 
-	// Header — logo left, "<HeaderTitle> LB-XXX" center-left, locale-aware date+time right.
+	// Header — logo left (PAI-403: h=6mm, auto width, vertically centered with
+	// the title text at y≈5.5 / height 4 → both share vertical midline y=7.5).
+	// Title gets a clear 14mm reserved area for the logo regardless of branding
+	// aspect ratio; date/time pinned right.
 	pdf.SetHeaderFuncMode(func() {
-		pdf.ImageOptions("logo", marginL, 5, 8, 0, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
+		pdf.ImageOptions("logo", marginL, 4, 0, 6, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetTextColor(0, 0, 0)
-		pdf.SetXY(marginL+10, 6)
+		pdf.SetXY(marginL+16, 5.5)
 		pdf.CellFormat(120, 4, fmt.Sprintf("%s %s", msgs.HeaderTitle, lbKey), "", 0, "L", false, 0, "")
-		// Date + time right-aligned
+		// Date + time right-aligned, vertically aligned with the title.
 		pdf.SetFont("DejaVu", "", 7)
 		pdf.SetTextColor(80, 80, 80)
-		pdf.SetXY(pageW-10-60, 6)
+		pdf.SetXY(pageW-10-60, 5.5)
 		pdf.CellFormat(60, 4, formatLBTimestamp(time.Now(), lang), "", 0, "R", false, 0, "")
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetY(13)
@@ -248,6 +251,11 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			cols[idx].w = 0
 		}
 	}
+	// PAI-403: in count-only subtotal/grand-total rows we paint a fixed
+	// 38mm "{N} Tickets" cell at the right edge of the row over the filled
+	// background. The label sits left of it. Both fit inside the full-width
+	// row Rect so no overdraw.
+	const countCellW = 38.0
 
 	totalW := 0.0
 	for _, c := range cols {
@@ -286,6 +294,12 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		y := pdf.GetY()
 		x := marginL
 		for _, c := range cols {
+			// PAI-403: skip hidden columns. fpdf treats CellFormat(w==0, …) as
+			// "fill to right margin" — drawing the header would ghost-extend
+			// across the page.
+			if c.w <= 0 {
+				continue
+			}
 			pdf.SetXY(x, y)
 			pdf.CellFormat(c.w, tblHeaderH, " "+c.header, "", 0, "L", true, 0, "")
 			x += c.w
@@ -443,10 +457,10 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		setGridStyle()
 		pdf.Rect(marginL, subY, totalW, subH, "D")
 
-		subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
-		pdf.SetXY(marginL, subY+0.8)
-		pdf.CellFormat(subLabelW-0.5, lineH, msgs.Subtotal, "", 0, "R", false, 0, "")
 		if anyNumeric {
+			subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
+			pdf.SetXY(marginL, subY+0.8)
+			pdf.CellFormat(subLabelW-0.5, lineH, msgs.Subtotal, "", 0, "R", false, 0, "")
 			x := marginL + subLabelW
 			drawSubCell := func(idx int, text string) {
 				if cols[idx].w <= 0 {
@@ -462,11 +476,17 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			drawSubCell(8, fmtDE(g.Subtotal.ArHours))
 			drawSubCell(9, fmtDE(g.Subtotal.ArEur))
 		} else {
-			// PAI-401: no numeric columns visible → show "{N} <issuesUnit>" in
-			// the freed-up area to the right of the label.
-			countW := totalW - subLabelW
-			pdf.SetXY(marginL+subLabelW, subY+0.8)
-			pdf.CellFormat(countW-0.5, lineH, lbIssueCountLabel(len(g.Issues), lang), "", 0, "R", false, 0, "")
+			// PAI-401 + PAI-403: count-only mode. The numeric cols are width 0
+			// (their budget went to Description), so reusing sum(cols[0..4]) as
+			// the label width leaves zero room for the count. Instead, carve a
+			// fixed 38mm count cell off the right of totalW and let the label
+			// take the rest. Both right-aligned within their cell so the
+			// alignment matches the numeric-mode row above.
+			labelW := totalW - countCellW
+			pdf.SetXY(marginL, subY+0.8)
+			pdf.CellFormat(labelW-0.5, lineH, msgs.Subtotal, "", 0, "R", false, 0, "")
+			pdf.SetXY(marginL+labelW, subY+0.8)
+			pdf.CellFormat(countCellW-0.5, lineH, lbIssueCountLabel(len(g.Issues), lang), "", 0, "R", false, 0, "")
 		}
 		pdf.SetXY(marginL, subY+subH)
 		pdf.SetFont("DejaVu", "", 6.5)
@@ -481,10 +501,10 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	setGridStyle()
 	pdf.Rect(marginL, gtY, totalW, gtH, "D")
 
-	subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
-	pdf.SetXY(marginL, gtY+1)
-	pdf.CellFormat(subLabelW-0.5, lineH+0.5, msgs.GrandTotal, "", 0, "R", false, 0, "")
 	if anyNumeric {
+		subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
+		pdf.SetXY(marginL, gtY+1)
+		pdf.CellFormat(subLabelW-0.5, lineH+0.5, msgs.GrandTotal, "", 0, "R", false, 0, "")
 		x := marginL + subLabelW
 		drawGtCell := func(idx int, text string) {
 			if cols[idx].w <= 0 {
@@ -500,14 +520,17 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		drawGtCell(8, fmtDE(report.GrandTotal.ArHours))
 		drawGtCell(9, fmtDE(report.GrandTotal.ArEur))
 	} else {
-		// PAI-401: count total issues across all groups.
+		// PAI-401 + PAI-403: count-only mode. See subtotal block above for
+		// why we don't reuse sum(cols[0..4]) as the label width.
 		var total int
 		for _, g := range report.Groups {
 			total += len(g.Issues)
 		}
-		countW := totalW - subLabelW
-		pdf.SetXY(marginL+subLabelW, gtY+1)
-		pdf.CellFormat(countW-0.5, lineH+0.5, lbIssueCountLabel(total, lang), "", 0, "R", false, 0, "")
+		labelW := totalW - countCellW
+		pdf.SetXY(marginL, gtY+1)
+		pdf.CellFormat(labelW-0.5, lineH+0.5, msgs.GrandTotal, "", 0, "R", false, 0, "")
+		pdf.SetXY(marginL+labelW, gtY+1)
+		pdf.CellFormat(countCellW-0.5, lineH+0.5, lbIssueCountLabel(total, lang), "", 0, "R", false, 0, "")
 	}
 
 	return pdf
