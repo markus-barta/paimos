@@ -184,6 +184,12 @@ export default {
     },
     empty: 'Keine Tickets passen zu den gewählten Filtern.',
     errorGenerate: 'Bericht konnte nicht erzeugt werden.',
+    exportModal: {
+      title: 'Lieferbericht-PDF exportieren',
+      cancel: 'Abbrechen',
+      ignoredFiltersPrefix: 'Folgende IssueList-Filter werden vom Lieferbericht-Endpoint (noch) nicht unterstützt und ignoriert:',
+      issueListAction: 'Export → Lieferbericht-PDF',
+    },
   },
   undo: {
     conflict: {

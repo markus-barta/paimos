@@ -15,6 +15,7 @@ import { storeToRefs } from 'pinia'
 import type { Issue, Tag, SavedView, Sprint, User } from '@/types'
 import type { Project } from '@/types'
 import { useViews, getLastViewId, setLastViewId } from '@/composables/useViews'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useColumnConfig } from '@/composables/useColumnConfig'
 import { useTimeUnit } from '@/composables/useTimeUnit'
@@ -39,6 +40,7 @@ import BulkChangeModal from '@/components/BulkChangeModal.vue'
 import IssueFilterPanel from '@/components/IssueFilterPanel.vue'
 import IssueViewsPanel from '@/components/IssueViewsPanel.vue'
 import EpicCascadeDialog from '@/components/EpicCascadeDialog.vue'
+import LieferberichtExportModal from '@/components/LieferberichtExportModal.vue'
 import {
   LS_EPIC_DISPLAY_MODE as EPIC_MODE_KEY,
   lsFiltersKey,
@@ -70,6 +72,7 @@ const props = defineProps<{
 }>()
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   created: [issue: Issue]
@@ -168,6 +171,21 @@ const {
   switchComplexTab, setAssigneeAny,
   filterWatchSources,
 } = filterReal
+
+// PAI-405: Lieferbericht export modal state. Active IssueList filters that
+// don't yet map to the Lieferbericht endpoint are surfaced to the user so
+// they aren't silently lost.
+const exportModalOpen = ref(false)
+const lbUnsupportedActive = computed(() => {
+  const out: string[] = []
+  if (filterPriority.value.length > 0) out.push('priority')
+  if (filterType.value.length > 0)     out.push('type')
+  if (filterAssignee.value.length > 0) out.push('assignee')
+  if (filterCostUnit.value.length > 0) out.push('cost unit')
+  if (filterRelease.value.length > 0)  out.push('release')
+  if (filterEpic.value.length > 0)     out.push('epic')
+  return out
+})
 
 function currentFiltersJSON(): string {
   try {
@@ -1082,6 +1100,17 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
              Documents / Cooperation aux-panel toggles, PAI-145). Lives next
              to Tree/Flat so toggles all share one visual cluster. -->
         <slot name="toolbar-extra" />
+        <!-- PAI-405: Export → Lieferbericht PDF. Project-scoped only; the
+             global cross-project IssueList has no single project to bind. -->
+        <button
+          v-if="projectId !== undefined"
+          class="btn btn-ghost btn-sm"
+          @click="exportModalOpen = true"
+          :title="t('lieferbericht.exportModal.issueListAction')"
+        >
+          <AppIcon name="download" :size="12" />
+          {{ t('lieferbericht.exportModal.issueListAction') }}
+        </button>
         <button
           ref="colBtnEl"
           :class="['btn btn-ghost btn-sm filter-btn', { active: colPanelOpen }]"
@@ -1386,6 +1415,20 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         </div>
       </div>
     </Teleport>
+
+    <!-- PAI-405: Lieferbericht export modal — opens from the toolbar
+         button above; only rendered when the IssueList has a single
+         project context. -->
+    <LieferberichtExportModal
+      v-if="projectId !== undefined"
+      :open="exportModalOpen"
+      :project-id="projectId"
+      :filter-status="filterStatus"
+      :filter-tags="filterTags"
+      :filter-sprints="filterSprints"
+      :unsupported-active="lbUnsupportedActive"
+      @close="exportModalOpen = false"
+    />
 
   </div>
 </template>

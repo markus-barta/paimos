@@ -3,6 +3,7 @@ import { createApp, defineComponent, nextTick, ref } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { api } from '@/api/client'
+import i18n from '@/i18n'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import type { Issue } from '@/types'
 import IssueList from './IssueList.vue'
@@ -200,6 +201,7 @@ function mountIssueList(issues: Issue[]) {
 
   const app = createApp(Harness)
   app.use(createPinia())
+  app.use(i18n)
   app.mount(el)
 
   return {

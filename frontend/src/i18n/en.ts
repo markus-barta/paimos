@@ -184,6 +184,12 @@ export default {
     },
     empty: 'No issues match the selected filters.',
     errorGenerate: 'Failed to generate report.',
+    exportModal: {
+      title: 'Export Lieferbericht PDF',
+      cancel: 'Cancel',
+      ignoredFiltersPrefix: 'These IssueList filters are not (yet) supported by the Lieferbericht endpoint and will be ignored:',
+      issueListAction: 'Export → Lieferbericht PDF',
+    },
   },
   undo: {
     conflict: {
