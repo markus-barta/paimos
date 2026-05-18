@@ -104,8 +104,28 @@ func truncRunes(s string, maxRunes int) string {
 	return string(runes[:maxRunes]) + "..."
 }
 
+// stripNonBMP replaces runes outside the Basic Multilingual Plane (codepoint > 0xFFFF)
+// with '?'. fpdf's character-width table has 65536 entries (splittext.go:31, MultiCell),
+// so emojis and other supplementary-plane runes cause runtime index-out-of-range panics.
+func stripNonBMP(s string) string {
+	if !strings.ContainsFunc(s, func(r rune) bool { return r > 0xFFFF }) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r > 0xFFFF {
+			b.WriteByte('?')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // smartTruncate truncates text at a word boundary, appending ellipsis.
 func smartTruncate(s string, maxRunes int) string {
+	s = stripNonBMP(s)
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", "")
 	s = strings.Join(strings.Fields(s), " ") // collapse whitespace
