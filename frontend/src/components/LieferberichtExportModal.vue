@@ -15,6 +15,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { LS_LIEFERBERICHT_COLS, LS_LIEFERBERICHT_LANG } from '@/constants/storage'
+import { isNeg, posOf, OTHER_STATUS_SENTINEL } from '@/composables/useIssueFilter'
 import AppModal from '@/components/AppModal.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
@@ -79,27 +80,40 @@ const colsParam = computed(() => {
   return xs.join(',')
 })
 
+function encodeSignedList(values: string[], opts: { numeric: boolean; dropOtherStatus?: boolean } = { numeric: false }): string[] {
+  const out: string[] = []
+  for (const raw of values) {
+    const neg = isNeg(raw)
+    const value = posOf(raw)
+    if (opts.dropOtherStatus && value === OTHER_STATUS_SENTINEL) continue
+    if (opts.numeric) {
+      const n = Number(value)
+      if (!Number.isInteger(n) || n <= 0) continue
+    }
+    out.push(neg ? `!${value}` : value)
+  }
+  return out
+}
+
 function download() {
   const params = new URLSearchParams()
   // Sprint mapping: if exactly one or more sprints are filtered in the
   // IssueList, use scope=sprint with those IDs. Otherwise scope=date_range
   // with no from/to so the backend applies no time-window or default-status
   // narrowing — the user's explicit status filter (if any) is authoritative.
-  if (props.filterSprints.length > 0) {
+  const sprintIDs = encodeSignedList(props.filterSprints, { numeric: true }).filter(v => !isNeg(v))
+  if (sprintIDs.length > 0) {
     params.set('scope', 'sprint')
-    params.set('sprint_ids', props.filterSprints.join(','))
+    params.set('sprint_ids', sprintIDs.join(','))
   } else {
     params.set('scope', 'date_range')
   }
   params.set('lang', lang.value)
   params.set('cols', colsParam.value)
-  if (props.filterTags.length > 0) {
-    const tagIDs = props.filterTags.map(Number).filter(n => Number.isInteger(n) && n > 0)
-    if (tagIDs.length > 0) params.set('tag_ids', tagIDs.join(','))
-  }
-  if (props.filterStatus.length > 0) {
-    params.set('statuses', props.filterStatus.join(','))
-  }
+  const tagIDs = encodeSignedList(props.filterTags, { numeric: true })
+  if (tagIDs.length > 0) params.set('tag_ids', tagIDs.join(','))
+  const statuses = encodeSignedList(props.filterStatus, { numeric: false, dropOtherStatus: true })
+  if (statuses.length > 0) params.set('statuses', statuses.join(','))
   window.open(`/api/projects/${props.projectId}/reports/lieferbericht/pdf?${params.toString()}`, '_blank')
   emit('close')
 }

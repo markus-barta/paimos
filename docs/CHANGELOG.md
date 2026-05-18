@@ -5,6 +5,34 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.9] — 2026-05-18
+
+Lieferbericht QA follow-up for the v3.4.8 filter/export release.
+
+### Fixed
+
+- **BPOPS26-106** — IssueList Export → Lieferbericht PDF now preserves
+  negated status and tag chips. The frontend serializes `!done` /
+  `!<tag_id>` values, and the report endpoint applies them as SQL
+  exclusions instead of treating them as literal values or dropping
+  them.
+
+- **BPOPS26-107** — IssueList active-chip negation now applies
+  consistently to complex filter groups, including tags, projects,
+  sprints, assignee, cost unit, release, and epic. Negated sprint
+  filters are surfaced as unsupported in the Lieferbericht export
+  modal instead of being sent to the sprint-scoped report endpoint.
+
+- **BPOPS26-108** — Long Lieferbericht PDFs no longer emit blank
+  header/footer-only pages in the middle of the document. The table
+  renderer now owns its page-break decisions instead of mixing manual
+  checks with fpdf's automatic page breaker.
+
+- **BPOPS26-109** — Lieferbericht PDF tables now use the full A4
+  landscape printable width. Hidden numeric columns and leftover page
+  width are assigned to the Description column, so the table reaches
+  the right margin.
+
 ## [3.4.8] — 2026-05-18
 
 Lieferbericht filter + export polish: in-place tag/status filters on

@@ -25,7 +25,7 @@ import { useIssueContext } from '@/composables/useIssueContext'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
-import { normalizeSavedFilters, normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
+import { isNeg, normalizeSavedFilters, normalizeSavedFiltersJSON } from '@/composables/useIssueFilter'
 import { normalizeColumnWidths, type ColumnWidths } from '@/composables/useColumnWidths'
 import { useSprintNav } from '@/composables/useSprintNav'
 import { useTreeView } from '@/composables/useTreeView'
@@ -183,6 +183,7 @@ const lbUnsupportedActive = computed(() => {
   if (filterAssignee.value.length > 0) out.push('assignee')
   if (filterCostUnit.value.length > 0) out.push('cost unit')
   if (filterRelease.value.length > 0)  out.push('release')
+  if (filterSprints.value.some(isNeg)) out.push('excluded sprint')
   if (filterEpic.value.length > 0)     out.push('epic')
   return out
 })

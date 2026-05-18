@@ -167,7 +167,11 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	visible := opts.Cols
 	anyNumeric := visible.AnyVisible()
 	pdf := fpdf.New("L", "mm", "A4", "")
-	pdf.SetAutoPageBreak(true, 12)
+	// The table renderer performs its own page-break checks. Leaving fpdf's
+	// automatic page breaks enabled lets MultiCell/CellFormat add pages after
+	// borders/backgrounds have already been painted, which can leave blank
+	// header/footer-only pages in long reports.
+	pdf.SetAutoPageBreak(false, 0)
 	pdf.SetMargins(10, 10, 10)
 
 	// Register UTF-8 fonts for umlaut support
@@ -189,6 +193,8 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// A4 landscape = 297mm wide. Margins: 10mm each side → usable 277mm.
 	const pageW = 297.0
 	const marginL = 10.0
+	const marginR = 10.0
+	const usableW = pageW - marginL - marginR
 	const lineH = 3.0 // line height for MultiCell rows
 
 	// Build report key for header (e.g. "LB-ASC2501-02")
@@ -247,8 +253,8 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	}
 
 	// PAI-400: hidden numeric columns release their width to the Description
-	// column (index 3) so the page still fills horizontally. The 5 identity
-	// columns (Key/Type/Summary/Description/Status) are always visible.
+	// column (index 3). Any remaining printable width is assigned there too so
+	// the table reaches the landscape page's right margin.
 	numericVisible := [5]bool{visible.SP, visible.H, visible.ARSP, visible.ARH, visible.AREUR}
 	for i, vis := range numericVisible {
 		idx := 5 + i
@@ -257,16 +263,20 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			cols[idx].w = 0
 		}
 	}
+	totalW := 0.0
+	for _, c := range cols {
+		totalW += c.w
+	}
+	if extra := usableW - totalW; extra > 0 {
+		cols[3].w += extra
+		totalW += extra
+	}
+
 	// PAI-403: in count-only subtotal/grand-total rows we paint a fixed
 	// 38mm "{N} Tickets" cell at the right edge of the row over the filled
 	// background. The label sits left of it. Both fit inside the full-width
 	// row Rect so no overdraw.
 	const countCellW = 38.0
-
-	totalW := 0.0
-	for _, c := range cols {
-		totalW += c.w
-	}
 
 	const tblHeaderH = 6.0
 	const minRowH = 5.0
@@ -314,6 +324,14 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		pdf.SetTextColor(0, 0, 0)
 	}
 
+	ensureSpace := func(h float64) {
+		_, pageH := pdf.GetPageSize()
+		if pdf.GetY()+h > pageH-12 {
+			pdf.AddPage()
+			drawHeader()
+		}
+	}
+
 	drawHeader()
 
 	statusLabel := func(status string) string {
@@ -350,11 +368,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 
 	for _, g := range report.Groups {
 		// Page break check for epic header + at least 2 rows
-		_, pageH := pdf.GetPageSize()
-		if pdf.GetY() > pageH-35 {
-			pdf.AddPage()
-			drawHeader()
-		}
+		ensureSpace(35)
 
 		// Epic group header row — light background, bold, spans full width
 		epicY := pdf.GetY()
@@ -386,11 +400,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			rh := calcRowH(summary, desc)
 
 			// Page break check
-			_, pageH := pdf.GetPageSize()
-			if pdf.GetY()+rh > pageH-12 {
-				pdf.AddPage()
-				drawHeader()
-			}
+			ensureSpace(rh)
 
 			rowY := pdf.GetY()
 
@@ -455,6 +465,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		}
 
 		// Subtotal row
+		ensureSpace(5.0)
 		subY := pdf.GetY()
 		subH := 5.0
 		pdf.SetFont("DejaVu", "B", 6.5)
@@ -499,6 +510,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	}
 
 	// Grand total row
+	ensureSpace(6.5)
 	gtY := pdf.GetY() + 0.5
 	gtH := 6.0
 	pdf.SetFont("DejaVu", "B", 7)

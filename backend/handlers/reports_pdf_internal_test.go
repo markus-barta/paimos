@@ -9,8 +9,12 @@ package handlers
 
 import (
 	"bytes"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -128,6 +132,27 @@ func TestParseLBColSet_EmptyIsZeroSet(t *testing.T) {
 	}
 }
 
+// PAI-405: IssueList export passes active chip negation through as !value.
+// The Lieferbericht endpoint must preserve those as exclusion filters instead
+// of treating them as literal status/tag values.
+func TestParseLBFilters_SignedFilters(t *testing.T) {
+	r := httptest.NewRequest("GET", "/?tag_ids=12,!34,bad,!0,!&statuses=qa,!done,%20!delivered,%20!", nil)
+	got := parseLBFilters(r)
+
+	if !reflect.DeepEqual(got.TagIDs, []int64{12}) {
+		t.Fatalf("TagIDs = %+v, want [12]", got.TagIDs)
+	}
+	if !reflect.DeepEqual(got.ExcludeTagIDs, []int64{34}) {
+		t.Fatalf("ExcludeTagIDs = %+v, want [34]", got.ExcludeTagIDs)
+	}
+	if !reflect.DeepEqual(got.Statuses, []string{"qa"}) {
+		t.Fatalf("Statuses = %+v, want [qa]", got.Statuses)
+	}
+	if !reflect.DeepEqual(got.ExcludeStatuses, []string{"done", "delivered"}) {
+		t.Fatalf("ExcludeStatuses = %+v, want [done delivered]", got.ExcludeStatuses)
+	}
+}
+
 // PAI-400 + PAI-401: empty column set must still render (no panic) and the
 // subtotal/grand-total rows fall back to the "{N} issues" presentation when
 // no numeric columns are visible.
@@ -139,7 +164,10 @@ func TestLieferberichtPDF_NoNumericColumnsRenders(t *testing.T) {
 			{EpicKey: "E2", Issues: []lbIssue{{IssueKey: "X-3", Title: "c"}}},
 		},
 	}
-	for _, tc := range []struct{ name string; cols lbColSet }{
+	for _, tc := range []struct {
+		name string
+		cols lbColSet
+	}{
 		{"all-hidden", lbColSet{}},
 		{"only-eur", lbColSet{AREUR: true}},
 		{"all-visible", defaultLBColSet()},
@@ -153,6 +181,37 @@ func TestLieferberichtPDF_NoNumericColumnsRenders(t *testing.T) {
 				t.Fatalf("suspiciously small PDF: %d bytes", buf.Len())
 			}
 		})
+	}
+}
+
+// BPOPS26-108: long reports must not produce runaway blank pages from fpdf's
+// automatic page breaker fighting the renderer's manual row/page accounting.
+func TestLieferberichtPDF_LongReportPageCountStaysBounded(t *testing.T) {
+	report := &lbReport{
+		ProjectKey: "X",
+		Groups: []lbGroup{{
+			EpicKey:   "E",
+			EpicTitle: "Long delivered export",
+		}},
+	}
+	desc := strings.Repeat("A delivered issue with enough prose to wrap in the description column. ", 4)
+	for i := 1; i <= 140; i++ {
+		report.Groups[0].Issues = append(report.Groups[0].Issues, lbIssue{
+			IssueKey:    "X-" + strconv.Itoa(i),
+			Type:        "ticket",
+			Title:       "Delivered issue " + strconv.Itoa(i),
+			Description: desc,
+			Status:      "delivered",
+		})
+	}
+
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: "de", Cols: defaultLBColSet()})
+	if pages := pdf.PageNo(); pages > 20 {
+		t.Fatalf("long report rendered too many pages, likely blank-page churn: %d", pages)
+	}
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		t.Fatalf("output: %v", err)
 	}
 }
 

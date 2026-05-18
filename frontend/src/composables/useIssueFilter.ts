@@ -487,23 +487,43 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
         if (pos.length && !pos.includes(i.type))   return false
         if (neg.includes(i.type))                   return false
       }
-      if (filterCostUnit.value.length && !filterCostUnit.value.includes(i.cost_unit ?? ''))             return false
-      if (filterRelease.value.length  && !filterRelease.value.includes(i.release ?? ''))                return false
+      if (filterCostUnit.value.length) {
+        const { pos, neg } = splitFilter(filterCostUnit.value)
+        const costUnit = i.cost_unit ?? ''
+        if (pos.length && !pos.includes(costUnit)) return false
+        if (neg.includes(costUnit)) return false
+      }
+      if (filterRelease.value.length) {
+        const { pos, neg } = splitFilter(filterRelease.value)
+        const release = i.release ?? ''
+        if (pos.length && !pos.includes(release)) return false
+        if (neg.includes(release)) return false
+      }
       if (filterAssignee.value.length) {
-        const hasUnassigned = filterAssignee.value.includes('unassigned')
-        const ids = filterAssignee.value.filter(v => v !== 'unassigned')
-        const matchUnassigned = hasUnassigned && i.assignee_id === null
-        const matchId = ids.length > 0 && ids.includes(String(i.assignee_id))
-        if (!matchUnassigned && !matchId) return false
+        const { pos, neg } = splitFilter(filterAssignee.value)
+        const matchesAssignee = (v: string) => v === 'unassigned'
+          ? i.assignee_id === null
+          : String(i.assignee_id) === v
+        if (pos.length && !pos.some(matchesAssignee)) return false
+        if (neg.some(matchesAssignee)) return false
       }
       if (filterTags.value.length) {
         const issueTags = (i.tags ?? []).map(t => String(t.id))
-        if (!filterTags.value.some(tid => issueTags.includes(tid))) return false
+        const { pos, neg } = splitFilter(filterTags.value)
+        if (pos.length && !pos.some(tid => issueTags.includes(tid))) return false
+        if (neg.some(tid => issueTags.includes(tid))) return false
       }
-      if (filterProjects.value.length && !filterProjects.value.includes(String(i.project_id))) return false
+      if (filterProjects.value.length) {
+        const { pos, neg } = splitFilter(filterProjects.value)
+        const projectID = String(i.project_id)
+        if (pos.length && !pos.includes(projectID)) return false
+        if (neg.includes(projectID)) return false
+      }
       if (filterSprints.value.length) {
         const ids = i.sprint_ids ?? []
-        if (!filterSprints.value.some(sid => ids.includes(Number(sid)))) return false
+        const { pos, neg } = splitFilter(filterSprints.value)
+        if (pos.length && !pos.some(sid => ids.includes(Number(sid)))) return false
+        if (neg.some(sid => ids.includes(Number(sid)))) return false
       }
       // Toolbar sprint navigator (AND with all other filters)
       if (opts.toolbarSprintIds.value.length) {
@@ -511,7 +531,10 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
         if (ids.length > 0 && !opts.toolbarSprintIds.value.some(sid => ids.includes(sid))) return false
       }
       if (filterEpic.value.length) {
-        if (!filterEpic.value.includes(String(i.parent_id))) return false
+        const { pos, neg } = splitFilter(filterEpic.value)
+        const parentID = String(i.parent_id)
+        if (pos.length && !pos.includes(parentID)) return false
+        if (neg.includes(parentID)) return false
       }
       return true
     })
@@ -527,9 +550,10 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
   ): T[] {
     const q = search.trim().toLowerCase()
     const filtered = q ? allItems.filter(i => labelFn(i).toLowerCase().includes(q)) : allItems
+    const selected = new Set(selectedVals.map(posOf))
     return [...filtered].sort((a, b) => {
-      const asel = selectedVals.includes(keyFn(a))
-      const bsel = selectedVals.includes(keyFn(b))
+      const asel = selected.has(keyFn(a))
+      const bsel = selected.has(keyFn(b))
       if (asel !== bsel) return asel ? -1 : 1
       return labelFn(a).localeCompare(labelFn(b))
     })

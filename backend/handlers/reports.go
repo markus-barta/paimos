@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
 	"github.com/go-chi/chi/v5"
+	"github.com/markus-barta/paimos/backend/db"
 )
 
 // ── Lieferbericht types ──────────────────────────────────────────────────────
@@ -72,8 +72,10 @@ type lbReport struct {
 // lbFilters bundles the optional narrowing filters layered on top of the
 // scope preset (PAI-404). Each is stacked with AND; empty slices are skipped.
 type lbFilters struct {
-	TagIDs   []int64
-	Statuses []string
+	TagIDs          []int64
+	ExcludeTagIDs   []int64
+	Statuses        []string
+	ExcludeStatuses []string
 }
 
 func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate string, filters lbFilters) (*lbReport, error) {
@@ -130,6 +132,14 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		}
 		where = append(where, "i.id IN (SELECT issue_id FROM issue_tags WHERE tag_id IN ("+strings.Join(ph, ",")+"))")
 	}
+	if len(filters.ExcludeTagIDs) > 0 {
+		ph := make([]string, 0, len(filters.ExcludeTagIDs))
+		for _, id := range filters.ExcludeTagIDs {
+			ph = append(ph, "?")
+			args = append(args, id)
+		}
+		where = append(where, "i.id NOT IN (SELECT issue_id FROM issue_tags WHERE tag_id IN ("+strings.Join(ph, ",")+"))")
+	}
 
 	// PAI-404: explicit status filter, AND-ed on top of scope's default. Picking
 	// a status excluded by scope=all_open's default-OUT list yields no rows —
@@ -141,6 +151,14 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			args = append(args, s)
 		}
 		where = append(where, "i.status IN ("+strings.Join(ph, ",")+")")
+	}
+	if len(filters.ExcludeStatuses) > 0 {
+		ph := make([]string, 0, len(filters.ExcludeStatuses))
+		for _, s := range filters.ExcludeStatuses {
+			ph = append(ph, "?")
+			args = append(args, s)
+		}
+		where = append(where, "i.status NOT IN ("+strings.Join(ph, ",")+")")
 	}
 
 	query := `
@@ -175,9 +193,9 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		var (
 			issueKey, iType, title, desc, status string
 			estLp, estH, arLp, arH               *float64
-			rateLp, rateH                         *float64
-			epicID                                int64
-			epicKey, epicTitle                     string
+			rateLp, rateH                        *float64
+			epicID                               int64
+			epicKey, epicTitle                   string
 		)
 		if err := rows.Scan(
 			&issueKey, &iType, &title, &desc, &status,
@@ -266,15 +284,33 @@ func parseLBFilters(r *http.Request) lbFilters {
 	var f lbFilters
 	if raw := r.URL.Query().Get("tag_ids"); raw != "" {
 		for _, s := range strings.Split(raw, ",") {
-			if id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64); err == nil && id > 0 {
-				f.TagIDs = append(f.TagIDs, id)
+			token := strings.TrimSpace(s)
+			neg := strings.HasPrefix(token, "!")
+			if neg {
+				token = strings.TrimSpace(strings.TrimPrefix(token, "!"))
+			}
+			if id, err := strconv.ParseInt(token, 10, 64); err == nil && id > 0 {
+				if neg {
+					f.ExcludeTagIDs = append(f.ExcludeTagIDs, id)
+				} else {
+					f.TagIDs = append(f.TagIDs, id)
+				}
 			}
 		}
 	}
 	if raw := r.URL.Query().Get("statuses"); raw != "" {
 		for _, s := range strings.Split(raw, ",") {
-			if s = strings.TrimSpace(s); s != "" {
-				f.Statuses = append(f.Statuses, s)
+			token := strings.TrimSpace(s)
+			neg := strings.HasPrefix(token, "!")
+			if neg {
+				token = strings.TrimSpace(strings.TrimPrefix(token, "!"))
+			}
+			if token != "" {
+				if neg {
+					f.ExcludeStatuses = append(f.ExcludeStatuses, token)
+				} else {
+					f.Statuses = append(f.Statuses, token)
+				}
 			}
 		}
 	}
