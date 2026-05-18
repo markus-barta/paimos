@@ -35,6 +35,7 @@ type lbIssue struct {
 	Type          string   `json:"type"`
 	Title         string   `json:"title"`
 	Description   string   `json:"description"`
+	ReportSummary string   `json:"report_summary"`
 	Status        string   `json:"status"`
 	EstimateLp    *float64 `json:"estimate_lp"`
 	EstimateHours *float64 `json:"estimate_hours"`
@@ -203,7 +204,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		SELECT
 			i.id,
 			p.key || '-' || i.issue_number AS issue_key,
-			i.type, i.title, i.description, i.status,
+			i.type, i.title, i.description, i.report_summary, i.status,
 			i.estimate_lp, i.estimate_hours,
 			i.ar_lp, i.ar_hours,
 			COALESCE(i.rate_hourly, epic.rate_hourly) AS rate_hourly,
@@ -230,16 +231,16 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 
 	for rows.Next() {
 		var (
-			issueKey, iType, title, desc, status string
-			estLp, estH, arLp, arH               *float64
-			rateLp, rateH                        *float64
-			epicID                               int64
-			issueID                              int64
-			epicKey, epicTitle                   string
+			issueKey, iType, title, desc, reportSummary, status string
+			estLp, estH, arLp, arH                              *float64
+			rateLp, rateH                                       *float64
+			epicID                                              int64
+			issueID                                             int64
+			epicKey, epicTitle                                  string
 		)
 		if err := rows.Scan(
 			&issueID,
-			&issueKey, &iType, &title, &desc, &status,
+			&issueKey, &iType, &title, &desc, &reportSummary, &status,
 			&estLp, &estH, &arLp, &arH, &rateH, &rateLp,
 			&epicID, &epicKey, &epicTitle,
 		); err != nil {
@@ -249,7 +250,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		arEur := optMul(arLp, rateLp) + optMul(arH, rateH)
 
 		issue := lbIssue{
-			ID: issueID, IssueKey: issueKey, Type: iType, Title: title, Description: desc, Status: status,
+			ID: issueID, IssueKey: issueKey, Type: iType, Title: title, Description: desc, ReportSummary: reportSummary, Status: status,
 			EstimateLp: estLp, EstimateHours: estH, ArLp: arLp, ArHours: arH,
 			RateLp: rateLp, RateHourly: rateH, ArEur: arEur,
 		}

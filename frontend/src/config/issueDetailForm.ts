@@ -5,6 +5,7 @@ export interface IssueDetailForm {
   description: string
   acceptance_criteria: string
   notes: string
+  report_summary: string
   type: string
   status: string
   priority: string
@@ -37,6 +38,7 @@ export function emptyIssueDetailForm(): IssueDetailForm {
     description: '',
     acceptance_criteria: '',
     notes: '',
+    report_summary: '',
     type: '',
     status: '',
     priority: '',
@@ -70,6 +72,7 @@ export function issueToDetailForm(issue: Issue): IssueDetailForm {
     description: issue.description,
     acceptance_criteria: issue.acceptance_criteria,
     notes: issue.notes,
+    report_summary: issue.report_summary,
     type: issue.type,
     status: issue.status,
     priority: issue.priority,

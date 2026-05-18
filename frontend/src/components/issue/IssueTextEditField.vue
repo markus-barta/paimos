@@ -35,7 +35,7 @@ const props = withDefaults(
   defineProps<{
     modelValue: string;
     label: string;
-    field: "description" | "acceptance_criteria" | "notes";
+    field: "description" | "acceptance_criteria" | "notes" | "report_summary";
     hostKey: string;
     issueId: number;
     placeholder?: string;
@@ -46,6 +46,11 @@ const props = withDefaults(
     jobs?: IssueTextUploadJob[];
     apply: AiApplyHandler;
     onAccept: (text: string) => void;
+    // PAI-418 / PAI-422. Which AiActionMenu surface this field
+    // belongs to. Description / AC / Notes use "issue" (default).
+    // The report_summary field uses "customer" so the menu lists
+    // customer_rewrite + exec_summary together.
+    surface?: "issue" | "customer";
   }>(),
   {
     placeholder: "",
@@ -54,6 +59,7 @@ const props = withDefaults(
     attachmentsEnabled: false,
     enableUploads: false,
     jobs: () => [],
+    surface: "issue",
   },
 );
 
@@ -112,7 +118,7 @@ function onDrop(e: DragEvent) {
         :host-key="hostKey"
         :field="field"
         :field-label="label"
-        surface="issue"
+        :surface="surface"
         :issue-id="issueId"
         :text="() => modelValue"
         :on-accept="onAccept"

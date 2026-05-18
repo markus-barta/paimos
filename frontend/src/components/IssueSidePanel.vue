@@ -126,6 +126,7 @@ const form = ref({
   description: "",
   acceptance_criteria: "",
   notes: "",
+  report_summary: "",
   status: "",
   priority: "",
   type: "",
@@ -230,14 +231,18 @@ const showParentPicker = computed(
 const descRef = computed(() => issue.value?.description ?? "");
 const acRef = computed(() => issue.value?.acceptance_criteria ?? "");
 const notesRef = computed(() => issue.value?.notes ?? "");
+const reportSummaryRef = computed(() => issue.value?.report_summary ?? "");
 const { html: descHtml } = useMarkdown(descRef, mdMode);
 const { html: acHtml } = useMarkdown(acRef, mdMode);
 const { html: notesHtml } = useMarkdown(notesRef, mdMode);
+const { html: reportSummaryHtml } = useMarkdown(reportSummaryRef, mdMode);
 
 // PAI-146: AI optimization. The form's id matches issue.value.id when
 // editing an existing issue (this panel never opens without one), so
 // pass it through for context assembly.
-function onAiAccept(field: "description" | "acceptance_criteria" | "notes") {
+function onAiAccept(
+  field: "description" | "acceptance_criteria" | "notes" | "report_summary",
+) {
   return (text: string) => {
     form.value[field] = text;
   };
@@ -329,12 +334,17 @@ const search = useSearchStore();
 const descEl = ref<HTMLElement | null>(null);
 const acEl = ref<HTMLElement | null>(null);
 const notesEl = ref<HTMLElement | null>(null);
+// PAI-433. The report-summary block joined the watched dep array
+// but was missing its DOM ref + highlightDom call, so matches in
+// the new field rendered without yellow highlighting.
+const reportSummaryEl = ref<HTMLElement | null>(null);
 
-watch([() => search.query, descHtml, acHtml, notesHtml], () => {
+watch([() => search.query, descHtml, acHtml, notesHtml, reportSummaryHtml], () => {
   nextTick(() => {
     if (descEl.value) highlightDom(descEl.value, search.query);
     if (acEl.value) highlightDom(acEl.value, search.query);
     if (notesEl.value) highlightDom(notesEl.value, search.query);
+    if (reportSummaryEl.value) highlightDom(reportSummaryEl.value, search.query);
   });
 });
 
@@ -429,6 +439,7 @@ function resetForm() {
     description: i.description,
     acceptance_criteria: i.acceptance_criteria,
     notes: i.notes,
+    report_summary: i.report_summary,
     status: i.status,
     priority: i.priority,
     type: i.type,
@@ -1070,9 +1081,36 @@ async function deleteTimeEntry(entry: TimeEntry) {
                 v-html="notesHtml"
               />
             </div>
+            <!-- PAI-433 / PAI-434. Always-render shape matches
+                 IssueDetailBody: same em-dash placeholder when
+                 empty, and the DOM node is referenced so the
+                 search-highlight watcher can find it. Hiding the
+                 block on empty made the field undiscoverable. -->
+            <div
+              class="sp-body-block"
+              v-if="['epic', 'cost_unit', 'ticket'].includes(issue.type)"
+            >
+              <p class="sp-body-label">
+                Report summary
+                <span class="sp-body-label-hint"
+                  >(Projektbericht · Kundenfassung)</span
+                >
+              </p>
+              <div
+                v-if="issue.report_summary"
+                ref="reportSummaryEl"
+                class="sp-body-text"
+                :class="{ 'md-rendered': mdMode }"
+                v-html="reportSummaryHtml"
+              />
+              <span v-else class="sp-muted" style="font-size: 12px">—</span>
+            </div>
             <div
               v-if="
-                !issue.description && !issue.acceptance_criteria && !issue.notes
+                !issue.description &&
+                !issue.acceptance_criteria &&
+                !issue.notes &&
+                !issue.report_summary
               "
               class="sp-muted"
             >
@@ -1346,6 +1384,32 @@ async function deleteTimeEntry(entry: TimeEntry) {
               <textarea v-model="form.notes" rows="3" />
               <AiSurfaceFeedback
                 :host-key="`issue-side:${issue?.id ?? 0}:notes`"
+                :apply="applyAiPanelResult"
+              />
+            </div>
+            <div
+              class="field"
+              v-if="['epic', 'cost_unit', 'ticket'].includes(form.type)"
+            >
+              <div class="field-label-row">
+                <label>Report summary</label>
+                <AiActionMenu
+                  surface="customer"
+                  :host-key="`issue-side:${issue?.id ?? 0}:report_summary`"
+                  field="report_summary"
+                  field-label="Report summary"
+                  :issue-id="issue?.id ?? 0"
+                  :text="() => form.report_summary"
+                  :on-accept="onAiAccept('report_summary')"
+                />
+              </div>
+              <textarea
+                v-model="form.report_summary"
+                rows="3"
+                placeholder="Kundenfassung für den Projektbericht — leer lassen und per AI generieren."
+              />
+              <AiSurfaceFeedback
+                :host-key="`issue-side:${issue?.id ?? 0}:report_summary`"
                 :apply="applyAiPanelResult"
               />
             </div>
@@ -1639,6 +1703,13 @@ async function deleteTimeEntry(entry: TimeEntry) {
   letter-spacing: 0.04em;
   color: var(--text-muted);
   margin: 0 0 0.25rem;
+}
+.sp-body-label-hint {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 0.4em;
+  opacity: 0.75;
 }
 .sp-body-text {
   font-size: 13px;

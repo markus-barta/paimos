@@ -337,12 +337,29 @@ func GetProjectReportPDF(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "report generation failed", http.StatusInternalServerError)
 		return
 	}
+	// PAI-418 / PAI-426. The snapshot-by-code endpoint is the link
+	// served on the portal acceptance flow and the portal project
+	// view — both are the customer's surface, so we default to the
+	// customer-facing report_summary when the caller doesn't ask
+	// otherwise. Internal SPA exports go through the project-scoped
+	// /reports/projektbericht/pdf endpoint, where the default
+	// remains "tech".
+	//
+	// PAI-430. Whitelist the accepted values rather than accepting
+	// any non-"tech" string: a typo (text_source=technical) or stale
+	// client must not silently flip to the customer variant. Unknown
+	// values fall back to the portal default ("report").
+	textSource := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("text_source")))
+	if textSource != "tech" && textSource != "report" {
+		textSource = "report"
+	}
 	pdf := renderLieferberichtPDF(report, lbRenderOpts{
 		Lang:          snap.Lang,
 		Cols:          defaultLBColSet(),
 		BaseURL:       reportRequestBaseURL(r),
 		ReportCode:    snap.Code,
 		AcceptanceURL: acceptanceURLForCode(r, snap.Code),
+		TextSource:    textSource,
 	})
 	writePDFResponse(w, pdf, snap.ReportKey+".pdf")
 }

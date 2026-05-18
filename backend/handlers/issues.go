@@ -32,6 +32,7 @@ import (
 const issueSelect = `
 	SELECT i.id, i.project_id, i.issue_number, i.type, i.parent_id,
 	       i.title, i.description, i.acceptance_criteria, i.notes,
+	       i.report_summary,
 	       i.status, i.priority, i.cost_unit, i.release,
 	       i.billing_type, i.total_budget, i.rate_hourly, i.rate_lp,
 	       i.start_date, i.end_date, i.group_state, i.sprint_state,
@@ -79,6 +80,7 @@ const issueSelect = `
 const issueSelectCore = `
 	SELECT i.id, i.project_id, i.issue_number, i.type, i.parent_id,
 	       i.title, i.description, i.acceptance_criteria, i.notes,
+	       i.report_summary,
 	       i.status, i.priority, i.cost_unit, i.release,
 	       i.billing_type, i.total_budget, i.rate_hourly, i.rate_lp,
 	       i.start_date, i.end_date, i.group_state, i.sprint_state,
@@ -125,6 +127,7 @@ func scanIssue(rows interface {
 	if err := rows.Scan(
 		&i.ID, &i.ProjectID, &i.IssueNumber, &i.Type, &i.ParentID,
 		&i.Title, &i.Description, &i.AcceptanceCriteria, &i.Notes,
+		&i.ReportSummary,
 		&i.Status, &i.Priority, &i.CostUnit, &i.Release,
 		&billingType, &i.TotalBudget, &i.RateHourly, &i.RateLp,
 		&startDate, &endDate, &groupState, &sprintState,

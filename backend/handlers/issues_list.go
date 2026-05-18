@@ -53,18 +53,20 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 				UNION
 				SELECT id FROM issues WHERE project_id = ? AND deleted_at IS NULL AND (
 					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+					OR report_summary LIKE ?
 					OR (SELECT key FROM projects WHERE id = issues.project_id) || '-' || issue_number LIKE ?
 				)
 			)`
-			args = append(args, ftsToken, projectID, likePattern, likePattern, likePattern, likePattern, likePattern)
+			args = append(args, ftsToken, projectID, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern)
 		} else {
 			whereSQL += ` AND i.id IN (
 				SELECT id FROM issues WHERE project_id = ? AND deleted_at IS NULL AND (
 					title LIKE ? OR description LIKE ? OR acceptance_criteria LIKE ? OR notes LIKE ?
+					OR report_summary LIKE ?
 					OR (SELECT key FROM projects WHERE id = issues.project_id) || '-' || issue_number LIKE ?
 				)
 			)`
-			args = append(args, projectID, likePattern, likePattern, likePattern, likePattern, likePattern)
+			args = append(args, projectID, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern)
 		}
 	}
 
@@ -452,6 +454,7 @@ func appendGlobalIssueSearchFilter(whereSQL string, args []any, raw string) (str
 				LEFT JOIN projects pp ON pp.id = ii.project_id
 				WHERE ii.deleted_at IS NULL AND (
 					ii.title LIKE ? OR ii.description LIKE ? OR ii.acceptance_criteria LIKE ? OR ii.notes LIKE ?
+					OR ii.report_summary LIKE ?
 					OR (COALESCE(pp.key,'') || '-' || CAST(ii.issue_number AS TEXT)) LIKE ?
 				)`
 
@@ -464,13 +467,13 @@ func appendGlobalIssueSearchFilter(whereSQL string, args []any, raw string) (str
 				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
 				UNION` + keyOrBodyMatchSQL + `
 			)`
-		args = append(args, ftsToken, likePattern, likePattern, likePattern, likePattern, likePattern)
+		args = append(args, ftsToken, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern)
 		return whereSQL, args
 	}
 
 	whereSQL += ` AND i.id IN (` + keyOrBodyMatchSQL + `
 			)`
-	args = append(args, likePattern, likePattern, likePattern, likePattern, likePattern)
+	args = append(args, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern)
 	return whereSQL, args
 }
 
@@ -501,7 +504,8 @@ func issueSearchRankOrder(raw string) (string, []any) {
 			WHEN LOWER(COALESCE(i.title,'')) LIKE LOWER(?) THEN 40
 			WHEN COALESCE(i.description,'') LIKE ?
 			  OR COALESCE(i.acceptance_criteria,'') LIKE ?
-			  OR COALESCE(i.notes,'') LIKE ? THEN 50
+			  OR COALESCE(i.notes,'') LIKE ?
+			  OR COALESCE(i.report_summary,'') LIKE ? THEN 50
 			WHEN EXISTS (
 				SELECT 1 FROM comments c
 				WHERE c.issue_id = i.id AND c.body LIKE ?
@@ -514,11 +518,12 @@ func issueSearchRankOrder(raw string) (string, []any) {
 			keyPrefix,
 			q,
 			titlePrefix,
-			contains,
-			contains,
-			contains,
-			contains,
-			contains,
+			contains, // title substring
+			contains, // description
+			contains, // acceptance_criteria
+			contains, // notes
+			contains, // report_summary
+			contains, // comment body
 		}
 }
 

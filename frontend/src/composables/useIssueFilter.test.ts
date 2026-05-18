@@ -64,6 +64,7 @@ function issue(id: number, patch: Partial<Issue>): Issue {
     description: '',
     acceptance_criteria: '',
     notes: '',
+    report_summary: '',
     status: 'new',
     priority: 'medium',
     cost_unit: '',

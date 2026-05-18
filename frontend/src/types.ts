@@ -514,6 +514,10 @@ export interface Issue {
   description: string
   acceptance_criteria: string
   notes: string
+  // PAI-418: customer-facing report-text used by Projektbericht.
+  // One field; the audience style (warm customer copy vs technical
+  // exec TL;DR) is picked at AI-generation time.
+  report_summary: string
   status: IssueStatus
   priority: IssuePriority
   cost_unit: string

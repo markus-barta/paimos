@@ -43,6 +43,7 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		Description        string   `json:"description"`
 		AcceptanceCriteria string   `json:"acceptance_criteria"`
 		Notes              string   `json:"notes"`
+		ReportSummary      string   `json:"report_summary"`
 		Type               string   `json:"type"`
 		ParentID           *int64   `json:"parent_id"`
 		Status             string   `json:"status"`
@@ -105,14 +106,16 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 
 	res, err := db.DB.Exec(`
 		INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
-		                   acceptance_criteria,notes,status,priority,cost_unit,release,
+		                   acceptance_criteria,notes,report_summary,
+		                   status,priority,cost_unit,release,
 		                   billing_type,total_budget,rate_hourly,rate_lp,
 		                   start_date,end_date,group_state,sprint_state,jira_id,jira_version,jira_text,
 		                   estimate_hours,estimate_lp,ar_hours,ar_lp,time_override,
 		                   color,assignee_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`, projectID, nextNum, body.Type, body.ParentID, body.Title, body.Description,
-		body.AcceptanceCriteria, body.Notes, body.Status, body.Priority,
+		body.AcceptanceCriteria, body.Notes, body.ReportSummary,
+		body.Status, body.Priority,
 		body.CostUnit, body.Release,
 		body.BillingType, body.TotalBudget, body.RateHourly, body.RateLp,
 		body.StartDate, body.EndDate, body.GroupState, body.SprintState,
@@ -179,15 +182,17 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 
 	res, err := db.DB.Exec(`
 		INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
-		                   acceptance_criteria,notes,status,priority,cost_unit,release,
+		                   acceptance_criteria,notes,report_summary,
+		                   status,priority,cost_unit,release,
 		                   billing_type,total_budget,rate_hourly,rate_lp,
 		                   start_date,end_date,group_state,sprint_state,jira_id,jira_version,jira_text,
 		                   estimate_hours,estimate_lp,ar_hours,ar_lp,time_override,
 		                   color,assignee_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`, src.ProjectID, nextNum, src.Type, src.ParentID,
 		"Copy of "+src.Title, src.Description,
-		src.AcceptanceCriteria, src.Notes, "backlog", src.Priority,
+		src.AcceptanceCriteria, src.Notes, src.ReportSummary,
+		"backlog", src.Priority,
 		src.CostUnit, src.Release,
 		ptrOrEmpty(src.BillingType), src.TotalBudget, src.RateHourly, src.RateLp,
 		ptrOrEmpty(src.StartDate), ptrOrEmpty(src.EndDate),
@@ -266,6 +271,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		Description        *string  `json:"description"`
 		AcceptanceCriteria *string  `json:"acceptance_criteria"`
 		Notes              *string  `json:"notes"`
+		ReportSummary      *string  `json:"report_summary"`
 		Type               *string  `json:"type"`
 		ParentID           *int64   `json:"parent_id"`
 		Status             *string  `json:"status"`
@@ -371,6 +377,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			description         = COALESCE(?, description),
 			acceptance_criteria = COALESCE(?, acceptance_criteria),
 			notes               = COALESCE(?, notes),
+			report_summary      = COALESCE(?, report_summary),
 			type                = COALESCE(?, type),
 			parent_id           = CASE WHEN ? = 1 THEN ? ELSE parent_id END,
 			status              = COALESCE(?, status),
@@ -398,6 +405,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			updated_at          = ?
 		WHERE id=?
 	`, body.Title, body.Description, body.AcceptanceCriteria, body.Notes,
+		body.ReportSummary,
 		body.Type,
 		parentPresent, body.ParentID,
 		body.Status, body.Priority, body.CostUnit, body.Release,

@@ -61,6 +61,15 @@ func init() {
 		// field the menu is attached to.
 		{Key: "tone_check", Label: "Tone check", Surface: "customer", Placement: "text", Handler: stubHandler},
 
+		// PAI-418 / PAI-421 — Projektbericht summary generators.
+		// Both read the issue's description (+ AC + title) and produce
+		// the matching summary variant. customer_rewrite favors warm
+		// end-user copy; exec_summary favors technical TL;DR.
+		{Key: "customer_rewrite", Label: "Generate as customer copy", Surface: "customer", Placement: "text",
+			Handler: stubHandler,
+			SubKeys: []string{"release_note", "feature", "fix", "stability", "security_hardening"}},
+		{Key: "exec_summary", Label: "Generate as executive summary", Surface: "customer", Placement: "text", Handler: stubHandler},
+
 		// PAI-358: structure_manifest / structure_guardrails /
 		// structure_glossary / structure_dev / structure_ops removed.
 		// They targeted the legacy manifest editor's tabbed JSON

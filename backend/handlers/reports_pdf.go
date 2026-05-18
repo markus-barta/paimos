@@ -83,7 +83,14 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 		reportCode = randHex(5)
 		acceptURL = acceptanceURLForCode(r, reportCode)
 	}
-	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet, BaseURL: reportRequestBaseURL(r), ReportCode: reportCode, AcceptanceURL: acceptURL})
+	// PAI-418 / PAI-425. text_source ∈ {"tech", "report"}; unknown values
+	// fall back to "tech" so a typo or a stale client never silently
+	// switches to the customer-facing variant.
+	textSource := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("text_source")))
+	if textSource != "report" {
+		textSource = "tech"
+	}
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet, BaseURL: reportRequestBaseURL(r), ReportCode: reportCode, AcceptanceURL: acceptURL, TextSource: textSource})
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -191,6 +198,32 @@ func descriptionText(desc, summary string) string {
 		return ""
 	}
 	return d
+}
+
+// bodyTextForRow picks which text variant the Projektbericht row body
+// cell should render, based on the export's text_source choice
+// (PAI-418 / PAI-425). For text_source="report" the customer-facing
+// report_summary takes precedence; when an issue has no summary yet
+// we fall back to the technical description with a visible
+// "[keine Kundenfassung]" prefix so the reader sees the gap instead
+// of being silently served the technical body.
+//
+// PAI-432. The fallback prefix is ALWAYS rendered for missing
+// summaries — even when the description is empty too. Otherwise a
+// ticket with no summary and an empty body would silently render
+// nothing, defeating the "visible gap" contract.
+func bodyTextForRow(issue lbIssue, textSource string) string {
+	if textSource == "report" {
+		if s := strings.TrimSpace(issue.ReportSummary); s != "" {
+			return s
+		}
+		fallback := descriptionText(issue.Description, issue.Title)
+		if fallback == "" {
+			return "[keine Kundenfassung]"
+		}
+		return "[keine Kundenfassung] " + fallback
+	}
+	return descriptionText(issue.Description, issue.Title)
 }
 
 func reportRequestBaseURL(r *http.Request) string {
@@ -536,7 +569,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 
 		for _, issue := range g.Issues {
 			summary := smartTruncate(issue.Title, 200)
-			desc := descriptionText(issue.Description, issue.Title)
+			desc := bodyTextForRow(issue, opts.TextSource)
 			if desc != "" {
 				desc = smartTruncate(desc, 200)
 			}

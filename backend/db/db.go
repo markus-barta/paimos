@@ -4619,6 +4619,15 @@ func migrate(db *sql.DB) error {
 			`CREATE INDEX IF NOT EXISTS idx_project_report_snapshots_code
 			 ON project_report_snapshots(code)`,
 		}},
+		// Migration 108: PAI-418/420 — customer-facing report-text
+		// field used by Projektbericht export and the portal
+		// acceptance page. Single column; the audience style (warm
+		// "Apple Notes" copy vs technical executive TL;DR) is picked
+		// at AI-generation time, not stored as two parallel fields.
+		// NOT NULL DEFAULT '' so existing rows just start blank.
+		{108, []string{
+			`ALTER TABLE issues ADD COLUMN report_summary TEXT NOT NULL DEFAULT ''`,
+		}},
 	}
 
 	for _, m := range migrations {

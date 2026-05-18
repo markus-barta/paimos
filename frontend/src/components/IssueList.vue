@@ -36,6 +36,7 @@ import IssueTable from '@/components/IssueTable.vue'
 import IssueTreeView from '@/components/IssueTreeView.vue'
 import CreateIssueModal from '@/components/CreateIssueModal.vue'
 import BulkChangeModal from '@/components/BulkChangeModal.vue'
+import BulkGenerateSummaryModal from '@/components/BulkGenerateSummaryModal.vue'
 import IssueFilterPanel from '@/components/IssueFilterPanel.vue'
 import IssueViewsPanel from '@/components/IssueViewsPanel.vue'
 import EpicCascadeDialog from '@/components/EpicCascadeDialog.vue'
@@ -640,6 +641,11 @@ const showBulkDelete  = ref(false)
 const bulkDeleting    = ref(false)
 const showBulkChange  = ref(false)
 const bulkChangeRef   = ref<InstanceType<typeof BulkChangeModal> | null>(null)
+// PAI-418 / PAI-424. Bulk generate-summary modal — opens with the
+// current selection's issue IDs; the modal handles style picker,
+// progress, cancel, and per-row error surfacing.
+const showBulkSummary = ref(false)
+const bulkSummaryIds  = ref<number[]>([])
 
 async function openBulkChange() {
   if (!loadedSprints.value.length) {
@@ -653,6 +659,21 @@ function onBulkChangeDone() {
   selectedIds.value    = new Set()
   selectionMode.value  = false
   showBulkChange.value = false
+}
+
+function openBulkSummary() {
+  if (selectedIds.value.size === 0) return
+  bulkSummaryIds.value = [...selectedIds.value]
+  showBulkSummary.value = true
+}
+
+function onBulkSummaryDone() {
+  // Per-row updates already streamed via @updated → emit('updated')
+  // so the host has the fresh issues. Just clear selection and
+  // close, matching BulkChangeModal's done contract.
+  selectedIds.value   = new Set()
+  selectionMode.value = false
+  showBulkSummary.value = false
 }
 
 async function confirmBulkDelete() {
@@ -1106,6 +1127,14 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
           Change {{ selectedIds.size }} issue{{ selectedIds.size !== 1 ? 's' : '' }}...
         </button>
         <button
+          v-if="selectionMode && selectedIds.size > 0"
+          class="btn btn-ghost btn-sm"
+          title="Generate a customer-facing report summary on each selected issue using AI."
+          @click="openBulkSummary"
+        >
+          Generate report summary (AI)
+        </button>
+        <button
           v-if="isAdmin && selectionMode && selectedIds.size > 0"
           class="btn btn-danger btn-sm"
           @click="showBulkDelete = true"
@@ -1366,6 +1395,15 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       @done="onBulkChangeDone"
     />
 
+    <!-- PAI-418 / PAI-424. Bulk Generate Report Summary modal. -->
+    <BulkGenerateSummaryModal
+      :open="showBulkSummary"
+      :issue-ids="bulkSummaryIds"
+      @close="showBulkSummary = false"
+      @updated="issue => emit('updated', issue)"
+      @done="onBulkSummaryDone"
+    />
+
     <!-- Bulk delete confirm -->
     <AppModal title="Delete Issues" :open="showBulkDelete" @close="showBulkDelete=false" confirm-key="d" @confirm="confirmBulkDelete">
       <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
@@ -1473,6 +1511,8 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       :date-from="filterDateFrom"
       :date-to="filterDateTo"
       :unsupported-active="lbUnsupportedActive"
+      :in-scope-issues="filteredIssues"
+      @updated="(issue) => emit('updated', issue)"
       @close="exportModalOpen = false"
     />
 

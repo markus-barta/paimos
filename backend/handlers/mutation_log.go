@@ -78,6 +78,7 @@ type issueMutationSnapshot struct {
 	Description        string   `json:"description"`
 	AcceptanceCriteria string   `json:"acceptance_criteria"`
 	Notes              string   `json:"notes"`
+	ReportSummary      string   `json:"report_summary"`
 	Status             string   `json:"status"`
 	Priority           string   `json:"priority"`
 	CostUnit           string   `json:"cost_unit"`
@@ -423,12 +424,14 @@ func fetchIssueMutationSnapshotTx(tx *sql.Tx, issueID int64) (issueMutationSnaps
 	var assigneeID sql.NullInt64
 	err := tx.QueryRow(`
 		SELECT id, project_id, type, parent_id, title, description, acceptance_criteria, notes,
+		       report_summary,
 		       status, priority, cost_unit, release, billing_type, total_budget, rate_hourly, rate_lp,
 		       start_date, end_date, group_state, sprint_state, jira_id, jira_version, jira_text,
 		       estimate_hours, estimate_lp, ar_hours, ar_lp, time_override, color, assignee_id, deleted_at
 		FROM issues WHERE id = ?
 	`, issueID).Scan(
 		&snap.ID, &projectID, &snap.Type, &parentID, &snap.Title, &snap.Description, &snap.AcceptanceCriteria, &snap.Notes,
+		&snap.ReportSummary,
 		&snap.Status, &snap.Priority, &snap.CostUnit, &snap.Release, &billingType, &totalBudget, &rateHourly, &rateLp,
 		&startDate, &endDate, &groupState, &sprintState, &jiraID, &jiraVersion, &jiraText,
 		&estimateHours, &estimateLp, &arHours, &arLp, &timeOverride, &color, &assigneeID, &deletedAt,
@@ -604,6 +607,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 	_, err := tx.Exec(`
 		UPDATE issues SET
 			type = ?, parent_id = ?, title = ?, description = ?, acceptance_criteria = ?, notes = ?,
+			report_summary = ?,
 			status = ?, priority = ?, cost_unit = ?, release = ?, billing_type = ?, total_budget = ?,
 			rate_hourly = ?, rate_lp = ?, start_date = ?, end_date = ?, group_state = ?, sprint_state = ?,
 			jira_id = ?, jira_version = ?, jira_text = ?, estimate_hours = ?, estimate_lp = ?, ar_hours = ?,
@@ -611,6 +615,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 		WHERE id = ?
 	`,
 		snap.Type, snap.ParentID, snap.Title, snap.Description, snap.AcceptanceCriteria, snap.Notes,
+		snap.ReportSummary,
 		snap.Status, snap.Priority, snap.CostUnit, snap.Release, snap.BillingType, snap.TotalBudget,
 		snap.RateHourly, snap.RateLp, snap.StartDate, snap.EndDate, snap.GroupState, snap.SprintState,
 		snap.JiraID, snap.JiraVersion, snap.JiraText, snap.EstimateHours, snap.EstimateLp, snap.ArHours,

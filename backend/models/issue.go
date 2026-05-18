@@ -27,6 +27,10 @@ type Issue struct {
 	Description        string  `json:"description"`
 	AcceptanceCriteria string  `json:"acceptance_criteria"`
 	Notes              string  `json:"notes"`
+	// PAI-418: customer-facing report-text used by Projektbericht.
+	// One field; the audience style (warm customer copy vs technical
+	// exec TL;DR) is picked at AI-generation time.
+	ReportSummary string `json:"report_summary"`
 	Status             string  `json:"status"`
 	Priority           string  `json:"priority"`
 	// Grouping free-text fields (still used for filter/export)

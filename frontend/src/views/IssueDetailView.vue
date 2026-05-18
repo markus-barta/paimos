@@ -750,9 +750,11 @@ const isMonospace = computed(() => authStore.user?.monospace_fields ?? false);
 const descriptionRef = computed(() => issue.value?.description ?? "");
 const acRef = computed(() => issue.value?.acceptance_criteria ?? "");
 const notesRef = computed(() => issue.value?.notes ?? "");
+const reportSummaryRef = computed(() => issue.value?.report_summary ?? "");
 const { html: descHtml } = useMarkdown(descriptionRef, mdMode);
 const { html: acHtml } = useMarkdown(acRef, mdMode);
 const { html: notesHtml } = useMarkdown(notesRef, mdMode);
+const { html: reportSummaryHtml } = useMarkdown(reportSummaryRef, mdMode);
 
 // PAI-146: AI text optimization. The composable manages availability,
 // in-flight state, and the overlay slot; we just provide the per-field
@@ -764,7 +766,7 @@ const { html: notesHtml } = useMarkdown(notesRef, mdMode);
 // (always truthy) in v-if, which kept the error banner permanently
 // visible with empty content.
 function onOptimizeAccept(
-  field: "description" | "acceptance_criteria" | "notes",
+  field: "description" | "acceptance_criteria" | "notes" | "report_summary",
 ) {
   return (text: string) => {
     form.value[field] = text;
@@ -1324,6 +1326,7 @@ async function cancelEdit() {
         :desc-html="descHtml"
         :ac-html="acHtml"
         :notes-html="notesHtml"
+        :report-summary-html="reportSummaryHtml"
         :is-monospace="isMonospace"
         :md-mode="mdMode"
       />
@@ -1383,6 +1386,20 @@ async function cancelEdit() {
             :is-monospace="isMonospace"
             :apply="applyAiResult"
             :on-accept="onOptimizeAccept('notes')"
+          />
+          <IssueTextEditField
+            v-if="['epic', 'cost_unit', 'ticket'].includes(form.type)"
+            v-model="form.report_summary"
+            label="Report summary"
+            field="report_summary"
+            surface="customer"
+            :host-key="`issue-detail:${issueId}:report_summary`"
+            :issue-id="issueId"
+            placeholder="Kundenfassung für den Projektbericht — leer lassen und per AI generieren."
+            :rows="3"
+            :is-monospace="isMonospace"
+            :apply="applyAiResult"
+            :on-accept="onOptimizeAccept('report_summary')"
           />
         </div>
 

@@ -149,6 +149,61 @@ func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	}
 }
 
+// PAI-418 / PAI-425. Exercise the text_source param end-to-end:
+// "tech" renders the technical description, "report" reads
+// report_summary (with a "[keine Kundenfassung]" fallback tag when
+// the summary is empty), and unknown values default to "tech". The
+// PDF magic-bytes check is enough — the renderer's row layout is
+// covered by the basic-render test above; here we only need to
+// prove the param is wired without breaking output.
+func TestLieferberichtPDF_TextSourceParam(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Text Source Project",
+		"key":  "TSRC",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
+		"title":           "Filled summary",
+		"description":     "Technical description here.",
+		"report_summary":  "Wir haben die Anmeldung stabiler gemacht.",
+		"type":            "ticket",
+		"status":          "done",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
+		"title":       "Missing summary",
+		"description": "Another technical body without a customer-facing summary yet.",
+		"type":        "ticket",
+		"status":      "done",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+
+	for _, src := range []string{"tech", "report", "bogus"} {
+		req, err := http.NewRequest(http.MethodGet, ts.srv.URL+fmt.Sprintf("/api/projects/%d/reports/lieferbericht/pdf?scope=all&text_source=%s", projectID, src), nil)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		req.Header.Set("Cookie", ts.adminCookie)
+		req.Header.Set("X-Forwarded-Proto", "https")
+		req.Header.Set("X-Forwarded-Host", "pm.bytepoets.com")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET pdf %s: %v", src, err)
+		}
+		assertStatus(t, resp, http.StatusOK)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if len(body) < 1000 || string(body[:5]) != "%PDF-" {
+			t.Errorf("text_source=%s: invalid PDF (len=%d)", src, len(body))
+		}
+	}
+}
+
 func TestProjektberichtSnapshotAcceptanceFlow(t *testing.T) {
 	ts := newTestServer(t)
 

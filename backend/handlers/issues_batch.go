@@ -72,6 +72,7 @@ type BatchCreateItem struct {
 	Description        string   `json:"description"`
 	AcceptanceCriteria string   `json:"acceptance_criteria"`
 	Notes              string   `json:"notes"`
+	ReportSummary      string   `json:"report_summary"`
 	Status             string   `json:"status"`
 	Priority           string   `json:"priority"`
 	ParentID           *int64   `json:"parent_id"`
@@ -230,12 +231,14 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 
 		res, err := tx.Exec(`
 			INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
-			                   acceptance_criteria,notes,status,priority,cost_unit,release,
+			                   acceptance_criteria,notes,report_summary,
+			                   status,priority,cost_unit,release,
 			                   start_date,end_date,estimate_hours,estimate_lp,
 			                   assignee_id,created_by)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		`, projectID, nextNum, typ, parentID, it.Title, it.Description,
-			it.AcceptanceCriteria, it.Notes, status, priority,
+			it.AcceptanceCriteria, it.Notes, it.ReportSummary,
+			status, priority,
 			it.CostUnit, it.Release,
 			it.StartDate, it.EndDate,
 			it.EstimateHours, it.EstimateLp,
@@ -504,6 +507,7 @@ type partialIssueUpdate struct {
 	Description          *string
 	AcceptanceCriteria   *string
 	Notes                *string
+	ReportSummary        *string
 	Type                 *string
 	ParentID             *int64
 	ParentIDPresent      bool
@@ -548,6 +552,7 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 		Description        *string  `json:"description"`
 		AcceptanceCriteria *string  `json:"acceptance_criteria"`
 		Notes              *string  `json:"notes"`
+		ReportSummary      *string  `json:"report_summary"`
 		Type               *string  `json:"type"`
 		ParentID           *int64   `json:"parent_id"`
 		Status             *string  `json:"status"`
@@ -567,6 +572,7 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 	upd.Description = body.Description
 	upd.AcceptanceCriteria = body.AcceptanceCriteria
 	upd.Notes = body.Notes
+	upd.ReportSummary = body.ReportSummary
 	upd.Type = body.Type
 	upd.ParentID = body.ParentID
 	upd.Status = body.Status
@@ -620,6 +626,7 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 			description         = COALESCE(?, description),
 			acceptance_criteria = COALESCE(?, acceptance_criteria),
 			notes               = COALESCE(?, notes),
+			report_summary      = COALESCE(?, report_summary),
 			type                = COALESCE(?, type),
 			parent_id           = CASE WHEN ? = 1 THEN ? ELSE parent_id END,
 			status              = COALESCE(?, status),
@@ -635,6 +642,7 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 		WHERE id=?
 	`,
 		upd.Title, upd.Description, upd.AcceptanceCriteria, upd.Notes,
+		upd.ReportSummary,
 		upd.Type,
 		flag(upd.ParentIDPresent), upd.ParentID,
 		upd.Status, upd.Priority, upd.CostUnit, upd.Release,

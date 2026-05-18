@@ -182,4 +182,11 @@ type lbRenderOpts struct {
 	BaseURL       string
 	ReportCode    string
 	AcceptanceURL string
+	// PAI-418 / PAI-425. Which text variant the body cell should render:
+	//   "tech"   — issue.Description (default, unchanged behavior)
+	//   "report" — issue.ReportSummary; falls back to description with a
+	//              visible "(keine Kundenfassung)" tag so the gap is
+	//              obvious rather than silently hidden.
+	// Unknown / empty values default to "tech".
+	TextSource string
 }

@@ -60,6 +60,10 @@ export const LS_ACCRUALS_ACCENT = 'paimos:accruals-accent'
 // Lieferbericht — PAI-400/402
 export const LS_LIEFERBERICHT_COLS = 'paimos:lieferbericht:cols'
 export const LS_LIEFERBERICHT_LANG = 'paimos:lieferbericht:lang'
+// PAI-418 / PAI-423. Persisted text-source choice for the export modal.
+// Values: "tech" (technical description, default) | "report"
+// (customer-facing report_summary).
+export const LS_LIEFERBERICHT_TEXT_SOURCE = 'paimos:lieferbericht:text_source'
 
 // Issue list
 export const LS_EPIC_DISPLAY_MODE = 'paimos:epic-display-mode'

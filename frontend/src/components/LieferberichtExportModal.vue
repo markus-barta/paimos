@@ -14,9 +14,11 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
-import { LS_LIEFERBERICHT_COLS, LS_LIEFERBERICHT_LANG } from '@/constants/storage'
+import { LS_LIEFERBERICHT_COLS, LS_LIEFERBERICHT_LANG, LS_LIEFERBERICHT_TEXT_SOURCE } from '@/constants/storage'
 import { isNeg, posOf, OTHER_STATUS_SENTINEL } from '@/composables/useIssueFilter'
+import type { Issue } from '@/types'
 import AppModal from '@/components/AppModal.vue'
+import BulkGenerateSummaryModal from '@/components/BulkGenerateSummaryModal.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
 
@@ -44,8 +46,19 @@ const props = defineProps<{
    *  the Lieferbericht endpoint doesn't yet honor. Shown to the user so
    *  they aren't silently lost. */
   unsupportedActive: string[]
+  /** PAI-418 / PAI-423. The issues actually included in the export
+   *  (after the IssueList filter has resolved). Used to compute the
+   *  "X of Y issues have a report summary" coverage line and to feed
+   *  the bulk generator the missing-summary IDs. Optional so callers
+   *  that don't yet pass it don't crash; the coverage hint just hides. */
+  inScopeIssues?: Issue[]
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  /** Forwarded from the bulk generate modal so the host (IssueList)
+   *  can re-emit `updated` and refresh affected rows in place. */
+  updated: [issue: Issue]
+}>()
 
 type Lang = 'en' | 'de'
 const langOptions: MetaOption[] = [
@@ -60,6 +73,20 @@ function initialLang(): Lang {
   return 'en'
 }
 
+// PAI-418 / PAI-423. Which text variant the PDF body cells render.
+// "tech"   = issue.description (default, legacy behavior)
+// "report" = issue.report_summary, with description fallback + a
+//            visible "[keine Kundenfassung]" tag for missing rows
+type TextSource = 'tech' | 'report'
+const textSourceOptions: MetaOption[] = [
+  { value: 'tech', label: 'Technical (description)' },
+  { value: 'report', label: 'Report summary (customer-facing)' },
+]
+function initialTextSource(): TextSource {
+  const stored = localStorage.getItem(LS_LIEFERBERICHT_TEXT_SOURCE)
+  return stored === 'report' ? 'report' : 'tech'
+}
+
 interface ColSet { sp: boolean; h: boolean; arSp: boolean; arH: boolean; arEur: boolean }
 const defaultCols: ColSet = { sp: true, h: true, arSp: true, arH: true, arEur: true }
 function initialCols(): ColSet {
@@ -72,11 +99,43 @@ function initialCols(): ColSet {
 
 const lang = ref<Lang>(initialLang())
 const cols = ref<ColSet>(initialCols())
+const textSource = ref<TextSource>(initialTextSource())
+
+// PAI-418 / PAI-423. Coverage: how many in-scope tickets still lack a
+// customer-facing report_summary? Only meaningful when the user
+// picked the "report" text source; otherwise the coverage line hides.
+// Computed from `inScopeIssues` (already filtered upstream by the
+// caller's IssueList state).
+const missingSummaryIssues = computed(() => {
+  const list = props.inScopeIssues ?? []
+  return list.filter(
+    (i) =>
+      !String(i.report_summary ?? '').trim() &&
+      ['epic', 'cost_unit', 'ticket'].includes(i.type),
+  )
+})
+const inScopeReportableTotal = computed(() => {
+  const list = props.inScopeIssues ?? []
+  return list.filter((i) => ['epic', 'cost_unit', 'ticket'].includes(i.type)).length
+})
+const showCoverageLine = computed(() => textSource.value === 'report' && (props.inScopeIssues?.length ?? 0) > 0)
+
+// State for the bulk Generate Missing flow (opens BulkGenerateSummaryModal
+// over this one with the missing-summary IDs).
+const showBulkGen = ref(false)
+const bulkGenIds = ref<number[]>([])
+function openGenerateMissing() {
+  const ids = missingSummaryIssues.value.map((i) => i.id)
+  if (ids.length === 0) return
+  bulkGenIds.value = ids
+  showBulkGen.value = true
+}
 
 // Sync the same prefs the dedicated report view uses so the choice
 // persists across both entry points.
 watch(lang, (v) => localStorage.setItem(LS_LIEFERBERICHT_LANG, v))
 watch(cols, (v) => localStorage.setItem(LS_LIEFERBERICHT_COLS, JSON.stringify(v)), { deep: true })
+watch(textSource, (v) => localStorage.setItem(LS_LIEFERBERICHT_TEXT_SOURCE, v))
 
 const colsParam = computed(() => {
   const xs: string[] = []
@@ -119,6 +178,7 @@ function download() {
   params.set('lang', lang.value)
   params.set('cols', colsParam.value)
   params.set('snapshot', '1')
+  params.set('text_source', textSource.value)
   const tagIDs = encodeSignedList(props.filterTags, { numeric: true })
   if (tagIDs.length > 0) params.set('tag_ids', tagIDs.join(','))
   const statuses = encodeSignedList(props.filterStatus, { numeric: false, dropOtherStatus: true })
@@ -147,6 +207,30 @@ function download() {
   <AppModal :open="open" :title="t('lieferbericht.exportModal.title')" max-width="480px" @close="emit('close')">
     <div class="lb-export">
       <div class="lb-export-row">
+        <label class="lb-export-label">Text source</label>
+        <MetaSelect v-model="textSource" :options="textSourceOptions" />
+        <p class="lb-export-hint" v-if="textSource === 'report'">
+          Uses each ticket's customer-facing Report summary. Rows without one fall back to the technical description, prefixed with <code>[keine Kundenfassung]</code>.
+        </p>
+        <div class="lb-export-coverage" v-if="showCoverageLine">
+          <template v-if="missingSummaryIssues.length === 0">
+            <span class="lb-export-coverage--ok">
+              ✓ All {{ inScopeReportableTotal }} in-scope ticket{{ inScopeReportableTotal === 1 ? '' : 's' }} have a report summary.
+            </span>
+          </template>
+          <template v-else>
+            <span>
+              <strong>{{ missingSummaryIssues.length }}</strong>
+              of {{ inScopeReportableTotal }} in-scope ticket{{ inScopeReportableTotal === 1 ? '' : 's' }} missing a report summary.
+            </span>
+            <button type="button" class="btn btn-ghost btn-sm" @click="openGenerateMissing">
+              Generate missing →
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <div class="lb-export-row">
         <label class="lb-export-label">{{ t('lieferbericht.filters.language') }}</label>
         <MetaSelect v-model="lang" :options="langOptions" />
       </div>
@@ -173,6 +257,17 @@ function download() {
         </button>
       </div>
     </div>
+
+    <!-- PAI-418 / PAI-423. Generate missing bulk modal, layered on top
+         of the export modal. Closes back to the export modal so the
+         user can immediately download with the freshly-filled rows. -->
+    <BulkGenerateSummaryModal
+      :open="showBulkGen"
+      :issue-ids="bulkGenIds"
+      @close="showBulkGen = false"
+      @updated="(issue) => emit('updated', issue)"
+      @done="showBulkGen = false"
+    />
   </AppModal>
 </template>
 
@@ -180,6 +275,10 @@ function download() {
 .lb-export { display: flex; flex-direction: column; gap: 1rem; }
 .lb-export-row { display: flex; flex-direction: column; gap: .35rem; }
 .lb-export-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.lb-export-hint { margin: .35rem 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+.lb-export-hint code { background: var(--bg); padding: 0 .3em; border-radius: 3px; font-size: 11px; }
+.lb-export-coverage { display: flex; align-items: center; justify-content: space-between; gap: .65rem; margin-top: .35rem; font-size: 12px; color: var(--text); }
+.lb-export-coverage--ok { color: var(--text-muted); }
 .lb-export-cols { display: flex; gap: .75rem; flex-wrap: wrap; }
 .lb-export-check { display: inline-flex; align-items: center; gap: .3rem; font-size: 12px; color: var(--text); cursor: pointer; }
 .lb-export-warn {

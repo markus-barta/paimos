@@ -49,6 +49,7 @@ type portalIssue struct {
 	Title              string   `json:"title"`
 	Description        string   `json:"description"`
 	AcceptanceCriteria string   `json:"acceptance_criteria"`
+	ReportSummary      string   `json:"report_summary"`
 	Status             string   `json:"status"`
 	Priority           string   `json:"priority"`
 	Type               string   `json:"type"`
@@ -244,6 +245,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.DB.Query(fmt.Sprintf(`
 		SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 		       i.title, i.description, i.acceptance_criteria,
+		       i.report_summary,
 		       i.status, i.priority, i.type,
 		       i.cost_unit, i.release,
 		       i.estimate_hours, i.estimate_lp, i.ar_hours, i.ar_lp,
@@ -267,6 +269,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		var rateH, rateLP *float64
 		if err := rows.Scan(&pi.ID, &pi.IssueKey,
 			&pi.Title, &pi.Description, &pi.AcceptanceCriteria,
+			&pi.ReportSummary,
 			&pi.Status, &pi.Priority, &pi.Type,
 			&pi.CostUnit, &pi.Release,
 			&pi.EstimateHours, &pi.EstimateLp, &pi.ArHours, &pi.ArLp,
@@ -306,6 +309,7 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 	err = db.DB.QueryRow(`
 		SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 		       i.title, i.description, i.acceptance_criteria,
+		       i.report_summary,
 		       i.status, i.priority, i.type,
 		       i.cost_unit, i.release,
 		       i.estimate_hours, i.estimate_lp, i.ar_hours, i.ar_lp,
@@ -317,6 +321,7 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 		WHERE i.id = ? AND i.project_id = ? AND i.deleted_at IS NULL
 	`, issueID, projectID).Scan(&pi.ID, &pi.IssueKey,
 		&pi.Title, &pi.Description, &pi.AcceptanceCriteria,
+		&pi.ReportSummary,
 		&pi.Status, &pi.Priority, &pi.Type,
 		&pi.CostUnit, &pi.Release,
 		&pi.EstimateHours, &pi.EstimateLp, &pi.ArHours, &pi.ArLp,

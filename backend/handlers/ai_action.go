@@ -179,6 +179,7 @@ var allowedActionFields = map[string]bool{
 	"description":             true,
 	"acceptance_criteria":     true,
 	"notes":                   true,
+	"report_summary":          true,
 	"project_description":     true,
 	"customer_notes":          true,
 	"cooperation_sla_details": true,

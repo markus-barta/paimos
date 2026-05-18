@@ -12,6 +12,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     description: 'Desc',
     acceptance_criteria: 'AC',
     notes: 'Notes',
+    report_summary: '',
     status: 'new',
     priority: 'medium',
     type: 'ticket',

@@ -130,6 +130,7 @@ function makeIssue(id: number): Issue {
     description: '',
     acceptance_criteria: '',
     notes: '',
+    report_summary: '',
     status: 'new',
     priority: 'medium',
     cost_unit: '',
