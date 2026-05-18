@@ -45,7 +45,7 @@ G202	MEDIUM	HIGH	handlers/project_context.go	840	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	166-183	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/reports.go	187-204	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/reports.go	202-219	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/super_admin_audit.go	143-153	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	472-478	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	510-516	SQL string concatenation
@@ -113,7 +113,7 @@ G701	HIGH	HIGH	handlers/issues_list.go	100	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	221	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/reports.go	206	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/reports.go	221	SQL injection via taint analysis
 G703	HIGH	HIGH	db/db.go	70	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
@@ -126,9 +126,9 @@ G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	68	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	89	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	697	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	797	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	808	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	707	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	807	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	818	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis
