@@ -18,8 +18,11 @@ package handlers
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -70,7 +73,7 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 	} else {
 		colSet = defaultLBColSet()
 	}
-	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet})
+	pdf := renderLieferberichtPDF(report, lbRenderOpts{Lang: lang, Cols: colSet, BaseURL: reportRequestBaseURL(r)})
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -161,11 +164,108 @@ func descriptionText(desc, summary string) string {
 	return d
 }
 
+func reportRequestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if xf := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); xf == "http" || xf == "https" {
+		scheme = xf
+	}
+	host := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0])
+	if host == "" {
+		host = r.Host
+	}
+	if host == "" {
+		return ""
+	}
+	return scheme + "://" + host
+}
+
+type rgbColor struct{ r, g, b int }
+
+type lbPDFPalette struct {
+	Primary        rgbColor
+	PrimaryDark    rgbColor
+	PrimaryPale    rgbColor
+	TableRowBorder rgbColor
+	TableRowAlt    rgbColor
+	TypeTicket     rgbColor
+	TypeTask       rgbColor
+}
+
+func mustRGB(hex string) rgbColor {
+	c, ok := parseHexRGB(hex)
+	if !ok {
+		return rgbColor{}
+	}
+	return c
+}
+
+func parseHexRGB(hex string) (rgbColor, bool) {
+	if len(hex) != 7 || hex[0] != '#' {
+		return rgbColor{}, false
+	}
+	n, err := strconv.ParseUint(hex[1:], 16, 32)
+	if err != nil {
+		return rgbColor{}, false
+	}
+	return rgbColor{r: int(n >> 16 & 0xff), g: int(n >> 8 & 0xff), b: int(n & 0xff)}, true
+}
+
+func contrastTextColor(bg rgbColor) rgbColor {
+	// YIQ is sufficient for black/white table-header contrast in print/PDF.
+	if (bg.r*299+bg.g*587+bg.b*114)/1000 >= 140 {
+		return rgbColor{r: 0, g: 0, b: 0}
+	}
+	return rgbColor{r: 255, g: 255, b: 255}
+}
+
+func setTextRGB(pdf *fpdf.Fpdf, c rgbColor) { pdf.SetTextColor(c.r, c.g, c.b) }
+func setDrawRGB(pdf *fpdf.Fpdf, c rgbColor) { pdf.SetDrawColor(c.r, c.g, c.b) }
+func setFillRGB(pdf *fpdf.Fpdf, c rgbColor) { pdf.SetFillColor(c.r, c.g, c.b) }
+
+func resolveLBPDFPalette() lbPDFPalette {
+	colors := map[string]string{
+		"primary":        "#2e6da4",
+		"primaryDark":    "#1f4d75",
+		"primaryPale":    "#dce9f4",
+		"tableRowBorder": "#e8eaed",
+		"tableRowAlt":    "#f8f9fa",
+		"typeTicket":     "#1f4d75",
+		"typeTask":       "#2e7d32",
+	}
+	if data, err := os.ReadFile(filepath.Join(brandingDir(), "branding.json")); err == nil {
+		var parsed struct {
+			Colors map[string]string `json:"colors"`
+		}
+		if json.Unmarshal(data, &parsed) == nil {
+			for k, v := range parsed.Colors {
+				if _, ok := colors[k]; ok {
+					if _, valid := parseHexRGB(v); valid {
+						colors[k] = v
+					}
+				}
+			}
+		}
+	}
+	return lbPDFPalette{
+		Primary:        mustRGB(colors["primary"]),
+		PrimaryDark:    mustRGB(colors["primaryDark"]),
+		PrimaryPale:    mustRGB(colors["primaryPale"]),
+		TableRowBorder: mustRGB(colors["tableRowBorder"]),
+		TableRowAlt:    mustRGB(colors["tableRowAlt"]),
+		TypeTicket:     mustRGB(colors["typeTicket"]),
+		TypeTask:       mustRGB(colors["typeTask"]),
+	}
+}
+
 func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	lang := opts.Lang
 	msgs := resolveLBLang(lang)
 	visible := opts.Cols
 	anyNumeric := visible.AnyVisible()
+	palette := resolveLBPDFPalette()
 	pdf := fpdf.New("L", "mm", "A4", "")
 	// The table renderer performs its own page-break checks. Leaving fpdf's
 	// automatic page breaks enabled lets MultiCell/CellFormat add pages after
@@ -183,11 +283,14 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// (PAI-406). Belt-and-suspenders: if fpdf still fails to register the
 	// bytes (e.g. valid magic but truncated payload), drop the stale error
 	// and re-register the embedded fallback so the PDF never 500s.
-	logoBytes, logoImgType := resolveBrandingLogoForPDF()
-	pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: logoImgType}, bytes.NewReader(logoBytes))
-	if pdf.Error() != nil {
-		pdf.ClearError()
-		pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(logoPNG))
+	logoSVG, useLogoSVG := resolveBrandingLogoBasicSVGForPDF()
+	if !useLogoSVG {
+		logoBytes, logoImgType := resolveBrandingLogoForPDF()
+		pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: logoImgType}, bytes.NewReader(logoBytes))
+		if pdf.Error() != nil {
+			pdf.ClearError()
+			pdf.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(logoPNG))
+		}
 	}
 
 	// A4 landscape = 297mm wide. Margins: 10mm each side → usable 277mm.
@@ -205,7 +308,18 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// Title gets a clear 14mm reserved area for the logo regardless of branding
 	// aspect ratio; date/time pinned right.
 	pdf.SetHeaderFuncMode(func() {
-		pdf.ImageOptions("logo", marginL, 4, 0, 6, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
+		if useLogoSVG {
+			setDrawRGB(pdf, palette.Primary)
+			pdf.SetLineWidth(0.25)
+			pdf.SetLineCapStyle("round")
+			pdf.SetLineJoinStyle("round")
+			pdf.SetXY(marginL, 4)
+			pdf.SVGBasicWrite(logoSVG, 6/logoSVG.Ht)
+			pdf.SetLineCapStyle("butt")
+			pdf.SetLineJoinStyle("miter")
+		} else {
+			pdf.ImageOptions("logo", marginL, 4, 0, 6, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
+		}
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetXY(marginL+16, 5.5)
@@ -240,16 +354,15 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		align  string
 	}
 	cols := []col{
-		{msgs.ColKey, 20, "L"},         // 0
-		{msgs.ColType, 12, "L"},        // 1
-		{msgs.ColSummary, 68, "L"},     // 2 — multiline
-		{msgs.ColDescription, 80, "L"}, // 3 — multiline
-		{msgs.ColStatus, 18, "L"},      // 4
-		{msgs.ColSP, 10, "R"},          // 5 — visible.SP
-		{msgs.ColHours, 10, "R"},       // 6 — visible.H
-		{msgs.ColARSP, 14, "R"},        // 7 — visible.ARSP
-		{msgs.ColARHours, 14, "R"},     // 8 — visible.ARH
-		{msgs.ColAREUR, 18, "R"},       // 9 — visible.AREUR
+		{msgs.ColKey, 28, "L"},         // 0 — type icon + linked issue key
+		{msgs.ColSummary, 68, "L"},     // 1 — multiline
+		{msgs.ColDescription, 80, "L"}, // 2 — multiline
+		{msgs.ColStatus, 18, "L"},      // 3
+		{msgs.ColSP, 10, "R"},          // 4 — visible.SP
+		{msgs.ColHours, 10, "R"},       // 5 — visible.H
+		{msgs.ColARSP, 14, "R"},        // 6 — visible.ARSP
+		{msgs.ColARHours, 14, "R"},     // 7 — visible.ARH
+		{msgs.ColAREUR, 18, "R"},       // 8 — visible.AREUR
 	}
 
 	// PAI-400: hidden numeric columns release their width to the Description
@@ -257,9 +370,9 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// the table reaches the landscape page's right margin.
 	numericVisible := [5]bool{visible.SP, visible.H, visible.ARSP, visible.ARH, visible.AREUR}
 	for i, vis := range numericVisible {
-		idx := 5 + i
+		idx := 4 + i
 		if !vis {
-			cols[3].w += cols[idx].w
+			cols[2].w += cols[idx].w
 			cols[idx].w = 0
 		}
 	}
@@ -268,7 +381,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		totalW += c.w
 	}
 	if extra := usableW - totalW; extra > 0 {
-		cols[3].w += extra
+		cols[2].w += extra
 		totalW += extra
 	}
 
@@ -281,18 +394,11 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	const tblHeaderH = 6.0
 	const minRowH = 5.0
 
-	// Grid border color — light gray, thin
-	gridColor := [3]int{200, 200, 200}
-	// Header background — blue matching reference
-	headerBgColor := [3]int{68, 114, 196} // #4472C4
-	// Alternating row color
-	altRowBg := [3]int{245, 247, 250}
-	// Epic header background — light blue-gray
-	epicBg := [3]int{220, 228, 240}
+	headerTextColor := contrastTextColor(palette.Primary)
 
 	// Set thin grid line style
 	setGridStyle := func() {
-		pdf.SetDrawColor(gridColor[0], gridColor[1], gridColor[2])
+		setDrawRGB(pdf, palette.TableRowBorder)
 		pdf.SetLineWidth(0.2)
 	}
 
@@ -305,8 +411,8 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	// Table header — blue background, white text
 	drawHeader := func() {
 		pdf.SetFont("DejaVu", "B", 6.5)
-		pdf.SetFillColor(headerBgColor[0], headerBgColor[1], headerBgColor[2])
-		pdf.SetTextColor(255, 255, 255)
+		setFillRGB(pdf, palette.Primary)
+		setTextRGB(pdf, headerTextColor)
 		y := pdf.GetY()
 		x := marginL
 		for _, c := range cols {
@@ -321,7 +427,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			x += c.w
 		}
 		pdf.SetXY(marginL, y+tblHeaderH)
-		pdf.SetTextColor(0, 0, 0)
+		setTextRGB(pdf, rgbColor{})
 	}
 
 	ensureSpace := func(h float64) {
@@ -345,11 +451,18 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		}
 	}
 
+	issueURL := func(issue lbIssue) string {
+		if issue.ID <= 0 || opts.BaseURL == "" {
+			return ""
+		}
+		return strings.TrimRight(opts.BaseURL, "/") + fmt.Sprintf("/projects/%d/issues/%d", report.ProjectID, issue.ID)
+	}
+
 	// Pre-calculate multiline row height using SplitText
 	calcRowH := func(summary, desc string) float64 {
 		pdf.SetFont("DejaVu", "", 6.5)
-		summaryLines := pdf.SplitText(summary, cols[2].w-2)
-		descLines := pdf.SplitText(desc, cols[3].w-2)
+		summaryLines := pdf.SplitText(summary, cols[1].w-2)
+		descLines := pdf.SplitText(desc, cols[2].w-2)
 		nLines := len(summaryLines)
 		if len(descLines) > nLines {
 			nLines = len(descLines)
@@ -373,8 +486,8 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		// Epic group header row — light background, bold, spans full width
 		epicY := pdf.GetY()
 		pdf.SetFont("DejaVu", "B", 6.5)
-		pdf.SetFillColor(epicBg[0], epicBg[1], epicBg[2])
-		pdf.SetTextColor(30, 40, 60)
+		setFillRGB(pdf, palette.PrimaryPale)
+		setTextRGB(pdf, palette.PrimaryDark)
 		epicLabel := g.EpicKey
 		if g.EpicTitle != "" && g.EpicTitle != g.EpicKey {
 			epicLabel += " — " + g.EpicTitle
@@ -386,7 +499,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		pdf.SetXY(marginL+1, epicY+0.5)
 		pdf.CellFormat(totalW-2, epicH-1, smartTruncate(epicLabel, 160), "", 0, "L", false, 0, "")
 		pdf.SetXY(marginL, epicY+epicH)
-		pdf.SetTextColor(0, 0, 0)
+		setTextRGB(pdf, rgbColor{})
 
 		pdf.SetFont("DejaVu", "", 6.5)
 
@@ -406,42 +519,50 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 
 			// Alternating row shading
 			if rowIdx%2 == 1 {
-				pdf.SetFillColor(altRowBg[0], altRowBg[1], altRowBg[2])
+				setFillRGB(pdf, palette.TableRowAlt)
 				pdf.Rect(marginL, rowY, totalW, rh, "F")
 			}
 
 			pdf.SetFont("DejaVu", "", 6.5)
 			x := marginL
 
-			// Col 0: Key
+			// Col 0: Type icon + linked issue key
 			drawCellBorder(x, rowY, cols[0].w, rh)
-			pdf.SetXY(x+0.5, rowY+0.8)
-			pdf.CellFormat(cols[0].w-1, lineH, issue.IssueKey, "", 0, "L", false, 0, "")
+			link := issueURL(issue)
+			if link != "" {
+				pdf.LinkString(x+0.5, rowY, cols[0].w-1, rh, link)
+			}
+			const iconSize = 3.0
+			const iconGap = 1.2
+			iconX := x + 1.0
+			iconY := rowY + (rh-iconSize)/2
+			drawLBTypeSVGIcon(pdf, issue.Type, palette, iconX, iconY, iconSize)
+			setGridStyle()
+			keyX := iconX + iconSize + iconGap
+			keyY := rowY + (rh-lineH)/2
+			setTextRGB(pdf, palette.Primary)
+			pdf.SetXY(keyX, keyY)
+			pdf.CellFormat(cols[0].w-(keyX-x)-0.8, lineH, issue.IssueKey, "", 0, "L", false, 0, link)
+			setTextRGB(pdf, rgbColor{})
 			x += cols[0].w
 
-			// Col 1: Type
+			// Col 1: Summary — multiline
 			drawCellBorder(x, rowY, cols[1].w, rh)
 			pdf.SetXY(x+0.5, rowY+0.8)
-			pdf.CellFormat(cols[1].w-1, lineH, issue.Type, "", 0, "L", false, 0, "")
+			pdf.MultiCell(cols[1].w-1.5, lineH, summary, "", "L", false)
 			x += cols[1].w
 
-			// Col 2: Summary — multiline
+			// Col 2: Description — multiline
 			drawCellBorder(x, rowY, cols[2].w, rh)
 			pdf.SetXY(x+0.5, rowY+0.8)
-			pdf.MultiCell(cols[2].w-1.5, lineH, summary, "", "L", false)
+			pdf.MultiCell(cols[2].w-1.5, lineH, desc, "", "L", false)
 			x += cols[2].w
 
-			// Col 3: Description — multiline
+			// Col 3: Status
 			drawCellBorder(x, rowY, cols[3].w, rh)
 			pdf.SetXY(x+0.5, rowY+0.8)
-			pdf.MultiCell(cols[3].w-1.5, lineH, desc, "", "L", false)
+			pdf.CellFormat(cols[3].w-1, lineH, statusLabel(issue.Status), "", 0, "L", false, 0, "")
 			x += cols[3].w
-
-			// Col 4: Status
-			drawCellBorder(x, rowY, cols[4].w, rh)
-			pdf.SetXY(x+0.5, rowY+0.8)
-			pdf.CellFormat(cols[4].w-1, lineH, statusLabel(issue.Status), "", 0, "L", false, 0, "")
-			x += cols[4].w
 
 			// Numeric columns (PAI-400) — drawn only when visible.
 			drawNumeric := func(idx int, text string) {
@@ -453,11 +574,11 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 				pdf.CellFormat(cols[idx].w-0.5, lineH, text, "", 0, "R", false, 0, "")
 				x += cols[idx].w
 			}
-			drawNumeric(5, fmtOptDE(issue.EstimateLp))
-			drawNumeric(6, fmtOptDE(issue.EstimateHours))
-			drawNumeric(7, fmtOptDE(issue.ArLp))
-			drawNumeric(8, fmtOptDE(issue.ArHours))
-			drawNumeric(9, fmtDE(issue.ArEur))
+			drawNumeric(4, fmtOptDE(issue.EstimateLp))
+			drawNumeric(5, fmtOptDE(issue.EstimateHours))
+			drawNumeric(6, fmtOptDE(issue.ArLp))
+			drawNumeric(7, fmtOptDE(issue.ArHours))
+			drawNumeric(8, fmtDE(issue.ArEur))
 
 			// Advance Y
 			pdf.SetXY(marginL, rowY+rh)
@@ -469,13 +590,13 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		subY := pdf.GetY()
 		subH := 5.0
 		pdf.SetFont("DejaVu", "B", 6.5)
-		pdf.SetFillColor(240, 242, 246)
+		setFillRGB(pdf, palette.TableRowAlt)
 		pdf.Rect(marginL, subY, totalW, subH, "F")
 		setGridStyle()
 		pdf.Rect(marginL, subY, totalW, subH, "D")
 
 		if anyNumeric {
-			subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
+			subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w
 			pdf.SetXY(marginL, subY+0.8)
 			pdf.CellFormat(subLabelW-0.5, lineH, msgs.Subtotal, "", 0, "R", false, 0, "")
 			x := marginL + subLabelW
@@ -487,11 +608,11 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 				pdf.CellFormat(cols[idx].w-0.5, lineH, text, "", 0, "R", false, 0, "")
 				x += cols[idx].w
 			}
-			drawSubCell(5, fmtDE(g.Subtotal.EstimateLp))
-			drawSubCell(6, fmtDE(g.Subtotal.EstimateHours))
-			drawSubCell(7, fmtDE(g.Subtotal.ArLp))
-			drawSubCell(8, fmtDE(g.Subtotal.ArHours))
-			drawSubCell(9, fmtDE(g.Subtotal.ArEur))
+			drawSubCell(4, fmtDE(g.Subtotal.EstimateLp))
+			drawSubCell(5, fmtDE(g.Subtotal.EstimateHours))
+			drawSubCell(6, fmtDE(g.Subtotal.ArLp))
+			drawSubCell(7, fmtDE(g.Subtotal.ArHours))
+			drawSubCell(8, fmtDE(g.Subtotal.ArEur))
 		} else {
 			// PAI-401 + PAI-403: count-only mode. The numeric cols are width 0
 			// (their budget went to Description), so reusing sum(cols[0..4]) as
@@ -514,13 +635,13 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 	gtY := pdf.GetY() + 0.5
 	gtH := 6.0
 	pdf.SetFont("DejaVu", "B", 7)
-	pdf.SetFillColor(220, 228, 240)
+	setFillRGB(pdf, palette.PrimaryPale)
 	pdf.Rect(marginL, gtY, totalW, gtH, "F")
 	setGridStyle()
 	pdf.Rect(marginL, gtY, totalW, gtH, "D")
 
 	if anyNumeric {
-		subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
+		subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w
 		pdf.SetXY(marginL, gtY+1)
 		pdf.CellFormat(subLabelW-0.5, lineH+0.5, msgs.GrandTotal, "", 0, "R", false, 0, "")
 		x := marginL + subLabelW
@@ -532,11 +653,11 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			pdf.CellFormat(cols[idx].w-0.5, lineH+0.5, text, "", 0, "R", false, 0, "")
 			x += cols[idx].w
 		}
-		drawGtCell(5, fmtDE(report.GrandTotal.EstimateLp))
-		drawGtCell(6, fmtDE(report.GrandTotal.EstimateHours))
-		drawGtCell(7, fmtDE(report.GrandTotal.ArLp))
-		drawGtCell(8, fmtDE(report.GrandTotal.ArHours))
-		drawGtCell(9, fmtDE(report.GrandTotal.ArEur))
+		drawGtCell(4, fmtDE(report.GrandTotal.EstimateLp))
+		drawGtCell(5, fmtDE(report.GrandTotal.EstimateHours))
+		drawGtCell(6, fmtDE(report.GrandTotal.ArLp))
+		drawGtCell(7, fmtDE(report.GrandTotal.ArHours))
+		drawGtCell(8, fmtDE(report.GrandTotal.ArEur))
 	} else {
 		// PAI-401 + PAI-403: count-only mode. See subtotal block above for
 		// why we don't reuse sum(cols[0..4]) as the label width.

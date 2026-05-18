@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/go-pdf/fpdf"
 )
 
 // Regression: fpdf's character-width table has 65536 entries, so any rune outside
@@ -84,6 +86,42 @@ func TestResolveBrandingLogoForPDF_SVG(t *testing.T) {
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		t.Fatalf("pdf output: %v", err)
+	}
+}
+
+func TestResolveBrandingLogoBasicSVGForPDF_PathOnlyStroke(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DATA_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "branding.json"), []byte(`{"logo":"/brand/logo.svg"}`), 0o644); err != nil {
+		t.Fatalf("write branding.json: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "branding-assets"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor"><path d="M4 12L10 18L20 6"/></svg>`
+	if err := os.WriteFile(filepath.Join(dir, "branding-assets", "logo.svg"), []byte(svg), 0o644); err != nil {
+		t.Fatalf("write svg: %v", err)
+	}
+	if sig, ok := resolveBrandingLogoBasicSVGForPDF(); !ok || sig.Wd != 24 || sig.Ht != 24 {
+		t.Fatalf("expected direct basic SVG logo, got ok=%v sig=%+v", ok, sig)
+	}
+}
+
+func TestDrawLBTypeSVGIcons(t *testing.T) {
+	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+	palette := lbPDFPalette{
+		TypeTicket: mustRGB("#1f4d75"),
+		TypeTask:   mustRGB("#2e7d32"),
+	}
+	drawLBTypeSVGIcon(pdf, "ticket", palette, 10, 10, 4)
+	drawLBTypeSVGIcon(pdf, "task", palette, 16, 10, 4)
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		t.Fatalf("pdf output: %v", err)
+	}
+	if buf.Len() < 800 {
+		t.Fatalf("suspiciously small PDF: %d bytes", buf.Len())
 	}
 }
 

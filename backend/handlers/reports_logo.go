@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-pdf/fpdf"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
 )
@@ -34,34 +35,8 @@ import (
 // Any failure path returns the embedded PAIMOS fallback (logoPNG) so PDF
 // generation never breaks because of branding misconfiguration.
 func resolveBrandingLogoForPDF() (data []byte, imgType string) {
-	dataDir := os.Getenv("DATA_DIR")
-	if dataDir == "" {
-		dataDir = "/app/data"
-	}
-
-	cfg, err := os.ReadFile(filepath.Join(dataDir, "branding.json"))
-	if err != nil {
-		return logoPNG, "PNG"
-	}
-	var parsed struct {
-		Logo string `json:"logo"`
-	}
-	if err := json.Unmarshal(cfg, &parsed); err != nil || parsed.Logo == "" {
-		return logoPNG, "PNG"
-	}
-
-	const prefix = "/brand/"
-	if !strings.HasPrefix(parsed.Logo, prefix) {
-		return logoPNG, "PNG"
-	}
-	filename := strings.TrimPrefix(parsed.Logo, prefix)
-	if !brandingAssetFilenamePattern.MatchString(filename) {
-		return logoPNG, "PNG"
-	}
-
-	assetPath := filepath.Join(dataDir, "branding-assets", filename)
-	raw, err := os.ReadFile(assetPath)
-	if err != nil {
+	raw, ok := activeBrandingLogoBytes()
+	if !ok {
 		return logoPNG, "PNG"
 	}
 
@@ -82,6 +57,66 @@ func resolveBrandingLogoForPDF() (data []byte, imgType string) {
 	default:
 		return logoPNG, "PNG"
 	}
+}
+
+func activeBrandingLogoBytes() ([]byte, bool) {
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "/app/data"
+	}
+
+	cfg, err := os.ReadFile(filepath.Join(dataDir, "branding.json"))
+	if err != nil {
+		return nil, false
+	}
+	var parsed struct {
+		Logo string `json:"logo"`
+	}
+	if err := json.Unmarshal(cfg, &parsed); err != nil || parsed.Logo == "" {
+		return nil, false
+	}
+
+	const prefix = "/brand/"
+	if !strings.HasPrefix(parsed.Logo, prefix) {
+		return nil, false
+	}
+	filename := strings.TrimPrefix(parsed.Logo, prefix)
+	if !brandingAssetFilenamePattern.MatchString(filename) {
+		return nil, false
+	}
+
+	assetPath := filepath.Join(dataDir, "branding-assets", filename)
+	raw, err := os.ReadFile(assetPath)
+	if err != nil {
+		return nil, false
+	}
+	return raw, true
+}
+
+func resolveBrandingLogoBasicSVGForPDF() (*fpdf.SVGBasicType, bool) {
+	raw, ok := activeBrandingLogoBytes()
+	if !ok || sniffImageFormat(raw) != "svg" || !canUseBasicStrokeSVG(raw) {
+		return nil, false
+	}
+	sig, err := fpdf.SVGBasicParse(raw)
+	if err != nil || sig.Wd <= 0 || sig.Ht <= 0 || len(sig.Segments) == 0 {
+		return nil, false
+	}
+	return &sig, true
+}
+
+func canUseBasicStrokeSVG(raw []byte) bool {
+	s := strings.ToLower(string(raw))
+	if strings.Contains(s, "<rect") || strings.Contains(s, "<circle") || strings.Contains(s, "<polygon") || strings.Contains(s, "<polyline") || strings.Contains(s, "<line") {
+		return false
+	}
+	if strings.Contains(s, "fill=") && !strings.Contains(s, `fill="none"`) && !strings.Contains(s, `fill='none'`) {
+		return false
+	}
+	if strings.Contains(s, "stroke=") && !strings.Contains(s, `stroke="currentcolor"`) && !strings.Contains(s, `stroke='currentcolor'`) {
+		return false
+	}
+	return strings.Contains(s, "<path")
 }
 
 // sniffImageFormat returns "png", "jpg", "svg", "ico", or "" based on the

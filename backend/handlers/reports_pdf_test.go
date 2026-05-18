@@ -16,6 +16,7 @@
 package handlers_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,44 @@ import (
 
 	"github.com/markus-barta/paimos/backend/db"
 )
+
+func TestLieferbericht_UngroupedUsesProjectKey(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Bonelio",
+		"key":  "BON26",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
+		"title":  "Ticket without epic",
+		"type":   "ticket",
+		"status": "backlog",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = ts.get(t, fmt.Sprintf("/api/projects/%d/reports/lieferbericht?scope=all_open", projectID), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	defer resp.Body.Close()
+
+	var body struct {
+		Groups []struct {
+			EpicKey   string `json:"epic_key"`
+			EpicTitle string `json:"epic_title"`
+		} `json:"groups"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Groups) != 1 {
+		t.Fatalf("expected one group, got %d", len(body.Groups))
+	}
+	if body.Groups[0].EpicKey != "BON26" || body.Groups[0].EpicTitle != "BON26" {
+		t.Fatalf("ungrouped fallback = %q/%q, want BON26/BON26", body.Groups[0].EpicKey, body.Groups[0].EpicTitle)
+	}
+}
 
 func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	ts := newTestServer(t)
@@ -77,7 +116,17 @@ func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	db.DB.Exec("UPDATE issues SET estimate_lp=3, estimate_hours=24 WHERE title LIKE 'Ticket 2%'")
 
 	// Request the PDF
-	resp = ts.get(t, fmt.Sprintf("/api/projects/%d/reports/lieferbericht/pdf?scope=all", projectID), ts.adminCookie)
+	req, err := http.NewRequest(http.MethodGet, ts.srv.URL+fmt.Sprintf("/api/projects/%d/reports/lieferbericht/pdf?scope=all", projectID), nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Cookie", ts.adminCookie)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "pm.bytepoets.com")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET pdf: %v", err)
+	}
 	assertStatus(t, resp, http.StatusOK)
 
 	body, err := io.ReadAll(resp.Body)

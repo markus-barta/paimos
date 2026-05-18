@@ -132,8 +132,8 @@ func lbIssueCountLabel(n int, lang string) string {
 }
 
 // lbColSet controls which numeric columns the Lieferbericht PDF renders
-// (PAI-400). The five Key/Type/Summary/Description/Status identity columns
-// are always present; this set governs only the numeric tail.
+// (PAI-400). The Key/Summary/Description/Status identity columns are always
+// present; this set governs only the numeric tail.
 type lbColSet struct {
 	SP    bool
 	H     bool
@@ -147,7 +147,9 @@ func (s lbColSet) AnyVisible() bool { return s.SP || s.H || s.ARSP || s.ARH || s
 
 // defaultLBColSet returns the back-compat "show everything" set used when the
 // request has no `?cols=` query param.
-func defaultLBColSet() lbColSet { return lbColSet{SP: true, H: true, ARSP: true, ARH: true, AREUR: true} }
+func defaultLBColSet() lbColSet {
+	return lbColSet{SP: true, H: true, ARSP: true, ARH: true, AREUR: true}
+}
 
 // parseLBColSet reads a comma-separated `?cols=` query value into an lbColSet.
 // Accepted tokens (case-insensitive): sp, h, ar_sp, ar_h, ar_eur. Unknown
@@ -175,6 +177,7 @@ func parseLBColSet(s string) lbColSet {
 // lbRenderOpts bundles per-request rendering options so the renderer signature
 // stays stable as new toggles are added.
 type lbRenderOpts struct {
-	Lang string
-	Cols lbColSet
+	Lang    string
+	Cols    lbColSet
+	BaseURL string
 }

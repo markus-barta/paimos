@@ -30,6 +30,7 @@ import (
 // ── Lieferbericht types ──────────────────────────────────────────────────────
 
 type lbIssue struct {
+	ID            int64    `json:"id"`
 	IssueKey      string   `json:"issue_key"`
 	Type          string   `json:"type"`
 	Title         string   `json:"title"`
@@ -60,6 +61,7 @@ type lbGroup struct {
 }
 
 type lbReport struct {
+	ProjectID   int64      `json:"project_id"`
 	ProjectKey  string     `json:"project_key"`
 	ProjectName string     `json:"project_name"`
 	GeneratedAt string     `json:"generated_at"`
@@ -163,6 +165,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 
 	query := `
 		SELECT
+			i.id,
 			p.key || '-' || i.issue_number AS issue_key,
 			i.type, i.title, i.description, i.status,
 			i.estimate_lp, i.estimate_hours,
@@ -195,9 +198,11 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			estLp, estH, arLp, arH               *float64
 			rateLp, rateH                        *float64
 			epicID                               int64
+			issueID                              int64
 			epicKey, epicTitle                   string
 		)
 		if err := rows.Scan(
+			&issueID,
 			&issueKey, &iType, &title, &desc, &status,
 			&estLp, &estH, &arLp, &arH, &rateH, &rateLp,
 			&epicID, &epicKey, &epicTitle,
@@ -208,7 +213,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		arEur := optMul(arLp, rateLp) + optMul(arH, rateH)
 
 		issue := lbIssue{
-			IssueKey: issueKey, Type: iType, Title: title, Description: desc, Status: status,
+			ID: issueID, IssueKey: issueKey, Type: iType, Title: title, Description: desc, Status: status,
 			EstimateLp: estLp, EstimateHours: estH, ArLp: arLp, ArHours: arH,
 			RateLp: rateLp, RateHourly: rateH, ArEur: arEur,
 		}
@@ -216,8 +221,8 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		gKey := epicKey
 		gTitle := epicTitle
 		if epicID == 0 {
-			gKey = "Ungrouped"
-			gTitle = "Ungrouped"
+			gKey = projectKey
+			gTitle = projectKey
 		}
 
 		if _, ok := groupMap[gKey]; !ok {
@@ -235,6 +240,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 
 	// Build result
 	report := &lbReport{
+		ProjectID:   projectID,
 		ProjectKey:  projectKey,
 		ProjectName: projectName,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
