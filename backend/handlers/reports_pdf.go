@@ -53,6 +53,7 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 	sprintIDs := r.URL.Query().Get("sprint_ids")
 	fromDate := r.URL.Query().Get("from")
 	toDate := r.URL.Query().Get("to")
+	lang := r.URL.Query().Get("lang")
 
 	report, err := buildLieferbericht(projectID, scope, sprintIDs, fromDate, toDate)
 	if err != nil {
@@ -60,7 +61,7 @@ func GetLieferberichtPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pdf := renderLieferberichtPDF(report)
+	pdf := renderLieferberichtPDF(report, lang)
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -151,7 +152,8 @@ func descriptionText(desc, summary string) string {
 	return d
 }
 
-func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
+func renderLieferberichtPDF(report *lbReport, lang string) *fpdf.Fpdf {
+	msgs := resolveLBLang(lang)
 	pdf := fpdf.New("L", "mm", "A4", "")
 	pdf.SetAutoPageBreak(true, 12)
 	pdf.SetMargins(10, 10, 10)
@@ -174,28 +176,30 @@ func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
 	// Build report key for header (e.g. "LB-ASC2501-02")
 	lbKey := fmt.Sprintf("LB-%s", report.ProjectKey)
 
-	// Header — matches reference: logo left, "Lieferbericht LB-XXX" center-left, date+time right
+	// Header — logo left, "<HeaderTitle> LB-XXX" center-left, locale-aware date+time right.
 	pdf.SetHeaderFuncMode(func() {
 		pdf.ImageOptions("logo", marginL, 5, 8, 0, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 		pdf.SetFont("DejaVu", "", 8)
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetXY(marginL+10, 6)
-		pdf.CellFormat(120, 4, fmt.Sprintf("Lieferbericht %s", lbKey), "", 0, "L", false, 0, "")
+		pdf.CellFormat(120, 4, fmt.Sprintf("%s %s", msgs.HeaderTitle, lbKey), "", 0, "L", false, 0, "")
 		// Date + time right-aligned
 		pdf.SetFont("DejaVu", "", 7)
 		pdf.SetTextColor(80, 80, 80)
 		pdf.SetXY(pageW-10-60, 6)
-		pdf.CellFormat(60, 4, time.Now().Format("2. January 2006 um 15:04:05"), "", 0, "R", false, 0, "")
+		pdf.CellFormat(60, 4, formatLBTimestamp(time.Now(), lang), "", 0, "R", false, 0, "")
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetY(13)
 	}, true)
 
-	// Footer — page number
+	// Footer — localized page number ("Seite N/M" / "Page N of M").
 	pdf.SetFooterFunc(func() {
 		pdf.SetY(-10)
 		pdf.SetFont("DejaVu", "", 6)
 		pdf.SetTextColor(150, 150, 150)
-		pdf.CellFormat(0, 4, fmt.Sprintf("Seite %d/{nb}", pdf.PageNo()), "", 0, "C", false, 0, "")
+		// fpdf substitutes {nb} (kept literal in the format string) with the
+		// total page count at output time.
+		pdf.CellFormat(0, 4, fmt.Sprintf(msgs.PageNOfM, pdf.PageNo()), "", 0, "C", false, 0, "")
 		pdf.SetTextColor(0, 0, 0)
 	})
 	pdf.AliasNbPages("")
@@ -209,16 +213,16 @@ func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
 		align  string
 	}
 	cols := []col{
-		{"Key", 20, "L"},          // 0
-		{"Type", 12, "L"},         // 1
-		{"Summary", 68, "L"},      // 2 — multiline
-		{"Description", 80, "L"},  // 3 — multiline
-		{"Status", 18, "L"},       // 4
-		{"SP", 10, "R"},           // 5
-		{"h", 10, "R"},            // 6
-		{"AR SP", 14, "R"},        // 7
-		{"AR h", 14, "R"},         // 8
-		{"AR EUR", 18, "R"},       // 9
+		{msgs.ColKey, 20, "L"},         // 0
+		{msgs.ColType, 12, "L"},        // 1
+		{msgs.ColSummary, 68, "L"},     // 2 — multiline
+		{msgs.ColDescription, 80, "L"}, // 3 — multiline
+		{msgs.ColStatus, 18, "L"},      // 4
+		{msgs.ColSP, 10, "R"},          // 5
+		{msgs.ColHours, 10, "R"},       // 6
+		{msgs.ColARSP, 14, "R"},        // 7
+		{msgs.ColARHours, 14, "R"},     // 8
+		{msgs.ColAREUR, 18, "R"},       // 9
 	}
 
 	totalW := 0.0
@@ -271,11 +275,11 @@ func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
 	statusLabel := func(status string) string {
 		switch status {
 		case "done", "delivered", "accepted", "invoiced":
-			return "Geliefert"
+			return msgs.StatusDelivered
 		case "in-progress", "qa":
-			return "Umsetzung"
+			return msgs.StatusInProgress
 		default:
-			return "Geplant"
+			return msgs.StatusPlanned
 		}
 	}
 
@@ -430,7 +434,7 @@ func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
 
 		subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
 		pdf.SetXY(marginL, subY+0.8)
-		pdf.CellFormat(subLabelW-0.5, lineH, "Subtotal", "", 0, "R", false, 0, "")
+		pdf.CellFormat(subLabelW-0.5, lineH, msgs.Subtotal, "", 0, "R", false, 0, "")
 		x := marginL + subLabelW
 		pdf.SetXY(x, subY+0.8)
 		pdf.CellFormat(cols[5].w-0.5, lineH, fmtDE(g.Subtotal.EstimateLp), "", 0, "R", false, 0, "")
@@ -461,7 +465,7 @@ func renderLieferberichtPDF(report *lbReport) *fpdf.Fpdf {
 
 	subLabelW := cols[0].w + cols[1].w + cols[2].w + cols[3].w + cols[4].w
 	pdf.SetXY(marginL, gtY+1)
-	pdf.CellFormat(subLabelW-0.5, lineH+0.5, "Grand Total", "", 0, "R", false, 0, "")
+	pdf.CellFormat(subLabelW-0.5, lineH+0.5, msgs.GrandTotal, "", 0, "R", false, 0, "")
 	x := marginL + subLabelW
 	pdf.SetXY(x, gtY+1)
 	pdf.CellFormat(cols[5].w-0.5, lineH+0.5, fmtDE(report.GrandTotal.EstimateLp), "", 0, "R", false, 0, "")

@@ -36,7 +36,7 @@ func TestLieferberichtPDF_NonBMPRunesDoNotPanic(t *testing.T) {
 			}},
 		}},
 	}
-	pdf := renderLieferberichtPDF(report)
+	pdf := renderLieferberichtPDF(report, "en")
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		t.Fatalf("output: %v", err)
@@ -76,10 +76,42 @@ func TestResolveBrandingLogoForPDF_SVG(t *testing.T) {
 
 	// End-to-end: render a minimal report with the SVG-derived logo bytes.
 	report := &lbReport{ProjectKey: "X", Groups: []lbGroup{{EpicKey: "E", Issues: []lbIssue{{IssueKey: "X-1", Title: "t"}}}}}
-	pdf := renderLieferberichtPDF(report)
+	pdf := renderLieferberichtPDF(report, "en")
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		t.Fatalf("pdf output: %v", err)
+	}
+}
+
+// PAI-402: lang=de renders the German message catalog (status labels +
+// header title + footer); unknown lang falls back to English.
+func TestLieferberichtPDF_LocaleSwitch(t *testing.T) {
+	report := &lbReport{
+		ProjectKey: "X",
+		Groups: []lbGroup{{
+			EpicKey: "E",
+			Issues:  []lbIssue{{IssueKey: "X-1", Title: "t", Status: "delivered"}},
+		}},
+	}
+	for _, lang := range []string{"en", "de", "fr"} {
+		var buf bytes.Buffer
+		if err := renderLieferberichtPDF(report, lang).Output(&buf); err != nil {
+			t.Fatalf("lang=%s output: %v", lang, err)
+		}
+		if buf.Len() < 1000 {
+			t.Fatalf("lang=%s suspiciously small PDF: %d bytes", lang, buf.Len())
+		}
+	}
+	// Spot-check the catalog has the expected entries; the PDF bytestream is
+	// compressed so we can't grep it for strings.
+	if resolveLBLang("de").StatusDelivered != "Geliefert" {
+		t.Fatalf("de StatusDelivered = %q", resolveLBLang("de").StatusDelivered)
+	}
+	if resolveLBLang("en").StatusDelivered != "Delivered" {
+		t.Fatalf("en StatusDelivered = %q", resolveLBLang("en").StatusDelivered)
+	}
+	if resolveLBLang("fr").HeaderTitle != "Delivery report" {
+		t.Fatalf("fr should fall back to en HeaderTitle")
 	}
 }
 
