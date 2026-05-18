@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.5] — 2026-05-18
+
+Lieferbericht PDF download was returning HTTP 500 on any project whose
+issues contained emoji or other non-BMP runes (PAI-398).
+
+### Fixed
+
+- **PAI-398** — `Lieferbericht → Download PDF` no longer 500s on
+  emoji-bearing content. `github.com/go-pdf/fpdf`'s character-width
+  table has 65 536 entries; supplementary-plane codepoints (e.g.
+  🚨 U+1F6A8, 🕒 U+1F552 found in real BON26 descriptions) caused
+  `SplitText` / `MultiCell` to panic with `index out of range`, which
+  `chi.Recoverer` surfaced as 500. `backend/handlers/reports_pdf.go`
+  now strips runes > 0xFFFF inside `smartTruncate` (the single
+  chokepoint summary, description, and epic-label all flow through),
+  replacing them with `?`. The embedded DejaVu Sans font has no emoji
+  glyphs anyway, so no visual regression for legitimate text.
+  Regression test in `reports_pdf_internal_test.go` renders a report
+  with emoji in all three text paths.
+
 ## [3.4.4] — 2026-05-14
 
 Knowledge editor toggle polish + archived-state dim (PAI-397
