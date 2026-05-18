@@ -5,6 +5,28 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.10] — 2026-05-18
+
+Projektbericht acceptance workflow on top of the Lieferbericht report work.
+
+### Added
+
+- **PAI-407..PAI-417** — Lieferbericht is promoted to Projektbericht:
+  generated PDFs can persist immutable report snapshots, render project
+  metadata/permissions and a printable confirmation block, include QR/short
+  acceptance URLs, and expose the saved reports in the customer portal.
+  The acceptance page can batch-move included `done` / `delivered` tickets
+  to `accepted` while leaving non-ready tickets untouched.
+
+- **PAI-418** — Follow-up ticket filed for AI-assisted, German,
+  positive-language customer-facing issue summaries. This release does not
+  implement that content layer yet.
+
+### Changed
+
+- Report entry points and user-facing labels now use **Projektbericht** while
+  the old Lieferbericht API/reporting paths remain as compatibility aliases.
+
 ## [3.4.9] — 2026-05-18
 
 Lieferbericht QA follow-up for the v3.4.8 filter/export release.
