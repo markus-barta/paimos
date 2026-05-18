@@ -57,6 +57,10 @@ export const LS_TABLE_ROW_STRIPE_COLOR = 'paimos:table-row-stripe-color'
 // Accruals report accent
 export const LS_ACCRUALS_ACCENT = 'paimos:accruals-accent'
 
+// Lieferbericht — PAI-400/402
+export const LS_LIEFERBERICHT_COLS = 'paimos:lieferbericht:cols'
+export const LS_LIEFERBERICHT_LANG = 'paimos:lieferbericht:lang'
+
 // Issue list
 export const LS_EPIC_DISPLAY_MODE = 'paimos:epic-display-mode'
 
