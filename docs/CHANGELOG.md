@@ -5,6 +5,48 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.6] — 2026-05-18
+
+Lieferbericht polish pass — picks up the configured branding logo, adds
+per-report column toggles + report-language picker, and gracefully
+degrades the totals when no numeric columns are visible.
+
+### Added
+
+- **PAI-400** — `LieferberichtView.vue` gains five persistent checkboxes
+  (SP / h / AR SP / AR h / AR EUR). Hidden columns disappear from both
+  the on-screen preview and the PDF (via a new `?cols=` query param on
+  `GET /api/projects/{id}/reports/lieferbericht/pdf`). State persists in
+  `paimos:lieferbericht:cols`; default is all-on. Hidden numeric columns
+  release their width to the Description column so the PDF still fills
+  horizontally.
+- **PAI-401** — When zero numeric columns are visible, the Subtotal and
+  Grand Total rows collapse the numeric grid into a single right-aligned
+  "{N} {issuesUnit}" cell ("3 issues" / "3 Tickets"). Locale-aware unit
+  comes from the new PAI-402 message catalog.
+- **PAI-402** — Report-language picker on the form, defaults to the
+  authenticated user's `users.locale`. Manual override persists in
+  `paimos:lieferbericht:lang`. Sent as `?lang=` on Generate + Download.
+  The PDF respects the locale for the header title ("Delivery report" /
+  "Lieferbericht"), status labels ("Delivered/In progress/Planned" vs.
+  "Geliefert/Umsetzung/Geplant"), column headers ("Type/Summary" vs.
+  "Typ/Zusammenfassung"), subtotal/grand-total/page-N-of-M labels, and
+  the timestamp format ("January 2, 2026 at 15:04:05" vs.
+  "2. Januar 2026 um 15:04:05"). German months are substituted in after
+  formatting since Go's `time.Format` only emits English month names.
+  Frontend chrome migrated to `useI18n()` keys under the new
+  `lieferbericht.*` namespace in `en.ts` + `de.ts`.
+
+### Changed
+
+- **PAI-399** — Lieferbericht PDF header now uses the active instance
+  branding logo (uploaded via `POST /api/branding/logo`) instead of the
+  hard-embedded `assets/logo.png`. PNG and JPG bytes pass through; SVG
+  uploads are rasterized server-side at render time via
+  `github.com/srwiley/oksvg` + `rasterx` (pure Go, no cgo, target width
+  256 px). Any failure path falls back to the embedded mark so PDF
+  generation never breaks because of branding misconfiguration.
+
 ## [3.4.5] — 2026-05-18
 
 Lieferbericht PDF download was returning HTTP 500 on any project whose
