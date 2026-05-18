@@ -5,6 +5,19 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.7] — 2026-05-18
+
+### Fixed
+
+- **PAI-400 follow-up** — Lieferbericht PDF: unchecking all five numeric
+  column toggles no longer silently reverts to the default all-on
+  layout. `url.Values.Get` returns `""` for both "param absent" and
+  "param present but empty"; the handler conflated them and the
+  frontend always sent `cols=` (empty) when nothing was ticked, so the
+  PAI-401 count-only subtotal/grand-total path was unreachable via the
+  UI. Now distinguished via the underlying slice — explicit `cols=`
+  routes through `parseLBColSet("")` → zero set → count-only fallback.
+
 ## [3.4.6] — 2026-05-18
 
 Lieferbericht polish pass — picks up the configured branding logo, adds
