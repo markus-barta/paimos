@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] — 2026-05-19
+
+### Added
+
+- **PAI-219** — Per-hunk Keep / Reject controls in the AI diff
+  overlay (optimize, optimize_customer, translate, customer_rewrite,
+  exec_summary, tone_check). The decision panel below the side-by-
+  side diff lists each contiguous edit hunk with its removed / added
+  text and a toggle button; Accept emits text assembled from the
+  chosen sides instead of the full model output. Default state is
+  "Keep all" so muscle-memory users see no behaviour change. Bulk
+  "Keep all" / "Reject all" buttons and a "X of Y kept" counter
+  round out the panel. 6 new lineDiff tests cover hunk grouping.
+
 ## [3.5.0] — 2026-05-19
 
 Customer-facing Projektbericht summary layer and the AI infrastructure
