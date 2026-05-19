@@ -131,6 +131,19 @@ export default {
     undoTitle: 'Änderung übernommen',
     undoReady: 'Diese AI-Änderung kann kurz rückgängig gemacht werden.',
     undo: 'Rückgängig',
+    // PAI-227.
+    settingsTab: {
+      headline: 'AI-Anbieter-Konfiguration',
+      lead: 'Konfiguriert den AI-Anbieter, der dreizehn admin-konfigurierbare Aktionen in Editor, Ticket-Oberflächen und Kundenberichten antreibt.',
+      capActions: 'Dreizehn Aktionen für Textfelder, Ticket-Menüs und Kundenbericht-Felder — Optimieren, Verbesserungen vorschlagen, Spec-out, Parent finden, Übersetzen, Sub-Tasks generieren, Aufwand schätzen, Duplikate erkennen, UI-Specs generieren, Tonalitäts-Check für Kundentexte, Kunden- und Executive-Fassung für Berichte.',
+      capAdmin: 'Admin-konfigurierbar — der Prompt jeder Aktion ist in Einstellungen → AI-Prompts editierbar; Placement (Text / Ticket / beides) pro Aktion überschreibbar; ein tägliches Token-Limit pro Benutzer schützt das Budget.',
+      capAudit: 'Auditierbar — jeder Aufruf wird mit einer einzeiligen stdout-Audit-Zeile und einem abfragbaren Paper Trail erfasst; Prompts und Antworten werden nie geloggt.',
+      safety: 'Jedes Aktions-Ergebnis wird vor der Übernahme zur Prüfung angezeigt. Nichts wird stillschweigend überschrieben.',
+      pointerPrompts: 'Pro-Aktion-Prompts:',
+      pointerPromptsLink: 'Einstellungen → AI-Prompts',
+      pointerDocs: 'Referenz:',
+      pointerDocsLink: 'docs/CONFIGURATION.md § AI assist',
+    },
   },
   lieferbericht: {
     title: 'Projektbericht',

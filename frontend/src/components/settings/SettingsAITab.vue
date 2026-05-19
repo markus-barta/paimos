@@ -46,10 +46,13 @@
 <script setup lang="ts">
 import LoadingText from "@/components/LoadingText.vue";
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
 import { useNumberFormat } from '@/composables/useNumberFormat'
+
+const { t } = useI18n()
 
 interface AISettings {
   enabled: boolean
@@ -434,24 +437,29 @@ function relTime(iso: string): string {
 <template>
   <div class="ai-tab">
     <!-- ── 1. HERO ───────────────────────────────────────────────── -->
+    <!-- PAI-227. Operator-facing hero copy. The original v1.8 blurb
+         described only PAI-146 (optimize-only); v2.0+ ships the
+         eleven-action catalog and v3.5 adds the customer/exec
+         report-summary pair. The new copy is bullet-summarised
+         so the surface is honest about what it actually configures. -->
     <header class="ai-hero">
       <div class="ai-hero-iconwrap" aria-hidden="true">
         <AppIcon name="sparkles" :size="26" />
       </div>
       <div class="ai-hero-text">
         <div class="ai-hero-titlerow">
-          <h2 class="ai-hero-title">AI text optimization</h2>
+          <h2 class="ai-hero-title">{{ t('ai.settingsTab.headline') }}</h2>
           <span :class="['ai-status-pill', `ai-status-pill--${readiness.tone}`]">
             {{ readiness.label }}
           </span>
         </div>
-        <p class="ai-hero-desc">
-          Adds an inline <strong>AI</strong> action to multiline fields
-          (description, acceptance criteria, notes) so authors can
-          polish wording without leaving the editor. Optimized output is
-          shown in a diff preview before anything is replaced —
-          nothing is rewritten silently.
-        </p>
+        <p class="ai-hero-desc">{{ t('ai.settingsTab.lead') }}</p>
+        <ul class="ai-hero-caps">
+          <li>{{ t('ai.settingsTab.capActions') }}</li>
+          <li>{{ t('ai.settingsTab.capAdmin') }}</li>
+          <li>{{ t('ai.settingsTab.capAudit') }}</li>
+        </ul>
+        <p class="ai-hero-safety">{{ t('ai.settingsTab.safety') }}</p>
       </div>
     </header>
 
@@ -927,6 +935,24 @@ function relTime(iso: string): string {
   max-width: 680px;
 }
 .ai-hero-desc strong { color: var(--text); font-weight: 600; }
+.ai-hero-caps {
+  margin: .55rem 0 .35rem;
+  padding-left: 1.1rem;
+  max-width: 720px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  display: flex; flex-direction: column; gap: .25rem;
+}
+.ai-hero-caps li::marker { color: var(--bp-blue, #4a7); }
+.ai-hero-safety {
+  margin: .35rem 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  font-weight: 500;
+  max-width: 680px;
+}
 
 /* ── STATUS PILL ──────────────────────────────────────────────── */
 .ai-status-pill {

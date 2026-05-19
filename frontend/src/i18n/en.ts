@@ -131,6 +131,23 @@ export default {
     undoTitle: 'Change applied',
     undoReady: 'You can undo this AI-applied change for a short time.',
     undo: 'Undo',
+    // PAI-227. Operator-facing copy on the Settings → AI tab hero.
+    // The original blurb described only PAI-146 (optimize-only) for
+    // many minor versions; it now lists the eleven (now thirteen,
+    // counting PAI-418 customer_rewrite + exec_summary) actions and
+    // the safety invariant.
+    settingsTab: {
+      headline: 'AI provider configuration',
+      lead: 'Configure the AI provider that powers thirteen admin-tunable actions across the editor, issue surfaces, and customer reports.',
+      capActions: 'Thirteen actions across text fields, issue-level menus, and customer report fields — optimize, suggest enhancements, spec-out, find parent, translate, generate sub-tasks, estimate effort, detect duplicates, generate UI specs, tone-check customer copy, customer-style and executive-style report summaries.',
+      capAdmin: 'Admin-tunable — every action\'s prompt is editable in Settings → AI prompts; placement (text / issue / both) is per-action overridable; a daily per-user token cap protects budgets.',
+      capAudit: 'Audit-clean — every call records a one-line stdout audit and a queryable per-call paper trail; prompt and response bodies are never logged.',
+      safety: 'Every action result is shown for review before any change is applied. Nothing is rewritten silently.',
+      pointerPrompts: 'Per-action prompts:',
+      pointerPromptsLink: 'Settings → AI prompts',
+      pointerDocs: 'Reference:',
+      pointerDocsLink: 'docs/CONFIGURATION.md § AI assist',
+    },
   },
   lieferbericht: {
     title: 'Project report',
