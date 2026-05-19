@@ -5,6 +5,52 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] — 2026-05-19
+
+Customer-facing Projektbericht summary layer and the AI infrastructure
+behind it. Eight self-review fixes shipped alongside the feature; ten
+bulk-modal hardening tickets landed on top before the release tag.
+
+### Added
+
+- **PAI-418** (umbrella + PAI-420..PAI-449) — `report_summary` column on
+  `issues`, populated by two new admin-tunable AI actions:
+  `customer_rewrite` (warm Apple-Notes-Stil German release-note copy) and
+  `exec_summary` (technical TL;DR for executive readers). Authoring lives
+  next to Description / Acceptance Criteria / Notes; the AI menu offers
+  both styles on the same field. Projektbericht PDF gets a
+  `text_source=tech|report` parameter; portal acceptance defaults to
+  `report` so customers see customer-facing copy. Bulk generator
+  (BulkGenerateSummaryModal) drives the same flow over a selection of
+  issues with a 3-worker concurrent pool, retry-with-backoff for 429/5xx,
+  ETA + items/min throughput, sliding log of recent results, resume after
+  accidental close (localStorage queue), and pre-run cost estimate.
+- **PAI-448** — `cost_micro_usd` now records correctly on every
+  `ai_calls` row. The lookup was missing models outside the curated
+  bucket list and required a UI hit to `/ai/models` before the cache
+  hydrated; fixed by flattening the per-bucket scan and falling back to
+  `staticFallbackPayload` when the live cache is nil.
+- **PAI-220 / PAI-399 / PAI-401** — closing housekeeping for items that
+  had landed in earlier releases (locale-aware Usage panel numbers,
+  branded logo on the Projektbericht PDF, count-only subtotal when no
+  numeric columns are visible). The implementations were already live;
+  this release flips the tickets shut.
+
+### Changed
+
+- **PAI-227** — Settings → AI tab hero copy rewritten. The original
+  blurb described only PAI-146 (the v1.8 optimize-only initial release);
+  the new copy summarises the thirteen actions, the admin-tunable prompt
+  catalog, the daily token cap, and the per-call audit invariant. All
+  strings routed through vue-i18n at en + de parity.
+- Projektbericht PDF header: title centred horizontally on the page;
+  logo, title, and date share the same vertical mid-line at y=6.6mm so
+  the row reads as a single line of metadata.
+- Projektbericht PDF intro: acceptance clause rewritten to the new
+  "21 Werktagen" contract language. The dynamic objection-period value
+  is no longer rendered into the report intro (the cooperation config
+  retains the field for other surfaces).
+
 ## [3.4.11] — 2026-05-18
 
 ### Fixed
