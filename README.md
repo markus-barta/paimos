@@ -72,15 +72,16 @@ port, backed by SQLite. Docker up, browser open, done.
   structured JSON via the unified `/ai/action` dispatcher (v2.1.16).
   See [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
   and the route group in [`api-minimal.md`](docs/api-minimal.md#agent-context).
-- **In-app AI assist.** Eleven admin-tunable text actions —
+- **In-app AI assist.** Thirteen admin-tunable text actions —
   optimize · translate · spec-out · suggest-enhancement (six sub-actions)
   · find parent · generate sub-tasks · estimate effort · detect
-  duplicates · UI generation · tone check — across textareas and
-  issue-level menus. Live model picker (frontier / value / fastest /
-  cheapest / open-weights / free) backed by OpenRouter. Per-user
-  daily token cap with admin-override header. Audit lines are
-  metadata-only — prompt and response bodies are never logged. See
-  [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
+  duplicates · UI generation · tone check · customer-style and
+  executive-style report summaries (PAI-418) — across textareas,
+  issue-level menus, and customer report fields. Live model picker
+  (frontier / value / fastest / cheapest / open-weights / free) backed
+  by OpenRouter. Per-user daily token cap with admin-override header.
+  Audit lines are metadata-only — prompt and response bodies are never
+  logged. See [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
 - **Agent-native toolchain.** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
   [`paimos-mcp`](docs/AGENT_INTERFACE.md#6-mcp-integration) facade for
   Claude Desktop and friends. File-first multi-line inputs, `--dry-run`,

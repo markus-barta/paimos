@@ -146,6 +146,14 @@ Tasks always have exactly one ticket parent. This stays on `issues.parent_id`, u
 
 title, description, acceptance_criteria, notes, priority, assignee_id, created_at, updated_at, issue_number/issue_key.
 
+### `report_summary` — added in v3.5.0 (PAI-418)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `report_summary` | TEXT NOT NULL DEFAULT '' | Customer-facing Projektbericht copy. Populated by two AI actions (`customer_rewrite`, `exec_summary`); read by the PDF endpoint when `text_source=report`. One field, two style options at generation time — the audience orientation is per-customer, not per-ticket. |
+
+Indexes: covered by the existing LIKE / FTS coverage on issue body fields (`backend/handlers/issues_list.go`).
+
 ### Soft-delete (`deleted_at` / `deleted_by`) — added in v1.1.2
 
 | Field | Type | Notes |

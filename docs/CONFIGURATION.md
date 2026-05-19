@@ -201,7 +201,7 @@ Set them from **Settings → AI**:
 Each action is registered in code and surfaced via the
 `POST /api/ai/action` dispatcher.
 
-Built-in actions (11):
+Built-in actions (13):
 - `optimize`, `optimize_customer` — rewrite the field
 - `suggest_enhancement` (sub-actions: security, performance, ux, dx,
   flow, risks)
@@ -213,6 +213,11 @@ Built-in actions (11):
 - `detect_duplicates` — top-5 similar issues in the project
 - `ui_generation` — markdown UI spec
 - `tone_check` — de-sales rewrite (customer surface)
+- `customer_rewrite` (PAI-418, sub-actions: release_note, feature, fix,
+  stability, security_hardening) — warm Apple-Notes-Stil German
+  release-note copy for the customer-facing `report_summary` field
+- `exec_summary` (PAI-418) — technical TL;DR for executive readers,
+  same `report_summary` target field
 
 ### Placement (PAI-181)
 
@@ -224,7 +229,8 @@ Each action carries a `placement` field — `text`, `issue`, or
 - **both** — everywhere
 
 Defaults: `optimize`, `suggest_enhancement`, `spec_out`, `translate`,
-`ui_generation`, `tone_check`, `optimize_customer` → text.
+`ui_generation`, `tone_check`, `optimize_customer`, `customer_rewrite`,
+`exec_summary` → text.
 `find_parent`, `generate_subtasks`, `estimate_effort`,
 `detect_duplicates` → issue.
 

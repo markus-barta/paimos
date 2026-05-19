@@ -59,7 +59,7 @@ POST   /projects/:id/retrieve       {q, k}
 
 ```
 GET    /projects/:id/issues         ?status= &priority= &type= &assignee_id=
-POST   /projects/:id/issues         {title, type, status, priority, description, acceptance_criteria}
+POST   /projects/:id/issues         {title, type, status, priority, description, acceptance_criteria, notes, report_summary}
 GET    /projects/:id/issues/tree    epic → ticket → task hierarchy
 GET    /issues                      cross-project list; ?q= ranks best match, then recency
 GET    /issues?keys=PAI-1,PAI-2     pick list, order preserved, missing → {ref, error} entries
@@ -307,7 +307,9 @@ overrides so multi-step scripts can share a session.
 GET    /projects/:id/acceptance-log              timeline of accept/reject decisions
 GET    /projects/:id/acceptance-report           full report
 GET    /projects/:id/reports/lieferbericht       JSON delivery report
-GET    /projects/:id/reports/lieferbericht/pdf   PDF delivery report
+GET    /projects/:id/reports/lieferbericht/pdf   PDF delivery report  ?text_source=tech|report (PAI-418)
+GET    /projects/:id/reports/projektbericht/pdf  alias of lieferbericht/pdf
+GET    /projektberichte/:code/pdf                snapshot-by-code PDF (portal default text_source=report)
 GET    /reports/accruals                         admin only — per-user time rollup
 ```
 
