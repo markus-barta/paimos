@@ -24,6 +24,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/brand/screenshots/ppm-hero.png" alt="PAIMOS PPM — issue list with epic/ticket/task tree on the left, side-panel issue detail with AI-assisted description on the right" width="100%">
+</p>
+
 ## What is PAIMOS
 
 PAIMOS is a self-hosted project management system built for engineering
@@ -32,17 +36,32 @@ and for solo developers who want a clean PM tool without enterprise
 bloat. The same app serves both: the side-project board feels as good as
 the team board.
 
-**v2.0 marks the brand's Phase 1 → Phase 2 transition** ([details](docs/brand/BRAND.md#phasing-plan)).
-The Platform reading of the name (the "OS" in PAIMOS earning a literal
-read) was reserved by the brand guide until two of four trigger criteria
-held; v2.0 cleared two — workflow orchestration through the
-`POST /api/ai/action` dispatcher and a public API surface (OpenAPI,
-self-describing schema, the agent-context layer, MCP). Phase 1 (FOSS)
-stays active; the four readings now live side by side on the
-[About page](https://paimos.com/about.html).
+Single Go binary serving a Vue SPA on one port, backed by SQLite. Docker
+up, browser open, done.
 
-Written as a single Go binary that serves the Vue SPA and JSON API on one
-port, backed by SQLite. Docker up, browser open, done.
+### What's new in v3.5
+
+- **Customer-facing report summaries.** Two admin-tunable AI actions
+  (`customer_rewrite` for warm Apple-Notes-Stil German release-note copy,
+  `exec_summary` for technical TL;DRs) write into a per-issue
+  `report_summary` field used by the Projektbericht PDF and the portal
+  acceptance page (PAI-418). Bulk generator runs 3 AI workers in
+  parallel with 429/5xx retry-with-backoff, ETA + items/min throughput,
+  resume after accidental close, and a pre-run cost estimate.
+- **Per-hunk diff decisions.** The diff overlay (optimize / translate /
+  customer-rewrite / executive-summary / tone-check) gained per-hunk
+  Keep/Reject toggles in v3.5.1 (PAI-219). Keep one paragraph of an AI
+  rewrite, reject another — finally not all-or-nothing.
+- **AI cost tracking, repaired.** The per-call cost lookup is no longer
+  silent-zero when the active model isn't in a curated bucket (PAI-448).
+- **Acceptance workflow.** Projektbericht PDF snapshots, QR-code +
+  short-URL portal acceptance, batch-accept of included issues, signed
+  artifact upload (v3.4.10).
+
+> The [phase-1 → phase-2 brand transition](docs/brand/BRAND.md#phasing-plan)
+> story (v2.0 milestone — workflow orchestration through `POST /api/ai/action`
+> + a public API surface) is now mature; details on the
+> [About page](https://paimos.com/about.html).
 
 ## Why PAIMOS
 
@@ -61,27 +80,40 @@ port, backed by SQLite. Docker up, browser open, done.
 
 ## Highlights
 
-- **Project Context for code-aware agents (new in v2.0).** A
-  structured surface above tickets: linked `repos`, project
-  `manifests` (stack, commands, services, owners, NFRs, ADRs),
-  issue→file `anchors`, a typed entity `graph`, and a mixed-context
-  `retrieve` API. Agents stop grepping six issues to figure out
-  which repo to clone and where the work actually lives. The manifest
-  editor is a three-tab surface (Manifest / Guardrails / Glossary)
-  with a per-tab "Structure with AI" button that turns prose into
-  structured JSON via the unified `/ai/action` dispatcher (v2.1.16).
-  See [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
-  and the route group in [`api-minimal.md`](docs/api-minimal.md#agent-context).
-- **In-app AI assist.** Thirteen admin-tunable text actions —
-  optimize · translate · spec-out · suggest-enhancement (six sub-actions)
-  · find parent · generate sub-tasks · estimate effort · detect
-  duplicates · UI generation · tone check · customer-style and
-  executive-style report summaries (PAI-418) — across textareas,
-  issue-level menus, and customer report fields. Live model picker
-  (frontier / value / fastest / cheapest / open-weights / free) backed
-  by OpenRouter. Per-user daily token cap with admin-override header.
-  Audit lines are metadata-only — prompt and response bodies are never
-  logged. See [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
+- **In-app AI assist — thirteen actions.** optimize · translate ·
+  spec-out · suggest-enhancement (six sub-actions) · find parent ·
+  generate sub-tasks · estimate effort · detect duplicates · UI
+  generation · tone check · customer-style and executive-style report
+  summaries. Every action carries a server-resolved system prompt
+  that admins can edit live in **Settings → AI prompts**; every result
+  is shown in a diff overlay (now with per-hunk Keep/Reject) before
+  anything is applied. Live model picker (frontier / value / fastest /
+  cheapest / open-weights / free) backed by OpenRouter. Per-user daily
+  token cap with admin-override header. Per-call cost recorded in
+  micro-USD. Audit lines metadata-only — prompts and response bodies
+  are never logged. See
+  [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
+- **Customer reports with AI-assisted copy (v3.5).** Two AI styles per
+  issue write into the same `report_summary` field — warm Apple-style
+  release-note copy for end-user audiences, technical TL;DRs for
+  executive readers. Projektbericht PDF renders the chosen text source;
+  the customer portal serves the report under a short URL with QR-code
+  acceptance, batch-confirms the included issues, and stores the signed
+  artifact. Bulk generator handles 100+ rows with 3 parallel workers,
+  retry-with-backoff, ETA, throughput, resume-after-close, and a
+  pre-run cost estimate.
+- **Project Context for code-aware agents.** A structured surface above
+  tickets: linked `repos`, project `manifests` (stack, commands,
+  services, owners, NFRs, ADRs), issue→file `anchors`, a typed entity
+  `graph`, and a mixed-context `retrieve` API. Agents stop grepping six
+  issues to figure out which repo to clone and where the work actually
+  lives. The manifest editor is a three-tab surface (Manifest /
+  Guardrails / Glossary) with a per-tab "Structure with AI" button that
+  turns prose into structured JSON via the unified `/ai/action`
+  dispatcher. See
+  [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
+  and the route group in
+  [`api-minimal.md`](docs/api-minimal.md#agent-context).
 - **Agent-native toolchain.** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
   [`paimos-mcp`](docs/AGENT_INTERFACE.md#6-mcp-integration) facade for
   Claude Desktop and friends. File-first multi-line inputs, `--dry-run`,
@@ -115,9 +147,12 @@ port, backed by SQLite. Docker up, browser open, done.
 - **Custom views**: saved filter + column sets, per-user ordering, pin
   to sidebar
 - **External-user portal** with read-only projects + accept/reject
-  workflow and acceptance reports
-- **PDF delivery reports** (Lieferbericht) with configurable column
-  layout
+  workflow and acceptance reports — Projektbericht snapshots stored
+  with QR/short-URL acceptance pages, batch-accept on included issues,
+  signed-artifact upload
+- **PDF Projektbericht** with configurable columns, German report
+  copy generated per-issue (technical or customer-facing), and a
+  visible `[keine Kundenfassung]` gap marker for missing summaries
 - **Opt-in session audit** — tag every mutation with an
   `X-PAIMOS-Session-Id`; replay what an agent did via
   `GET /api/sessions/:id/activity`. Off by default; one env var
@@ -485,7 +520,9 @@ obligation.
 - CSV export: per-project download
 - Dev panel: test-report upload + render (for CI artifact viewing)
 - Accruals report (per-user time summary)
-- Lieferbericht PDF report (German delivery report)
+- Projektbericht (German project / delivery report) — JSON + PDF;
+  `text_source=tech|report` selects the body source; portal acceptance
+  defaults to the customer-facing report summary
 - Issue archive / hard-delete
 - Time entries purge (preview + execute) per project / per user
 
@@ -498,7 +535,7 @@ obligation.
 - Optional MinIO for attachments (graceful disable)
 - Optional SMTP for password reset (dev mode = log to stdout)
 - SQLite with WAL + 5-second busy timeout + connection pool
-- 101 additive migrations run on startup
+- 108 additive migrations run on startup
 - Health endpoint: `GET /api/health` → `{ "status": "ok", "service": "...", "version": "<VERSION>" }` (`version` is stamped from `VERSION` at build time; local non-Docker builds report `"dev"`)
 - Instance endpoint: `GET /api/instance` (label, hostname,
   attachments-enabled flag)
@@ -515,7 +552,7 @@ obligation.
 <details>
 <summary>API surface (route groups)</summary>
 
-- **Agent Context (new in v2.0)**: per-project `/api/projects/{id}/repos`
+- **Agent Context**: per-project `/api/projects/{id}/repos`
   (CRUD), `/api/projects/{id}/manifest` (GET/PUT structured project
   facts), `/api/projects/{id}/anchors` (POST bulk-ingest of issue→file
   locations), `/api/projects/{id}/graph` (typed entity graph
@@ -524,10 +561,11 @@ obligation.
 - **AI assist**: `POST /api/ai/action` (unified action dispatcher),
   `GET /api/ai/actions` (catalogue), `GET /api/ai/models`
   (server-cached vendor-diverse picks), `GET /api/ai/usage`
-  (per-user daily token totals), full CRUD on `/api/ai/prompts`
+  (per-user daily token totals), `GET /api/ai/bulk-cost-estimate`
+  (pre-run cost band for bulk flows), full CRUD on `/api/ai/prompts`
   with `/{id}/dry-run` and `/{id}/reset`, `POST /api/ai/test`
-  (smoke test the configured provider/model). Admin-only;
-  audit lines are metadata-only
+  (smoke test the configured provider/model). Audit lines are
+  metadata-only — prompts and response bodies are never logged
 - **Schema discovery**: `GET /api/schema` — versioned enums,
   transitions, entity shapes, conventions. Public, strong-ETagged,
   `Cache-Control: public, max-age=300`
@@ -572,8 +610,10 @@ obligation.
   debug), Mite (config, test, import, jobs, resume-date, cleanup)
 - **CSV / bulk**: preflight + import per project / global, per-project
   CSV export, time-entries purge (preview + execute)
-- **Reporting**: acceptance-log, acceptance-report, Lieferbericht
-  (JSON + PDF), accruals (admin)
+- **Reporting**: acceptance-log, acceptance-report, Projektbericht
+  (JSON + PDF; `text_source=tech|report` picks the body source),
+  `/projektberichte/{code}/pdf` snapshot-by-code endpoint for portal
+  acceptance links, accruals (admin)
 - **Branding / static**: GET branding, list brandings, serve
   logos / avatars, instance, health, dev test-reports (admin)
 
