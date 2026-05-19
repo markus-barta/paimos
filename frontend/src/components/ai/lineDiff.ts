@@ -46,9 +46,34 @@ export interface DiffLine {
   text: string
 }
 
+/**
+ * PAI-219. A contiguous run of non-`eq` rows in the aligned diff —
+ * everything the AI proposed changing in one local edit. Each hunk
+ * is a `[startRow, endRow)` slice into `left[]` / `right[]` with the
+ * raw `removed`/`added` text gathered so the overlay can render
+ * per-hunk Keep / Reject controls and rebuild the final text
+ * accordingly. `eq` runs sit between hunks and are always preserved
+ * verbatim, so a fully-rejected batch produces text identical to
+ * the original.
+ */
+export interface DiffHunk {
+  /** Stable index, 0-based, suitable for v-for keying. */
+  id: number
+  /** Row index in left[] / right[] (inclusive). */
+  startRow: number
+  /** Row index in left[] / right[] (exclusive). */
+  endRow: number
+  /** Original lines this hunk would remove (non-`pad` left rows). */
+  removed: string[]
+  /** Model lines this hunk would add (non-`pad` right rows). */
+  added: string[]
+}
+
 export interface LineDiffResult {
   left: DiffLine[]
   right: DiffLine[]
+  /** PAI-219: hunk grouping for per-edit accept / reject controls. */
+  hunks: DiffHunk[]
 }
 
 /**
@@ -100,5 +125,33 @@ export function lineDiff(a: string, b: string): LineDiffResult {
     left.push({ type: 'pad', text: '' })
     right.push({ type: 'add', text: bLines[j++] })
   }
-  return { left, right }
+  const hunks = groupHunks(left, right)
+  return { left, right, hunks }
+}
+
+// PAI-219. Walk the aligned rows once and bucket every contiguous
+// non-`eq` run into a DiffHunk. We DON'T touch eq rows — those are
+// the anchors between hunks and stay unchanged regardless of any
+// per-hunk decision. `pad` rows are skipped when collecting removed
+// / added text (they're alignment fillers, not real content).
+function groupHunks(left: DiffLine[], right: DiffLine[]): DiffHunk[] {
+  const out: DiffHunk[] = []
+  const len = Math.min(left.length, right.length)
+  let i = 0
+  while (i < len) {
+    if (left[i].type === 'eq') {
+      i++
+      continue
+    }
+    const start = i
+    const removed: string[] = []
+    const added: string[] = []
+    while (i < len && (left[i].type !== 'eq' || right[i].type !== 'eq')) {
+      if (left[i].type === 'del') removed.push(left[i].text)
+      if (right[i].type === 'add') added.push(right[i].text)
+      i++
+    }
+    out.push({ id: out.length, startRow: start, endRow: i, removed, added })
+  }
+  return out
 }

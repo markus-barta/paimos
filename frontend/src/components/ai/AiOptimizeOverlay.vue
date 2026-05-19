@@ -33,7 +33,7 @@
      diff-match-patch then.
 -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { lineDiff } from './lineDiff'
 
 const props = defineProps<{
@@ -67,8 +67,95 @@ const summary = computed(() => {
 
 const unchanged = computed(() => props.original === props.optimized)
 
+// PAI-219. Per-hunk decision state. Each hunk defaults to 'accept'
+// so the overall behaviour is identical to the old "Accept replaces
+// everything" flow until the user toggles. A reactive Map gives us
+// proxy reactivity in templates without needing to swap the whole
+// ref on every mutation.
+type Decision = 'accept' | 'reject'
+const decisions = reactive(new Map<number, Decision>())
+
+watch(
+  diff,
+  (d) => {
+    // Re-key the decisions map whenever the diff structure changes
+    // (model returned different text, retry produced new hunks, ...).
+    // We deliberately drop prior selections rather than try to
+    // re-correlate them with new hunk ids — there's no stable identity
+    // to map old → new.
+    decisions.clear()
+    for (const h of d.hunks) decisions.set(h.id, 'accept')
+  },
+  { immediate: true },
+)
+
+function decisionFor(id: number): Decision {
+  return decisions.get(id) ?? 'accept'
+}
+function setDecision(id: number, value: Decision) {
+  decisions.set(id, value)
+}
+function toggleDecision(id: number) {
+  setDecision(id, decisionFor(id) === 'accept' ? 'reject' : 'accept')
+}
+function setAllDecisions(value: Decision) {
+  for (const h of diff.value.hunks) decisions.set(h.id, value)
+}
+
+// Map row index → hunk id (or null for eq rows), used by the row
+// renderer to apply per-hunk visual state without re-walking the
+// hunk array on every row.
+const rowToHunk = computed<(number | null)[]>(() => {
+  const len = diff.value.left.length
+  const arr: (number | null)[] = new Array(len).fill(null)
+  for (const h of diff.value.hunks) {
+    for (let r = h.startRow; r < h.endRow; r++) arr[r] = h.id
+  }
+  return arr
+})
+
+const acceptedHunks = computed(() => {
+  let n = 0
+  for (const h of diff.value.hunks) if (decisionFor(h.id) === 'accept') n++
+  return n
+})
+const totalHunks = computed(() => diff.value.hunks.length)
+const allAccepted = computed(() => totalHunks.value > 0 && acceptedHunks.value === totalHunks.value)
+const allRejected = computed(() => totalHunks.value > 0 && acceptedHunks.value === 0)
+
+// PAI-219. Walk the aligned rows in order. For each eq row, emit its
+// text. For each hunk, emit the chosen side (added text on accept,
+// removed text on reject) once when we cross its end. This way the
+// final text matches the visual ordering — eq anchors stay in place,
+// per-hunk choices slot back in between them.
+const finalText = computed(() => {
+  const { left, hunks } = diff.value
+  const out: string[] = []
+  let hunkIdx = 0
+  for (let row = 0; row < left.length; row++) {
+    const hid = rowToHunk.value[row]
+    if (hid == null) {
+      // eq row — left.text === right.text by construction
+      out.push(left[row].text)
+      continue
+    }
+    // Inside a hunk. Emit its chosen content once, on the last row
+    // of the hunk, so the relative position between anchors holds.
+    const h = hunks[hunkIdx]
+    if (row + 1 === h.endRow) {
+      const chosen = decisionFor(h.id) === 'accept' ? h.added : h.removed
+      for (const t of chosen) out.push(t)
+      hunkIdx++
+    }
+  }
+  return out.join('\n')
+})
+
+const finalUnchanged = computed(() => finalText.value === props.original)
+
 function onAccept() {
-  if (!unchanged.value) emit('accept', props.optimized)
+  if (finalUnchanged.value) return
+  emit('accept', finalText.value)
 }
 function onReject() {
   emit('reject')
@@ -102,6 +189,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
               <strong class="ai-summary-add">+{{ summary.added }}</strong> /
               <strong class="ai-summary-rem">−{{ summary.removed }}</strong>
               line<template v-if="summary.added + summary.removed !== 1">s</template>
+              <template v-if="totalHunks > 0">
+                · <strong>{{ acceptedHunks }} of {{ totalHunks }}</strong> hunk<template v-if="totalHunks !== 1">s</template> kept
+              </template>
               <span v-if="modelName" class="ai-model-tag"> · {{ modelName }}</span>
             </template>
           </p>
@@ -116,15 +206,68 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <pre class="ai-pane ai-pane--current"><code><span
           v-for="(line, idx) in diff.left"
           :key="'l'+idx"
-          :class="['ai-line', 'ai-line--'+line.type]"
+          :class="['ai-line', 'ai-line--'+line.type, rowToHunk[idx] != null && decisionFor(rowToHunk[idx]!) === 'reject' ? 'ai-line--rejected' : '']"
         >{{ line.text || ' ' }}</span></code></pre>
 
         <div class="ai-pane-heading ai-pane-heading--optimized">Optimized</div>
         <pre class="ai-pane ai-pane--optimized"><code><span
           v-for="(line, idx) in diff.right"
           :key="'r'+idx"
-          :class="['ai-line', 'ai-line--'+line.type]"
+          :class="['ai-line', 'ai-line--'+line.type, rowToHunk[idx] != null && decisionFor(rowToHunk[idx]!) === 'reject' ? 'ai-line--rejected' : '']"
         >{{ line.text || ' ' }}</span></code></pre>
+      </div>
+
+      <!-- PAI-219. Per-hunk decision panel. Lets the user keep some of
+           the AI's edits while rejecting others, instead of all-or-
+           nothing. Defaults to all-kept so the no-interaction path
+           matches the original "Accept replaces everything" UX. -->
+      <div v-if="totalHunks > 0" class="ai-hunks">
+        <div class="ai-hunks-headrow">
+          <span class="ai-hunks-title">
+            Per-hunk decisions
+            <span class="ai-hunks-counter">· {{ acceptedHunks }} of {{ totalHunks }} kept</span>
+          </span>
+          <div class="ai-hunks-bulk">
+            <button
+              type="button"
+              class="ai-hunks-bulk-btn"
+              :disabled="allAccepted"
+              @click="setAllDecisions('accept')"
+            >Keep all</button>
+            <button
+              type="button"
+              class="ai-hunks-bulk-btn"
+              :disabled="allRejected"
+              @click="setAllDecisions('reject')"
+            >Reject all</button>
+          </div>
+        </div>
+        <ul class="ai-hunks-list">
+          <li
+            v-for="(h, idx) in diff.hunks"
+            :key="h.id"
+            :class="['ai-hunk', `ai-hunk--${decisionFor(h.id)}`]"
+          >
+            <span class="ai-hunk-tag">Hunk {{ idx + 1 }}</span>
+            <div class="ai-hunk-preview">
+              <div v-if="h.removed.length" class="ai-hunk-removed">
+                <span class="ai-hunk-side-tag">−</span>
+                <code>{{ h.removed.join(' / ') }}</code>
+              </div>
+              <div v-if="h.added.length" class="ai-hunk-added">
+                <span class="ai-hunk-side-tag">+</span>
+                <code>{{ h.added.join(' / ') }}</code>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="ai-hunk-toggle"
+              :class="{ 'ai-hunk-toggle--active': decisionFor(h.id) === 'accept' }"
+              :title="decisionFor(h.id) === 'accept' ? 'Reject this hunk to keep the original text' : 'Keep the AI rewrite for this hunk'"
+              @click="toggleDecision(h.id)"
+            >{{ decisionFor(h.id) === 'accept' ? 'Keep' : 'Reject' }}</button>
+          </li>
+        </ul>
       </div>
 
       <footer class="ai-overlay-foot">
@@ -137,7 +280,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <button
           type="button"
           class="btn btn-primary"
-          :disabled="unchanged || retrying"
+          :disabled="finalUnchanged || retrying"
           @click="onAccept"
         >
           Accept &amp; replace
@@ -247,6 +390,73 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .ai-line--del { background: #fef2f2; border-left-color: #fca5a5; }
 .ai-line--add { background: #f0fdf4; border-left-color: #86efac; }
 .ai-line--pad { color: transparent; user-select: none; }
+/* PAI-219: a rejected hunk dims its rows and strikes through the
+   AI's proposed text on the right while the original stays
+   readable on the left. Visible signal that this slice will fall
+   back to the original on Accept. */
+.ai-line--rejected { opacity: .45; }
+.ai-pane--optimized .ai-line--rejected.ai-line--add { text-decoration: line-through; }
+
+/* ── PAI-219 hunk decision panel ──────────────────────────────── */
+.ai-hunks {
+  border-top: 1px solid var(--border);
+  padding: .85rem 1.25rem;
+  background: #fafbfc;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.ai-hunks-headrow {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .55rem;
+}
+.ai-hunks-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-muted);
+}
+.ai-hunks-counter { font-weight: 500; text-transform: none; letter-spacing: 0; opacity: .8; }
+.ai-hunks-bulk { display: flex; gap: .3rem; }
+.ai-hunks-bulk-btn {
+  font-size: 11.5px; font-weight: 500;
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: .15rem .55rem;
+  cursor: pointer;
+}
+.ai-hunks-bulk-btn:disabled { opacity: .4; cursor: not-allowed; }
+.ai-hunks-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
+.ai-hunk {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: .65rem;
+  padding: .4rem .55rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+.ai-hunk--reject { opacity: .65; background: #fafafa; }
+.ai-hunk-tag {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-muted);
+}
+.ai-hunk-preview { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.ai-hunk-removed, .ai-hunk-added {
+  display: flex; gap: .35rem; align-items: baseline;
+  font-family: 'DM Mono', 'Menlo', monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ai-hunk-removed code { color: #b91c1c; }
+.ai-hunk-added code { color: #047857; }
+.ai-hunk-side-tag { font-weight: 700; opacity: .6; font-family: inherit; }
+.ai-hunk-toggle {
+  font-size: 11.5px; font-weight: 600;
+  background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: .2rem .65rem;
+  cursor: pointer;
+  min-width: 64px;
+}
+.ai-hunk-toggle--active { background: var(--bp-blue-pale, #e8f1fb); color: var(--bp-blue-dark, #155078); border-color: var(--bp-blue, #4a7); }
 
 /* ── Footer ─────────────────────────────────────────────────────── */
 .ai-overlay-foot {

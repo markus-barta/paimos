@@ -70,4 +70,54 @@ describe('lineDiff', () => {
     )
     expect(blankRows.length).toBeGreaterThan(0)
   })
+
+  // ── PAI-219 hunk grouping ─────────────────────────────────────────
+
+  it('PAI-219: returns no hunks for identical text', () => {
+    const r = lineDiff('one\ntwo', 'one\ntwo')
+    expect(r.hunks).toEqual([])
+  })
+
+  it('PAI-219: one hunk for a single-line change', () => {
+    const r = lineDiff('a\nb\nc', 'a\nB\nc')
+    expect(r.hunks).toHaveLength(1)
+    const h = r.hunks[0]
+    expect(h.removed).toEqual(['b'])
+    expect(h.added).toEqual(['B'])
+    // A single replaced line aligns as one `del/pad` row + one
+    // `pad/add` row — two aligned rows total, between the eq anchors.
+    expect(h.endRow - h.startRow).toBe(2)
+  })
+
+  it('PAI-219: blank-line anchors split into separate hunks', () => {
+    // The paragraph-anchored case from the existing test should produce
+    // two independent hunks the user can accept/reject separately.
+    const before = 'first paragraph.\n\nsecond paragraph.'
+    const after  = 'first paragraph!\n\nsecond paragraph?'
+    const r = lineDiff(before, after)
+    expect(r.hunks).toHaveLength(2)
+    expect(r.hunks[0].removed).toEqual(['first paragraph.'])
+    expect(r.hunks[0].added).toEqual(['first paragraph!'])
+    expect(r.hunks[1].removed).toEqual(['second paragraph.'])
+    expect(r.hunks[1].added).toEqual(['second paragraph?'])
+  })
+
+  it('PAI-219: pure deletion records removed text and empty added', () => {
+    const r = lineDiff('a\nb\nc', 'a\nc')
+    expect(r.hunks).toHaveLength(1)
+    expect(r.hunks[0].removed).toEqual(['b'])
+    expect(r.hunks[0].added).toEqual([])
+  })
+
+  it('PAI-219: pure insertion records added text and empty removed', () => {
+    const r = lineDiff('a\nc', 'a\nb\nc')
+    expect(r.hunks).toHaveLength(1)
+    expect(r.hunks[0].removed).toEqual([])
+    expect(r.hunks[0].added).toEqual(['b'])
+  })
+
+  it('PAI-219: hunk ids are stable 0-based indices', () => {
+    const r = lineDiff('a\nb\nc\nd', 'A\nb\nC\nd')
+    expect(r.hunks.map((h) => h.id)).toEqual([0, 1])
+  })
 })
