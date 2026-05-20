@@ -4628,6 +4628,23 @@ func migrate(db *sql.DB) error {
 		{108, []string{
 			`ALTER TABLE issues ADD COLUMN report_summary TEXT NOT NULL DEFAULT ''`,
 		}},
+
+		// Migration 109: PAI-459 — CUSTOMERPORTAL system tag. The single
+		// load-bearing marker for what an external customer sees on the
+		// portal. System-managed (system=1) so DeleteTag rejects it; UI
+		// renders an eye glyph + reserved color by name. The tag-attach
+		// API exempts it from the usual system-tag block so internal
+		// users can toggle visibility through the standard endpoints
+		// (see tags.go isPortalVisibilityTag). Idempotent insert by name.
+		{109, []string{
+			`INSERT OR IGNORE INTO tags(name, color, description, system)
+			 VALUES('CUSTOMERPORTAL', 'blue',
+			        'Marks an issue as visible in the customer portal. ' ||
+			        'Managed manually via the issue-detail toggle, the ' ||
+			        'IssueList bulk action, or auto-attached on portal ' ||
+			        'request submission.',
+			        1)`,
+		}},
 	}
 
 	for _, m := range migrations {

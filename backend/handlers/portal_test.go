@@ -268,6 +268,137 @@ func TestQuick_Portal(t *testing.T) {
 	})
 }
 
+// PAI-459: portal submissions must auto-attach CUSTOMERPORTAL, the
+// CUSTOMERPORTAL system tag must be undeletable even by admin, and the
+// existing tag-attach API must allow CUSTOMERPORTAL through despite its
+// system flag (the toggle in IssueDetailView relies on this exemption).
+func TestQuick_PortalCustomerPortalTag(t *testing.T) {
+	ts := newTestServer(t)
+
+	var portalTagID int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name='CUSTOMERPORTAL'`).Scan(&portalTagID); err != nil {
+		t.Fatalf("CUSTOMERPORTAL tag missing — migration 109 didn't run: %v", err)
+	}
+	var sys int
+	if err := db.DB.QueryRow(`SELECT system FROM tags WHERE id=?`, portalTagID).Scan(&sys); err != nil {
+		t.Fatalf("read system flag: %v", err)
+	}
+	if sys != 1 {
+		t.Fatalf("CUSTOMERPORTAL system flag = %d, want 1", sys)
+	}
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Portal-Tag Project", "key": "PCT",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	var extUserID int64
+	db.DB.QueryRow("SELECT id FROM users WHERE username='external'").Scan(&extUserID)
+	resp = ts.post(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie, map[string]any{
+		"project_id": projectID,
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	resp = ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extUserID, projectID), ts.adminCookie, map[string]string{
+		"access_level": "editor",
+	})
+	assertStatus(t, resp, http.StatusOK)
+
+	t.Run("portal submission auto-tags issue with CUSTOMERPORTAL", func(t *testing.T) {
+		resp := ts.post(t, fmt.Sprintf("/api/portal/projects/%d/requests", projectID), ts.externalCookie, map[string]string{
+			"title": "Auto-tag check", "description": "Verify CUSTOMERPORTAL gets attached.",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		var result struct {
+			ID int64 `json:"id"`
+		}
+		decode(t, resp, &result)
+		if result.ID == 0 {
+			t.Fatal("submission returned zero id")
+		}
+
+		var hit int
+		if err := db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, result.ID, portalTagID).Scan(&hit); err != nil {
+			t.Fatalf("scan issue_tags: %v", err)
+		}
+		if hit != 1 {
+			t.Fatalf("portal-submitted issue %d not tagged with CUSTOMERPORTAL", result.ID)
+		}
+
+		var mtype string
+		if err := db.DB.QueryRow(`SELECT mutation_type FROM mutation_log WHERE subject_type='issue_tag' AND subject_id=? ORDER BY id DESC LIMIT 1`, result.ID).Scan(&mtype); err != nil {
+			t.Fatalf("mutation_log lookup: %v", err)
+		}
+		if mtype != "portal.submit.auto_tag" {
+			t.Errorf("mutation_log type = %q, want portal.submit.auto_tag", mtype)
+		}
+	})
+
+	t.Run("admin cannot delete the CUSTOMERPORTAL tag", func(t *testing.T) {
+		resp := ts.del(t, fmt.Sprintf("/api/tags/%d", portalTagID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusForbidden)
+
+		var still int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM tags WHERE id=?`, portalTagID).Scan(&still)
+		if still != 1 {
+			t.Errorf("CUSTOMERPORTAL tag removed despite 403; count=%d", still)
+		}
+	})
+
+	t.Run("internal user can attach + detach CUSTOMERPORTAL via the standard tag API", func(t *testing.T) {
+		// Make a vanilla internal issue to toggle.
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": "Toggle target", "type": "ticket", "status": "done",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		issueID := responseID(t, resp)
+
+		resp = ts.post(t, fmt.Sprintf("/api/issues/%d/tags", issueID), ts.adminCookie, map[string]any{
+			"tag_id": portalTagID,
+		})
+		assertStatus(t, resp, http.StatusNoContent)
+
+		var hit int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, issueID, portalTagID).Scan(&hit)
+		if hit != 1 {
+			t.Fatalf("attach didn't land; count=%d", hit)
+		}
+
+		resp = ts.del(t, fmt.Sprintf("/api/issues/%d/tags/%d", issueID, portalTagID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusNoContent)
+
+		db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, issueID, portalTagID).Scan(&hit)
+		if hit != 0 {
+			t.Errorf("detach didn't land; count=%d", hit)
+		}
+	})
+
+	t.Run("other system tags still blocked from manual attach", func(t *testing.T) {
+		// Create a second synthetic system tag to prove only CUSTOMERPORTAL
+		// gets the exemption. The migration set covers no other system
+		// tags by name, so we insert directly.
+		res, err := db.DB.Exec(`INSERT INTO tags(name,color,description,system) VALUES('TEST_SYSTEM','red','synthetic',1)`)
+		if err != nil {
+			t.Fatalf("seed system tag: %v", err)
+		}
+		otherID, _ := res.LastInsertId()
+		t.Cleanup(func() {
+			db.DB.Exec(`DELETE FROM tags WHERE id=?`, otherID)
+		})
+
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": "Block target", "type": "ticket", "status": "new",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		issueID := responseID(t, resp)
+
+		resp = ts.post(t, fmt.Sprintf("/api/issues/%d/tags", issueID), ts.adminCookie, map[string]any{
+			"tag_id": otherID,
+		})
+		assertStatus(t, resp, http.StatusForbidden)
+	})
+}
+
 // ── Portal overview (PAI-452) ───────────────────────────────────────────────
 
 func TestQuick_PortalOverview(t *testing.T) {

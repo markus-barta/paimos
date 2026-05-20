@@ -361,34 +361,101 @@ func PortalSubmitRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get next issue_number for this project
+	// PAI-459: portal submissions are the one path that auto-applies the
+	// CUSTOMERPORTAL tag — a customer-submitted request is, by definition,
+	// something the customer should see in their own portal. Run the
+	// issue insert + tag attach + audit row in a single transaction so a
+	// failure leaves nothing behind to clean up.
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("PortalSubmitRequest: begin tx: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
 	var maxNum int
-	if err := db.DB.QueryRow("SELECT COALESCE(MAX(issue_number), 0) FROM issues WHERE project_id=?", projectID).Scan(&maxNum); err != nil {
+	if err := tx.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(issue_number), 0) FROM issues WHERE project_id=?", projectID).Scan(&maxNum); err != nil {
+		log.Printf("PortalSubmitRequest: next issue_number: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	nextNum := maxNum + 1
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
-	res, err := db.DB.Exec(`
+	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO issues (project_id, issue_number, type, title, description, status, priority, created_at, updated_at, notes)
 		VALUES (?, ?, 'ticket', ?, ?, 'new', 'medium', ?, ?, '[customer request]')
 	`, projectID, nextNum, body.Title, body.Description, now, now)
 	if err != nil {
+		log.Printf("PortalSubmitRequest: insert issue: %v", err)
 		jsonError(w, "create failed", http.StatusInternalServerError)
 		return
 	}
+	issueID, _ := res.LastInsertId()
 
-	id, _ := res.LastInsertId()
-	// Return the key
+	// PAI-459: auto-attach CUSTOMERPORTAL inside the same tx. Tag id is
+	// process-cached; lookup falls back to a direct query if the cache is
+	// cold (e.g. first request after restart, before any other portal
+	// activity primed it).
+	tagID, ok := customerPortalTagIDTx(r.Context(), tx)
+	if !ok {
+		log.Printf("PortalSubmitRequest: CUSTOMERPORTAL tag missing (migration 109 not applied?)")
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `INSERT OR IGNORE INTO issue_tags(issue_id, tag_id) VALUES(?, ?)`, issueID, tagID); err != nil {
+		log.Printf("PortalSubmitRequest: attach CUSTOMERPORTAL issue=%d: %v", issueID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Audit the auto-tag with its own mutation_type so the admin
+	// visibility report (PAI-467) can render "auto-tagged on portal
+	// submission" distinct from interactive toggles or migration
+	// backfills. Not user-undoable: undoing the tag would orphan the
+	// portal request from its own visibility marker.
+	var userID *int64
+	if user := auth.GetUser(r); user != nil {
+		userID = &user.ID
+	}
+	after, err := fetchIssueTagMutationSnapshotTx(tx, issueID, tagID)
+	if err != nil {
+		log.Printf("PortalSubmitRequest: snapshot issue=%d tag=%d: %v", issueID, tagID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestIDFromRequest(r),
+		UserID:       userID,
+		SessionID:    sessionIDFromRequest(r),
+		AgentName:    agentNameFromRequest(r),
+		MutationType: "portal.submit.auto_tag",
+		SubjectType:  "issue_tag",
+		SubjectID:    issueID,
+		AfterState:   after,
+		Undoable:     false,
+	}); err != nil {
+		log.Printf("PortalSubmitRequest: recordMutation: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	var key string
-	if err := db.DB.QueryRow("SELECT COALESCE(p.key || '-' || ?, '') FROM projects p WHERE p.id=?", nextNum, projectID).Scan(&key); err != nil {
+	if err := tx.QueryRowContext(r.Context(), "SELECT COALESCE(p.key || '-' || ?, '') FROM projects p WHERE p.id=?", nextNum, projectID).Scan(&key); err != nil {
+		log.Printf("PortalSubmitRequest: resolve issue_key: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("PortalSubmitRequest: commit: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	jsonOK(w, map[string]any{"id": id, "issue_key": key, "issue_number": nextNum})
+	jsonOK(w, map[string]any{"id": issueID, "issue_key": key, "issue_number": nextNum})
 }
 
 // ── POST /api/portal/issues/{id}/accept ──────────────────────────────────────

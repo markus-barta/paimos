@@ -16,6 +16,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 
@@ -249,8 +251,10 @@ func AddTagToIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "tag_id required", http.StatusBadRequest)
 		return
 	}
-	// Block manual attachment of system tags
-	if isSystemTag(body.TagID) {
+	// Block manual attachment of system tags. CUSTOMERPORTAL is the one
+	// system tag end users are expected to toggle (PAI-459 / PAI-463) —
+	// rename/delete remain blocked by DeleteTag's isSystemTag check.
+	if isSystemTag(body.TagID) && !isPortalVisibilityTag(body.TagID) {
 		jsonError(w, "system tags cannot be added manually", http.StatusForbidden)
 		return
 	}
@@ -335,8 +339,10 @@ func RemoveTagFromIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid tag id", http.StatusBadRequest)
 		return
 	}
-	// Block manual removal of system tags
-	if isSystemTag(tagID) {
+	// Mirror of the AddTagToIssue exemption — CUSTOMERPORTAL is
+	// user-toggleable (PAI-459 / PAI-463); other system tags remain
+	// blocked from manual removal.
+	if isSystemTag(tagID) && !isPortalVisibilityTag(tagID) {
 		jsonError(w, "system tags cannot be removed manually", http.StatusForbidden)
 		return
 	}
@@ -587,6 +593,63 @@ func isSystemTag(tagID int64) bool {
 		return false
 	}
 	return sys == 1
+}
+
+// CustomerPortalTagName is the canonical name of the system tag that gates
+// customer-portal visibility (PAI-458 / PAI-459). The name is the
+// permanent identity — code paths that need the tag id look it up by
+// name and cache the result in-process.
+const CustomerPortalTagName = "CUSTOMERPORTAL"
+
+// isPortalVisibilityTag reports whether tagID points at the
+// CUSTOMERPORTAL system tag. This is the one system tag that ordinary
+// users with tag:write are allowed to attach and detach via the standard
+// issue-tag API, because the entire portal-v2 visibility model rests on
+// internal users flipping it from IssueDetailView and IssueList bulk
+// actions (PAI-459 + PAI-463). The system=1 flag still protects the tag
+// from rename and delete in DeleteTag.
+func isPortalVisibilityTag(tagID int64) bool {
+	id, ok := customerPortalTagID()
+	return ok && id == tagID
+}
+
+// customerPortalTagID resolves the CUSTOMERPORTAL tag's id, caching the
+// result for the lifetime of the process. The tag is created by migration
+// 109 and never renamed (system flag prevents it), so a one-shot lookup is
+// safe. Returns ok=false only if the migration hasn't run yet (unit-test
+// harnesses that skip migrations); callers must handle that path.
+func customerPortalTagID() (int64, bool) {
+	if id, ok := customerPortalTagIDCache.Load().(int64); ok && id > 0 {
+		return id, true
+	}
+	var id int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name=?`, CustomerPortalTagName).Scan(&id); err != nil || id == 0 {
+		return 0, false
+	}
+	customerPortalTagIDCache.Store(id)
+	return id, true
+}
+
+// customerPortalTagIDCache holds the cached lookup result. atomic.Value
+// keeps the read path lock-free; one Load + one Store at startup, then
+// pure reads forever.
+var customerPortalTagIDCache atomic.Value
+
+// customerPortalTagIDTx is the transactional variant: callers in the
+// middle of a write tx need the tag id with the same visibility as their
+// other writes (e.g. PortalSubmitRequest, which both inserts the issue
+// and attaches the tag). Uses the same process cache as customerPortalTagID
+// and primes it on a successful query.
+func customerPortalTagIDTx(ctx context.Context, tx *sql.Tx) (int64, bool) {
+	if id, ok := customerPortalTagIDCache.Load().(int64); ok && id > 0 {
+		return id, true
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM tags WHERE name=?`, CustomerPortalTagName).Scan(&id); err != nil || id == 0 {
+		return 0, false
+	}
+	customerPortalTagIDCache.Store(id)
+	return id, true
 }
 
 func buildPlaceholders(n int) string {
