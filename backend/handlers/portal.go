@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,33 @@ func checkPortalEdit(r *http.Request, projectID int64) bool {
 	return auth.CanEditProject(r, projectID)
 }
 
+// portalVisibilityEnforced reports whether portal endpoints should
+// constrain results to issues carrying the CUSTOMERPORTAL tag. The
+// default is true; setting PAIMOS_PORTAL_VISIBILITY_DRY_RUN=true (PAI-462)
+// disables enforcement for the rollout grace period while the backfill
+// migration runs and operators read `would_hide_count` per project.
+func portalVisibilityEnforced() bool {
+	return strings.ToLower(strings.TrimSpace(os.Getenv("PAIMOS_PORTAL_VISIBILITY_DRY_RUN"))) != "true"
+}
+
+// portalVisibilityCondition returns a SQL fragment suitable for either a
+// JOIN ON clause or a WHERE clause that constrains the issues row aliased
+// as `alias` to those carrying the CUSTOMERPORTAL tag (PAI-460). The
+// returned bool reports whether enforcement is on; when off, the
+// fragment is "1=1" so the same splice point composes uniformly. The
+// returned arg should only be appended to the query when enforced=true.
+//
+// EXISTS is used (over a JOIN) so the rest of each query's plan stays
+// untouched and the visibility filter composes with the existing access
+// gate without ambiguity around row duplication.
+func portalVisibilityCondition(alias string) (frag string, arg any, enforced bool) {
+	if !portalVisibilityEnforced() {
+		return "1=1", nil, false
+	}
+	id, _ := customerPortalTagID()
+	return "EXISTS (SELECT 1 FROM issue_tags itt WHERE itt.issue_id = " + alias + ".id AND itt.tag_id = ?)", id, true
+}
+
 // computeEur calculates EUR from hours/lp and the project's cost-unit rates.
 // For portal display, we use the rate_hourly and rate_lp from the issue's
 // parent epic or cost_unit. As a simpler approach, we compute from the issue
@@ -122,6 +150,12 @@ func PortalListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Visibility filter sits on the LEFT JOIN's ON clause so projects
+	// with zero customer-visible issues still appear (with counts at 0).
+	// Moving it into WHERE would convert the LEFT JOIN to an effective
+	// INNER JOIN and drop those projects entirely.
+	visFrag, visArg, visOn := portalVisibilityCondition("i")
+
 	var query string
 	var args []any
 
@@ -132,10 +166,13 @@ func PortalListProjects(w http.ResponseWriter, r *http.Request) {
 			       COUNT(i.id) as issue_count,
 			       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count
 			FROM projects p
-			LEFT JOIN issues i ON i.project_id = p.id
+			LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL AND ` + visFrag + `
 			WHERE p.status = 'active'
 			GROUP BY p.id
 			ORDER BY p.name`
+		if visOn {
+			args = append(args, visArg)
+		}
 	} else {
 		query = `
 			SELECT p.id, p.key, p.name, p.description, p.status,
@@ -144,11 +181,14 @@ func PortalListProjects(w http.ResponseWriter, r *http.Request) {
 			       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count
 			FROM projects p
 			JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ? AND pm.access_level IN ('viewer','editor')
-			LEFT JOIN issues i ON i.project_id = p.id
+			LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL AND ` + visFrag + `
 			WHERE p.status = 'active'
 			GROUP BY p.id
 			ORDER BY p.name`
 		args = append(args, user.ID)
+		if visOn {
+			args = append(args, visArg)
+		}
 	}
 
 	rows, err := db.DB.Query(query, args...)
@@ -184,6 +224,13 @@ func PortalGetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	visFrag, visArg, visOn := portalVisibilityCondition("i")
+	args := []any{}
+	if visOn {
+		args = append(args, visArg)
+	}
+	args = append(args, id)
+
 	var p portalProject
 	err = db.DB.QueryRow(`
 		SELECT p.id, p.key, p.name, p.description, p.status,
@@ -191,10 +238,10 @@ func PortalGetProject(w http.ResponseWriter, r *http.Request) {
 		       COUNT(i.id) as issue_count,
 		       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count
 		FROM projects p
-		LEFT JOIN issues i ON i.project_id = p.id
+		LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL AND `+visFrag+`
 		WHERE p.id = ?
 		GROUP BY p.id
-	`, id).Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.Status,
+	`, args...).Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.Status,
 		&p.LogoPath, &p.IssueCount, &p.DoneCount)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
@@ -219,6 +266,13 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	where := "WHERE i.project_id = ? AND i.deleted_at IS NULL"
 	args := []any{projectID}
+
+	// PAI-460: gate to issues tagged CUSTOMERPORTAL (no-op when the
+	// dry-run env var is set per PAI-462).
+	if frag, arg, on := portalVisibilityCondition("i"); on {
+		where += " AND " + frag
+		args = append(args, arg)
+	}
 
 	if v := q.Get("status"); v != "" {
 		where += " AND i.status = ?"
@@ -306,6 +360,16 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-460: append the visibility constraint to WHERE — a missing
+	// CUSTOMERPORTAL tag returns 404 (existing no-rows path) rather than
+	// 403, so the endpoint never discloses that an internal issue exists
+	// at this id.
+	visFrag, visArg, visOn := portalVisibilityCondition("i")
+	args := []any{issueID, projectID}
+	if visOn {
+		args = append(args, visArg)
+	}
+
 	var pi portalIssue
 	var rateH, rateLP *float64
 	err = db.DB.QueryRow(`
@@ -320,8 +384,8 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 		       i.created_at, i.updated_at
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
-		WHERE i.id = ? AND i.project_id = ? AND i.deleted_at IS NULL
-	`, issueID, projectID).Scan(&pi.ID, &pi.IssueKey,
+		WHERE i.id = ? AND i.project_id = ? AND i.deleted_at IS NULL AND `+visFrag+`
+	`, args...).Scan(&pi.ID, &pi.IssueKey,
 		&pi.Title, &pi.Description, &pi.AcceptanceCriteria,
 		&pi.ReportSummary,
 		&pi.Status, &pi.Priority, &pi.Type,
@@ -784,14 +848,21 @@ func PortalProjectSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-460: by-status rollup must reflect visible-only counts.
+	visFrag, visArg, visOn := portalVisibilityCondition("issues")
+	args := []any{projectID}
+	if visOn {
+		args = append(args, visArg)
+	}
+
 	rows, err := db.DB.Query(`
 		SELECT status, COUNT(*),
 		       SUM(COALESCE(estimate_hours, 0) * COALESCE(rate_hourly, 0) + COALESCE(estimate_lp, 0) * COALESCE(rate_lp, 0)),
 		       SUM(COALESCE(ar_hours, 0) * COALESCE(rate_hourly, 0) + COALESCE(ar_lp, 0) * COALESCE(rate_lp, 0))
 		FROM issues
-		WHERE project_id = ? AND deleted_at IS NULL
+		WHERE project_id = ? AND deleted_at IS NULL AND `+visFrag+`
 		GROUP BY status
-	`, projectID)
+	`, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -886,6 +957,10 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 		isAdmin    = auth.IsAdmin(user)
 	)
 
+	// PAI-460: per-project KPIs and last_activity reflect visible-only
+	// counts. Same JOIN-condition technique as PortalListProjects.
+	visFrag, visArg, visOn := portalVisibilityCondition("i")
+
 	{
 		var query string
 		var args []any
@@ -897,10 +972,13 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 				       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count,
 				       COALESCE(MAX(i.updated_at), '') as last_activity
 				FROM projects p
-				LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL
+				LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL AND ` + visFrag + `
 				WHERE p.status = 'active'
 				GROUP BY p.id
 				ORDER BY last_activity DESC, p.name`
+			if visOn {
+				args = append(args, visArg)
+			}
 		} else {
 			query = `
 				SELECT p.id, p.key, p.name, p.description, p.status,
@@ -912,11 +990,14 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 				JOIN project_members pm
 				  ON pm.project_id = p.id AND pm.user_id = ?
 				 AND pm.access_level IN ('viewer','editor')
-				LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL
+				LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL AND ` + visFrag + `
 				WHERE p.status = 'active'
 				GROUP BY p.id
 				ORDER BY last_activity DESC, p.name`
 			args = append(args, user.ID)
+			if visOn {
+				args = append(args, visArg)
+			}
 		}
 		rows, err := db.DB.Query(query, args...)
 		if err != nil {
@@ -958,15 +1039,23 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 
 	// Per-project status breakdown + open-issue count + acceptance-queue
 	// pre-counts. One query that buckets every relevant status; we then
-	// slot the results back into the matching project.
+	// slot the results back into the matching project. PAI-460: filter
+	// to CUSTOMERPORTAL-visible issues only — re-resolve the visibility
+	// condition for the `issues` table alias used in this block.
 	{
+		statusVisFrag, statusVisArg, statusVisOn := portalVisibilityCondition("issues")
+		statusArgs := append([]any{}, idArgs...)
+		if statusVisOn {
+			statusArgs = append(statusArgs, statusVisArg)
+		}
 		q := `
 			SELECT project_id, status, COUNT(*)
 			FROM issues
 			WHERE deleted_at IS NULL
 			  AND project_id IN (` + placeholders + `)
+			  AND ` + statusVisFrag + `
 			GROUP BY project_id, status`
-		rows, err := db.DB.Query(q, idArgs...)
+		rows, err := db.DB.Query(q, statusArgs...)
 		if err != nil {
 			jsonError(w, "status rollup query failed", http.StatusInternalServerError)
 			return
@@ -1001,7 +1090,14 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 
 	// Awaiting-acceptance issue list across the customer's projects.
 	// Cap at 20 — anything more belongs in the per-project view.
+	// PAI-460: only the customer's portal-visible items qualify; the rest
+	// are internal noise.
 	{
+		awaitVisFrag, awaitVisArg, awaitVisOn := portalVisibilityCondition("i")
+		awaitArgs := append([]any{}, idArgs...)
+		if awaitVisOn {
+			awaitArgs = append(awaitArgs, awaitVisArg)
+		}
 		q := `
 			SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 			       i.title, i.type, i.status, i.priority,
@@ -1011,9 +1107,10 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 			WHERE i.deleted_at IS NULL
 			  AND i.status IN ('done','delivered')
 			  AND i.project_id IN (` + placeholders + `)
+			  AND ` + awaitVisFrag + `
 			ORDER BY i.updated_at DESC
 			LIMIT 20`
-		rows, err := db.DB.Query(q, idArgs...)
+		rows, err := db.DB.Query(q, awaitArgs...)
 		if err != nil {
 			jsonError(w, "acceptance queue query failed", http.StatusInternalServerError)
 			return
@@ -1036,16 +1133,22 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// accepted_this_month counter.
+	// accepted_this_month counter — PAI-460: visible-only.
 	{
+		acceptVisFrag, acceptVisArg, acceptVisOn := portalVisibilityCondition("issues")
+		acceptArgs := append([]any{}, idArgs...)
+		if acceptVisOn {
+			acceptArgs = append(acceptArgs, acceptVisArg)
+		}
 		q := `
 			SELECT COUNT(*)
 			FROM issues
 			WHERE deleted_at IS NULL
 			  AND accepted_at IS NOT NULL
 			  AND strftime('%Y-%m', accepted_at) = strftime('%Y-%m', 'now')
-			  AND project_id IN (` + placeholders + `)`
-		if err := db.DB.QueryRow(q, idArgs...).Scan(&out.KPIs.AcceptedThisMonth); err != nil {
+			  AND project_id IN (` + placeholders + `)
+			  AND ` + acceptVisFrag
+		if err := db.DB.QueryRow(q, acceptArgs...).Scan(&out.KPIs.AcceptedThisMonth); err != nil {
 			log.Printf("portal overview accepted_this_month: %v", err)
 		}
 	}

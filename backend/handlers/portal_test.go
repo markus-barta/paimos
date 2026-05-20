@@ -23,6 +23,24 @@ import (
 	"github.com/markus-barta/paimos/backend/db"
 )
 
+// tagAllIssuesAsCustomerPortal back-tags every non-deleted issue in the
+// given project with the CUSTOMERPORTAL system tag. Useful for tests
+// written before PAI-460 made portal visibility opt-in: the older tests
+// seed issues via the admin path and want them visible in the portal
+// endpoints, which now require the tag. The migration backfill (PAI-462)
+// does the same thing in production; this helper is its test-time twin.
+func tagAllIssuesAsCustomerPortal(t *testing.T, projectID int64) {
+	t.Helper()
+	if _, err := db.DB.Exec(`
+		INSERT OR IGNORE INTO issue_tags (issue_id, tag_id)
+		SELECT i.id, t.id
+		FROM issues i, tags t
+		WHERE i.project_id = ? AND i.deleted_at IS NULL AND t.name = 'CUSTOMERPORTAL'
+	`, projectID); err != nil {
+		t.Fatalf("backfill CUSTOMERPORTAL for project %d: %v", projectID, err)
+	}
+}
+
 // ── External user blocking ──────────────────────────────────────────────────
 
 func TestQuick_ExternalUserBlocked(t *testing.T) {
@@ -90,6 +108,11 @@ func TestQuick_Portal(t *testing.T) {
 	})
 	assertStatus(t, resp, http.StatusCreated)
 	issueID := responseID(t, resp)
+
+	// PAI-460: portal endpoints require CUSTOMERPORTAL. These tests
+	// pre-date the visibility tag and want the seed issues visible; the
+	// helper mirrors the PAI-462 migration backfill in test scope.
+	tagAllIssuesAsCustomerPortal(t, projectID)
 
 	t.Run("external user sees no projects without access", func(t *testing.T) {
 		resp := ts.get(t, "/api/portal/projects", ts.externalCookie)
@@ -165,6 +188,7 @@ func TestQuick_Portal(t *testing.T) {
 	ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
 		"title": "Onboarding Checklist", "type": "ticket", "status": "backlog",
 	})
+	tagAllIssuesAsCustomerPortal(t, projectID) // PAI-460: keep the new issue visible.
 
 	t.Run("portal issues filtered by q", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?q=onboarding", projectID), ts.externalCookie)
@@ -436,6 +460,14 @@ func TestQuick_PortalOverview(t *testing.T) {
 		"title": "Other-project delivered", "type": "ticket", "status": "delivered",
 	})
 
+	// PAI-460: portal endpoints filter by CUSTOMERPORTAL — backfill both
+	// projects so the existing assertions (issue counts, awaiting queue,
+	// status rollup) reflect every seeded issue. The hidden-project issue
+	// must also be tagged so we exercise the access gate, not the
+	// visibility filter.
+	tagAllIssuesAsCustomerPortal(t, grantedID)
+	tagAllIssuesAsCustomerPortal(t, hiddenID)
+
 	// Grant the external user editor on the first project only.
 	resp = ts.post(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie, map[string]any{
 		"project_id": grantedID,
@@ -533,6 +565,219 @@ func TestQuick_PortalOverview(t *testing.T) {
 		if ov.KPIs.ActiveProjects < 2 {
 			t.Errorf("admin active_projects = %d, want >= 2", ov.KPIs.ActiveProjects)
 		}
+	})
+}
+
+// PAI-460: every issue-returning portal endpoint must constrain its
+// output to issues carrying CUSTOMERPORTAL. This covers the 20-issue
+// project with 5 tagged shape, the KPI rollup on /overview, the
+// project-summary status counts, the 404-not-403 contract on the
+// per-issue endpoint, the in-process tag-id cache, and the snapshot
+// override (projektbericht remains readable even for untagged issues).
+func TestQuick_PortalCustomerPortalFilter(t *testing.T) {
+	ts := newTestServer(t)
+
+	var portalTagID int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name='CUSTOMERPORTAL'`).Scan(&portalTagID); err != nil {
+		t.Fatalf("CUSTOMERPORTAL tag missing: %v", err)
+	}
+
+	var extUserID int64
+	db.DB.QueryRow("SELECT id FROM users WHERE username='external'").Scan(&extUserID)
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Filter Test", "key": "FLT",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	resp = ts.post(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie, map[string]any{
+		"project_id": projectID,
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	resp = ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extUserID, projectID), ts.adminCookie, map[string]string{
+		"access_level": "editor",
+	})
+	assertStatus(t, resp, http.StatusOK)
+
+	// Create 20 issues: 5 tagged with CUSTOMERPORTAL (visible), 15 not (hidden).
+	// Distribute statuses so the rollup is meaningful.
+	visibleStatuses := []string{"in-progress", "in-progress", "delivered", "done", "done"}
+	hiddenStatuses := []string{"new", "in-progress", "delivered", "done", "accepted",
+		"new", "in-progress", "delivered", "done", "accepted",
+		"new", "in-progress", "delivered", "done", "accepted"}
+	var visibleIDs []int64
+	var hiddenIDs []int64
+	for i, st := range visibleStatuses {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": fmt.Sprintf("VIS-%d", i+1), "type": "ticket", "status": st,
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		id := responseID(t, resp)
+		visibleIDs = append(visibleIDs, id)
+		if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_tags(issue_id, tag_id) VALUES(?, ?)`, id, portalTagID); err != nil {
+			t.Fatalf("attach CUSTOMERPORTAL: %v", err)
+		}
+	}
+	for i, st := range hiddenStatuses {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": fmt.Sprintf("HID-%d", i+1), "type": "ticket", "status": st,
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		hiddenIDs = append(hiddenIDs, responseID(t, resp))
+	}
+
+	t.Run("portal issues list returns only the 5 tagged items", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var issues []struct {
+			Title string `json:"title"`
+		}
+		decode(t, resp, &issues)
+		if len(issues) != 5 {
+			t.Fatalf("issues list count = %d, want 5", len(issues))
+		}
+		for _, iss := range issues {
+			if iss.Title[:3] != "VIS" {
+				t.Errorf("untagged issue leaked into portal list: %q", iss.Title)
+			}
+		}
+	})
+
+	t.Run("per-issue fetch returns 404 (not 403) for untagged", func(t *testing.T) {
+		hiddenID := hiddenIDs[0]
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues/%d", projectID, hiddenID), ts.externalCookie)
+		// 404 — existence not disclosed. A 403 would tell the customer the
+		// id is real, which is the exact leak we're preventing.
+		assertStatus(t, resp, http.StatusNotFound)
+	})
+
+	t.Run("per-issue fetch succeeds for tagged", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues/%d", projectID, visibleIDs[0]), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+	})
+
+	t.Run("project summary counts are visible-only", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/summary", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var s struct {
+			TotalIssues int            `json:"total_issues"`
+			ByStatus    map[string]int `json:"by_status"`
+		}
+		decode(t, resp, &s)
+		if s.TotalIssues != 5 {
+			t.Errorf("summary total_issues = %d, want 5", s.TotalIssues)
+		}
+		// visibleStatuses had 2 in-progress, 1 delivered, 2 done.
+		if s.ByStatus["in-progress"] != 2 || s.ByStatus["delivered"] != 1 || s.ByStatus["done"] != 2 {
+			t.Errorf("summary by_status = %v, want in-progress:2 delivered:1 done:2", s.ByStatus)
+		}
+	})
+
+	t.Run("overview KPIs reflect visible-only counts", func(t *testing.T) {
+		resp := ts.get(t, "/api/portal/overview", ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var ov struct {
+			KPIs struct {
+				OpenIssues         int `json:"open_issues"`
+				AwaitingAcceptance int `json:"awaiting_acceptance"`
+			} `json:"kpis"`
+			Projects []struct {
+				ID         int64          `json:"id"`
+				IssueCount int            `json:"issue_count"`
+				ByStatus   map[string]int `json:"by_status"`
+			} `json:"projects"`
+			AwaitingAcceptance []struct {
+				Title string `json:"title"`
+			} `json:"awaiting_acceptance"`
+		}
+		decode(t, resp, &ov)
+
+		// Open = in-progress = 2. Awaiting = delivered + done = 3.
+		if ov.KPIs.OpenIssues != 2 {
+			t.Errorf("overview open_issues = %d, want 2", ov.KPIs.OpenIssues)
+		}
+		if ov.KPIs.AwaitingAcceptance != 3 {
+			t.Errorf("overview awaiting_acceptance = %d, want 3", ov.KPIs.AwaitingAcceptance)
+		}
+		if len(ov.AwaitingAcceptance) != 3 {
+			t.Errorf("overview awaiting list = %d, want 3", len(ov.AwaitingAcceptance))
+		}
+		for _, a := range ov.AwaitingAcceptance {
+			if a.Title[:3] != "VIS" {
+				t.Errorf("untagged issue %q leaked into overview awaiting list", a.Title)
+			}
+		}
+		if len(ov.Projects) != 1 || ov.Projects[0].IssueCount != 5 {
+			t.Errorf("project issue_count = %v, want a single project with 5", ov.Projects)
+		}
+		bs := ov.Projects[0].ByStatus
+		if bs["in-progress"] != 2 || bs["delivered"] != 1 || bs["done"] != 2 {
+			t.Errorf("overview project by_status = %v, want in-progress:2 delivered:1 done:2", bs)
+		}
+	})
+
+	t.Run("projects list shows the project with visible-only counts", func(t *testing.T) {
+		resp := ts.get(t, "/api/portal/projects", ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var list []struct {
+			ID         int64 `json:"id"`
+			IssueCount int   `json:"issue_count"`
+			DoneCount  int   `json:"done_count"`
+		}
+		decode(t, resp, &list)
+		var found *struct {
+			ID         int64 `json:"id"`
+			IssueCount int   `json:"issue_count"`
+			DoneCount  int   `json:"done_count"`
+		}
+		for i := range list {
+			if list[i].ID == projectID {
+				found = &list[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Fatal("granted project missing from portal list")
+		}
+		if found.IssueCount != 5 || found.DoneCount != 2 {
+			t.Errorf("portal project counts = %+v, want issue_count=5 done_count=2", *found)
+		}
+	})
+
+	t.Run("project detail endpoint uses visible-only counts", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var pd struct {
+			IssueCount int `json:"issue_count"`
+			DoneCount  int `json:"done_count"`
+		}
+		decode(t, resp, &pd)
+		if pd.IssueCount != 5 || pd.DoneCount != 2 {
+			t.Errorf("project detail counts = %+v, want issue_count=5 done_count=2", pd)
+		}
+	})
+
+	t.Run("projektbericht snapshot is an explicit visibility override", func(t *testing.T) {
+		// Seed a minimal snapshot that embeds an untagged (hidden) issue.
+		// The /projektberichte/accept/{code} endpoint should still return
+		// the snapshot for portal users — the snapshot is its own
+		// disclosure unit.
+		hiddenID := hiddenIDs[0]
+		code := "FLT-SNAP-1"
+		_, err := db.DB.Exec(`
+			INSERT INTO project_report_snapshots
+				(project_id, code, report_type, lang, issue_ids_json,
+				 total_issues, pdf_sha256, status, created_at)
+			VALUES (?, ?, 'projektbericht', 'de', ?, 1, 'deadbeef', 'generated', datetime('now'))
+		`, projectID, code, fmt.Sprintf("[%d]", hiddenID))
+		if err != nil {
+			t.Fatalf("seed snapshot: %v", err)
+		}
+		resp := ts.get(t, fmt.Sprintf("/api/projektberichte/accept/%s", code), ts.externalCookie)
+		// Snapshot path doesn't apply the CUSTOMERPORTAL filter — the
+		// untagged issue must still be readable through it.
+		assertStatus(t, resp, http.StatusOK)
 	})
 }
 
