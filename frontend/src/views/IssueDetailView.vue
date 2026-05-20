@@ -83,6 +83,9 @@ import IssueTextEditField from "@/components/issue/IssueTextEditField.vue";
 // below the type/status/priority subheader so it sits next to the
 // other issue-level "what state is this in" signals.
 import IssueVisibilityToggle from "@/components/IssueVisibilityToggle.vue";
+// PAI-464: nudge banner that surfaces above the description when a
+// terminal-status issue is missing the CUSTOMERPORTAL tag.
+import IssueVisibilityNudge from "@/components/IssueVisibilityNudge.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -1359,6 +1362,18 @@ async function cancelEdit() {
 
       <!-- Time Entries -->
       <IssueTimeEntries ref="timeEntriesRef" :issue-id="issueId" />
+
+      <!-- PAI-464: status-transition nudge. Sits between the metadata
+           strip and the body so it interrupts the read-flow exactly
+           where the customer-impact question is most likely to be on
+           the user's mind. -->
+      <IssueVisibilityNudge
+        v-if="!editing"
+        :status="issue.status"
+        :visible="isVisibleToPortal"
+        :can-edit="canEditThisProject && customerPortalTagId !== null"
+        @make-visible="onVisibilityToggle(true)"
+      />
 
       <!-- Body (view mode) -->
       <IssueDetailBody
