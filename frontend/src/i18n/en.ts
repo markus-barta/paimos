@@ -158,6 +158,22 @@ export default {
     filterBarTags: 'Tags',
     filterBarPriority: 'Priority',
   },
+  // PAI-475: comment-visibility wording. Used by the composer toggle,
+  // the per-comment badge in the issue thread, and the visibility flip
+  // affordance in the comment overflow menu.
+  comments: {
+    visibility: {
+      internal: 'Internal',
+      external: 'Customer-visible',
+      badgeInternal: '🔒 Internal',
+      badgeExternal: '🌐 Customer-visible',
+      composerHint: 'Internal comments stay with the team.',
+      composerWarning: 'This comment will be visible to the customer on the portal.',
+      toggleAriaLabel: 'Toggle comment visibility',
+      makeExternal: 'Mark as customer-visible',
+      makeInternal: 'Mark as internal',
+    },
+  },
   status: {
     new: 'New',
     backlog: 'Backlog',

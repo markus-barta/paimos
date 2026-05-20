@@ -156,6 +156,22 @@ export default {
     filterBarTags: 'Tags',
     filterBarPriority: 'Priorität',
   },
+  // PAI-475: Sichtbarkeitstexte für Kommentare. Verwendet vom Composer-
+  // Toggle, dem pro-Kommentar-Badge im Thread und der Sichtbarkeitsumschaltung
+  // im Overflow-Menü.
+  comments: {
+    visibility: {
+      internal: 'Intern',
+      external: 'Für Kunde sichtbar',
+      badgeInternal: '🔒 Intern',
+      badgeExternal: '🌐 Für Kunde sichtbar',
+      composerHint: 'Interne Kommentare bleiben im Team.',
+      composerWarning: 'Dieser Kommentar ist im Kundenportal sichtbar.',
+      toggleAriaLabel: 'Kommentar-Sichtbarkeit umschalten',
+      makeExternal: 'Für Kunde sichtbar machen',
+      makeInternal: 'Auf intern setzen',
+    },
+  },
   status: {
     new: 'Neu',
     backlog: 'Backlog',

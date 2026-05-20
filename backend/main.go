@@ -225,6 +225,7 @@ func main() {
 			r.Get("/portal/projects/{id}/issues", handlers.PortalListIssues)
 			r.Get("/portal/projects/{id}/issues/{issueId}", handlers.PortalGetIssue)
 			r.Post("/portal/projects/{id}/requests", handlers.PortalSubmitRequest)
+			r.Get("/portal/issues/{id}/comments", handlers.PortalListIssueComments)
 			r.Post("/portal/issues/{id}/accept", handlers.PortalAcceptIssue)
 			r.Post("/portal/issues/{id}/reject", handlers.PortalRejectIssue)
 			r.Post("/portal/issues/{id}/undo-accept", handlers.PortalUndoAccept)
@@ -554,6 +555,7 @@ func main() {
 			// Comments
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/comments", handlers.CreateComment)
+			r.With(auth.RequireCommentEdit).Patch("/comments/{id}", handlers.UpdateCommentVisibility)
 			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
 
 			// Branding write endpoints (admin only). GET /api/branding stays

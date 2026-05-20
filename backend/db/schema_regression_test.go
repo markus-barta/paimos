@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 110
+const latestSchemaVersion = 111
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()

@@ -4692,6 +4692,22 @@ func migrate(db *sql.DB) error {
 
 			`DROP TABLE _backfill_m110`,
 		}},
+
+		// Migration 111: PAI-475 — comment visibility flag. Every comment
+		// is internal (team-only) or external (also visible on the
+		// Customer Portal). NEW comments default to internal; existing
+		// rows backfill to internal via the DEFAULT clause. This is the
+		// safe-by-default choice: the team must explicitly opt-in when
+		// they want a comment to land in front of the customer.
+		//
+		// CHECK is single-column so SQLite accepts it on ADD COLUMN.
+		// The portal sidebar (PAI-474) filters on visibility='external';
+		// the internal app shows everything with a visibility badge.
+		{111, []string{
+			`ALTER TABLE comments ADD COLUMN visibility TEXT NOT NULL DEFAULT 'internal'
+			 CHECK (visibility IN ('internal','external'))`,
+			`CREATE INDEX IF NOT EXISTS idx_comments_visibility ON comments(visibility)`,
+		}},
 	}
 
 	for _, m := range migrations {

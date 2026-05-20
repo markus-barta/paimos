@@ -171,6 +171,7 @@ func buildRouter() http.Handler {
 			r.Get("/portal/projects/{id}/issues", handlers.PortalListIssues)
 			r.Get("/portal/projects/{id}/issues/{issueId}", handlers.PortalGetIssue)
 			r.Post("/portal/projects/{id}/requests", handlers.PortalSubmitRequest)
+			r.Get("/portal/issues/{id}/comments", handlers.PortalListIssueComments)
 			r.Post("/portal/issues/{id}/accept", handlers.PortalAcceptIssue)
 			r.Get("/portal/projects/{id}/summary", handlers.PortalProjectSummary)
 			r.Get("/portal/projects/{id}/projektberichte", handlers.ListProjectReports)
@@ -285,6 +286,7 @@ func buildRouter() http.Handler {
 
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/comments", handlers.CreateComment)
+			r.With(auth.RequireCommentEdit).Patch("/comments/{id}", handlers.UpdateCommentVisibility)
 			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
 
 			r.Get("/tags", handlers.ListTags)
