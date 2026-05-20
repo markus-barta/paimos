@@ -1155,6 +1155,188 @@ func TestQuick_IssuePortalVisibility(t *testing.T) {
 	})
 }
 
+// PAI-465: bulk attach/detach of a single tag across N issues, with the
+// shared mutation_log batch_id, per-issue permission gate, system-tag
+// exemption parity, and idempotent semantics matching the singular API.
+func TestQuick_BatchTagIssues(t *testing.T) {
+	ts := newTestServer(t)
+
+	var portalTagID int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name='CUSTOMERPORTAL'`).Scan(&portalTagID); err != nil {
+		t.Fatalf("CUSTOMERPORTAL tag missing: %v", err)
+	}
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Batch Tag", "key": "BTG",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	var ids []int64
+	for i := 0; i < 3; i++ {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": fmt.Sprintf("BTG-%d", i+1), "type": "ticket", "status": "new",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		ids = append(ids, responseID(t, resp))
+	}
+
+	t.Run("bulk add attaches CUSTOMERPORTAL across all listed issues", func(t *testing.T) {
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": ids, "tag_id": portalTagID, "op": "add",
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var out struct {
+			BatchID  string `json:"batch_id"`
+			Affected int    `json:"affected"`
+			Op       string `json:"op"`
+		}
+		decode(t, resp, &out)
+		if out.Op != "add" {
+			t.Errorf("op = %q, want add", out.Op)
+		}
+		if out.Affected != 3 {
+			t.Errorf("affected = %d, want 3", out.Affected)
+		}
+		if out.BatchID == "" {
+			t.Error("batch_id empty")
+		}
+
+		// Every issue carries the tag.
+		for _, id := range ids {
+			var hit int
+			db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, id, portalTagID).Scan(&hit)
+			if hit != 1 {
+				t.Errorf("issue %d not tagged after bulk add", id)
+			}
+		}
+
+		// Audit rows share batch_id and use the bulk_add mutation_type.
+		var cnt int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM mutation_log WHERE batch_id=? AND mutation_type='issue.tag.bulk_add'`, out.BatchID).Scan(&cnt)
+		if cnt != 3 {
+			t.Errorf("expected 3 audit rows with batch_id=%s, got %d", out.BatchID, cnt)
+		}
+	})
+
+	t.Run("re-running bulk add is a no-op (affected=0, no duplicate rows)", func(t *testing.T) {
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": ids, "tag_id": portalTagID, "op": "add",
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var out struct {
+			Affected int `json:"affected"`
+		}
+		decode(t, resp, &out)
+		if out.Affected != 0 {
+			t.Errorf("affected on re-run = %d, want 0", out.Affected)
+		}
+	})
+
+	t.Run("bulk remove detaches across all", func(t *testing.T) {
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": ids, "tag_id": portalTagID, "op": "remove",
+		})
+		assertStatus(t, resp, http.StatusOK)
+		var out struct {
+			Affected int    `json:"affected"`
+			Op       string `json:"op"`
+		}
+		decode(t, resp, &out)
+		if out.Op != "remove" || out.Affected != 3 {
+			t.Errorf("remove result = %+v, want op=remove affected=3", out)
+		}
+		for _, id := range ids {
+			var hit int
+			db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, id, portalTagID).Scan(&hit)
+			if hit != 0 {
+				t.Errorf("issue %d still tagged after bulk remove", id)
+			}
+		}
+	})
+
+	t.Run("non-admin without editor on one project fails the whole batch with 403", func(t *testing.T) {
+		// External users default to no access on un-granted projects, so
+		// they're the natural fit for testing the mixed-permission gate.
+		// (Members default to implicit editor and would slip through.)
+		resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+			"name": "Locked Project", "key": "LCK",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		lockedPid := responseID(t, resp)
+		resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", lockedPid), ts.adminCookie, map[string]any{
+			"title": "Locked Issue", "type": "ticket", "status": "new",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		lockedID := responseID(t, resp)
+
+		var extID int64
+		db.DB.QueryRow("SELECT id FROM users WHERE username='external'").Scan(&extID)
+		// External gets editor on BTG only; never granted on LCK.
+		resp = ts.post(t, fmt.Sprintf("/api/users/%d/projects", extID), ts.adminCookie, map[string]any{"project_id": projectID})
+		assertStatus(t, resp, http.StatusCreated)
+		resp = ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extID, projectID), ts.adminCookie, map[string]string{"access_level": "editor"})
+		assertStatus(t, resp, http.StatusOK)
+
+		// Sanity — make sure the BTG issues aren't already tagged from a
+		// prior subtest (the previous bulk_remove cleared them).
+		// Mixed-permission selection: BTG issues (allowed) + LCK issue (denied).
+		mixed := append([]int64{}, ids...)
+		mixed = append(mixed, lockedID)
+		resp = ts.post(t, "/api/issues/batch/tags", ts.externalCookie, map[string]any{
+			"issue_ids": mixed, "tag_id": portalTagID, "op": "add",
+		})
+		assertStatus(t, resp, http.StatusForbidden)
+
+		// And verify the BTG issues stayed untouched — the whole batch
+		// must roll back, not just the denied one.
+		for _, id := range ids {
+			var hit int
+			db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, id, portalTagID).Scan(&hit)
+			if hit != 0 {
+				t.Errorf("partial commit: issue %d tagged despite 403", id)
+			}
+		}
+	})
+
+	t.Run("other system tags still rejected", func(t *testing.T) {
+		res, err := db.DB.Exec(`INSERT INTO tags(name,color,description,system) VALUES('TEST_BULK_SYSTEM','red','synthetic',1)`)
+		if err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		sysID, _ := res.LastInsertId()
+		t.Cleanup(func() {
+			db.DB.Exec(`DELETE FROM tags WHERE id=?`, sysID)
+		})
+
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": ids, "tag_id": sysID, "op": "add",
+		})
+		assertStatus(t, resp, http.StatusForbidden)
+	})
+
+	t.Run("rejects empty issue_ids", func(t *testing.T) {
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": []int64{}, "tag_id": portalTagID, "op": "add",
+		})
+		assertStatus(t, resp, http.StatusBadRequest)
+	})
+
+	t.Run("rejects unknown op", func(t *testing.T) {
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": ids, "tag_id": portalTagID, "op": "toggle",
+		})
+		assertStatus(t, resp, http.StatusBadRequest)
+	})
+
+	t.Run("rejects missing issue ids", func(t *testing.T) {
+		resp := ts.post(t, "/api/issues/batch/tags", ts.adminCookie, map[string]any{
+			"issue_ids": []int64{99999, 99998}, "tag_id": portalTagID, "op": "add",
+		})
+		assertStatus(t, resp, http.StatusNotFound)
+	})
+}
+
 // ── User project access admin endpoints ─────────────────────────────────────
 
 func TestQuick_UserProjectAccess(t *testing.T) {

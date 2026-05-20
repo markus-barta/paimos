@@ -695,6 +695,71 @@ async function confirmBulkDelete() {
   bulkDeleting.value = false
 }
 
+// ── PAI-465: bulk customer-portal visibility actions ─────────────────────
+//
+// Two entries in the bulk toolbar — "Make visible in portal" / "Hide
+// from portal" — backed by the POST /api/issues/batch/tags endpoint.
+// We resolve the CUSTOMERPORTAL tag id from the loaded tag list (same
+// pattern as the issue-detail toggle in PAI-463), confirm at ≥10
+// selected, and surface a toast on success/failure.
+
+const CUSTOMER_PORTAL_TAG_NAME = 'CUSTOMERPORTAL'
+const customerPortalTagId = computed<number | null>(() => {
+  const tag = allTags.value.find((t) => t.name === CUSTOMER_PORTAL_TAG_NAME)
+  return tag?.id ?? null
+})
+
+async function bulkVisibility(op: 'add' | 'remove') {
+  const tagId = customerPortalTagId.value
+  if (!tagId) return
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) return
+
+  // Confirmation modal at ≥10 selected — gives a moment to pause before
+  // exposing a large batch of issues to the customer. Hide-from-portal
+  // gets the same gate so accidental mass-detach isn't silent either.
+  if (ids.length >= 10) {
+    const ok = await confirm({
+      title: t('visibility.bulkConfirmTitle'),
+      message: t('visibility.bulkConfirmBody', { n: ids.length }),
+      confirmLabel:
+        op === 'add' ? t('visibility.bulkMakeVisible') : t('visibility.bulkHide'),
+      danger: false,
+    })
+    if (!ok) return
+  }
+
+  try {
+    await api.post('/issues/batch/tags', {
+      issue_ids: ids,
+      tag_id: tagId,
+      op,
+    })
+    // Optimistic: patch every selected row's tag list locally so the
+    // chip/filter UI in PAI-466 reflects the change immediately.
+    const portalTag = allTags.value.find((t) => t.id === tagId)
+    if (portalTag) {
+      for (const id of ids) {
+        const issue = finalIssues.value.find((i) => i.id === id)
+        if (!issue) continue
+        const has = (issue.tags ?? []).some((t) => t.id === tagId)
+        if (op === 'add' && !has) {
+          issue.tags = [...(issue.tags ?? []), portalTag]
+        } else if (op === 'remove' && has) {
+          issue.tags = (issue.tags ?? []).filter((t) => t.id !== tagId)
+        }
+        emit('updated', issue)
+      }
+    }
+    selectedIds.value = new Set()
+    selectionMode.value = false
+  } catch (_e) {
+    // Mirror BulkChangeModal's existing failure path — surface but
+    // don't crash; selection stays so the user can retry.
+    showToast(t('visibility.bulkConfirmTitle'))
+  }
+}
+
 // ── Single-issue delete (soft-delete — recoverable from Settings → Trash) ──
 async function deleteRow(issue: Issue) {
   if (!await confirm({
@@ -1137,6 +1202,25 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
           @click="openBulkSummary"
         >
           {{ t('reportSummary.bulk.issueListButton') }}
+        </button>
+        <!-- PAI-465: bulk attach/detach CUSTOMERPORTAL across the
+             current selection. Disabled when CUSTOMERPORTAL hasn't
+             loaded into allTags yet (rare — first paint before tags
+             arrive) so the toolbar never invokes the endpoint with a
+             missing tag id. -->
+        <button
+          v-if="selectionMode && selectedIds.size > 0 && customerPortalTagId !== null"
+          class="btn btn-ghost btn-sm"
+          @click="bulkVisibility('add')"
+        >
+          {{ t('visibility.bulkMakeVisible') }}
+        </button>
+        <button
+          v-if="selectionMode && selectedIds.size > 0 && customerPortalTagId !== null"
+          class="btn btn-ghost btn-sm"
+          @click="bulkVisibility('remove')"
+        >
+          {{ t('visibility.bulkHide') }}
         </button>
         <button
           v-if="isAdmin && selectionMode && selectedIds.size > 0"

@@ -540,6 +540,10 @@ func main() {
 			// PAI-463: compact endpoint backing the IssueDetailView visibility
 			// toggle's audit line. Read-only — any user with issue access.
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/portal-visibility", handlers.GetIssuePortalVisibility)
+			// PAI-465: bulk attach/detach a single tag across N issues.
+			// Per-issue permission check happens inside the handler so a
+			// mixed-permission selection fails cleanly with 403.
+			r.Post("/issues/batch/tags", handlers.BatchTagIssues)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)
 			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
 
