@@ -5,6 +5,86 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] — 2026-05-20
+
+### Added
+
+- **PAI-475** — **Comments now carry an `internal` / `external` visibility
+  flag (default `internal`)**. Every comment is either internal
+  (team-only) or external (also visible on the Customer Portal). The
+  team must explicitly opt-in to share — safer-by-default. M111 adds
+  `comments.visibility TEXT NOT NULL DEFAULT 'internal' CHECK (visibility
+  IN ('internal','external'))` and a supporting index; existing rows
+  backfill to internal. A new `PATCH /api/comments/{id}` endpoint lets
+  the comment author or an admin flip visibility post-hoc; every flip
+  goes through `mutation_log` (type `issue.comment.visibility.change`)
+  and is undoable via the standard PUT-snapshot path. A new
+  `GET /api/portal/issues/{id}/comments` endpoint filters to external
+  only and 404s when the issue lacks the CUSTOMERPORTAL tag. The
+  internal IssueComments composer gains a radio-style pill group with
+  a helper line that swaps copy + color when external is selected;
+  every rendered comment shows a visibility badge that doubles as a
+  click-to-flip control for the author or admin (with a confirm step
+  on internal→external). New `comments.visibility.*` i18n group in
+  en + de.
+
+### Changed
+
+- **PAI-474 (v1)** — **Customer Portal project view, polished v1.**
+  Addresses every concrete complaint from the v3.6.0 audit; the deeper
+  IssueList reuse refactor moves to PAI-476.
+  - **Stopped leaking internal cost / pricing fields.** The portal API
+    previously serialised `cost_unit`, `release`, `estimate_hours`,
+    `estimate_lp`, `ar_hours`, `ar_lp`, `estimate_eur`, `ar_eur` on
+    every `/api/portal/projects/{id}/issues*` response. The UI showed
+    them as "—" but any customer opening DevTools — or any cache,
+    proxy, or audit log between us and them — could read the values.
+    The `portalIssue` struct, both SELECT/Scan paths, the
+    `portalSummary` pricing aggregates, and the now-unused `computeEur`
+    helper are all gone. A regression test loads non-zero values for
+    every removed field on a seeded issue and asserts none of the
+    banned JSON keys appear in the wire payload. The Projektbericht /
+    acceptance-report path is unaffected — that's the customer's
+    contract document and still includes pricing on purpose.
+  - **Click-to-open side panel** (`PortalIssueSidePanel.vue`). Loads
+    via the cleaned portal endpoints, shows type + key + title, status
+    + priority pills with customer-friendly labels, description /
+    acceptance criteria / report summary in markdown, the
+    customer-visible comments thread (PAI-475 filter), and Accept /
+    Reject buttons inline. ESC + close button to dismiss.
+  - **Working search.** The v3.6.0 IssueFilterBar collected `q` but
+    `tabBoundIssues` never applied it; the backend FTS5 path also
+    rejected 1-char queries and only matched whole tokens. A
+    client-side case-insensitive substring match against title +
+    issue_key sits on top now — partial searches just work.
+  - **Customer-friendly status labels.** Internal
+    `new`/`backlog`/`qa`/`in-progress`/`done`/`delivered`/`accepted`/
+    `invoiced` map to four buckets in the table cell, the status
+    filter dropdown, and the sidebar pill: Planned / In Progress /
+    Ready for Review / Accepted. Type labels follow the same mapping —
+    `ticket` reads as "Request", `bug` as "Issue", etc.
+  - **Tag display stripped from the portal table.** The CUSTOMERPORTAL
+    chip was internal plumbing customers should never have seen; the
+    tag filter dropdown is gone from the portal IssueFilterBar.
+  - **Estimate / AR table columns dropped.** Backend strip already
+    removed the data; the v1 table no longer plays "render as —"
+    theatre. The KPI strip now reflects the post-filter set instead
+    of project-wide totals so it matches what the table shows below.
+  - **Double-arrow bug fixed.** The `← ←` rendered on the "All
+    Projects" crumb because both the i18n string AND the template
+    prepended an arrow. Dropped from the i18n strings.
+  - **IssueSidePanel readonly hardening.** Cost_unit / release /
+    sprint membership / estimate / AR rows are now gated on
+    `!readonly` — second line of defence on top of the backend strip.
+
+### Internal
+
+- **PAI-476 filed.** Carries the deeper architectural unification
+  forward: `mode='customer'` prop on `IssueList.vue`, gating of
+  internal-only features, IssueSidePanel API rerouting through portal
+  endpoints, deletion of the bespoke `frontend/src/components/issue-list/`
+  files. Estimated 2-3 sessions; explicitly out of scope for v1.
+
 ## [3.6.0] — 2026-05-20
 
 ### Changed
