@@ -93,6 +93,13 @@ const router = createRouter({
       meta: { projectIdParam: "id" },
     },
     {
+      // PAI-467: admin Customer Portal Visibility report. Admin-only;
+      // the view itself bounces non-admins back to / on mount.
+      path: "/admin/projects/:id/portal-visibility",
+      component: () => import("@/views/AdminPortalVisibilityView.vue"),
+      meta: { projectIdParam: "id", adminOnly: true },
+    },
+    {
       path: "/customers",
       component: () => import("@/views/CustomersView.vue"),
     },

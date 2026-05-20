@@ -277,6 +277,8 @@ func buildRouter() http.Handler {
 			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
 			r.Get("/issues/{id}/portal-visibility", handlers.GetIssuePortalVisibility)
 			r.Post("/issues/batch/tags", handlers.BatchTagIssues)
+			r.With(auth.RequireAdmin).Get("/admin/projects/{id}/portal-visibility", handlers.GetAdminProjectPortalVisibility)
+			r.With(auth.RequireAdmin).Get("/admin/projects/{id}/portal-visibility.csv", handlers.GetAdminProjectPortalVisibilityCSV)
 			r.Get("/projects/{id}/tags", handlers.ListProjectTags)
 			r.Post("/projects/{id}/tags", handlers.AddTagToProject)
 			r.Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)

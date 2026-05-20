@@ -544,6 +544,10 @@ func main() {
 			// Per-issue permission check happens inside the handler so a
 			// mixed-permission selection fails cleanly with 403.
 			r.Post("/issues/batch/tags", handlers.BatchTagIssues)
+			// PAI-467: admin Customer Portal Visibility report. Both
+			// JSON and CSV variants are admin + project-view gated.
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/admin/projects/{id}/portal-visibility", handlers.GetAdminProjectPortalVisibility)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/admin/projects/{id}/portal-visibility.csv", handlers.GetAdminProjectPortalVisibilityCSV)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)
 			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
 

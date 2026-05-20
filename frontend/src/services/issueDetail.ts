@@ -151,6 +151,58 @@ export function loadIssuePortalVisibility(
   return api.get<PortalVisibilityResponse>(`/issues/${issueId}/portal-visibility`)
 }
 
+// PAI-467: admin Customer Portal Visibility report. JSON shape matches
+// the backend adminVisibilityResponse — kept colocated with the
+// per-issue helper because both serve the same conceptual view.
+export interface AdminVisibilityIssue {
+  id: number
+  issue_key: string
+  title: string
+  status: string
+  last_actor?: string
+  last_at?: string
+  last_event_type?: string
+}
+
+export interface AdminVisibilityAuditRow {
+  at: string
+  actor?: string
+  event_type: string
+  issue_id: number
+  issue_key: string
+  title: string
+}
+
+export interface AdminVisibilityReport {
+  project_id: number
+  visible_count: number
+  issues: AdminVisibilityIssue[]
+  audit: AdminVisibilityAuditRow[]
+  total_audit: number
+  audit_offset: number
+  audit_limit: number
+}
+
+export function loadAdminPortalVisibility(
+  projectId: number,
+  opts?: { auditOffset?: number; auditLimit?: number },
+): Promise<AdminVisibilityReport> {
+  const params = new URLSearchParams()
+  if (opts?.auditOffset != null) params.set('audit_offset', String(opts.auditOffset))
+  if (opts?.auditLimit != null) params.set('audit_limit', String(opts.auditLimit))
+  const qs = params.toString()
+  return api.get<AdminVisibilityReport>(
+    `/admin/projects/${projectId}/portal-visibility${qs ? '?' + qs : ''}`,
+  )
+}
+
+export function adminPortalVisibilityCsvUrl(
+  projectId: number,
+  section: 'current' | 'audit',
+): string {
+  return `/api/admin/projects/${projectId}/portal-visibility.csv?section=${section}`
+}
+
 export function assignIssueSprint(issueId: number, sprintId: number): Promise<void> {
   return api.post(`/issues/${issueId}/relations`, { target_id: sprintId, type: 'sprint' })
 }

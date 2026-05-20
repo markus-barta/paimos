@@ -17,11 +17,25 @@ package handlers_test
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
 )
+
+// readBody returns the response body as a string. Used by CSV-export
+// assertions (PAI-467) that need to inspect raw text rather than JSON.
+func readBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return string(b)
+}
 
 // tagAllIssuesAsCustomerPortal back-tags every non-deleted issue in the
 // given project with the CUSTOMERPORTAL system tag. Useful for tests
@@ -1334,6 +1348,142 @@ func TestQuick_BatchTagIssues(t *testing.T) {
 			"issue_ids": []int64{99999, 99998}, "tag_id": portalTagID, "op": "add",
 		})
 		assertStatus(t, resp, http.StatusNotFound)
+	})
+}
+
+// PAI-467: admin Customer Portal Visibility report — JSON shape, audit
+// pagination, CSV exports, and admin-only gating.
+func TestQuick_AdminPortalVisibilityReport(t *testing.T) {
+	ts := newTestServer(t)
+
+	var portalTagID int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name='CUSTOMERPORTAL'`).Scan(&portalTagID); err != nil {
+		t.Fatalf("CUSTOMERPORTAL tag missing: %v", err)
+	}
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Admin Report", "key": "ARP",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	// Seed: two visible issues (admin toggles via standard API → 2 audit
+	// rows), one un-tagged issue. Each toggle should land a mutation_log
+	// row with type 'issue.tag.add'.
+	var visibleIDs []int64
+	for i := 0; i < 2; i++ {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": fmt.Sprintf("Visible-%d", i+1), "type": "ticket", "status": "done",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		id := responseID(t, resp)
+		visibleIDs = append(visibleIDs, id)
+		resp = ts.post(t, fmt.Sprintf("/api/issues/%d/tags", id), ts.adminCookie, map[string]any{
+			"tag_id": portalTagID,
+		})
+		assertStatus(t, resp, http.StatusNoContent)
+	}
+	_ = visibleIDs
+	ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "Hidden-1", "type": "ticket", "status": "new",
+	})
+
+	t.Run("JSON report shape", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/admin/projects/%d/portal-visibility", projectID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out struct {
+			VisibleCount int `json:"visible_count"`
+			Issues       []struct {
+				IssueKey      string `json:"issue_key"`
+				LastActor     string `json:"last_actor"`
+				LastEventType string `json:"last_event_type"`
+			} `json:"issues"`
+			Audit []struct {
+				EventType string `json:"event_type"`
+				Actor     string `json:"actor"`
+				IssueKey  string `json:"issue_key"`
+			} `json:"audit"`
+			TotalAudit int `json:"total_audit"`
+		}
+		decode(t, resp, &out)
+		if out.VisibleCount != 2 {
+			t.Errorf("visible_count = %d, want 2", out.VisibleCount)
+		}
+		if len(out.Issues) != 2 {
+			t.Errorf("issues len = %d, want 2", len(out.Issues))
+		}
+		for _, iss := range out.Issues {
+			if iss.LastActor != "admin" {
+				t.Errorf("issue %s last_actor = %q, want admin", iss.IssueKey, iss.LastActor)
+			}
+			if iss.LastEventType != "toggle_add" {
+				t.Errorf("issue %s last_event_type = %q, want toggle_add", iss.IssueKey, iss.LastEventType)
+			}
+		}
+		if out.TotalAudit < 2 {
+			t.Errorf("total_audit = %d, want >= 2", out.TotalAudit)
+		}
+		if len(out.Audit) < 2 {
+			t.Errorf("audit feed len = %d, want >= 2", len(out.Audit))
+		}
+	})
+
+	t.Run("audit pagination respects offset + limit", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/admin/projects/%d/portal-visibility?audit_offset=0&audit_limit=1", projectID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out struct {
+			Audit       []any `json:"audit"`
+			AuditLimit  int   `json:"audit_limit"`
+			AuditOffset int   `json:"audit_offset"`
+		}
+		decode(t, resp, &out)
+		if out.AuditLimit != 1 {
+			t.Errorf("audit_limit = %d, want 1", out.AuditLimit)
+		}
+		if len(out.Audit) != 1 {
+			t.Errorf("paginated audit len = %d, want 1", len(out.Audit))
+		}
+	})
+
+	t.Run("CSV current section header + rows", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/admin/projects/%d/portal-visibility.csv?section=current", projectID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+			t.Errorf("content-type = %q, want text/csv", ct)
+		}
+		body := readBody(t, resp)
+		lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+		if len(lines) < 3 {
+			t.Fatalf("CSV had %d lines, want header + 2 rows: %q", len(lines), body)
+		}
+		if !strings.HasPrefix(lines[0], "issue_key,") {
+			t.Errorf("CSV header mismatch: %q", lines[0])
+		}
+	})
+
+	t.Run("CSV audit section emits one row per toggle", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/admin/projects/%d/portal-visibility.csv?section=audit", projectID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		body := readBody(t, resp)
+		lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+		if len(lines) < 3 {
+			t.Fatalf("audit CSV had %d lines: %q", len(lines), body)
+		}
+		if !strings.HasPrefix(lines[0], "at,actor,event_type,") {
+			t.Errorf("audit CSV header mismatch: %q", lines[0])
+		}
+	})
+
+	t.Run("CSV rejects unknown section", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/admin/projects/%d/portal-visibility.csv?section=secret", projectID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusBadRequest)
+	})
+
+	t.Run("non-admin cannot access the report", func(t *testing.T) {
+		// member is not admin and has implicit edit; the RequireAdmin
+		// middleware should reject anyway.
+		resp := ts.get(t, fmt.Sprintf("/api/admin/projects/%d/portal-visibility", projectID), ts.memberCookie)
+		assertStatus(t, resp, http.StatusForbidden)
 	})
 }
 
