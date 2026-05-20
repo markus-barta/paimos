@@ -25,7 +25,7 @@ export default {
     noProjects: 'Noch keine Projekte zugewiesen.',
     issues: 'Issues',
     done: 'Erledigt',
-    allProjects: '← Alle Projekte',
+    allProjects: 'Alle Projekte',
     newRequest: '+ Neue Anfrage',
     tabs: {
       all: 'Alle',
@@ -41,6 +41,13 @@ export default {
     },
     reject: 'Ablehnen',
     invoicedLabel: 'Verrechnet',
+    // PAI-474: Side-Panel-Texte
+    close: 'Schließen',
+    reportSummary: 'Abnahmebericht',
+    comments: 'Kommentare',
+    noComments: 'Noch keine Kommentare.',
+    accepting: 'Abnahme läuft…',
+    rejectPrompt: 'Warum lehnen Sie ab? (optional)',
     filters: {
       allStatus: 'Alle Status',
       allTypes: 'Alle Typen',
@@ -54,6 +61,20 @@ export default {
       estimate: 'Schätzung',
       ar: 'AR',
       accepted: 'Abgenommen',
+    },
+    // PAI-474: kundenfreundliche Status-Labels für die Portal-Ansicht.
+    statusLabel: {
+      planned: 'Geplant',
+      inProgress: 'In Arbeit',
+      readyForReview: 'Bereit zur Abnahme',
+      accepted: 'Abgenommen',
+    },
+    typeLabel: {
+      epic: 'Projekt',
+      ticket: 'Anfrage',
+      task: 'Aufgabe',
+      bug: 'Problem',
+      story: 'Story',
     },
     noIssues: 'Keine Issues gefunden.',
     accept: 'Abnehmen',

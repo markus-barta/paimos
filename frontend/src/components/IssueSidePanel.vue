@@ -909,12 +909,18 @@ async function deleteTimeEntry(entry: TimeEntry) {
               issue.assignee.username
             }}</span>
             <span v-else class="sp-meta-item sp-muted">Unassigned</span>
+            <!-- PAI-474: cost_unit, release, sprint membership, and the
+                 estimate / AR rows are internal-only. In readonly mode
+                 (Customer Portal) they are hidden unconditionally — the
+                 backend also strips them from /api/portal/* responses
+                 so they shouldn't be present, but the guard is a
+                 second line of defence. -->
             <span
-              v-if="issue.cost_unit"
+              v-if="issue.cost_unit && !readonly"
               class="sp-meta-item sp-meta-item--dim"
               >{{ issue.cost_unit }}</span
             >
-            <span v-if="issue.release" class="sp-meta-item sp-meta-item--dim">{{
+            <span v-if="issue.release && !readonly" class="sp-meta-item sp-meta-item--dim">{{
               issue.release
             }}</span>
           </div>
@@ -922,7 +928,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 
           <!-- Sprints (click to edit) -->
           <div
-            v-if="sprints?.length"
+            v-if="sprints?.length && !readonly"
             class="sp-sprints sp-sprints--clickable"
             @click="!readonly && startEdit()"
           >
@@ -936,13 +942,14 @@ async function deleteTimeEntry(entry: TimeEntry) {
             <span v-else class="sp-muted">No sprints</span>
           </div>
 
-          <!-- Estimate / AR — click to toggle h / PT -->
+          <!-- Estimate / AR — click to toggle h / PT — internal only. -->
           <div
             v-if="
-              issue.estimate_hours != null ||
-              issue.estimate_lp != null ||
-              issue.ar_hours != null ||
-              issue.ar_lp != null
+              !readonly &&
+              (issue.estimate_hours != null ||
+                issue.estimate_lp != null ||
+                issue.ar_hours != null ||
+                issue.ar_lp != null)
             "
             class="sp-estimates"
           >

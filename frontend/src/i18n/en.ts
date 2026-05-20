@@ -25,7 +25,7 @@ export default {
     noProjects: 'No projects assigned yet.',
     issues: 'Issues',
     done: 'Done',
-    allProjects: '← All Projects',
+    allProjects: 'All Projects',
     newRequest: '+ New Request',
     tabs: {
       all: 'All',
@@ -41,6 +41,13 @@ export default {
     },
     reject: 'Reject',
     invoicedLabel: 'Invoiced',
+    // PAI-474: side panel copy
+    close: 'Close',
+    reportSummary: 'Acceptance report',
+    comments: 'Comments',
+    noComments: 'No comments yet.',
+    accepting: 'Accepting…',
+    rejectPrompt: 'Why are you rejecting this? (optional)',
     filters: {
       allStatus: 'All Status',
       allTypes: 'All Types',
@@ -54,6 +61,23 @@ export default {
       estimate: 'Estimate',
       ar: 'AR',
       accepted: 'Accepted',
+    },
+    // PAI-474: customer-friendly status labels. Maps internal statuses
+    // (new/backlog/in-progress/qa/done/delivered/accepted/invoiced) to
+    // four customer-meaningful buckets — used in the table cell and
+    // the sidebar header.
+    statusLabel: {
+      planned: 'Planned',
+      inProgress: 'In Progress',
+      readyForReview: 'Ready for Review',
+      accepted: 'Accepted',
+    },
+    typeLabel: {
+      epic: 'Project',
+      ticket: 'Request',
+      task: 'Task',
+      bug: 'Issue',
+      story: 'Story',
     },
     noIssues: 'No issues found.',
     accept: 'Accept',
