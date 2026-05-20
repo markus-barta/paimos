@@ -1,16 +1,31 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Tag } from '@/types'
 import AppIcon from '@/components/AppIcon.vue'
 
-defineProps<{
+const props = defineProps<{
   tag: Tag
   removable?: boolean
 }>()
 defineEmits<{ remove: [id: number] }>()
+
+// PAI-466: CUSTOMERPORTAL is the load-bearing visibility marker. Render
+// the chip with an eye-icon prefix + a stronger border so it reads as
+// a permissions signal, distinct from the looser "category" feeling of
+// every other tag. The styling lives on a modifier class so the rest
+// of the palette is untouched.
+const isCustomerPortal = computed(() => props.tag.name === 'CUSTOMERPORTAL')
 </script>
 
 <template>
-  <span :class="['tag-chip', `tag-${tag.color}`, { 'tag-system': tag.system }]">
+  <span
+    :class="[
+      'tag-chip',
+      `tag-${tag.color}`,
+      { 'tag-system': tag.system, 'tag-customerportal': isCustomerPortal },
+    ]"
+  >
+    <AppIcon v-if="isCustomerPortal" name="eye" :size="11" class="tag-prefix-icon" />
     {{ tag.name }}
     <button v-if="removable" class="tag-remove" @click.stop="$emit('remove', tag.id)" aria-label="Remove tag">
       <AppIcon name="x" :size="11" :stroke-width="2.5" />
@@ -64,5 +79,22 @@ defineEmits<{ remove: [id: number] }>()
   border: 1px dashed currentColor;
   background: transparent !important;
   opacity: .85;
+}
+
+/* PAI-466: CUSTOMERPORTAL chip is a permissions marker — stronger
+   border, no fade. The eye glyph + solid border reads as "this is a
+   contract about who sees this", not a soft category label. */
+.tag-customerportal {
+  border: 1.5px solid currentColor !important;
+  border-style: solid !important;
+  opacity: 1 !important;
+}
+
+.tag-prefix-icon {
+  /* Inline eye glyph leading the CUSTOMERPORTAL chip. The negative
+     left margin tucks it against the border, matching the visual
+     density of the .tag-remove trailing button. */
+  margin-left: -.1rem;
+  flex-shrink: 0;
 }
 </style>

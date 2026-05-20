@@ -276,7 +276,32 @@ function resetColumnWidth(key: string) {
 }
 
 // ── Selection composable ──────────────────────────────────────────────────
-const { selectionMode, selectedIds, toggleSelectionMode, toggleSelect, toggleSelectAll, allSelected } = useSelection(filteredIssues)
+// PAI-466: three-state CUSTOMERPORTAL quick-filter. Lives next to the
+// existing filter bar and post-filters whatever the main filter chain
+// produced. Three states cycle on click:
+//   visible — only issues carrying the CUSTOMERPORTAL tag
+//   hidden  — only issues missing it
+//   any     — no constraint (default)
+// State is local-only; not persisted to saved views (yet — gates on
+// PAI-469's IssueFilterBar extraction).
+type PortalVisibilityFilter = 'any' | 'visible' | 'hidden'
+const portalVisibilityFilter = ref<PortalVisibilityFilter>('any')
+
+const portalFilteredIssues = computed<Issue[]>(() => {
+  if (portalVisibilityFilter.value === 'any') return filteredIssues.value
+  return filteredIssues.value.filter((issue) => {
+    const has = (issue.tags ?? []).some((t) => t.name === 'CUSTOMERPORTAL')
+    return portalVisibilityFilter.value === 'visible' ? has : !has
+  })
+})
+
+function cyclePortalFilter() {
+  const order: PortalVisibilityFilter[] = ['any', 'visible', 'hidden']
+  const idx = order.indexOf(portalVisibilityFilter.value)
+  portalVisibilityFilter.value = order[(idx + 1) % order.length]
+}
+
+const { selectionMode, selectedIds, toggleSelectionMode, toggleSelect, toggleSelectAll, allSelected } = useSelection(portalFilteredIssues)
 
 // PAI-318 — "Select all N matching" chip. Server-side pagination limits
 // the visible-loaded set; this button calls /api/issues?ids_only=1 with
@@ -348,7 +373,7 @@ const ISSUE_COLS: ColDefs<Issue> = {
   report_summary: { value: i => i.report_summary ?? '',    type: 'string' },
 }
 
-const sortResult = useSort(filteredIssues, ISSUE_COLS)
+const sortResult = useSort(portalFilteredIssues, ISSUE_COLS)
 // Sync sort composable refs with our local sortKey/sortDir (used by filter persistence)
 watch(sortResult.sortKey, v => { sortKey.value = v })
 watch(sortResult.sortDir, v => { sortDir.value = v })
@@ -1167,6 +1192,29 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         </template>
       </div>
 
+      <!-- PAI-466: three-state CUSTOMERPORTAL quick filter. Sits alongside
+           the other active chips; clicking cycles visible → hidden → any.
+           Always rendered so the discoverability is high — the active
+           state is what most teams will spend the day in. -->
+      <button
+        type="button"
+        :class="[
+          'filter-chip',
+          'filter-chip--portal',
+          'filter-chip--portal--' + portalVisibilityFilter,
+        ]"
+        :title="t('visibility.filterTitle')"
+        @click.stop="cyclePortalFilter"
+      >
+        <AppIcon name="eye" :size="11" />
+        <span>{{ t('visibility.filterTitle') }}:</span>
+        <span class="filter-chip-state">
+          <template v-if="portalVisibilityFilter === 'visible'">{{ t('visibility.filterVisible') }}</template>
+          <template v-else-if="portalVisibilityFilter === 'hidden'">{{ t('visibility.filterHidden') }}</template>
+          <template v-else>{{ t('visibility.filterAny') }}</template>
+        </span>
+      </button>
+
       <div class="filter-right">
         <span class="issue-count">
           {{ primaryIssueCount.toLocaleString() }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}<template v-if="hasMore">
@@ -1663,6 +1711,31 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .filter-chip--status { background: color-mix(in srgb, var(--chip-status-tint) 10%, var(--chip-default-bg)); color: color-mix(in srgb, var(--chip-status-tint) 50%, #334155); border-color: color-mix(in srgb, var(--chip-status-tint) 16%, transparent); }
 .filter-chip--priority { background: color-mix(in srgb, var(--chip-priority-tint) 12%, var(--chip-default-bg)); color: color-mix(in srgb, var(--chip-priority-tint) 50%, #334155); border-color: color-mix(in srgb, var(--chip-priority-tint) 18%, transparent); }
 .filter-chip--neg { opacity: .85; }
+
+/* PAI-466: portal-visibility cycle chip. Three distinct states so a
+   glance is enough to read which mode the list is in. */
+.filter-chip--portal {
+  cursor: pointer;
+  border-style: solid;
+  font-weight: 600;
+  gap: .35rem;
+}
+.filter-chip--portal--any {
+  background: var(--chip-default-bg);
+  color: #6b7280;
+  border-color: color-mix(in srgb, #94a3b8 20%, transparent);
+}
+.filter-chip--portal--visible {
+  background: color-mix(in srgb, var(--brand, #2563eb) 14%, transparent);
+  color: var(--brand, #2563eb);
+  border-color: var(--brand, #2563eb);
+}
+.filter-chip--portal--hidden {
+  background: color-mix(in srgb, #6b7280 14%, transparent);
+  color: #1f2937;
+  border-color: #6b7280;
+}
+.filter-chip--portal .filter-chip-state { font-weight: 700; }
 .chip-bang { font-weight: 800; font-size: 11px; color: transparent; transition: color .15s; user-select: none; line-height: 1; }
 .chip-bang--active { color: inherit; }
 .chip-label--neg { text-decoration: line-through; opacity: .8; }

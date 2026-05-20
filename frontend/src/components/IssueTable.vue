@@ -105,6 +105,13 @@ const emit = defineEmits<{
 
 const { showTypeIcon, showTypeText } = useIssueDisplay()
 
+// PAI-466: tiny helper for the always-visible CUSTOMERPORTAL marker
+// rendered in the type cell. Lives here (not in useIssueDisplay) so it
+// stays close to its only caller; the chip styling lives in TagChip.vue.
+function hasCustomerPortal(issue: Issue): boolean {
+  return (issue.tags ?? []).some((t) => t.name === 'CUSTOMERPORTAL')
+}
+
 const BILLING_LABEL: Record<string, string> = {
   time_and_material: 'Time & Material',
   fixed_price:       'Fixed Price',
@@ -381,12 +388,29 @@ onUnmounted(stopColumnResize)
           <span :class="`issue-type issue-type--${i.type}`">
             <span v-if="showTypeIcon" v-html="TYPE_SVGS[i.type] ?? ''"></span>
             <span v-if="showTypeText" class="type-label-text">{{ typeLabel(i.type) }}</span>
+            <!-- PAI-466: always-visible CUSTOMERPORTAL marker. Lives in
+                 the type cell (never collapsed) so the visibility
+                 signal survives even when the tags column is hidden. -->
+            <span
+              v-if="hasCustomerPortal(i)"
+              class="customerportal-marker"
+              :title="$t('visibility.label')"
+            >
+              <AppIcon name="eye" :size="11" />
+            </span>
           </span>
         </td>
         <td v-if="compact">
           <span :class="`issue-type issue-type--${i.type}`">
             <span v-if="showTypeIcon" v-html="TYPE_SVGS[i.type] ?? ''"></span>
             <span v-if="showTypeText" class="type-label-text">{{ typeLabel(i.type) }}</span>
+            <span
+              v-if="hasCustomerPortal(i)"
+              class="customerportal-marker"
+              :title="$t('visibility.label')"
+            >
+              <AppIcon name="eye" :size="11" />
+            </span>
           </span>
         </td>
         <td v-if="!compact && isVisible('title')" class="issue-title-cell inline-edit-cell">
@@ -789,6 +813,18 @@ onUnmounted(stopColumnResize)
 .tags-th { white-space: nowrap; }
 .tags-cell { vertical-align: middle; }
 .tags-cell .row-tags { display: flex; flex-wrap: wrap; gap: .2rem; }
+
+/* PAI-466: always-visible CUSTOMERPORTAL eye glyph that lives in the
+   type cell. Subtle so it doesn't overpower the row, but immediately
+   readable as a "yes, the customer sees this" affordance. */
+.customerportal-marker {
+  display: inline-flex;
+  align-items: center;
+  margin-left: .35rem;
+  color: var(--brand, #2563eb);
+  opacity: .8;
+}
+.customerportal-marker:hover { opacity: 1; }
 .sprint-link-inline { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--text); }
 .sprint-link-inline + .sprint-link-inline { margin-left: .3rem; }
 
