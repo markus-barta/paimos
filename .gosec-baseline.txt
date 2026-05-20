@@ -38,6 +38,9 @@ G202	MEDIUM	HIGH	handlers/memory_references.go	132-138	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	394	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	808-814	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	817-824	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	896-901	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	938-948	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	988-995	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	840	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
@@ -122,9 +125,9 @@ G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	68	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	89	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	709	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	809	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	820	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	710	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	810	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	821	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis

@@ -5,6 +5,18 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.3] — 2026-05-20
+
+### Fixed
+
+- Gosec baseline refresh for the PAI-451 portal-welcome surface
+  (3 new G202 findings on portal.go's IN-clause placeholder builder
+  — placeholders are `?,?,?` from a fixed int64 slice, no user input;
+  same pattern is already baselined for 20+ other handlers) and three
+  G703 line shifts on main.go from the new `/portal/overview` route.
+  3.5.2's CI security-scan failed on these; 3.5.3 ships the same
+  feature with the baseline updated.
+
 ## [3.5.2] — 2026-05-20
 
 ### Added
