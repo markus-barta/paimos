@@ -49,8 +49,8 @@ G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/reports.go	203-220	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/super_admin_audit.go	143-153	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/tags.go	478-484	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/tags.go	516-522	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	488-494	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/tags.go	526-532	SQL string concatenation
 G204	MEDIUM	HIGH	cmd/paimos/adapters/external.go	147	Subprocess launched with a potential tainted input or cmd arguments
 G204	MEDIUM	HIGH	cmd/paimos/project_context_support.go	94	Subprocess launched with variable
 G301	MEDIUM	HIGH	cmd/paimos/cmd_anchors.go	280	Expect directory permissions to be 0750 or less
