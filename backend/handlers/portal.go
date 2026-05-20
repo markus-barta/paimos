@@ -33,14 +33,16 @@ import (
 // ── Portal types (customer-facing, no internal fields) ──────────────────────
 
 type portalProject struct {
-	ID          int64  `json:"id"`
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	LogoPath    string `json:"logo_path"`
-	IssueCount  int    `json:"issue_count"`
-	DoneCount   int    `json:"done_count"`
+	ID           int64          `json:"id"`
+	Key          string         `json:"key"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Status       string         `json:"status"`
+	LogoPath     string         `json:"logo_path"`
+	IssueCount   int            `json:"issue_count"`
+	DoneCount    int            `json:"done_count"`
+	LastActivity string         `json:"last_activity,omitempty"`
+	ByStatus     map[string]int `json:"by_status,omitempty"`
 }
 
 type portalIssue struct {
@@ -751,4 +753,277 @@ func PortalProjectSummary(w http.ResponseWriter, r *http.Request) {
 		summary.TotalArEur = &totalAr
 	}
 	jsonOK(w, summary)
+}
+
+// ── GET /api/portal/overview ─────────────────────────────────────────────────
+//
+// Welcome-screen aggregation. One round-trip for the four KPI counters,
+// the customer's projects (with per-status counts + last activity for the
+// segmented card UI), the across-projects acceptance queue, and the most
+// recent Projektbericht snapshots. Access matches PortalListProjects:
+// admins see every active project; portal/member users see only projects
+// granted via project_members.
+
+type portalOverviewKPIs struct {
+	ActiveProjects     int `json:"active_projects"`
+	OpenIssues         int `json:"open_issues"`
+	AwaitingAcceptance int `json:"awaiting_acceptance"`
+	AcceptedThisMonth  int `json:"accepted_this_month"`
+}
+
+type portalAwaitingIssue struct {
+	ID          int64  `json:"id"`
+	IssueKey    string `json:"issue_key"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	Status      string `json:"status"`
+	Priority    string `json:"priority"`
+	ProjectID   int64  `json:"project_id"`
+	ProjectKey  string `json:"project_key"`
+	ProjectName string `json:"project_name"`
+	UpdatedAt   string `json:"updated_at"`
+	CanEdit     bool   `json:"can_edit"`
+}
+
+type portalReportLink struct {
+	Code        string  `json:"code"`
+	ProjectID   int64   `json:"project_id"`
+	ProjectKey  string  `json:"project_key"`
+	ProjectName string  `json:"project_name"`
+	Status      string  `json:"status"`
+	TotalIssues int     `json:"total_issues"`
+	CreatedAt   string  `json:"created_at"`
+	AcceptedAt  *string `json:"accepted_at"`
+}
+
+type portalOverview struct {
+	KPIs                  portalOverviewKPIs    `json:"kpis"`
+	Projects              []portalProject       `json:"projects"`
+	AwaitingAcceptance    []portalAwaitingIssue `json:"awaiting_acceptance"`
+	RecentProjektberichte []portalReportLink    `json:"recent_projektberichte"`
+}
+
+func PortalOverview(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUser(r)
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Collect accessible project IDs first. The rest of the queries
+	// then constrain to that set instead of repeating the membership
+	// JOIN N times.
+	var (
+		projectIDs []int64
+		projects   []portalProject
+		isAdmin    = auth.IsAdmin(user)
+	)
+
+	{
+		var query string
+		var args []any
+		if isAdmin {
+			query = `
+				SELECT p.id, p.key, p.name, p.description, p.status,
+				       COALESCE(p.logo_path, ''),
+				       COUNT(i.id) as issue_count,
+				       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count,
+				       COALESCE(MAX(i.updated_at), '') as last_activity
+				FROM projects p
+				LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL
+				WHERE p.status = 'active'
+				GROUP BY p.id
+				ORDER BY last_activity DESC, p.name`
+		} else {
+			query = `
+				SELECT p.id, p.key, p.name, p.description, p.status,
+				       COALESCE(p.logo_path, ''),
+				       COUNT(i.id) as issue_count,
+				       COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_count,
+				       COALESCE(MAX(i.updated_at), '') as last_activity
+				FROM projects p
+				JOIN project_members pm
+				  ON pm.project_id = p.id AND pm.user_id = ?
+				 AND pm.access_level IN ('viewer','editor')
+				LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL
+				WHERE p.status = 'active'
+				GROUP BY p.id
+				ORDER BY last_activity DESC, p.name`
+			args = append(args, user.ID)
+		}
+		rows, err := db.DB.Query(query, args...)
+		if err != nil {
+			jsonError(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p portalProject
+			if err := rows.Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.Status,
+				&p.LogoPath, &p.IssueCount, &p.DoneCount, &p.LastActivity); err != nil {
+				log.Printf("portal overview scan project: %v", err)
+				continue
+			}
+			p.ByStatus = map[string]int{}
+			projects = append(projects, p)
+			projectIDs = append(projectIDs, p.ID)
+		}
+	}
+
+	out := portalOverview{
+		Projects:              []portalProject{},
+		AwaitingAcceptance:    []portalAwaitingIssue{},
+		RecentProjektberichte: []portalReportLink{},
+	}
+	if len(projects) > 0 {
+		out.Projects = projects
+	}
+	out.KPIs.ActiveProjects = len(projectIDs)
+
+	// No accessible projects → return the empty shell. Avoids building
+	// a WHERE … IN () clause, which SQLite rejects.
+	if len(projectIDs) == 0 {
+		jsonOK(w, out)
+		return
+	}
+
+	placeholders, idArgs := intInPlaceholders(projectIDs)
+
+	// Per-project status breakdown + open-issue count + acceptance-queue
+	// pre-counts. One query that buckets every relevant status; we then
+	// slot the results back into the matching project.
+	{
+		q := `
+			SELECT project_id, status, COUNT(*)
+			FROM issues
+			WHERE deleted_at IS NULL
+			  AND project_id IN (` + placeholders + `)
+			GROUP BY project_id, status`
+		rows, err := db.DB.Query(q, idArgs...)
+		if err != nil {
+			jsonError(w, "status rollup query failed", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		byProject := map[int64]map[string]int{}
+		for rows.Next() {
+			var pid int64
+			var st string
+			var cnt int
+			if err := rows.Scan(&pid, &st, &cnt); err != nil {
+				continue
+			}
+			if byProject[pid] == nil {
+				byProject[pid] = map[string]int{}
+			}
+			byProject[pid][st] = cnt
+			switch st {
+			case "done", "delivered":
+				out.KPIs.AwaitingAcceptance += cnt
+			}
+			if st != "done" && st != "delivered" && st != "cancelled" && st != "accepted" && st != "invoiced" {
+				out.KPIs.OpenIssues += cnt
+			}
+		}
+		for i := range out.Projects {
+			if m, ok := byProject[out.Projects[i].ID]; ok {
+				out.Projects[i].ByStatus = m
+			}
+		}
+	}
+
+	// Awaiting-acceptance issue list across the customer's projects.
+	// Cap at 20 — anything more belongs in the per-project view.
+	{
+		q := `
+			SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
+			       i.title, i.type, i.status, i.priority,
+			       i.project_id, p.key, p.name, i.updated_at
+			FROM issues i
+			JOIN projects p ON p.id = i.project_id
+			WHERE i.deleted_at IS NULL
+			  AND i.status IN ('done','delivered')
+			  AND i.project_id IN (` + placeholders + `)
+			ORDER BY i.updated_at DESC
+			LIMIT 20`
+		rows, err := db.DB.Query(q, idArgs...)
+		if err != nil {
+			jsonError(w, "acceptance queue query failed", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		editCache := map[int64]bool{}
+		for rows.Next() {
+			var it portalAwaitingIssue
+			if err := rows.Scan(&it.ID, &it.IssueKey, &it.Title, &it.Type, &it.Status,
+				&it.Priority, &it.ProjectID, &it.ProjectKey, &it.ProjectName, &it.UpdatedAt); err != nil {
+				continue
+			}
+			canEdit, ok := editCache[it.ProjectID]
+			if !ok {
+				canEdit = isAdmin || auth.CanEditProject(r, it.ProjectID)
+				editCache[it.ProjectID] = canEdit
+			}
+			it.CanEdit = canEdit
+			out.AwaitingAcceptance = append(out.AwaitingAcceptance, it)
+		}
+	}
+
+	// accepted_this_month counter.
+	{
+		q := `
+			SELECT COUNT(*)
+			FROM issues
+			WHERE deleted_at IS NULL
+			  AND accepted_at IS NOT NULL
+			  AND strftime('%Y-%m', accepted_at) = strftime('%Y-%m', 'now')
+			  AND project_id IN (` + placeholders + `)`
+		if err := db.DB.QueryRow(q, idArgs...).Scan(&out.KPIs.AcceptedThisMonth); err != nil {
+			log.Printf("portal overview accepted_this_month: %v", err)
+		}
+	}
+
+	// Recent Projektbericht snapshots across accessible projects. Top 5.
+	{
+		q := `
+			SELECT prs.code, prs.project_id, p.key, p.name,
+			       prs.status, prs.total_issues, prs.created_at, prs.accepted_at
+			FROM project_report_snapshots prs
+			JOIN projects p ON p.id = prs.project_id
+			WHERE prs.project_id IN (` + placeholders + `)
+			ORDER BY prs.created_at DESC
+			LIMIT 5`
+		rows, err := db.DB.Query(q, idArgs...)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var rep portalReportLink
+				if err := rows.Scan(&rep.Code, &rep.ProjectID, &rep.ProjectKey, &rep.ProjectName,
+					&rep.Status, &rep.TotalIssues, &rep.CreatedAt, &rep.AcceptedAt); err != nil {
+					continue
+				}
+				out.RecentProjektberichte = append(out.RecentProjektberichte, rep)
+			}
+		} else {
+			log.Printf("portal overview projektberichte: %v", err)
+		}
+	}
+
+	jsonOK(w, out)
+}
+
+// intInPlaceholders renders ?,?,? for a list and returns the args slice
+// shaped for sql.DB.Query. Caller must guard against an empty slice —
+// SQLite rejects `IN ()`.
+func intInPlaceholders(ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	parts := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		parts[i] = "?"
+		args[i] = id
+	}
+	return strings.Join(parts, ","), args
 }

@@ -219,6 +219,7 @@ func main() {
 			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.RequirePortalAccess)
 
+			r.Get("/portal/overview", handlers.PortalOverview)
 			r.Get("/portal/projects", handlers.PortalListProjects)
 			r.Get("/portal/projects/{id}", handlers.PortalGetProject)
 			r.Get("/portal/projects/{id}/issues", handlers.PortalListIssues)

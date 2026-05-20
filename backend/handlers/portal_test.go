@@ -268,6 +268,143 @@ func TestQuick_Portal(t *testing.T) {
 	})
 }
 
+// ── Portal overview (PAI-452) ───────────────────────────────────────────────
+
+func TestQuick_PortalOverview(t *testing.T) {
+	ts := newTestServer(t)
+
+	var extUserID int64
+	db.DB.QueryRow("SELECT id FROM users WHERE username='external'").Scan(&extUserID)
+
+	// Two projects; only one is granted to the external user.
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Overview Granted", "key": "OVG",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	grantedID := responseID(t, resp)
+
+	resp = ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Overview Hidden", "key": "OVH",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	hiddenID := responseID(t, resp)
+
+	// Three issues on the granted project: one in-progress (open), one
+	// delivered (awaiting), one done (awaiting). One issue on the hidden
+	// project that we must NOT see in the queue.
+	ts.post(t, fmt.Sprintf("/api/projects/%d/issues", grantedID), ts.adminCookie, map[string]any{
+		"title": "Open one", "type": "ticket", "status": "in-progress",
+	})
+	ts.post(t, fmt.Sprintf("/api/projects/%d/issues", grantedID), ts.adminCookie, map[string]any{
+		"title": "Delivered one", "type": "ticket", "status": "delivered",
+	})
+	ts.post(t, fmt.Sprintf("/api/projects/%d/issues", grantedID), ts.adminCookie, map[string]any{
+		"title": "Done one", "type": "ticket", "status": "done",
+	})
+	ts.post(t, fmt.Sprintf("/api/projects/%d/issues", hiddenID), ts.adminCookie, map[string]any{
+		"title": "Other-project delivered", "type": "ticket", "status": "delivered",
+	})
+
+	// Grant the external user editor on the first project only.
+	resp = ts.post(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie, map[string]any{
+		"project_id": grantedID,
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	resp = ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extUserID, grantedID), ts.adminCookie, map[string]string{
+		"access_level": "editor",
+	})
+	assertStatus(t, resp, http.StatusOK)
+
+	type awaiting struct {
+		IssueKey    string `json:"issue_key"`
+		Title       string `json:"title"`
+		Status      string `json:"status"`
+		ProjectID   int64  `json:"project_id"`
+		ProjectName string `json:"project_name"`
+		CanEdit     bool   `json:"can_edit"`
+	}
+	type overview struct {
+		KPIs struct {
+			ActiveProjects     int `json:"active_projects"`
+			OpenIssues         int `json:"open_issues"`
+			AwaitingAcceptance int `json:"awaiting_acceptance"`
+			AcceptedThisMonth  int `json:"accepted_this_month"`
+		} `json:"kpis"`
+		Projects []struct {
+			ID       int64          `json:"id"`
+			Name     string         `json:"name"`
+			ByStatus map[string]int `json:"by_status"`
+		} `json:"projects"`
+		AwaitingAcceptance []awaiting `json:"awaiting_acceptance"`
+	}
+
+	t.Run("external user sees only granted project + its awaiting items", func(t *testing.T) {
+		resp := ts.get(t, "/api/portal/overview", ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var ov overview
+		decode(t, resp, &ov)
+		if ov.KPIs.ActiveProjects != 1 {
+			t.Errorf("active_projects = %d, want 1", ov.KPIs.ActiveProjects)
+		}
+		if ov.KPIs.AwaitingAcceptance != 2 {
+			t.Errorf("awaiting_acceptance KPI = %d, want 2", ov.KPIs.AwaitingAcceptance)
+		}
+		if ov.KPIs.OpenIssues != 1 {
+			t.Errorf("open_issues = %d, want 1 (only in-progress; delivered/done are awaiting)", ov.KPIs.OpenIssues)
+		}
+		if len(ov.AwaitingAcceptance) != 2 {
+			t.Fatalf("awaiting list = %d, want 2", len(ov.AwaitingAcceptance))
+		}
+		for _, a := range ov.AwaitingAcceptance {
+			if a.ProjectID != grantedID {
+				t.Errorf("awaiting item leaked from project %d (hidden)", a.ProjectID)
+			}
+			if !a.CanEdit {
+				t.Errorf("external editor should have can_edit=true, got false for %s", a.IssueKey)
+			}
+		}
+		if len(ov.Projects) != 1 || ov.Projects[0].ID != grantedID {
+			t.Errorf("projects = %+v, want only granted project", ov.Projects)
+		}
+		// Status breakdown should record the in-progress + delivered + done counts.
+		bs := ov.Projects[0].ByStatus
+		if bs["in-progress"] != 1 || bs["delivered"] != 1 || bs["done"] != 1 {
+			t.Errorf("by_status = %v, want in-progress:1 delivered:1 done:1", bs)
+		}
+	})
+
+	t.Run("viewer-level external sees can_edit=false", func(t *testing.T) {
+		// Downgrade to viewer.
+		resp := ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extUserID, grantedID), ts.adminCookie, map[string]string{
+			"access_level": "viewer",
+		})
+		assertStatus(t, resp, http.StatusOK)
+
+		resp = ts.get(t, "/api/portal/overview", ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var ov overview
+		decode(t, resp, &ov)
+		if len(ov.AwaitingAcceptance) == 0 {
+			t.Fatal("expected awaiting items to still appear for viewer")
+		}
+		for _, a := range ov.AwaitingAcceptance {
+			if a.CanEdit {
+				t.Errorf("viewer should have can_edit=false, got true for %s", a.IssueKey)
+			}
+		}
+	})
+
+	t.Run("admin sees every active project", func(t *testing.T) {
+		resp := ts.get(t, "/api/portal/overview", ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var ov overview
+		decode(t, resp, &ov)
+		if ov.KPIs.ActiveProjects < 2 {
+			t.Errorf("admin active_projects = %d, want >= 2", ov.KPIs.ActiveProjects)
+		}
+	})
+}
+
 // ── User project access admin endpoints ─────────────────────────────────────
 
 func TestQuick_UserProjectAccess(t *testing.T) {

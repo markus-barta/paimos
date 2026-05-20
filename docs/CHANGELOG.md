@@ -5,6 +5,33 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.2] — 2026-05-20
+
+### Added
+
+- **PAI-451** (umbrella + PAI-452..PAI-457) — Customer portal welcome
+  screen, full rewrite. The portal landing page at `/portal` was a bare
+  `<h1>Your Projects</h1>` plus a flat grid; it now mirrors the polish
+  of the internal Dashboard with a warmer, customer-appropriate voice.
+  Greeting hero with avatar and a day-of-year keyed warm-professional
+  saying (36 messages × DE + EN parity, separate register from the
+  internal "ship it" voice). KPI strip with four counters (active
+  projects, open items, awaiting your acceptance, accepted this month);
+  the awaiting-acceptance card is keyboard-focusable and scrolls to the
+  matching list. "Awaiting your acceptance" section lists `delivered` /
+  `done` issues across every accessible project with inline Accept /
+  Reject for editors and a muted eye-icon marker (tooltip) for viewers;
+  optimistic row removal + KPI recount on action. Refined project cards
+  add a segmented status-breakdown bar (hover tooltip per status) and
+  a "Letzte Aktivität vor 2h" footer. Recent Projektberichte card
+  surfaces the top 5 snapshots across accessible projects with
+  pending / accepted badges, linked to the existing `/accept/:code`
+  acceptance page; the card hides entirely when the customer has no
+  snapshots. One round-trip via new `GET /api/portal/overview` instead
+  of N+1 per-project calls; access matches `PortalListProjects` (admins
+  see every active project, members/external see only granted ones)
+  with project-access gating asserted by three new handler tests.
+
 ## [3.5.1] — 2026-05-19
 
 ### Added
