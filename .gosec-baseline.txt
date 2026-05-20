@@ -39,11 +39,11 @@ G202	MEDIUM	HIGH	handlers/memory_references.go	132-138	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	395	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	816-822	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/mutation_log.go	825-832	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/portal.go	1175-1181	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/portal.go	1225-1236	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/portal.go	1288-1297	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/portal.go	1323-1330	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/portal.go	982-989	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	1131-1137	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	1181-1192	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	1244-1253	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	1279-1286	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/portal.go	950-955	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	840	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation

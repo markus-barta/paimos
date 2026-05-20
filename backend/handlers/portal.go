@@ -52,34 +52,41 @@ type portalProject struct {
 	WouldHideCount *int `json:"would_hide_count,omitempty"`
 }
 
+// portalIssue is the shape sent to the Customer Portal — strictly the
+// fields a customer needs to see. PAI-474 removed the internal effort
+// and pricing leak that existed before v3.6.0:
+//
+//   - cost_unit, release       → internal budget / release plumbing
+//   - estimate_hours/_lp       → our internal effort
+//   - ar_hours/_lp             → our internal effort
+//   - estimate_eur, ar_eur     → derived pricing / margin signal
+//
+// Those fields were emitted in v3.6.0 even though the UI rendered them as
+// "—"; anyone with DevTools could read them. They are now never queried
+// or serialised on this path. The acceptance report (Projektbericht) is
+// a separate endpoint that still includes pricing because it's the
+// deliverable contract — not affected here.
 type portalIssue struct {
-	ID                 int64    `json:"id"`
-	IssueKey           string   `json:"issue_key"`
-	Title              string   `json:"title"`
-	Description        string   `json:"description"`
-	AcceptanceCriteria string   `json:"acceptance_criteria"`
-	ReportSummary      string   `json:"report_summary"`
-	Status             string   `json:"status"`
-	Priority           string   `json:"priority"`
-	Type               string   `json:"type"`
-	CostUnit           string   `json:"cost_unit"`
-	Release            string   `json:"release"`
-	EstimateHours      *float64 `json:"estimate_hours"`
-	EstimateLp         *float64 `json:"estimate_lp"`
-	ArHours            *float64 `json:"ar_hours"`
-	ArLp               *float64 `json:"ar_lp"`
-	EstimateEur        *float64 `json:"estimate_eur"`
-	ArEur              *float64 `json:"ar_eur"`
-	AcceptedAt         *string  `json:"accepted_at"`
-	CreatedAt          string   `json:"created_at"`
-	UpdatedAt          string   `json:"updated_at"`
+	ID                 int64   `json:"id"`
+	IssueKey           string  `json:"issue_key"`
+	Title              string  `json:"title"`
+	Description        string  `json:"description"`
+	AcceptanceCriteria string  `json:"acceptance_criteria"`
+	ReportSummary      string  `json:"report_summary"`
+	Status             string  `json:"status"`
+	Priority           string  `json:"priority"`
+	Type               string  `json:"type"`
+	AcceptedAt         *string `json:"accepted_at"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
 }
 
+// portalSummary is the browse-view KPI payload. Pricing aggregates were
+// removed in PAI-474 — customers see prices in the Projektbericht
+// (acceptance report) at sign-off time, not while browsing.
 type portalSummary struct {
 	TotalIssues int            `json:"total_issues"`
 	ByStatus    map[string]int `json:"by_status"`
-	TotalEstEur *float64       `json:"total_estimate_eur"`
-	TotalArEur  *float64       `json:"total_ar_eur"`
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -199,27 +206,6 @@ func portalCSVInts(raw string) []int64 {
 		}
 	}
 	return out
-}
-
-// computeEur calculates EUR from hours/lp and the project's cost-unit rates.
-// For portal display, we use the rate_hourly and rate_lp from the issue's
-// parent epic or cost_unit. As a simpler approach, we compute from the issue
-// itself if it has rate fields, otherwise return nil.
-func computeEur(hours, lp, rateH, rateLP *float64) *float64 {
-	var total float64
-	var has bool
-	if hours != nil && rateH != nil {
-		total += *hours * *rateH
-		has = true
-	}
-	if lp != nil && rateLP != nil {
-		total += *lp * *rateLP
-		has = true
-	}
-	if !has {
-		return nil
-	}
-	return &total
 }
 
 // ── GET /api/portal/projects ─────────────────────────────────────────────────
@@ -427,9 +413,6 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		       i.title, i.description, i.acceptance_criteria,
 		       i.report_summary,
 		       i.status, i.priority, i.type,
-		       i.cost_unit, i.release,
-		       i.estimate_hours, i.estimate_lp, i.ar_hours, i.ar_lp,
-		       i.rate_hourly, i.rate_lp,
 		       i.accepted_at,
 		       i.created_at, i.updated_at
 		FROM issues i
@@ -446,21 +429,15 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 	issues := []portalIssue{}
 	for rows.Next() {
 		var pi portalIssue
-		var rateH, rateLP *float64
 		if err := rows.Scan(&pi.ID, &pi.IssueKey,
 			&pi.Title, &pi.Description, &pi.AcceptanceCriteria,
 			&pi.ReportSummary,
 			&pi.Status, &pi.Priority, &pi.Type,
-			&pi.CostUnit, &pi.Release,
-			&pi.EstimateHours, &pi.EstimateLp, &pi.ArHours, &pi.ArLp,
-			&rateH, &rateLP,
 			&pi.AcceptedAt,
 			&pi.CreatedAt, &pi.UpdatedAt); err != nil {
 			log.Printf("scan error: %v", err)
 			continue
 		}
-		pi.EstimateEur = computeEur(pi.EstimateHours, pi.EstimateLp, rateH, rateLP)
-		pi.ArEur = computeEur(pi.ArHours, pi.ArLp, rateH, rateLP)
 		issues = append(issues, pi)
 	}
 	jsonOK(w, issues)
@@ -495,15 +472,11 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pi portalIssue
-	var rateH, rateLP *float64
 	err = db.DB.QueryRow(`
 		SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 		       i.title, i.description, i.acceptance_criteria,
 		       i.report_summary,
 		       i.status, i.priority, i.type,
-		       i.cost_unit, i.release,
-		       i.estimate_hours, i.estimate_lp, i.ar_hours, i.ar_lp,
-		       i.rate_hourly, i.rate_lp,
 		       i.accepted_at,
 		       i.created_at, i.updated_at
 		FROM issues i
@@ -513,17 +486,12 @@ func PortalGetIssue(w http.ResponseWriter, r *http.Request) {
 		&pi.Title, &pi.Description, &pi.AcceptanceCriteria,
 		&pi.ReportSummary,
 		&pi.Status, &pi.Priority, &pi.Type,
-		&pi.CostUnit, &pi.Release,
-		&pi.EstimateHours, &pi.EstimateLp, &pi.ArHours, &pi.ArLp,
-		&rateH, &rateLP,
 		&pi.AcceptedAt,
 		&pi.CreatedAt, &pi.UpdatedAt)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	pi.EstimateEur = computeEur(pi.EstimateHours, pi.EstimateLp, rateH, rateLP)
-	pi.ArEur = computeEur(pi.ArHours, pi.ArLp, rateH, rateLP)
 	jsonOK(w, pi)
 }
 
@@ -980,9 +948,7 @@ func PortalProjectSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := db.DB.Query(`
-		SELECT status, COUNT(*),
-		       SUM(COALESCE(estimate_hours, 0) * COALESCE(rate_hourly, 0) + COALESCE(estimate_lp, 0) * COALESCE(rate_lp, 0)),
-		       SUM(COALESCE(ar_hours, 0) * COALESCE(rate_hourly, 0) + COALESCE(ar_lp, 0) * COALESCE(rate_lp, 0))
+		SELECT status, COUNT(*)
 		FROM issues
 		WHERE project_id = ? AND deleted_at IS NULL AND `+visFrag+`
 		GROUP BY status
@@ -994,25 +960,15 @@ func PortalProjectSummary(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	summary := portalSummary{ByStatus: map[string]int{}}
-	var totalEst, totalAr float64
 	for rows.Next() {
 		var st string
 		var cnt int
-		var estSum, arSum float64
-		if err := rows.Scan(&st, &cnt, &estSum, &arSum); err != nil {
+		if err := rows.Scan(&st, &cnt); err != nil {
 			log.Printf("scan error: %v", err)
 			continue
 		}
 		summary.ByStatus[st] = cnt
 		summary.TotalIssues += cnt
-		totalEst += estSum
-		totalAr += arSum
-	}
-	if totalEst > 0 {
-		summary.TotalEstEur = &totalEst
-	}
-	if totalAr > 0 {
-		summary.TotalArEur = &totalAr
 	}
 	jsonOK(w, summary)
 }
