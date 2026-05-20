@@ -6,9 +6,16 @@
  */
 
 import type { VNode } from 'vue'
-import type { Issue } from '@/types'
 
-export interface ColumnDef {
+// IssueLike is the minimal shape the shared table expects — every
+// consumer's row carries at least an id. Internal and portal views pass
+// richer types (Issue, PortalIssue, AdminVisibilityIssue) via structural
+// compatibility; the render callbacks cast internally as needed.
+export interface IssueLike {
+  id: number
+}
+
+export interface ColumnDef<T extends IssueLike = IssueLike> {
   key: string
   label: string
   width?: string
@@ -16,7 +23,7 @@ export interface ColumnDef {
   /** Cell renderer — primitive (rendered as text) or a VNode (rendered
    *  via <component :is>). Use h(...) from your column registry when
    *  you need StatusDot, AppIcon, etc. */
-  render: (issue: Issue) => string | number | VNode | null | undefined
+  render: (issue: T) => string | number | VNode | null | undefined
 }
 
 export interface RowAction {

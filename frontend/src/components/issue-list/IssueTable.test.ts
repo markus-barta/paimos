@@ -6,6 +6,10 @@ import IssueTable from './IssueTable.vue'
 import type { ColumnDef, RowAction } from './types'
 import type { Issue } from '@/types'
 
+// Tests use Issue (richer type); the shared table accepts ColumnDef<any>
+// so a typed-per-consumer column registry just works.
+type IssueColumnDef = ColumnDef<Issue>
+
 function makeIssue(id: number, overrides: Partial<Issue> = {}): Issue {
   return {
     id,
@@ -18,7 +22,7 @@ function makeIssue(id: number, overrides: Partial<Issue> = {}): Issue {
   } as unknown as Issue
 }
 
-const COLUMNS: ColumnDef[] = [
+const COLUMNS: IssueColumnDef[] = [
   { key: 'key', label: 'Key', sortable: true, render: (i: Issue) => i.issue_key },
   { key: 'title', label: 'Title', render: (i: Issue) => i.title },
   {

@@ -11,24 +11,27 @@
 -->
 <script setup lang="ts">
 import { computed, isVNode, type VNode } from 'vue'
-import type { Issue } from '@/types'
 
 import AppIcon from '@/components/AppIcon.vue'
-import type { ColumnDef, RowAction, EmptyState } from './types'
+import type { ColumnDef, RowAction, EmptyState, IssueLike } from './types'
 
+// Generic over the issue row type — internal Issue, PortalIssue, and
+// AdminVisibilityIssue all satisfy IssueLike (id-only). Consumers pass
+// their richer type into ColumnDef<T>; the table itself only needs id
+// for `:key` and to forward to row-click / row-actions.
 const props = defineProps<{
-  issues: Issue[]
-  columns: ColumnDef[]
+  issues: IssueLike[]
+  columns: ColumnDef<any>[]
   loading?: boolean
   density?: 'normal' | 'compact'
-  rowActions?: (issue: Issue) => RowAction[]
+  rowActions?: (issue: any) => RowAction[]
   emptyState?: EmptyState
   sort?: { col: string; dir: 'asc' | 'desc' }
 }>()
 
 const emit = defineEmits<{
   sort: [col: string]
-  'row-click': [issue: Issue]
+  'row-click': [issue: IssueLike]
 }>()
 
 const compact = computed(() => props.density === 'compact')
@@ -44,7 +47,7 @@ function sortIndicator(col: ColumnDef): string {
   return props.sort.dir === 'asc' ? 'chevron-up' : 'chevron-down'
 }
 
-function rowClick(issue: Issue, event: MouseEvent) {
+function rowClick(issue: IssueLike, event: MouseEvent) {
   // Skip if the click landed on an action button — those have their own handlers.
   const target = event.target as HTMLElement
   if (target.closest('.it-action')) return
@@ -55,7 +58,7 @@ function isVNodeCell(v: unknown): v is VNode {
   return isVNode(v as VNode)
 }
 
-function cellText(col: ColumnDef, issue: Issue): string {
+function cellText(col: ColumnDef<any>, issue: IssueLike): string {
   const v = col.render(issue)
   if (v == null) return '—'
   if (typeof v === 'string' || typeof v === 'number') return String(v)
