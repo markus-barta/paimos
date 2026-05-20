@@ -4659,10 +4659,11 @@ func migrate(db *sql.DB) error {
 		{110, []string{
 			`CREATE TEMPORARY TABLE _backfill_m110 AS
 			 SELECT i.id AS issue_id, t.id AS tag_id
-			 FROM issues i, tags t
+			 FROM issues i
+			 JOIN projects p ON p.id = i.project_id AND p.status = 'active'
+			 JOIN tags t ON t.name = 'CUSTOMERPORTAL'
 			 WHERE i.deleted_at IS NULL
 			   AND i.status IN ('delivered','done','accepted','invoiced')
-			   AND t.name = 'CUSTOMERPORTAL'
 			   AND NOT EXISTS (
 			     SELECT 1 FROM issue_tags it
 			     WHERE it.issue_id = i.id AND it.tag_id = t.id

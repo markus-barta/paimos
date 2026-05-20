@@ -177,6 +177,16 @@ func UpdateTag(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid body", http.StatusBadRequest)
 		return
 	}
+	// PAI-459 / QA: system tags carry semantic identity (CUSTOMERPORTAL
+	// is matched by name throughout the codebase, e.g. the visibility
+	// helpers in portal.go and the audit pipeline). Renaming would
+	// silently break those lookups. The DeleteTag path already enforces
+	// this; UpdateTag previously did not, leaving an API loophole admins
+	// could trip into.
+	if isSystemTag(id) {
+		jsonError(w, "system tags cannot be renamed or recoloured", http.StatusForbidden)
+		return
+	}
 	if body.Color != nil && !IsValidTagColor(*body.Color) {
 		jsonError(w, "invalid color", http.StatusBadRequest)
 		return

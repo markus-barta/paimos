@@ -901,10 +901,11 @@ func TestQuick_PortalCustomerPortalBackfill(t *testing.T) {
 		_, err := db.DB.Exec(`
 			CREATE TEMPORARY TABLE _bf AS
 			SELECT i.id AS issue_id, t.id AS tag_id
-			FROM issues i, tags t
+			FROM issues i
+			JOIN projects p ON p.id = i.project_id AND p.status = 'active'
+			JOIN tags t ON t.name = 'CUSTOMERPORTAL'
 			WHERE i.deleted_at IS NULL
 			  AND i.status IN ('delivered','done','accepted','invoiced')
-			  AND t.name = 'CUSTOMERPORTAL'
 			  AND NOT EXISTS (
 			    SELECT 1 FROM issue_tags it WHERE it.issue_id = i.id AND it.tag_id = t.id
 			  )`)
@@ -962,6 +963,33 @@ func TestQuick_PortalCustomerPortalBackfill(t *testing.T) {
 			terminalIDs[0], terminalIDs[1], terminalIDs[2], terminalIDs[3]).Scan(&cnt)
 		if cnt != 4 {
 			t.Errorf("expected 4 audit rows, got %d", cnt)
+		}
+	})
+
+	t.Run("backfill skips issues on inactive projects", func(t *testing.T) {
+		// Seed an inactive project with a terminal-status issue.
+		resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+			"name": "Backfill Inactive", "key": "BFI",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		inactivePID := responseID(t, resp)
+		resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", inactivePID), ts.adminCookie, map[string]any{
+			"title": "On inactive project", "type": "ticket", "status": "delivered",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		inactiveIssueID := responseID(t, resp)
+		// Mark the project inactive (status enum); skip via direct UPDATE
+		// to avoid needing the admin archive flow inside this test.
+		if _, err := db.DB.Exec(`UPDATE projects SET status='archived' WHERE id=?`, inactivePID); err != nil {
+			t.Fatalf("archive: %v", err)
+		}
+
+		runBackfill()
+
+		var hit int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, inactiveIssueID, portalTagID).Scan(&hit)
+		if hit != 0 {
+			t.Errorf("issue on inactive project was tagged by backfill; expected skip")
 		}
 	})
 

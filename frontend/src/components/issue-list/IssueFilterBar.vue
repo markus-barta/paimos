@@ -213,7 +213,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           :class="{ 'if-bar__pill--active': filters.priority.length > 0 }"
           @click="toggleDropdown('priority')"
         >
-          Priority
+          {{ t('visibility.filterBarPriority') }}
           <span v-if="filters.priority.length" class="if-bar__count">{{ filters.priority.length }}</span>
           <AppIcon name="chevron-down" :size="11" />
         </button>
@@ -225,7 +225,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           :class="{ 'if-bar__pill--active': filters.tagIds.length > 0 }"
           @click="toggleDropdown('tag')"
         >
-          Tags
+          {{ t('visibility.filterBarTags') }}
           <span v-if="filters.tagIds.length" class="if-bar__count">{{ filters.tagIds.length }}</span>
           <AppIcon name="chevron-down" :size="11" />
         </button>
@@ -236,7 +236,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           class="if-bar__clear"
           @click="clearAll"
         >
-          Clear all
+          {{ t('visibility.filterBarClearAll') }}
         </button>
       </div>
 
@@ -324,7 +324,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
         @click="sheetOpen = true"
       >
         <AppIcon name="filter" :size="14" />
-        Filters
+        {{ t('visibility.filterBarFilters') }}
         <span v-if="activeCount" class="if-bar__count">{{ activeCount }}</span>
       </button>
 
@@ -333,14 +333,14 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           <div class="if-bar__sheet" @click.stop>
             <div class="if-bar__sheet-handle" aria-hidden="true" />
             <header class="if-bar__sheet-head">
-              <h3>Filters</h3>
+              <h3>{{ t('visibility.filterBarFilters') }}</h3>
               <button
                 v-if="activeCount > 0"
                 type="button"
                 class="if-bar__clear"
                 @click="clearAll"
               >
-                Clear all
+                {{ t('visibility.filterBarClearAll') }}
               </button>
               <button
                 type="button"
@@ -392,7 +392,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
               </div>
             </section>
             <section v-if="isEnabled('priority') && priorityOptions" class="if-bar__group">
-              <h4>Priority</h4>
+              <h4>{{ t('visibility.filterBarPriority') }}</h4>
               <div class="if-bar__opt-row">
                 <button
                   v-for="opt in priorityOptions"
@@ -407,7 +407,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
               </div>
             </section>
             <section v-if="isEnabled('tag') && tagOptions" class="if-bar__group">
-              <h4>Tags</h4>
+              <h4>{{ t('visibility.filterBarTags') }}</h4>
               <div class="if-bar__opt-row">
                 <button
                   v-for="opt in tagOptions"

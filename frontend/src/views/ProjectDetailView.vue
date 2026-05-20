@@ -805,6 +805,17 @@ watch(
             <AppIcon name="pencil" :size="14" />
             <span>Edit project</span>
           </button>
+          <!-- PAI-467: admin nav entry into the Customer Portal Visibility
+               report. Lives in the same overflow menu as Edit project so
+               admins find it where they expect project-scoped admin tools. -->
+          <RouterLink
+            v-if="isAdmin"
+            :to="`/admin/projects/${projectId}/portal-visibility`"
+            class="pd-overflow-item pd-overflow-item--link"
+          >
+            <AppIcon name="eye" :size="14" />
+            <span>{{ $t('visibility.filterTitle') }}</span>
+          </RouterLink>
         </div>
       </Teleport>
 
@@ -1400,6 +1411,9 @@ textarea { resize: vertical; min-height: 80px; }
 .pd-overflow-item:hover:not(:disabled) { background: var(--bg); }
 .pd-overflow-item:disabled { color: var(--text-muted); cursor: not-allowed; }
 .pd-overflow-item :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
+/* PAI-467: RouterLink form inherits the same chrome as the buttons. */
+.pd-overflow-item--link { text-decoration: none; color: var(--text); }
+.pd-overflow-item--link:hover { background: var(--bg); }
 .pd-customer-pill:hover {
   border-color: var(--bp-blue);
   color: var(--bp-blue-dark);

@@ -101,7 +101,7 @@ function eventLabel(type: string): string {
     </div>
 
     <h1 class="admin-visibility__title">
-      {{ t('visibility.filterTitle') }} — {{ t('visibility.filterTitle') }}
+      {{ t('visibility.adminTitle') }}
     </h1>
 
     <div v-if="loading" class="admin-visibility__loading">{{ $t('portal.loading') }}</div>
@@ -111,7 +111,7 @@ function eventLabel(type: string): string {
         <div class="admin-visibility__metric">
           <span class="admin-visibility__metric-value">{{ report.visible_count }}</span>
           <span class="admin-visibility__metric-label">
-            {{ t('visibility.label') }}
+            {{ t('visibility.adminMetricLabel') }}
           </span>
         </div>
         <div class="admin-visibility__exports">
@@ -119,30 +119,30 @@ function eventLabel(type: string): string {
             class="btn btn-ghost btn-sm"
             :href="adminPortalVisibilityCsvUrl(projectId, 'current')"
           >
-            CSV (current)
+            {{ t('visibility.csvCurrent') }}
           </a>
           <a
             class="btn btn-ghost btn-sm"
             :href="adminPortalVisibilityCsvUrl(projectId, 'audit')"
           >
-            CSV (audit)
+            {{ t('visibility.csvAudit') }}
           </a>
         </div>
       </div>
 
       <section class="admin-visibility__section">
         <h2 class="admin-visibility__section-title">
-          Visible issues ({{ report.visible_count }})
+          {{ t('visibility.sectionVisible') }} ({{ report.visible_count }})
         </h2>
         <table v-if="report.issues.length" class="admin-visibility__table">
           <thead>
             <tr>
-              <th>Key</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Last actor</th>
-              <th>Last event</th>
-              <th>At</th>
+              <th>{{ t('visibility.colKey') }}</th>
+              <th>{{ t('visibility.colTitle') }}</th>
+              <th>{{ t('visibility.colStatus') }}</th>
+              <th>{{ t('visibility.colLastActor') }}</th>
+              <th>{{ t('visibility.colLastEvent') }}</th>
+              <th>{{ t('visibility.colAt') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -160,21 +160,21 @@ function eventLabel(type: string): string {
             </tr>
           </tbody>
         </table>
-        <p v-else class="admin-visibility__empty">No issues are visible to the customer portal yet.</p>
+        <p v-else class="admin-visibility__empty">{{ t('visibility.emptyVisible') }}</p>
       </section>
 
       <section class="admin-visibility__section">
         <h2 class="admin-visibility__section-title">
-          Audit feed ({{ report.total_audit }})
+          {{ t('visibility.sectionAudit') }} ({{ report.total_audit }})
         </h2>
         <table v-if="report.audit.length" class="admin-visibility__table">
           <thead>
             <tr>
-              <th>At</th>
-              <th>Actor</th>
-              <th>Event</th>
-              <th>Issue</th>
-              <th>Title</th>
+              <th>{{ t('visibility.colAt') }}</th>
+              <th>{{ t('visibility.colLastActor') }}</th>
+              <th>{{ t('visibility.colEvent') }}</th>
+              <th>{{ t('visibility.colIssue') }}</th>
+              <th>{{ t('visibility.colTitle') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -191,7 +191,7 @@ function eventLabel(type: string): string {
             </tr>
           </tbody>
         </table>
-        <p v-else class="admin-visibility__empty">No audit events yet.</p>
+        <p v-else class="admin-visibility__empty">{{ t('visibility.emptyAudit') }}</p>
 
         <div v-if="report.total_audit > auditLimit" class="admin-visibility__paging">
           <button
@@ -199,7 +199,7 @@ function eventLabel(type: string): string {
             :disabled="auditOffset === 0"
             @click="prevPage"
           >
-            ← Prev
+            {{ t('visibility.pagingPrev') }}
           </button>
           <span>
             {{ auditOffset + 1 }}–{{ Math.min(auditOffset + auditLimit, report.total_audit) }}
@@ -210,7 +210,7 @@ function eventLabel(type: string): string {
             :disabled="auditOffset + auditLimit >= report.total_audit"
             @click="nextPage"
           >
-            Next →
+            {{ t('visibility.pagingNext') }}
           </button>
         </div>
       </section>
