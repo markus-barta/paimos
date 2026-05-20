@@ -96,6 +96,20 @@ type SortDir = 'asc' | 'desc'
 const sortCol = ref('updated_at')
 const sortDir = ref<SortDir>('desc')
 
+// PAI-471: viewport-aware column set + row-action filtering. Below
+// 720px the table drops to KEY · TITLE · STATUS · Action; Reject hides
+// (Accept stays — that's the common-case action). Matches the mobile
+// breakpoint the IssueFilterBar already uses internally.
+const MOBILE_BREAKPOINT = 720
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
+const isMobile = computed(() => viewportWidth.value < MOBILE_BREAKPOINT)
+function onResize() {
+  viewportWidth.value = window.innerWidth
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', onResize, { passive: true })
+}
+
 // New-Request modal state
 const showRequestModal = ref(false)
 const requestTitle = ref('')
@@ -314,20 +328,25 @@ function rowActions(issue: PortalIssue): RowAction[] {
   }
   if (issue.status === 'delivered' || issue.status === 'done') {
     if (!canEdit.value) return []
-    return [
+    const actions: RowAction[] = [
       {
         key: 'accept',
         label: t('portal.tabs.accepted'),
         variant: 'primary',
         onClick: () => void acceptIssue(issue),
       },
-      {
+    ]
+    // PAI-471: Reject hides at <720px — accept stays (the common case);
+    // reject moves to the issue detail page on mobile.
+    if (!isMobile.value) {
+      actions.push({
         key: 'reject',
         label: t('portal.reject'),
         variant: 'ghost',
         onClick: () => void rejectIssue(issue),
-      },
-    ]
+      })
+    }
+    return actions
   }
   return []
 }
@@ -335,7 +354,19 @@ function rowActions(issue: PortalIssue): RowAction[] {
 // ── Columns ─────────────────────────────────────────────────────────────
 type PortalColumnDef = ColumnDef<PortalIssue>
 
-const COLUMNS = computed<PortalColumnDef[]>(() => [
+// PAI-471: at < 720px the table renders only the four load-bearing
+// columns. We filter the full registry rather than maintaining two
+// parallel definitions so future columns don't have to remember to
+// register in both places.
+const MOBILE_COLUMN_KEYS = new Set(['issue_key', 'title', 'status'])
+
+const COLUMNS = computed<PortalColumnDef[]>(() => {
+  const full: PortalColumnDef[] = ALL_COLUMNS.value
+  if (!isMobile.value) return full
+  return full.filter((c) => MOBILE_COLUMN_KEYS.has(c.key))
+})
+
+const ALL_COLUMNS = computed<PortalColumnDef[]>(() => [
   {
     key: 'issue_key',
     label: t('portal.table.key'),
