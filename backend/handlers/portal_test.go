@@ -840,6 +840,206 @@ func TestQuick_PortalCustomerPortalFilter(t *testing.T) {
 	})
 }
 
+// PAI-462: the one-time backfill must auto-tag every terminal-status
+// issue idempotently and write a mutation_log row per backfilled issue
+// for the audit trail. The dry-run env var must turn the filter off and
+// surface would_hide_count per project on /overview.
+func TestQuick_PortalCustomerPortalBackfill(t *testing.T) {
+	ts := newTestServer(t)
+
+	var portalTagID int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name='CUSTOMERPORTAL'`).Scan(&portalTagID); err != nil {
+		t.Fatalf("CUSTOMERPORTAL tag missing: %v", err)
+	}
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Backfill Test", "key": "BFL",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	// Seed 4 terminal-status + 2 non-terminal issues, none CUSTOMERPORTAL-tagged.
+	terminal := []string{"delivered", "done", "accepted", "invoiced"}
+	var terminalIDs []int64
+	for i, st := range terminal {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": fmt.Sprintf("TERM-%d", i+1), "type": "ticket", "status": st,
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		terminalIDs = append(terminalIDs, responseID(t, resp))
+	}
+	nonTerminal := []string{"new", "in-progress"}
+	var nonTerminalIDs []int64
+	for i, st := range nonTerminal {
+		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+			"title": fmt.Sprintf("OPEN-%d", i+1), "type": "ticket", "status": st,
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		nonTerminalIDs = append(nonTerminalIDs, responseID(t, resp))
+	}
+
+	// Run the backfill block from migration M110 in the test scope. (The
+	// migration itself runs as part of test-server setup before any
+	// issues exist; we replay it to exercise idempotency on a populated
+	// schema.)
+	runBackfill := func() {
+		t.Helper()
+		_, err := db.DB.Exec(`
+			CREATE TEMPORARY TABLE _bf AS
+			SELECT i.id AS issue_id, t.id AS tag_id
+			FROM issues i, tags t
+			WHERE i.deleted_at IS NULL
+			  AND i.status IN ('delivered','done','accepted','invoiced')
+			  AND t.name = 'CUSTOMERPORTAL'
+			  AND NOT EXISTS (
+			    SELECT 1 FROM issue_tags it WHERE it.issue_id = i.id AND it.tag_id = t.id
+			  )`)
+		if err != nil {
+			t.Fatalf("backfill temp: %v", err)
+		}
+		if _, err := db.DB.Exec(`INSERT INTO issue_tags(issue_id, tag_id) SELECT issue_id, tag_id FROM _bf`); err != nil {
+			t.Fatalf("backfill insert tags: %v", err)
+		}
+		if _, err := db.DB.Exec(`
+			INSERT INTO mutation_log
+			  (request_id, mutation_type, subject_type, subject_id,
+			   batch_id, inverse_op, before_state, after_state,
+			   before_hash, after_hash, undoable, on_user_stack)
+			SELECT 'migration:m110-test', 'issue.tag.migration_backfill',
+			       'issue_tag', issue_id,
+			       'm110-customerportal-backfill', '{}',
+			       json_object('issue_id', issue_id, 'tag_id', tag_id, 'exists', 0),
+			       json_object('issue_id', issue_id, 'tag_id', tag_id, 'exists', 1),
+			       '', '', 0, 0
+			FROM _bf`); err != nil {
+			t.Fatalf("backfill insert audit: %v", err)
+		}
+		if _, err := db.DB.Exec(`DROP TABLE _bf`); err != nil {
+			t.Fatalf("backfill drop temp: %v", err)
+		}
+	}
+
+	t.Run("backfill tags every terminal-status issue, leaves open ones alone", func(t *testing.T) {
+		runBackfill()
+
+		for _, id := range terminalIDs {
+			var hit int
+			db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, id, portalTagID).Scan(&hit)
+			if hit != 1 {
+				t.Errorf("terminal issue %d not backfilled", id)
+			}
+		}
+		for _, id := range nonTerminalIDs {
+			var hit int
+			db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE issue_id=? AND tag_id=?`, id, portalTagID).Scan(&hit)
+			if hit != 0 {
+				t.Errorf("non-terminal issue %d was tagged by backfill (should not be)", id)
+			}
+		}
+	})
+
+	t.Run("backfill writes one audit row per tagged issue", func(t *testing.T) {
+		var cnt int
+		db.DB.QueryRow(`
+			SELECT COUNT(*) FROM mutation_log
+			WHERE mutation_type='issue.tag.migration_backfill'
+			  AND batch_id='m110-customerportal-backfill'
+			  AND subject_id IN (?,?,?,?)`,
+			terminalIDs[0], terminalIDs[1], terminalIDs[2], terminalIDs[3]).Scan(&cnt)
+		if cnt != 4 {
+			t.Errorf("expected 4 audit rows, got %d", cnt)
+		}
+	})
+
+	t.Run("re-running the backfill is a no-op", func(t *testing.T) {
+		var auditBefore, tagsBefore int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM mutation_log WHERE batch_id='m110-customerportal-backfill'`).Scan(&auditBefore)
+		db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE tag_id=?`, portalTagID).Scan(&tagsBefore)
+
+		runBackfill()
+
+		var auditAfter, tagsAfter int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM mutation_log WHERE batch_id='m110-customerportal-backfill'`).Scan(&auditAfter)
+		db.DB.QueryRow(`SELECT COUNT(*) FROM issue_tags WHERE tag_id=?`, portalTagID).Scan(&tagsAfter)
+
+		if auditBefore != auditAfter {
+			t.Errorf("re-run added audit rows: before=%d after=%d", auditBefore, auditAfter)
+		}
+		if tagsBefore != tagsAfter {
+			t.Errorf("re-run added tag rows: before=%d after=%d", tagsBefore, tagsAfter)
+		}
+	})
+
+	var extUserID int64
+	db.DB.QueryRow("SELECT id FROM users WHERE username='external'").Scan(&extUserID)
+	ts.post(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie, map[string]any{"project_id": projectID})
+	ts.put(t, fmt.Sprintf("/api/users/%d/memberships/%d", extUserID, projectID), ts.adminCookie, map[string]string{"access_level": "editor"})
+
+	t.Run("dry-run env var leaves the portal list unfiltered", func(t *testing.T) {
+		t.Setenv("PAIMOS_PORTAL_VISIBILITY_DRY_RUN", "true")
+
+		// With dry-run on, even the 2 non-tagged open issues should appear.
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var issues []struct {
+			Title string `json:"title"`
+		}
+		decode(t, resp, &issues)
+		if len(issues) != 6 {
+			t.Errorf("dry-run: expected all 6 issues, got %d (%+v)", len(issues), issues)
+		}
+	})
+
+	t.Run("dry-run /overview exposes would_hide_count per project", func(t *testing.T) {
+		t.Setenv("PAIMOS_PORTAL_VISIBILITY_DRY_RUN", "true")
+
+		resp := ts.get(t, "/api/portal/overview", ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var ov struct {
+			Projects []struct {
+				ID             int64 `json:"id"`
+				WouldHideCount *int  `json:"would_hide_count"`
+			} `json:"projects"`
+		}
+		decode(t, resp, &ov)
+		var found bool
+		for _, p := range ov.Projects {
+			if p.ID == projectID {
+				found = true
+				if p.WouldHideCount == nil {
+					t.Fatal("dry-run: would_hide_count missing on project entry")
+				}
+				// Two open issues are untagged → would_hide_count = 2.
+				if *p.WouldHideCount != 2 {
+					t.Errorf("would_hide_count = %d, want 2", *p.WouldHideCount)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Fatal("project not found in overview")
+		}
+	})
+
+	t.Run("without dry-run /overview omits would_hide_count", func(t *testing.T) {
+		// (no t.Setenv → env var unset → enforcement on)
+		resp := ts.get(t, "/api/portal/overview", ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var ov struct {
+			Projects []struct {
+				ID             int64 `json:"id"`
+				WouldHideCount *int  `json:"would_hide_count"`
+			} `json:"projects"`
+		}
+		decode(t, resp, &ov)
+		for _, p := range ov.Projects {
+			if p.ID == projectID && p.WouldHideCount != nil {
+				t.Errorf("would_hide_count leaked outside dry-run mode: got %d", *p.WouldHideCount)
+			}
+		}
+	})
+}
+
 // ── User project access admin endpoints ─────────────────────────────────────
 
 func TestQuick_UserProjectAccess(t *testing.T) {

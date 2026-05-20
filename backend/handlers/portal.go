@@ -44,6 +44,12 @@ type portalProject struct {
 	DoneCount    int            `json:"done_count"`
 	LastActivity string         `json:"last_activity,omitempty"`
 	ByStatus     map[string]int `json:"by_status,omitempty"`
+	// WouldHideCount is the count of non-deleted issues in this project
+	// that lack the CUSTOMERPORTAL tag — i.e. the number that would be
+	// hidden if enforcement flipped on right now. Only set when
+	// PAIMOS_PORTAL_VISIBILITY_DRY_RUN=true (PAI-462), so operators can
+	// gauge the blast radius before unsetting the env var.
+	WouldHideCount *int `json:"would_hide_count,omitempty"`
 }
 
 type portalIssue struct {
@@ -1268,6 +1274,47 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 			  AND ` + acceptVisFrag
 		if err := db.DB.QueryRow(q, acceptArgs...).Scan(&out.KPIs.AcceptedThisMonth); err != nil {
 			log.Printf("portal overview accepted_this_month: %v", err)
+		}
+	}
+
+	// PAI-462: when running in dry-run mode (filter off), surface a
+	// per-project would_hide_count so operators can verify the blast
+	// radius before unsetting PAIMOS_PORTAL_VISIBILITY_DRY_RUN. The query
+	// counts non-deleted issues missing the CUSTOMERPORTAL tag — i.e.
+	// exactly what the live filter would hide.
+	if !portalVisibilityEnforced() {
+		tagID, _ := customerPortalTagID()
+		whcArgs := append([]any{tagID}, idArgs...)
+		q := `
+			SELECT i.project_id, COUNT(*)
+			FROM issues i
+			WHERE i.deleted_at IS NULL
+			  AND i.project_id IN (` + placeholders + `)
+			  AND NOT EXISTS (
+			    SELECT 1 FROM issue_tags it
+			    WHERE it.issue_id = i.id AND it.tag_id = ?
+			  )
+			GROUP BY i.project_id`
+		// Re-bind: NOT EXISTS uses tagID, IN uses idArgs.
+		whcArgs = append([]any{}, idArgs...)
+		whcArgs = append(whcArgs, tagID)
+		rows, err := db.DB.Query(q, whcArgs...)
+		if err == nil {
+			defer rows.Close()
+			byProject := map[int64]int{}
+			for rows.Next() {
+				var pid int64
+				var cnt int
+				if err := rows.Scan(&pid, &cnt); err == nil {
+					byProject[pid] = cnt
+				}
+			}
+			for i := range out.Projects {
+				v := byProject[out.Projects[i].ID]
+				out.Projects[i].WouldHideCount = &v
+			}
+		} else {
+			log.Printf("portal overview would_hide_count: %v", err)
 		}
 	}
 

@@ -4645,6 +4645,52 @@ func migrate(db *sql.DB) error {
 			        'request submission.',
 			        1)`,
 		}},
+
+		// Migration 110: PAI-462 — one-time backfill. Before this epic,
+		// existing terminal-status issues (delivered / done / accepted /
+		// invoiced) were visible to portal users. Auto-tag them so the
+		// PAI-460 filter doesn't make them silently vanish on rollout.
+		//
+		// The backfill is staged through a temp table so the same row set
+		// drives both the issue_tags inserts and the per-issue audit rows.
+		// Re-running the migration is a no-op: the NOT EXISTS gate skips
+		// already-tagged issues, the temp table is empty on the second
+		// pass, and no duplicate audit rows are written.
+		{110, []string{
+			`CREATE TEMPORARY TABLE _backfill_m110 AS
+			 SELECT i.id AS issue_id, t.id AS tag_id
+			 FROM issues i, tags t
+			 WHERE i.deleted_at IS NULL
+			   AND i.status IN ('delivered','done','accepted','invoiced')
+			   AND t.name = 'CUSTOMERPORTAL'
+			   AND NOT EXISTS (
+			     SELECT 1 FROM issue_tags it
+			     WHERE it.issue_id = i.id AND it.tag_id = t.id
+			   )`,
+
+			`INSERT INTO issue_tags(issue_id, tag_id)
+			 SELECT issue_id, tag_id FROM _backfill_m110`,
+
+			// Audit each backfilled attach with mutation_type
+			// 'issue.tag.migration_backfill' so the PAI-467 admin
+			// visibility report renders these distinctly from interactive
+			// toggles or portal auto-tags. on_user_stack=0 keeps them off
+			// individual users' undo stacks; undoable=0 forbids undo.
+			`INSERT INTO mutation_log
+			   (request_id, mutation_type, subject_type, subject_id,
+			    batch_id, inverse_op, before_state, after_state,
+			    before_hash, after_hash, undoable, on_user_stack)
+			 SELECT
+			   'migration:m110', 'issue.tag.migration_backfill',
+			   'issue_tag', issue_id,
+			   'm110-customerportal-backfill', '{}',
+			   json_object('issue_id', issue_id, 'tag_id', tag_id, 'exists', 0),
+			   json_object('issue_id', issue_id, 'tag_id', tag_id, 'exists', 1),
+			   '', '', 0, 0
+			 FROM _backfill_m110`,
+
+			`DROP TABLE _backfill_m110`,
+		}},
 	}
 
 	for _, m := range migrations {
