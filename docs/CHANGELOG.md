@@ -5,6 +5,53 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Customer Portal v2
+
+### Changed
+
+- **PAI-458** (umbrella + PAI-459..PAI-472) — **Customer-portal visibility
+  is now opt-in.** The portal previously surfaced every non-deleted
+  issue in projects a customer had access to, which leaked internal-only
+  types (Memory, Guideline, Runbook, External_system, Related_project)
+  along with cross-project notes and operational warnings. A new
+  system-managed `CUSTOMERPORTAL` tag gates customer visibility: only
+  tagged issues appear in any portal endpoint (overview, projects,
+  projects/:id, issues list, issues detail, summary). Internal users
+  toggle visibility from `IssueDetailView` (new eye-glyph toggle near
+  status/priority) or from the IssueList multi-select bulk toolbar.
+  Customer-submitted requests auto-tag on creation.
+
+  Rollout is gated by a one-time migration backfill plus a dry-run env
+  var. Migration M110 backfills every existing terminal-status issue
+  (`delivered` / `done` / `accepted` / `invoiced`) so that nothing
+  visible today disappears on rollout. Setting
+  `PAIMOS_PORTAL_VISIBILITY_DRY_RUN=true` leaves the filter off but
+  exposes a per-project `would_hide_count` on `/api/portal/overview`
+  so operators can gauge the blast radius before flipping live. Unset
+  the env var when ready. The rollout playbook lives in
+  `docs/CUSTOMER_PORTAL.md`.
+
+  Same release also rebuilds the portal project-detail page (formerly
+  a bespoke 517-line view) on top of two new shared components:
+  `IssueTable` and `IssueFilterBar` under
+  `frontend/src/components/issue-list/`. Layout matches the v2 design
+  mock — header card, KPI stat bar, filter card with sliding tab
+  strip, accept/reject row actions, mobile slide-up filter sheet,
+  responsive column drop to KEY / TITLE / STATUS / Action at <720px.
+  Internal IssueList gains an always-visible eye glyph in the type
+  cell (survives the tag-chip column being collapsed) and a three-
+  state cycle filter chip (visible / hidden / any). An admin-only
+  Customer Portal Visibility report at
+  `/admin/projects/:id/portal-visibility` surfaces the current set
+  plus a paginated audit feed from `mutation_log`, with CSV exports
+  for compliance pulls.
+
+  This is a Changed (not Added) entry because the visible surface
+  shrinks. After the dry-run grace period customer portals will list
+  fewer items per project than before. Per the 2026-05-20 CEO call,
+  customer comms are silent — no real customers are in production yet
+  on the bytepoets-side instance.
+
 ## [3.5.3] — 2026-05-20
 
 ### Fixed
