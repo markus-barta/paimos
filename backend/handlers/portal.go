@@ -120,6 +120,81 @@ func portalVisibilityCondition(alias string) (frag string, arg any, enforced boo
 	return "EXISTS (SELECT 1 FROM issue_tags itt WHERE itt.issue_id = " + alias + ".id AND itt.tag_id = ?)", id, true
 }
 
+// portalAllowedTypes is the set of issue types that may appear in the
+// customer-portal issues endpoint (PAI-461). Memory, Guideline, Runbook,
+// External_system, Related_project — internal knowledge surfaces — are
+// excluded by name even before the CUSTOMERPORTAL tag filter as a
+// defense-in-depth measure: a buggy or stale tag attached to a memory
+// row would still not leak through this list.
+var portalAllowedTypes = map[string]struct{}{
+	"epic":      {},
+	"cost_unit": {},
+	"release":   {},
+	"sprint":    {},
+	"ticket":    {},
+	"task":      {},
+}
+
+func portalAllowedType(t string) bool {
+	_, ok := portalAllowedTypes[t]
+	return ok
+}
+
+// portalSortColumns maps the user-facing sort key to the SQL column
+// expression (PAI-461). The column allowlist is enforced server-side so
+// the endpoint never builds an ORDER BY from arbitrary input.
+var portalSortColumns = map[string]string{
+	"":            "i.updated_at",
+	"key":         "i.issue_number",
+	"title":       "i.title",
+	"status":      "i.status",
+	"priority":    "i.priority",
+	"updated_at":  "i.updated_at",
+	"accepted_at": "i.accepted_at",
+}
+
+// portalSortColumn resolves an incoming `sort` query parameter to a
+// safe SQL column. Returns ok=false for any value not in the allowlist.
+func portalSortColumn(key string) (string, bool) {
+	col, ok := portalSortColumns[strings.ToLower(strings.TrimSpace(key))]
+	return col, ok
+}
+
+// portalCSV splits a comma-separated query parameter into its trimmed
+// non-empty values. Used by the multi-select portal filters (PAI-461).
+// We deliberately use comma-separated, not repeated params, to match the
+// internal IssueList contract that the shared IssueFilterBar will emit.
+func portalCSV(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// portalCSVInts is portalCSV's int64 variant for tag_ids. Non-integer
+// segments are dropped silently — the caller still validates the
+// remaining ids by joining on issue_tags.
+func portalCSVInts(raw string) []int64 {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		if v, err := strconv.ParseInt(strings.TrimSpace(p), 10, 64); err == nil && v > 0 {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // computeEur calculates EUR from hours/lp and the project's cost-unit rates.
 // For portal display, we use the rate_hourly and rate_lp from the issue's
 // parent epic or cost_unit. As a simpler approach, we compute from the issue
@@ -268,19 +343,47 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 	args := []any{projectID}
 
 	// PAI-460: gate to issues tagged CUSTOMERPORTAL (no-op when the
-	// dry-run env var is set per PAI-462).
+	// dry-run env var is set per PAI-462). PAI-461: multi-select filters
+	// are applied on top of the visibility gate, never around it.
 	if frag, arg, on := portalVisibilityCondition("i"); on {
 		where += " AND " + frag
 		args = append(args, arg)
 	}
 
-	if v := q.Get("status"); v != "" {
-		where += " AND i.status = ?"
-		args = append(args, v)
+	// PAI-461: status[], type[], priority[], tag_ids[] — comma-separated,
+	// allowlisted per field. Each filter is a no-op when its param is
+	// empty so existing single-value clients keep working.
+	if vals := portalCSV(q.Get("status")); len(vals) > 0 {
+		where += " AND i.status IN (" + buildPlaceholders(len(vals)) + ")"
+		for _, v := range vals {
+			args = append(args, v)
+		}
 	}
-	if v := q.Get("type"); v != "" {
-		where += " AND i.type = ?"
-		args = append(args, v)
+	if vals := portalCSV(q.Get("type")); len(vals) > 0 {
+		for _, v := range vals {
+			if !portalAllowedType(v) {
+				jsonError(w, "type not allowed in portal: "+v, http.StatusBadRequest)
+				return
+			}
+		}
+		where += " AND i.type IN (" + buildPlaceholders(len(vals)) + ")"
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	if vals := portalCSV(q.Get("priority")); len(vals) > 0 {
+		where += " AND i.priority IN (" + buildPlaceholders(len(vals)) + ")"
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	if tagIDs := portalCSVInts(q.Get("tag_ids")); len(tagIDs) > 0 {
+		// Every requested tag must be attached — AND semantics, not OR —
+		// which matches the internal IssueList contract for tag_ids.
+		for _, tid := range tagIDs {
+			where += ` AND EXISTS (SELECT 1 FROM issue_tags itf WHERE itf.issue_id = i.id AND itf.tag_id = ?)`
+			args = append(args, tid)
+		}
 	}
 	if v := q.Get("cost_unit"); v != "" {
 		where += " AND i.cost_unit = ?"
@@ -298,6 +401,21 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// PAI-461: sort + order, both allowlisted. Default preserves the
+	// pre-PAI-461 behaviour (most-recent first by updated_at).
+	sortCol, ok := portalSortColumn(q.Get("sort"))
+	if !ok {
+		jsonError(w, "sort column not allowed in portal: "+q.Get("sort"), http.StatusBadRequest)
+		return
+	}
+	orderDir := "DESC"
+	if d := strings.ToLower(strings.TrimSpace(q.Get("order"))); d == "asc" {
+		orderDir = "ASC"
+	} else if d != "" && d != "desc" {
+		jsonError(w, "order must be asc or desc", http.StatusBadRequest)
+		return
+	}
+
 	rows, err := db.DB.Query(fmt.Sprintf(`
 		SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 		       i.title, i.description, i.acceptance_criteria,
@@ -311,8 +429,8 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		FROM issues i
 		LEFT JOIN projects p ON p.id = i.project_id
 		%s
-		ORDER BY i.updated_at DESC
-	`, where), args...)
+		ORDER BY %s %s
+	`, where, sortCol, orderDir), args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return

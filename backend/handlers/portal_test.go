@@ -758,6 +758,65 @@ func TestQuick_PortalCustomerPortalFilter(t *testing.T) {
 		}
 	})
 
+	t.Run("PAI-461 status multi-select returns only requested + visible", func(t *testing.T) {
+		// visibleStatuses had 1 delivered + 2 done; hidden had several
+		// delivered/done too. status=done,delivered must return 3 (only
+		// visible).
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?status=done,delivered", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var issues []struct {
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		}
+		decode(t, resp, &issues)
+		if len(issues) != 3 {
+			t.Fatalf("status=done,delivered count = %d, want 3", len(issues))
+		}
+		for _, iss := range issues {
+			if iss.Status != "done" && iss.Status != "delivered" {
+				t.Errorf("issue %q has status %q outside requested set", iss.Title, iss.Status)
+			}
+			if iss.Title[:3] != "VIS" {
+				t.Errorf("untagged issue %q leaked through multi-select", iss.Title)
+			}
+		}
+	})
+
+	t.Run("PAI-461 type=memory is rejected with 400", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?type=memory", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusBadRequest)
+	})
+
+	t.Run("PAI-461 type=ticket,task is accepted", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?type=ticket,task", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+	})
+
+	t.Run("PAI-461 sort=internal_note is rejected with 400", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?sort=internal_note", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusBadRequest)
+	})
+
+	t.Run("PAI-461 sort=key&order=asc orders by issue_number ascending", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?sort=key&order=asc", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var issues []struct {
+			IssueKey string `json:"issue_key"`
+		}
+		decode(t, resp, &issues)
+		// Ascending key order on the 5 visible issues (VIS-1 → VIS-5)
+		// translates to ascending issue_number — verify the first two are
+		// the lowest of the bunch by simple string comparison on key suffix.
+		if len(issues) < 2 || issues[0].IssueKey >= issues[1].IssueKey {
+			t.Errorf("ascending sort failed: %+v", issues)
+		}
+	})
+
+	t.Run("PAI-461 order=sideways is rejected with 400", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?order=sideways", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusBadRequest)
+	})
+
 	t.Run("projektbericht snapshot is an explicit visibility override", func(t *testing.T) {
 		// Seed a minimal snapshot that embeds an untagged (hidden) issue.
 		// The /projektberichte/accept/{code} endpoint should still return
