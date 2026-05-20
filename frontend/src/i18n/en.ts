@@ -112,6 +112,29 @@ export default {
       },
     },
   },
+  // PAI-463 / PAI-464 / PAI-465: customer-portal visibility marker copy.
+  // Used by IssueVisibilityToggle, the status-transition nudge, the
+  // IssueList bulk action, and the chip/filter pair in PAI-466.
+  visibility: {
+    label: 'Visible in Customer Portal',
+    hint: 'Customers with portal access see this issue.',
+    hintOff: 'This issue is internal-only.',
+    disabledTooltip: 'Editor access required',
+    auditLine: 'Last toggled by {actor} · {when}',
+    auditAuto: 'Auto-tagged on portal submission · {when}',
+    auditMigration: 'Auto-tagged by rollout migration · {when}',
+    nudge: "This change isn't visible to the customer portal yet.",
+    nudgeAction: 'Make visible →',
+    bulkMakeVisible: 'Make visible in portal',
+    bulkHide: 'Hide from portal',
+    bulkConfirmTitle: 'Expose to customer portal?',
+    bulkConfirmBody:
+      'You are about to expose {n} issues to the customer portal. Confirm?',
+    filterTitle: 'Customer Portal',
+    filterVisible: 'Visible',
+    filterHidden: 'Hidden',
+    filterAny: 'Any',
+  },
   status: {
     new: 'New',
     backlog: 'Backlog',

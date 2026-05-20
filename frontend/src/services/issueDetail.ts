@@ -125,6 +125,32 @@ export function removeIssueTag(issueId: number, tagId: number): Promise<void> {
   return api.delete(`/issues/${issueId}/tags/${tagId}`)
 }
 
+// PAI-463: backs the IssueDetailView visibility toggle's audit line. The
+// payload is intentionally compact — the toggle's checked state and the
+// most recent CUSTOMERPORTAL attach/detach event, no historical list.
+export type PortalVisibilityEventType =
+  | 'auto_tag'
+  | 'migration_backfill'
+  | 'toggle_add'
+  | 'toggle_remove'
+
+export interface PortalVisibilityEvent {
+  actor: string
+  at: string
+  type: PortalVisibilityEventType | string
+}
+
+export interface PortalVisibilityResponse {
+  visible: boolean
+  last_event: PortalVisibilityEvent | null
+}
+
+export function loadIssuePortalVisibility(
+  issueId: number,
+): Promise<PortalVisibilityResponse> {
+  return api.get<PortalVisibilityResponse>(`/issues/${issueId}/portal-visibility`)
+}
+
 export function assignIssueSprint(issueId: number, sprintId: number): Promise<void> {
   return api.post(`/issues/${issueId}/relations`, { target_id: sprintId, type: 'sprint' })
 }

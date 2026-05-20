@@ -112,6 +112,27 @@ export default {
       },
     },
   },
+  // PAI-463 / PAI-464 / PAI-465: Sichtbarkeit im Kundenportal.
+  visibility: {
+    label: 'Im Kundenportal sichtbar',
+    hint: 'Kunden mit Portalzugang sehen dieses Issue.',
+    hintOff: 'Dieses Issue ist nur intern sichtbar.',
+    disabledTooltip: 'Editor-Berechtigung erforderlich',
+    auditLine: 'Zuletzt geändert von {actor} · {when}',
+    auditAuto: 'Automatisch vergeben bei Portal-Einreichung · {when}',
+    auditMigration: 'Automatisch vergeben durch Rollout-Migration · {when}',
+    nudge: 'Diese Änderung ist im Kundenportal noch nicht sichtbar.',
+    nudgeAction: 'Sichtbar machen →',
+    bulkMakeVisible: 'Im Portal sichtbar machen',
+    bulkHide: 'Aus dem Portal ausblenden',
+    bulkConfirmTitle: 'Im Kundenportal anzeigen?',
+    bulkConfirmBody:
+      'Es werden {n} Issues im Kundenportal sichtbar gemacht. Bestätigen?',
+    filterTitle: 'Kundenportal',
+    filterVisible: 'Sichtbar',
+    filterHidden: 'Ausgeblendet',
+    filterAny: 'Alle',
+  },
   status: {
     new: 'Neu',
     backlog: 'Backlog',

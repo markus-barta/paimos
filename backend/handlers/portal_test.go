@@ -1040,6 +1040,121 @@ func TestQuick_PortalCustomerPortalBackfill(t *testing.T) {
 	})
 }
 
+// PAI-463: the IssueDetailView visibility-toggle endpoint must reflect
+// the current CUSTOMERPORTAL attachment state and surface the most
+// recent mutation_log event for the audit-line.
+func TestQuick_IssuePortalVisibility(t *testing.T) {
+	ts := newTestServer(t)
+
+	var portalTagID int64
+	if err := db.DB.QueryRow(`SELECT id FROM tags WHERE name='CUSTOMERPORTAL'`).Scan(&portalTagID); err != nil {
+		t.Fatalf("CUSTOMERPORTAL tag missing: %v", err)
+	}
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Visibility Endpoint", "key": "VIS",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "Untagged issue", "type": "ticket", "status": "new",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	issueID := responseID(t, resp)
+
+	type visResp struct {
+		Visible   bool `json:"visible"`
+		LastEvent *struct {
+			Actor string `json:"actor"`
+			At    string `json:"at"`
+			Type  string `json:"type"`
+		} `json:"last_event"`
+	}
+
+	t.Run("untouched issue: visible=false, no last_event", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/issues/%d/portal-visibility", issueID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out visResp
+		decode(t, resp, &out)
+		if out.Visible {
+			t.Errorf("visible = true on untouched issue")
+		}
+		if out.LastEvent != nil {
+			t.Errorf("last_event = %+v, want nil", out.LastEvent)
+		}
+	})
+
+	t.Run("after admin toggles on: visible=true, last_event=toggle_add", func(t *testing.T) {
+		resp := ts.post(t, fmt.Sprintf("/api/issues/%d/tags", issueID), ts.adminCookie, map[string]any{
+			"tag_id": portalTagID,
+		})
+		assertStatus(t, resp, http.StatusNoContent)
+
+		resp = ts.get(t, fmt.Sprintf("/api/issues/%d/portal-visibility", issueID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out visResp
+		decode(t, resp, &out)
+		if !out.Visible {
+			t.Error("visible = false after attach")
+		}
+		if out.LastEvent == nil {
+			t.Fatal("last_event missing after attach")
+		}
+		if out.LastEvent.Actor != "admin" {
+			t.Errorf("last_event.actor = %q, want admin", out.LastEvent.Actor)
+		}
+		if out.LastEvent.Type != "toggle_add" {
+			t.Errorf("last_event.type = %q, want toggle_add", out.LastEvent.Type)
+		}
+		if out.LastEvent.At == "" {
+			t.Error("last_event.at empty")
+		}
+	})
+
+	t.Run("after detach: visible=false, last_event=toggle_remove", func(t *testing.T) {
+		resp := ts.del(t, fmt.Sprintf("/api/issues/%d/tags/%d", issueID, portalTagID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusNoContent)
+
+		resp = ts.get(t, fmt.Sprintf("/api/issues/%d/portal-visibility", issueID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out visResp
+		decode(t, resp, &out)
+		if out.Visible {
+			t.Error("visible = true after detach")
+		}
+		if out.LastEvent == nil || out.LastEvent.Type != "toggle_remove" {
+			t.Errorf("last_event = %+v, want type=toggle_remove", out.LastEvent)
+		}
+	})
+
+	t.Run("portal-submitted issue: last_event=auto_tag", func(t *testing.T) {
+		var extUserID int64
+		db.DB.QueryRow("SELECT id FROM users WHERE username='external'").Scan(&extUserID)
+		ts.post(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie, map[string]any{"project_id": projectID})
+
+		resp := ts.post(t, fmt.Sprintf("/api/portal/projects/%d/requests", projectID), ts.externalCookie, map[string]string{
+			"title": "Auto-tag visibility check",
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		var submitted struct {
+			ID int64 `json:"id"`
+		}
+		decode(t, resp, &submitted)
+
+		resp = ts.get(t, fmt.Sprintf("/api/issues/%d/portal-visibility", submitted.ID), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out visResp
+		decode(t, resp, &out)
+		if !out.Visible || out.LastEvent == nil || out.LastEvent.Type != "auto_tag" {
+			t.Errorf("portal submission visibility = %+v, want visible=true type=auto_tag", out)
+		}
+		if out.LastEvent.Actor != "external" {
+			t.Errorf("last_event.actor = %q, want external", out.LastEvent.Actor)
+		}
+	})
+}
+
 // ── User project access admin endpoints ─────────────────────────────────────
 
 func TestQuick_UserProjectAccess(t *testing.T) {

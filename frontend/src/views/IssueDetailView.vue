@@ -79,6 +79,10 @@ import { getLessonCapturePrompt } from "@/services/lessonCapture";
 import IssueDetailBody from "@/components/issue/IssueDetailBody.vue";
 import IssueDetailFooter from "@/components/issue/IssueDetailFooter.vue";
 import IssueTextEditField from "@/components/issue/IssueTextEditField.vue";
+// PAI-463: customer-portal visibility toggle + audit line. Rendered
+// below the type/status/priority subheader so it sits next to the
+// other issue-level "what state is this in" signals.
+import IssueVisibilityToggle from "@/components/IssueVisibilityToggle.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -569,6 +573,27 @@ function retryUpload(job: UploadJob) {
 
 function dismissJob(job: UploadJob) {
   uploadJobs.value = uploadJobs.value.filter((j) => j !== job);
+}
+
+// PAI-463: CUSTOMERPORTAL tag is the load-bearing visibility marker.
+// We derive the id from the loaded tag list rather than hard-coding it
+// because the id varies per environment (auto-increment column on tags).
+const CUSTOMER_PORTAL_TAG_NAME = "CUSTOMERPORTAL";
+const customerPortalTagId = computed<number | null>(() => {
+  const tag = allTags.value.find((t) => t.name === CUSTOMER_PORTAL_TAG_NAME);
+  return tag?.id ?? null;
+});
+const isVisibleToPortal = computed(() =>
+  (issue.value?.tags ?? []).some((t) => t.name === CUSTOMER_PORTAL_TAG_NAME),
+);
+async function onVisibilityToggle(makeVisible: boolean) {
+  const tagId = customerPortalTagId.value;
+  if (!tagId) return;
+  if (makeVisible) {
+    await addTag(tagId);
+  } else {
+    await removeTag(tagId);
+  }
 }
 
 async function addTag(tagId: number) {
@@ -1122,6 +1147,19 @@ async function cancelEdit() {
                 {{ PRIORITY_LABEL[issue.priority] }}
               </span>
             </template>
+          </div>
+          <!-- PAI-463: customer-portal visibility toggle + audit line.
+               Lives between the type/status/priority subheader and the
+               title so it reads as a third high-level signal about the
+               issue's state, not buried among the edit-only sidebar
+               controls. -->
+          <div class="issue-visibility-row">
+            <IssueVisibilityToggle
+              :issue-id="issueId"
+              :visible="isVisibleToPortal"
+              :can-edit="canEditThisProject && customerPortalTagId !== null"
+              @toggle="onVisibilityToggle"
+            />
           </div>
           <h1 v-if="!editing" class="issue-title">{{ issue.title }}</h1>
           <input v-else v-model="form.title" class="title-input" type="text" />
@@ -1703,6 +1741,12 @@ async function cancelEdit() {
   font-weight: 700;
   color: var(--text);
   line-height: 1.3;
+}
+.issue-visibility-row {
+  /* PAI-463: sits between subheader and title; small top gap so it
+     doesn't crowd the priority pill. */
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
 }
 .title-input {
   font-size: 16px;

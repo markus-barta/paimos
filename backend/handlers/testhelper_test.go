@@ -275,6 +275,7 @@ func buildRouter() http.Handler {
 
 			r.Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
+			r.Get("/issues/{id}/portal-visibility", handlers.GetIssuePortalVisibility)
 			r.Get("/projects/{id}/tags", handlers.ListProjectTags)
 			r.Post("/projects/{id}/tags", handlers.AddTagToProject)
 			r.Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)

@@ -537,6 +537,9 @@ func main() {
 			r.With(auth.RequireProjectView).Get("/projects/{id}/tags", handlers.ListProjectTags)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/tags", handlers.AddTagToIssue)
 			r.With(auth.RequireIssueEdit).Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
+			// PAI-463: compact endpoint backing the IssueDetailView visibility
+			// toggle's audit line. Read-only — any user with issue access.
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/portal-visibility", handlers.GetIssuePortalVisibility)
 			r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)
 			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
 
