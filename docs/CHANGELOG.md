@@ -5,6 +5,27 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1] — 2026-05-21
+
+### Added
+
+- **PAI-478** — **Time entries gained a date field; override
+  strike-through now explains itself.** The manual "Log time" form on
+  every issue gains a Date input (default = today) and persists
+  `started_at`/`stopped_at` on the chosen day instead of `now`, so
+  retroactive bookings actually carry the day the work happened.
+  Existing entries gained click-to-edit on the Start date cell (a
+  delta-shift that preserves time-of-day and applies the same shift to
+  both timestamps, keeping duration intact for non-override timer
+  rows). Strike-through styling for `override != null` stays — the
+  semantics ("manual override; start/stop don't determine the hours")
+  are still useful — but the date cells now carry a hover tooltip that
+  spells out *why* they're struck through, so colleagues who read the
+  visual as "deleted / wrong" get a clear explanation. Backend already
+  accepted `started_at`/`stopped_at` on `PUT /api/time-entries/{id}`
+  with `mutation_log` and existing self/super-admin gating; this is a
+  pure frontend change.
+
 ## [3.7.0] — 2026-05-20
 
 ### Added

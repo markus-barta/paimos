@@ -25,8 +25,41 @@ const teLoading      = ref(false)
 const showTeForm     = ref(false)
 const teSaving       = ref(false)
 const teError        = ref('')
-const teForm         = ref({ duration: '', comment: '', userId: 0 as number })
+const teForm         = ref({ duration: '', comment: '', userId: 0 as number, date: '' })
 const teDurationRef  = ref<HTMLInputElement | null>(null)
+
+// PAI-478: localISODate / localDateFromISO / shiftDateInISO are used by
+// both the create form (date field default + submit) and the inline
+// date edit on existing rows. We deal with two representations:
+//   - "YYYY-MM-DD" in the user's local timezone (what date pickers speak)
+//   - "YYYY-MM-DDTHH:MM:SSZ" UTC ISO (what the API stores)
+// Edits preserve the time-of-day in UTC and only shift the calendar
+// date by the chosen delta. That keeps duration-by-subtraction intact
+// for non-override timer entries and keeps the display stable.
+function localISODate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+function localDateFromISO(iso: string): string {
+  const d = new Date(iso.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso.replace(' ', 'T') + 'Z')
+  return localISODate(d)
+}
+function shiftDateInISO(iso: string, oldLocalDate: string, newLocalDate: string): string {
+  const a = new Date(`${oldLocalDate}T00:00:00`).getTime()
+  const b = new Date(`${newLocalDate}T00:00:00`).getTime()
+  const delta = b - a
+  const t = new Date(iso.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso.replace(' ', 'T') + 'Z').getTime()
+  return new Date(t + delta).toISOString()
+}
+function isoOnLocalDate(localDate: string, now: Date): string {
+  // Compose started_at/stopped_at for a new manual entry: chosen local
+  // date + current local time-of-day, serialized as UTC ISO.
+  const [y, m, d] = localDate.split('-').map(Number)
+  const local = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+  return local.toISOString()
+}
 
 // PAI-335: super-admin can log time on behalf of any user. The picker
 // only renders when authStore.isSuperAdmin so non-super-admins never
@@ -98,6 +131,10 @@ function openTeForm() {
     comment: '',
     // PAI-335: default to caller; super-admin can change via picker.
     userId: authStore.user?.id ?? 0,
+    // PAI-478: default to today (local). User can pick a past day for
+    // retroactive bookings — started_at/stopped_at will be persisted on
+    // that day rather than `now`.
+    date: localISODate(new Date()),
   }
   teError.value = ''
   showTeForm.value = true
@@ -116,12 +153,17 @@ async function submitTimeEntry() {
       teSaving.value = false
       return
     }
-    const now = new Date().toISOString()
+    // PAI-478: persist on the chosen date (default = today). The
+    // override semantics are unchanged; only the calendar day on which
+    // the entry "happened" reflects what the user actually entered.
+    const stamp = teForm.value.date
+      ? isoOnLocalDate(teForm.value.date, new Date())
+      : new Date().toISOString()
     const body: CreateTimeEntryPayload = {
       comment: teForm.value.comment,
       override: hours,
-      started_at: now,
-      stopped_at: now,
+      started_at: stamp,
+      stopped_at: stamp,
     }
     // PAI-335: only attach user_id when the super-admin picked
     // someone OTHER than themselves. Sending the caller's own id is
@@ -200,6 +242,42 @@ async function saveComment(entry: TimeEntry) {
   await load()
 }
 
+// PAI-478: inline date edit. Click the Start cell to change which
+// calendar day a retroactively-booked entry belongs to. We preserve
+// each timestamp's time-of-day and shift only the calendar date by
+// the chosen delta — keeps duration-by-subtraction intact for non-
+// override timer entries (the user almost certainly doesn't want
+// "move yesterday's 30min into today" to also resize it).
+const editingTeDateId = ref<number | null>(null)
+const editingTeDate = ref('')
+
+function startEditDate(entry: TimeEntry) {
+  if (!canEditEntry(entry)) return
+  // A running timer has no fixed date yet; disallow until it's stopped.
+  if (!entry.stopped_at) return
+  editingTeDateId.value = entry.id
+  editingTeDate.value = localDateFromISO(entry.started_at)
+}
+
+async function saveDate(entry: TimeEntry) {
+  const newDate = editingTeDate.value
+  editingTeDateId.value = null
+  if (!newDate) return
+  const oldDate = localDateFromISO(entry.started_at)
+  if (newDate === oldDate) return
+  if (entry.user_id !== authStore.user?.id) {
+    if (!await confirm({ message: `You are editing ${entry.username}'s time entry. Continue?`, confirmLabel: 'Edit' })) return
+  }
+  const payload: Record<string, unknown> = {
+    started_at: shiftDateInISO(entry.started_at, oldDate, newDate),
+  }
+  if (entry.stopped_at) {
+    payload.stopped_at = shiftDateInISO(entry.stopped_at, oldDate, newDate)
+  }
+  await updateTimeEntry(entry.id, payload)
+  await load()
+}
+
 async function clearOverride(entry: TimeEntry) {
   if (!await confirm({ message: 'Clear the manual time override? The original tracked duration will be restored.', confirmLabel: 'Clear', danger: true })) return
   await updateTimeEntry(entry.id, { clear_override: true })
@@ -259,6 +337,10 @@ async function deleteTimeEntry(entry: TimeEntry) {
 
         <div v-if="showTeForm" class="te-form">
           <div class="te-form-row">
+            <div class="field" style="flex:0 0 auto">
+              <label>Date</label>
+              <input v-model="teForm.date" type="date" class="te-date-input" />
+            </div>
             <div class="field" style="flex:1">
               <label>Duration</label>
               <input ref="teDurationRef" v-model="teForm.duration" type="text" placeholder="e.g. 1h30m, 45m, +10m" />
@@ -306,8 +388,30 @@ async function deleteTimeEntry(entry: TimeEntry) {
           <tbody>
             <tr v-for="e in timeEntries" :key="e.id" :class="{ 'te-overridden': e.override != null, 'te-row-running': !e.stopped_at && timerStore.isRunning(e.issue_id) }">
               <td class="te-user">{{ e.username || '—' }}</td>
-              <td class="te-date" :class="{ 'te-struck': e.override != null }">{{ fmtShortDateTime(e.started_at) }}</td>
-              <td class="te-date" :class="{ 'te-struck': e.override != null }">{{ e.stopped_at ? fmtShortDateTime(e.stopped_at) : '—' }}</td>
+              <td
+                class="te-date"
+                :class="{ 'te-struck': e.override != null, 'te-date--editable': canEditEntry(e) && e.stopped_at }"
+                :title="e.override != null ? 'Manual override active — the start/stop times do not determine the hours; hours are set manually below. Click to change the date.' : (canEditEntry(e) && e.stopped_at ? 'Click to change the date' : undefined)"
+                @click="startEditDate(e)"
+              >
+                <input
+                  v-if="editingTeDateId === e.id"
+                  v-model="editingTeDate"
+                  type="date"
+                  class="te-date-input te-date-input--inline"
+                  @blur="saveDate(e)"
+                  @keydown.enter="saveDate(e)"
+                  @keydown.escape="editingTeDateId = null"
+                  @click.stop
+                  autofocus
+                />
+                <template v-else>{{ fmtShortDateTime(e.started_at) }}</template>
+              </td>
+              <td
+                class="te-date"
+                :class="{ 'te-struck': e.override != null }"
+                :title="e.override != null ? 'Manual override active — the start/stop times do not determine the hours; hours are set manually below.' : undefined"
+              >{{ e.stopped_at ? fmtShortDateTime(e.stopped_at) : '—' }}</td>
               <td class="te-hours" :style="canEditEntry(e) ? { cursor: 'pointer' } : {}" @click="startEditDuration(e)">
                 <template v-if="editingTeId === e.id">
                   <input class="te-duration-input" v-model="editingTeValue" @blur="saveDuration(e)" @keydown.enter="saveDuration(e)" @keydown.escape="editingTeId = null" autofocus />
@@ -440,6 +544,16 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .te-table td { padding: .45rem .6rem; vertical-align: middle; }
 .te-user { font-weight: 600; }
 .te-date { color: var(--text-muted); white-space: nowrap; }
+.te-date--editable { cursor: pointer; }
+.te-date--editable:hover { color: var(--bp-blue); }
+.te-date-input {
+  font-size: 12px; border: 1px solid var(--border); border-radius: 3px;
+  padding: .1rem .3rem; outline: none; font-family: inherit;
+  background: var(--bg-card); color: var(--text);
+}
+.te-date-input--inline {
+  width: 130px; border-color: var(--bp-blue);
+}
 .te-hours { font-weight: 700; white-space: nowrap; cursor: pointer; position: relative; }
 .te-hours:hover { color: var(--bp-blue); }
 .te-comment { color: var(--text-muted); max-width: 240px; cursor: pointer; }
