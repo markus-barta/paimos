@@ -80,7 +80,8 @@ GET    /issues/:id/aggregation      rollup stats
 GET    /issues/:id/children
 GET    /issues/:id/history          audit trail (who/when/diff)
 GET    /issues/:id/comments
-POST   /issues/:id/comments         {body}
+POST   /issues/:id/comments         {body, visibility?: 'internal'|'external'}   default internal (PAI-475)
+PATCH  /comments/:id                {visibility: 'internal'|'external'}          author or admin
 DELETE /comments/:id
 GET    /issues/:id/anchors
 ```
