@@ -18,21 +18,22 @@ Start here when opening this repo cold.
 ## Project-context surface
 
 - `GET /api/projects/{id}/repos`
-- `GET /api/projects/{id}/manifest`
+- `GET /api/projects/{id}/knowledge` — unified knowledge plane (PAI-338); replaces the removed `/manifest` endpoint
 - `POST /api/projects/{id}/anchors`
 - `GET /api/projects/{id}/graph`
 - `GET /api/projects/{id}/graph/blast-radius`
 - `POST /api/projects/{id}/retrieve`
 - `GET /api/issues/{id}/anchors`
+- `GET /api/projects/{id}/agents/{name}.json` — canonical agent artifact (PAI-329)
 
 ## Repo-side tooling
 
-- `go run ./backend/cmd/paimos anchors scan --repo-root . --output .pmo/anchors.json`
-- `go run ./backend/cmd/paimos anchors verify --repo-root . --index .pmo/anchors.json`
-- `go run ./backend/cmd/paimos manifest pull --project PAI --repo-root .`
+- `paimos anchors scan --output .pmo/anchors.json`
+- `paimos anchors verify --index .pmo/anchors.json`
+- `paimos onboard --project PAI [--agent <name>]` — single-shot project briefing (PAI-340)
+- `paimos skill render <agent>` — render an agent artifact through a harness adapter (PAI-329 / PAI-332)
 
 ## Notes
 
 - The committed `.pmo/anchors.json` is dogfood for the anchor tooling.
-- Managed `AGENTS.md` blocks written by `paimos manifest pull` use
-  `<!-- pmo-manifest: managed:start -->` / `<!-- pmo-manifest: managed:end -->`.
+- Skill files rendered by `paimos skill render` carry a paimos-managed header so `paimos sync check` can detect drift; the legacy `paimos manifest pull` flow was removed in PAI-358 (replaced by the knowledge plane).
