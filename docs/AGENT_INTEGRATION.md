@@ -75,6 +75,22 @@ Cookie-authenticated responses (i.e. browser SPA, not API keys)
 additionally carry `X-Session-Expires-At` (RFC3339) for the unified
 expiry-modal flow (PAI-322).
 
+### Agent attribution headers (PAI-324 / PAI-325 / PAI-354)
+
+Two request headers tag every mutation with the agent and session that
+caused it. Both are optional — missing headers persist as NULL — but
+strongly recommended for any non-human caller:
+
+| Header | Persists to | Notes |
+|---|---|---|
+| `X-Paimos-Agent-Name` | `issue_history.agent_name`, `mutation_log.agent_name` | Free-text label (≤ 64 chars). Convention: kebab-case role name (`ops`, `dev`, `sec-review`). |
+| `X-Paimos-Session-Id` | `issue_history.session_id`, `mutation_log.session_id` | UUIDv7 minted by `paimos session start`. Shared across every call within one "session" so the undo / activity feeds group correctly. |
+
+The `paimos` CLI forwards both headers automatically when
+`PAIMOS_AGENT_NAME` / `PAIMOS_SESSION_ID` env vars are set — see
+`AGENT_INTERFACE.md` §4a for the `paimos session start` flow. Hand-
+rolled HTTP clients should set them explicitly.
+
 ---
 
 ## Core workflows for agents

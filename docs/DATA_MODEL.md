@@ -82,6 +82,10 @@ issue_relations (
 | `sprint` | sprint | ticket | Ticket is in this sprint |
 | `depends_on` | any issue | any issue | Source depends on target |
 | `impacts` | any issue | any issue | Source impacts target |
+| `follows_from` | any issue | any issue | Source is a sequel/follow-up of target |
+| `blocks` | any issue | any issue | Source blocks target's progress |
+| `related` | any issue | any issue | Loose "see also" link with no causal direction |
+| `applies_to_memory` | ticket | memory entry | Ticket's lesson surfaces against this memory (PAI-342 / M97) |
 
 - A ticket can have 0..N group relations of different group types
 - A ticket can be in 0..N sprints (tickets flow between sprints)
@@ -113,6 +117,13 @@ Tasks always have exactly one ticket parent. This stays on `issues.parent_id`, u
 | `sprint` | Sprint | Time-boxed iteration; tickets flow in/out between sprints |
 | `ticket` | Ticket | Work item; can belong to multiple groups and sprints |
 | `task` | Task | Sub-item of a ticket; strict single parent |
+| `memory` | Knowledge | Reusable lesson / rule the agents must follow (PAI-338) |
+| `runbook` | Knowledge | Operator playbook for a known scenario |
+| `external_system` | Knowledge | Pointer to an external service the project depends on |
+| `related_project` | Knowledge | Cross-project reference card |
+| `guideline` | Knowledge | Soft convention that isn't a hard rule |
+
+The knowledge types share the issue infrastructure — history, comments, tags, FTS, soft-delete, undo all work the same. They differ via the `category_metadata` JSON column and the `slug` lookup key (see "Knowledge plane + agent attribution" below).
 
 ---
 
@@ -383,6 +394,126 @@ PAI-336 also adds `role_permissions` for seeded role capability checks
 and `super_admin_audit` for queryable privileged-action traceability.
 PAI-389 extends that audit feed with impersonation start/end rows and
 mutating-request rows while the impersonation frame is active.
+
+---
+
+## Knowledge plane + agent attribution (v2.8.x — M93..M101)
+
+The v2.8.x release cycle introduced the knowledge plane (project agents,
+five new knowledge issue types, per-(user, device, project) sync watches)
+and the agent-attribution split (who/which-session caused each mutation).
+All migrations are additive — no data backfill, existing rows stay NULL
+or default-valued.
+
+### Knowledge plane on `issues` (M96 — PAI-338)
+
+`issues` gained two columns plus extended CHECK constraints to host
+knowledge entries as first-class rows:
+
+| Column | Type | Notes |
+|---|---|---|
+| `slug` | TEXT NULL | Knowledge-type lookup key. Pattern `[a-z][a-z0-9_-]*`, max 64 chars, application-enforced. NULL on non-knowledge issues. |
+| `category_metadata` | TEXT NULL | Per-type tail fields (e.g. `external_system.url`) as JSON-as-text. |
+
+Plus the `type` CHECK now includes `memory`, `runbook`, `external_system`,
+`related_project`, `guideline`; the `status` CHECK adds `archived` and
+`proposed`. Index: `UNIQUE(type, slug, project_id) WHERE slug IS NOT NULL`
+— scoped via partial index so non-knowledge issues stay unconstrained.
+
+### Cross-scope memory + reference tracking (M99 — PAI-345, M100 — PAI-347)
+
+| Migration | Column | Type | Purpose |
+|---|---|---|---|
+| M99 | `issues.user_id` | INTEGER NULL REFERENCES users(id) | Discriminator for the three memory scopes: `(project_id NOT NULL, user_id NULL)` = project memory; `(project_id NULL, user_id NOT NULL)` = user memory; both NULL = instance memory (admin-only). Enforced application-side. |
+| M100 | `issues.reference_count` | INTEGER NOT NULL DEFAULT 0 | Increments on each `paimos session start --bundle full` resolve (PAI-340) and on auto-suggest surface (PAI-342). |
+| M100 | `issues.last_referenced_at` | TEXT NULL | Wall-clock of the most recent reference. Pre-M100 rows treated as "freshly referenced" by the stale-proposal logic so the migration day doesn't flood the archive queue. |
+
+Index: `idx_issues_user_type` partial — only rows with `user_id IS NOT NULL`.
+
+### Project agents + inventories (M94 — PAI-326, M95 — PAI-329)
+
+The "what agents work this project" definition lives in project metadata
+instead of per-repo local files. Three new tables — one for the declarable
+agents themselves, two for inventories the agent artifacts inherit from.
+
+#### `project_agents` (M94 + M95 extensions)
+
+```sql
+project_agents (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name                 TEXT NOT NULL,
+    description          TEXT NOT NULL DEFAULT '',
+    slash_command_name   TEXT NOT NULL DEFAULT '',
+    lane_tags            TEXT NOT NULL DEFAULT '[]',   -- JSON array
+    metadata             TEXT NOT NULL DEFAULT '{}',   -- JSON object
+    body                 TEXT NOT NULL DEFAULT '',     -- M95: markdown freetext (rendered skill body)
+    bootstrap_steps      TEXT NOT NULL DEFAULT '[]',   -- M95: JSON array of {title, command, rationale}
+    non_negotiable_rules TEXT NOT NULL DEFAULT '[]',   -- M95: JSON array of {title, body, memory_ref}
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+)
+```
+
+- UNIQUE INDEX on `(project_id, name)` — one agent name per project.
+- `memory_ref` inside `non_negotiable_rules` is just a string here; resolution into an actual memory entry happens at render time (PAI-330).
+
+#### `project_environments` + `project_deploy_recipes` (M95)
+
+Project-level shared inventories the agent artifacts can reference by
+name. Same shape — separate tables (mirrors the M75 `project_repos`
+precedent: one row per item, no JSON-blob editing dance).
+
+| Table | Key columns | Purpose |
+|---|---|---|
+| `project_environments` | `name`, `url`, `host_alias`, `host_ip`, `sort_order` | Staging vs prod, named hosts the agent body can address by alias |
+| `project_deploy_recipes` | `name`, `command`, `summary`, `sort_order` | Named deployment shorthand the agent body can reference by name |
+
+Both: UNIQUE on `(project_id, name)`; ordering index on `(project_id, sort_order, id)`.
+
+`project_repos` (existing, M75) is the third leg of project-level
+inventory and is reused as-is; the canonical agent-artifact endpoint
+inlines all three.
+
+### Auto-watch sync subscriptions (M98 — PAI-331)
+
+Per-(user, device, project) opt-in for the sync engine's SSE push
+channel. Default OFF — a fresh (device, project) tuple does not
+auto-receive updates. PAI-341 (knowledge-plane sync) reuses this table
+verbatim; one row covers all kinds for that triple.
+
+```sql
+auto_watch_subscriptions (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id   TEXT NOT NULL,
+    project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    enabled     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, device_id, project_id)
+)
+```
+
+Toggling `enabled` OFF invalidates the device's active SSE connection
+server-side. Subscriptions are managed under
+**Settings → Account → Auto-watch sync**.
+
+### Agent/session attribution (M93 — PAI-324, M101 — PAI-354)
+
+Two parallel nullable-column adds to capture who/which-session caused a
+mutation, without forcing a backfill:
+
+| Migration | Table | Column |
+|---|---|---|
+| M93 | `issue_history` | `agent_name TEXT NULL`, `session_id TEXT NULL` |
+| M101 | `mutation_log` | `agent_name TEXT NULL` (session_id already arrived via M83) |
+
+Write endpoints persist the values from the `X-Paimos-Agent-Name` and
+`X-Paimos-Session-Id` headers when present; existing rows pre-M93/M101
+stay NULL. Length cap is enforced application-side (64 chars each,
+`handlers.agentAttrCap`) before the INSERT — SQLite `ALTER TABLE` can't
+add CHECK retroactively. PAI-209 undo/redo is unaffected; the new
+columns are purely informational.
 
 ---
 

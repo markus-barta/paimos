@@ -280,6 +280,55 @@ Look at `handlers/integrations.go`, `handlers/jiraimport.go`, and
 - Long-running imports run as async jobs tracked in a jobs table
 - Status endpoints poll the jobs table
 
+### Adding a knowledge-plane writes hook (PAI-353)
+
+Knowledge entries (memory / runbook / external_system / related_project
+/ guideline) are issues with extra discipline. When you ship behaviour
+that should fire on a knowledge mutation — e.g. reference-count bumps
+(PAI-347), propose-flow rate limits (PAI-349), agent re-render
+notifications (PAI-331) — wire it as a writes hook in
+`backend/handlers/knowledge/`:
+
+1. Register the hook against the canonical `Create` / `Update` /
+   `Delete` handlers (they fan out to per-type code paths but share the
+   hook chain).
+2. Hooks receive the pre-mutation row and the post-mutation row;
+   short-circuit by returning an `*errs.Reject` to fail the request
+   before the DB write commits.
+3. Side effects that must survive failures (audit, push, fan-out) live
+   in `defer` blocks gated on the commit succeeding — same pattern as
+   `mutation_log` writes elsewhere in handlers.
+
+### Adding a sync `Resource` (PAI-331 / PAI-341)
+
+The sync engine (`paimos sync`, the `/projects/:id/agents/events` SSE
+stream, the `.rev` cheap-poll fallback) operates over a kind registry.
+Today only `skill` is registered; PAI-341 adds knowledge-plane kinds.
+To add one:
+
+1. Implement the `sync.Resource` interface (currentRev, list, fetch,
+   write) in `backend/sync/<kind>.go`. Reuse the `.json` / `.rev`
+   handler pair so the cheap-poll fallback works out of the box.
+2. Register the kind in `backend/sync/registry.go` so the generic verbs
+   (`paimos sync init|pull|watch|check`) discover it.
+3. Add a CLI alias under `backend/cmd/paimos/cmd_<kind>.go` only if the
+   verb deserves friendlier ergonomics than `paimos sync <verb>
+   --kind=<kind>`.
+
+### Adding a harness adapter (PAI-332)
+
+External harnesses (e.g. cursor, aider, your-tool) plug into
+`paimos skill render` via the adapter SDK at `docs/adapter-protocol.md`:
+
+1. A discoverable adapter is a directory on `$PAIMOS_ADAPTER_PATH`
+   containing a `manifest.json` (declared name, version, render
+   capabilities) plus the rendering binary.
+2. Adapters speak a small line-oriented protocol over stdin/stdout —
+   PAIMOS hands them the canonical agent artifact JSON; they emit the
+   harness-specific file path + content.
+3. `paimos skill test-adapter <path>` runs the PAI-332 conformance
+   suite — drop-in CI gate for adapter authors.
+
 ### Changing brand defaults
 
 PAIMOS's identity is set via `BRAND_*` env vars (loaded once at

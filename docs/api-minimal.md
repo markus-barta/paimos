@@ -224,6 +224,40 @@ GET    /search?q=<term>             min 2 chars; also matches issue keys (prefix
 `/projects/:id/graph`, `/projects/:id/retrieve`, and `/issues/:id/anchors`
 form the project-context layer for agents.
 
+## Agents & inventories (PAI-326 / PAI-329 / PAI-331)
+
+Each project declares the agents that work it plus shared inventories
+(environments, deploy recipes) those agents inherit. Reads are
+project-view-gated; writes are admin-only.
+
+```
+GET    /projects/:id/agents
+POST   /projects/:id/agents            { name, description?, slash_command_name?, lane_tags?, metadata?, body?, bootstrap_steps?, non_negotiable_rules? }
+PUT    /projects/:id/agents/:name      partial update
+DELETE /projects/:id/agents/:name
+GET    /projects/:id/agents/:name.json canonical agent artifact (inlines repos + environments + deploy_recipes)
+GET    /projects/:id/agents/:name.md   markdown rendering for CLI / skill render
+GET    /projects/:id/agents/:name.rev  plain-text rev hash for cheap-poll fallback
+GET    /projects/:id/agents/events     SSE stream — auto-watch sync (PAI-331)
+```
+
+Project inventories — small CRUD trios shared by every agent in the project:
+
+```
+GET    /projects/:id/environments
+POST   /projects/:id/environments      { name, url?, host_alias?, host_ip?, sort_order? }
+PUT    /projects/:id/environments/:envId
+DELETE /projects/:id/environments/:envId
+
+GET    /projects/:id/deploy-recipes
+POST   /projects/:id/deploy-recipes    { name, command?, summary?, sort_order? }
+PUT    /projects/:id/deploy-recipes/:recipeId
+DELETE /projects/:id/deploy-recipes/:recipeId
+```
+
+`/projects/:id/repos` (existing) is the third inventory; all three are
+inlined into the canonical agent artifact at render time.
+
 ## Knowledge
 
 Knowledge entries (memory, runbook, external_system, related_project,
@@ -254,8 +288,28 @@ GET  /projects/:id/knowledge/memory/stale[?days=N]      decay candidates
 GET  /projects/:id/knowledge/memory/proposed/stale[?days=N]   aged drafts
 ```
 
-Cross-scope memory (out-of-project ownership) stays on its own surface
-(`/users/me/memory`, `/instance/memory`, `POST /memory/:slug/promote`).
+Cross-scope memory (out-of-project ownership) — user-scoped and
+instance-scoped memory live alongside project knowledge but on their
+own resources:
+
+```
+GET    /users/me/memory                   list this user's memory entries
+POST   /users/me/memory                   { slug, title, body?, status?, metadata? }
+GET    /users/me/memory/:slug
+PUT    /users/me/memory/:slug             full replacement
+DELETE /users/me/memory/:slug
+
+GET    /instance/memory                   instance-wide memory (read = any user)
+GET    /instance/memory/:slug
+POST   /memory/:slug/promote              { from: 'project'|'user', to: 'user'|'instance', source_project_id? }
+```
+
+Issue-level surfaces that lean on the knowledge plane:
+
+```
+GET    /issues/:id/applicable-memories    PAI-342 — memories that match this issue's surface
+GET    /issues/:id/lesson-capture-prompt  PAI-343 — prefilled prompt for closing-as-lesson UX
+```
 
 The discoverable schema at `GET /api/schema` exposes the registered
 type set under `enums.knowledge_types` and the full surface under
@@ -275,6 +329,33 @@ the top-level `knowledge` block.
 
 Recommended manifest keys in v1: `repos`, `commands`, `stack`, `services`,
 `owners`, `nfrs`, `adrs`.
+
+## Auto-watch sync (PAI-331)
+
+Per-(user, device, project) opt-in for the agent-events SSE stream.
+Default OFF — a fresh `(device, project)` tuple does not receive
+pushes. Toggling OFF invalidates the device's active SSE connection
+server-side.
+
+```
+GET    /auth/auto-watch                                this user's subscriptions
+PUT    /auth/auto-watch/:deviceID/:projectID           { enabled: bool }
+DELETE /auth/auto-watch/:deviceID/:projectID           explicit unsubscribe
+```
+
+PAI-341 (knowledge-plane sync) reuses the same `(user, device, project)`
+table verbatim; one subscription covers all kinds for that triple.
+
+## Adapter registry (PAI-332)
+
+```
+GET    /registry/adapters                              all adapters paimos can hand off to
+```
+
+Returns the merged in-tree + `$PAIMOS_ADAPTER_PATH`-discovered adapter
+list, with `name`, `source` (`builtin` or `PAIMOS_ADAPTER_PATH`),
+`harness`, and the rendering capabilities each one exposes.
+Env-discovered adapters override in-tree adapters with the same name.
 
 ## Schema (self-describing discovery)
 

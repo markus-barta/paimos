@@ -372,6 +372,21 @@ operators see the full chain in `docker compose logs paimos`.
   resilience and serves the last-known-good snapshot when the
   upstream call fails (with a `stale: true` flag in the response).
 
+## Knowledge plane (PAI-326 → PAI-354)
+
+The knowledge plane (project agents + memory / runbooks / external-systems
+/ related-projects / guidelines + propose verb + adapter discovery) is on
+by default. The knobs below tune the propose verb's rate limits and the
+external-adapter discovery path; nothing here gates the read-side or the
+inline-knowledge UI.
+
+| Var | Default | Notes |
+|---|---|---|
+| `PAIMOS_PROPOSE_LIMIT_PER_SESSION` | `5` | Per-`(agent, session)` cap on `paimos memory propose` calls before the verb returns 429. Non-positive / non-numeric values fall back to the default (a `0` here would be a foot-gun). |
+| `PAIMOS_PROPOSE_DISABLED` | *(unset)* | Operator opt-out. Set to `1`, `true`, `yes`, or `on` to make the propose path return 503 instance-wide. Useful when an agent goes rogue or for read-only release windows. |
+| `PAIMOS_PROPOSE_STALE_DAYS` | `30` | Threshold for `GET /api/projects/:id/memory/proposed/stale` — proposed entries untouched this long surface in the admin "stale proposed" view. Per-request `?days=N` wins over the env value. |
+| `PAIMOS_ADAPTER_PATH` | *(unset)* | Colon-separated list of directories `paimos skill render` walks to discover external adapters (PAI-332). Mirrors `$PATH` semantics — empty entries are skipped; unreadable directories log a warning but don't fail discovery. In-tree adapters always register first; env-discovered adapters can override them. |
+
 ## Attachments (MinIO / S3 — optional)
 
 When `MINIO_ENDPOINT` is unset, the attachments feature is disabled:

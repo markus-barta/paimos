@@ -484,6 +484,75 @@ $ paimos issue ensure-status PAI-101 done
 
 ---
 
+## 4a. Agent sessions, skills, sync, onboard (PAI-325 → PAI-340)
+
+The v2.8.x cycle introduced five sibling verbs that wire `paimos` into
+an agent's lifecycle: `session`, `skill`, `sync`, `onboard`, and
+`memory propose`. Run `paimos <verb> --help` for the full flag set —
+this section captures the integration shape, not the per-flag docs.
+
+### `paimos session start` (PAI-325)
+
+Mints a session UUID and emits env-var assignments that subsequent
+`paimos` calls in the same shell consume — every write request stamps
+`X-Paimos-Agent-Name` and `X-Paimos-Session-Id` headers so the
+mutation log can answer "which agent did this in which session?":
+
+```sh
+eval $(paimos session start --project BON26 --agent ops)
+# PAIMOS_AGENT_NAME / PAIMOS_SESSION_ID now exported
+paimos session show                    # echo the current values
+eval $(paimos session end)             # clear the env
+```
+
+`--bundle full` resolves the project's canonical context bundle
+(PAI-340) and prints it alongside the env exports — agents that open
+with this verb get the project briefing for free.
+
+### `paimos skill render` + `paimos sync` (PAI-329 / PAI-331 / PAI-332)
+
+The canonical agent artifact at `GET /projects/:id/agents/:name.json`
+is harness-agnostic. `paimos skill render` runs that artifact through
+a registered adapter (built-in `claude-code` plus anything on
+`$PAIMOS_ADAPTER_PATH`) and produces the file your harness consumes
+(e.g. `.claude/commands/<name>.md`). Rendered files carry a
+paimos-managed header so drift can be detected later.
+
+```sh
+paimos skill list-adapters             # what harnesses are wired up
+paimos skill render ops                # one-shot
+paimos sync watch --kind=skill         # subscribe (SSE) and re-render on change
+paimos sync check                      # CI-friendly drift report (exit 1 = drift)
+```
+
+`sync` is the generic engine; `skill` aliases provide a friendlier
+verb shape today. PAI-341 will register more `--kind` values (memory,
+runbook, …) so the same verbs cover the knowledge plane.
+
+### `paimos onboard` (PAI-340)
+
+Single readable briefing for a project (or a specific agent within it)
+— overview + related projects + external systems + top guidelines +
+recent context, plus the agent's `body` / `bootstrap_steps` /
+`non_negotiable_rules` when `--agent <name>` is passed. Markdown by
+default; `--format html` for self-contained HTML.
+
+The output is prefixed with a drift-detection header. `--check`
+compares an on-disk briefing against the current canonical bundle and
+exits non-zero on drift — drop it in CI to fail the build when
+onboarding docs go stale.
+
+### `paimos memory propose` (PAI-349)
+
+Drafts a memory entry in `proposed` status pending operator review.
+The draft surfaces in the Knowledge tab's "Proposed" inbox; accept /
+edit / reject from there.
+
+The propose verb honours two server-side gates (see
+`PAIMOS_PROPOSE_LIMIT_PER_SESSION` and `PAIMOS_PROPOSE_DISABLED` in
+`CONFIGURATION.md`). 429 means the per-session cap tripped; 503 means
+the operator turned the verb off instance-wide.
+
 ## 5. Schema discovery
 
 The server publishes a single source of truth at `GET /api/schema`. The CLI caches it (`~/.paimos/schema-<instance>.json`) and uses it for tab-completions.
