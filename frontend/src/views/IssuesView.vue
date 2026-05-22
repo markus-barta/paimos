@@ -325,6 +325,7 @@ function onDeleted(id: number) {
         :issues="issues"
         :result-total="total"
         :loading-more="loadingMore"
+        :url-sync-selection="true"
         @load-all="loadAll"
         @created="onCreated"
         @updated="onUpdated"

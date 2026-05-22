@@ -38,6 +38,7 @@ import type {
 } from '@/components/issue-list/types'
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
+import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
 
 interface PortalProject {
   id: number
@@ -474,6 +475,21 @@ function onRowClick(issue: PortalIssue) {
 function closeSidePanel() {
   sidePanelIssueId.value = null
 }
+
+// PAI-479. Two-way sync sidePanelIssueId ↔ ?selected=<ISSUE_KEY>. Resolvers
+// look up the key in the portal issue list (already filtered to the
+// CUSTOMERPORTAL-tagged set the customer is allowed to see); a key outside
+// that set returns null, the sidebar stays closed, and the URL is preserved
+// untouched for the user to inspect.
+useSidebarSelectionUrl({
+  selectedIssueId: sidePanelIssueId,
+  resolveIdToKey: (id) => issues.value.find(i => i.id === id)?.issue_key ?? null,
+  resolveKeyToId: (key) => {
+    const k = key.toUpperCase()
+    return issues.value.find(i => i.issue_key.toUpperCase() === k)?.id ?? null
+  },
+  ready: () => !loading.value,
+})
 
 // After accept / reject, refresh the list so the row's status flips
 // and the tab counts / KPIs update. The panel reloads its own copy

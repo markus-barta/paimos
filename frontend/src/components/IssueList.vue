@@ -57,6 +57,7 @@ import {
   notifySidePanelOpened,
   onOtherSidePanelOpened,
 } from '@/composables/useSidePanelExclusion'
+import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
 
 const props = defineProps<{
   projectId?: number
@@ -72,6 +73,11 @@ const props = defineProps<{
   resultTotal?: number
   loadingMore?: boolean
   searchQueryOverride?: string
+  // PAI-479. When true, this IssueList owns the `?selected=<ISSUE_KEY>` query
+  // param: row-clicks write it (replaceState), and a key already in the URL on
+  // mount auto-opens the sidebar. Default false so sub-uses inside
+  // IssueDetailView's children section don't fight the parent for the URL.
+  urlSyncSelection?: boolean
 }>()
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
@@ -813,6 +819,38 @@ watch(() => props.initialPanelIssueId, (id) => {
   if (id) sidePanelIssueId.value = id
 }, { immediate: true })
 
+// PAI-479. Two-way sync between sidePanelIssueId and ?selected=<KEY> in the
+// route. Only active when the parent opts in via :url-sync-selection — child
+// IssueList instances (e.g. inside IssueDetailView) leave it off to avoid
+// fighting the parent route.
+if (props.urlSyncSelection) {
+  useSidebarSelectionUrl({
+    selectedIssueId: sidePanelIssueId,
+    resolveIdToKey: (id) => {
+      const inList = props.issues.find(i => i.id === id)
+      if (inList?.issue_key) return inList.issue_key
+      const inAll = props.projectAllIssues?.find(i => i.id === id)
+      return inAll?.issue_key ?? null
+    },
+    resolveKeyToId: async (key) => {
+      const k = key.toUpperCase()
+      const inList = props.issues.find(i => i.issue_key?.toUpperCase() === k)
+      if (inList) return inList.id
+      const inAll = props.projectAllIssues?.find(i => i.issue_key?.toUpperCase() === k)
+      if (inAll) return inAll.id
+      // Fallback: rank-ordered search returns exact-key matches first.
+      try {
+        const hits = await api.get<Issue[]>(`/issues?q=${encodeURIComponent(k)}&limit=1`)
+        const top = Array.isArray(hits) ? hits[0] : null
+        if (top?.issue_key?.toUpperCase() === k) return top.id
+        return null
+      } catch {
+        return null
+      }
+    },
+  })
+}
+
 function openSidePanel(issue: Issue, edit = false) {
   if (issue.type === 'sprint') {
     router.push(`/sprint-board?sprint=${issue.id}`)
@@ -833,7 +871,15 @@ function closeSidePanel() {
   }
 }
 
+// PAI-479. The auto-close-on-filter-mismatch is intentional for interactive
+// filter changes (the user filters a column and their open selection vanishes
+// from the list), but it must not fire on initial load when ?selected=<KEY>
+// targets an issue outside the default filter — that would silently defeat
+// the deep-link. Disabling the watch entirely when urlSyncSelection is on is
+// the simplest fix and matches AC2/AC3 ("open the sidebar anyway, leave
+// filters as-is"); the user can always close manually.
 watch(filteredIssues, (issues) => {
+  if (props.urlSyncSelection) return
   if (sidePanelIssueId.value !== null && !issues.some(i => i.id === sidePanelIssueId.value)) {
     if (sidePanelPinned.value) {
       sidePanelIssueId.value = null

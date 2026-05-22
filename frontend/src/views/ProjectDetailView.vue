@@ -89,11 +89,6 @@ const projectId = computed(() => Number(route.params.id))
 // Whether the current user can edit inside this project — admins and
 // project editors pass, viewers fall through to read-only rendering.
 const canEditProject = computed(() => auth.canEdit(projectId.value))
-const initialPanelIssueId = computed(() => {
-  const p = route.query.panel
-  return p ? Number(p) : undefined
-})
-
 const project   = ref<Project | null>(null)
 const issues    = ref<Issue[]>([])
 const users     = ref<User[]>([])
@@ -869,7 +864,7 @@ watch(
           :project-id="projectId"
           :issues="issues"
           :search-query-override="projectIssueQuery"
-          :initial-panel-issue-id="initialPanelIssueId"
+          :url-sync-selection="true"
           @created="onCreated"
           @updated="onUpdated"
           @deleted="onDeleted"
