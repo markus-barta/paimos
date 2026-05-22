@@ -209,7 +209,13 @@ opt in to per-project guarding by setting
      one component. No default, no prop drilling.
 
   No Vuex. No duplicating the same piece of state in two tiers.
-- **Routing**: `vue-router`, lazy-loaded views.
+- **Routing**: `vue-router`, lazy-loaded views. The list-view URLs
+  (internal `/issues`, `/projects/:id`, and customer-portal project
+  view) sync the open sidebar selection to `?selected=<ISSUE_KEY>`
+  via `replaceState` (PAI-479) so a user can copy the URL bar and
+  share a deep-link to a specific issue with its surrounding list
+  context preserved. Plumbing lives in `useSidebarSelectionUrl`;
+  internal `IssueList` opts in via `:url-sync-selection="true"`.
 - **i18n**: `vue-i18n`; English and German catalogs in `src/i18n/`.
 - **Styling**: scoped `<style>` blocks + a small set of CSS custom
   properties fed from the branding API.

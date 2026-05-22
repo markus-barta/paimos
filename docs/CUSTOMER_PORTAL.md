@@ -276,3 +276,18 @@ Before unsetting the dry-run env var:
 
 Once all five are green, unset `PAIMOS_PORTAL_VISIBILITY_DRY_RUN`,
 re-deploy, and the v2 visibility model is live.
+
+## Sharing a deep-link to one issue (PAI-479)
+
+The portal project view (and the internal IssueList views it mirrors)
+sync the open side-panel selection to `?selected=<ISSUE_KEY>` in the
+URL. To share a specific issue in context: open the project, click the
+row so the side panel appears, copy the URL bar, send. The recipient
+lands on the same project with the same issue auto-opened in the side
+panel — regardless of which tab or filters they had stored locally.
+
+The URL update uses `replaceState`, so scanning a long list does not
+pollute browser history. Keys that aren't accessible to the recipient
+(not in the CUSTOMERPORTAL set, or in a project the recipient can't
+view) fail gracefully — the panel stays closed and the URL is left
+untouched.
