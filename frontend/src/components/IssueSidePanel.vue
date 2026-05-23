@@ -511,7 +511,6 @@ function openFull() {
     router.push(
       `/projects/${issue.value!.project_id}/issues/${issue.value!.id}${editParam}`,
     );
-    emit("close");
   });
 }
 
@@ -523,7 +522,6 @@ async function cloneIssue() {
     const clone = await api.post<Issue>(`/issues/${issue.value.id}/clone`, {});
     // Navigate to the cloned issue in full view for editing
     router.push(`/projects/${clone.project_id}/issues/${clone.id}?edit=1`);
-    emit("close");
   } catch (e: unknown) {
     saveError.value = errMsg(e, "Clone failed.");
   } finally {
