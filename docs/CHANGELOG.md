@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.3] — 2026-05-23
+
+### Fixed
+
+- **Release evidence re-cut.** Re-cuts the v3.7.2 application payload after
+  GHCR rejected an SBOM attestation upload with `BLOB_UNKNOWN` during the
+  tag workflow. The CI release job now retries CycloneDX SBOM attestation
+  uploads before failing, so transient registry upload errors are less
+  likely to leave a signed-but-unverifiable patch tag. No runtime behavior
+  changes beyond the v3.7.2 contents.
+
 ## [3.7.2] — 2026-05-23
 
 ### Changed

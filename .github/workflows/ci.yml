@@ -292,10 +292,21 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ghcr.io/${{ github.repository }}
         run: |
-          cosign attest --yes --predicate backend.sbom.json \
-            --type cyclonedx "$IMAGE@$DIGEST"
-          cosign attest --yes --predicate frontend.sbom.json \
-            --type cyclonedx "$IMAGE@$DIGEST"
+          attest_with_retry() {
+            local predicate="$1"
+            for attempt in 1 2 3; do
+              if cosign attest --yes --predicate "$predicate" \
+                --type cyclonedx "$IMAGE@$DIGEST"; then
+                return 0
+              fi
+              echo "cosign attest $predicate failed on attempt $attempt; retrying..." >&2
+              sleep $((attempt * 5))
+            done
+            return 1
+          }
+
+          attest_with_retry backend.sbom.json
+          attest_with_retry frontend.sbom.json
       - name: Attest build provenance
         if: github.ref_type == 'tag'
         uses: actions/attest-build-provenance@v1
