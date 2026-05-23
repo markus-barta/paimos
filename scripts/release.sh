@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Atomic release: bump VERSION + README badge + CHANGELOG + git tag in one
-# commit, push, and wait for CI to publish the Docker image.
+# commit, push, wait for CI to publish the Docker image, and wait for the
+# release-evidence workflows before printing deploy commands.
 #
 # Usage:
 #   scripts/release.sh patch|minor|major|<x.y.z>   # cut a release
@@ -190,17 +191,24 @@ source "$(dirname "$0")/_deploy-lib.sh"
 for _ in $(seq 1 60); do
   if ghcr::image_exists "ghcr.io/markus-barta/paimos:$NEW"; then
     echo "✔ ghcr.io/markus-barta/paimos:$NEW is live."
-    echo
-    echo "Next:"
-    echo "  just verify-release $NEW_TAG"
-    echo "  just deploy-ppm $NEW_TAG"
-    echo "  just deploy-pmo $NEW_TAG"
-    echo "  just doc-sync       # file the README / docs / paimos-site sync ticket"
-    exit 0
+    break
   fi
   sleep 10
 done
 
-echo "warning: still not visible after 10m. Check GitHub Actions:" >&2
-echo "  gh run list --repo markus-barta/paimos --event push --branch $NEW_TAG" >&2
-exit 2
+if ! ghcr::image_exists "ghcr.io/markus-barta/paimos:$NEW"; then
+  echo "warning: still not visible after 10m. Check GitHub Actions:" >&2
+  echo "  gh run list --repo markus-barta/paimos --event push --branch $NEW_TAG" >&2
+  exit 2
+fi
+
+echo
+echo "Waiting for tag workflows to finish before declaring the release deployable…"
+"$ROOT/scripts/wait-release-ci.sh" "$NEW_TAG" --workflows ci,release
+
+echo
+echo "Next:"
+echo "  just verify-release $NEW_TAG"
+echo "  just deploy-ppm $NEW_TAG"
+echo "  just deploy-pmo $NEW_TAG"
+echo "  just doc-sync       # file the README / docs / paimos-site sync ticket"

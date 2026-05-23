@@ -37,6 +37,7 @@ Plus a read-only status helper:
 
 ```
 just status                              # last 5 tags + commits since last tag
+just wait-release-ci <tag>               # wait for tag workflows before verification/deploy
 ```
 
 The standard sequence after a feature lands on `main` is **release →
@@ -44,8 +45,10 @@ verify-release → deploy → doc-sync**. The first three cut, verify, and roll
 out the new build; `doc-sync` files or reuses a single PAIMOS ticket with a
 four-item checklist (README, `docs/`, the `../paimos-site` repo,
 brand/screenshots) so the user-facing surfaces don't drift out of sync with
-the code. `release.sh` prints the `verify-release` and `doc-sync` reminders
-as part of its "Next:" output to make the steps hard to miss.
+the code. `release.sh` waits for the tag workflows (`ci` + `release`) before
+printing the `verify-release` and `doc-sync` reminders as part of its "Next:"
+output, so "image tag exists" is never confused with "release evidence is
+complete."
 
 For untagged main-commit canaries, wait for CI to publish the commit image,
 then deploy it explicitly:
@@ -74,7 +77,9 @@ just deploy-ppm-current
    `docs/CHANGELOG.md` must not contain the auto-generated TODO stub.
 6. Commits (`release: vX.Y.Z`), tags `vX.Y.Z`, pushes both.
 7. Polls ghcr for up to 10 minutes until the new image tag is visible, then
-   prints the next-step deploy commands.
+   waits for the tag-push GitHub Actions workflows (`ci` + `release`) to
+   succeed before printing the next-step deploy commands. If a workflow fails,
+   release exits non-zero and points at the failed run; do not deploy that tag.
 
 **Picking the level (what the AI looks at):** if `git log vLAST..HEAD` contains
 commits that touch files under `backend/` or `frontend/src/`, lean **minor**.
@@ -84,7 +89,8 @@ Breaking API or schema changes → **major**. Pure docs / brand / scripts →
 ## `just verify-release <tag>`
 
 Run this after the tag workflows have completed and before deploying a
-release tag:
+release tag. `just release` does that wait automatically; if you are resuming
+or checking a tag cut elsewhere, run `just wait-release-ci vX.Y.Z` first:
 
 ```
 just verify-release vX.Y.Z

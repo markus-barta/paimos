@@ -139,7 +139,10 @@ already exist (the script refuses to auto-generate the stub when
 
 After the tag is pushed, both workflows run in parallel — total
 wall-clock is typically 8–15 minutes (Apple's notarytool dominates the
-darwin job).
+darwin job). `scripts/release.sh` waits for both tag workflows to succeed
+before it prints deploy commands. If you need to resume that wait manually:
+
+    just wait-release-ci v<x.y.z>
 
 ## Background
 

@@ -30,6 +30,10 @@ sbom:
 verify-release tag:
     @./scripts/verify-release.sh {{tag}}
 
+# Wait for tag-push workflows that publish release evidence.
+wait-release-ci tag:
+    @./scripts/wait-release-ci.sh {{tag}}
+
 # Deploy to ppm: release tag, sha-* image tag, or current HEAD.
 deploy-ppm target="":
     @./scripts/deploy.sh ppm {{target}}
