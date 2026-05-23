@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/markus-barta/paimos/backend/contracts"
 	"github.com/markus-barta/paimos/backend/db"
 )
 
@@ -55,20 +57,20 @@ import (
 func ListAllHandler(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
-		writeError(w, "invalid project id", http.StatusBadRequest)
+		writeError(w, r, "invalid project id", http.StatusBadRequest)
 		return
 	}
 	typeFilter := strings.TrimSpace(r.URL.Query().Get("type"))
 	if typeFilter != "" {
 		typ, err := TypeFromURLSegment(typeFilter)
 		if err != nil {
-			writeError(w, err.Error(), http.StatusBadRequest)
+			writeError(w, r, err.Error(), http.StatusBadRequest)
 			return
 		}
 		mod, _ := RouteByType(typ)
 		out, err := loadByType(projectID, mod)
 		if err != nil {
-			writeError(w, "query failed", http.StatusInternalServerError)
+			writeError(w, r, "query failed", http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -76,7 +78,7 @@ func ListAllHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := loadAllTypes(projectID)
 	if err != nil {
-		writeError(w, "query failed", http.StatusInternalServerError)
+		writeError(w, r, "query failed", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -89,7 +91,7 @@ func ListAllHandler(w http.ResponseWriter, r *http.Request) {
 func GetHandler(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
-		writeError(w, "invalid project id", http.StatusBadRequest)
+		writeError(w, r, "invalid project id", http.StatusBadRequest)
 		return
 	}
 	mod, ok := moduleFromURL(w, r)
@@ -98,16 +100,16 @@ func GetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
 	if slug == "" {
-		writeError(w, "slug required", http.StatusBadRequest)
+		writeError(w, r, "slug required", http.StatusBadRequest)
 		return
 	}
 	out, err := loadOneBySlug(projectID, mod, slug)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, "not found", http.StatusNotFound)
+		writeError(w, r, "not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		writeError(w, "query failed", http.StatusInternalServerError)
+		writeError(w, r, "query failed", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -132,7 +134,7 @@ func GetHandler(w http.ResponseWriter, r *http.Request) {
 func CreateHandler(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
-		writeError(w, "invalid project id", http.StatusBadRequest)
+		writeError(w, r, "invalid project id", http.StatusBadRequest)
 		return
 	}
 	var in struct {
@@ -144,7 +146,7 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 		Metadata map[string]any `json:"metadata"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		writeError(w, "invalid body", http.StatusBadRequest)
+		writeError(w, r, "invalid body", http.StatusBadRequest)
 		return
 	}
 	// Type may travel in the body (canonical) or as a `?type=...`
@@ -157,7 +159,11 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	mod, err := resolveBodyType(rawType)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		if strings.TrimSpace(rawType) != "" {
+			writeEnumViolation(w, r, "type", rawType, AllTypes())
+		} else {
+			writeError(w, r, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 	payload := Input{
@@ -167,8 +173,8 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 		Status:   in.Status,
 		Metadata: in.Metadata,
 	}
-	if msg := validateInput(mod, payload); msg != "" {
-		writeError(w, msg, http.StatusBadRequest)
+	if problem := validateInput(mod, payload); problem != nil {
+		writeValidationProblem(w, r, problem, http.StatusBadRequest)
 		return
 	}
 	// PAI-353 — when the parent `handlers` package has registered
@@ -180,17 +186,17 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := insert(r, projectID, mod, payload)
 	if errors.Is(err, errSlugTaken) {
-		writeError(w, "slug already exists for this type", http.StatusConflict)
+		writeError(w, r, "slug already exists for this type", http.StatusConflict)
 		return
 	}
 	// PAI-349 — typed propose errors carry their own HTTP status
 	// (rate limit → 429, opt-out → 503). Surface verbatim.
 	if err != nil {
 		if coded, ok := err.(httpCodedError); ok {
-			writeError(w, err.Error(), coded.HTTPStatus())
+			writeError(w, r, err.Error(), coded.HTTPStatus())
 			return
 		}
-		writeError(w, "insert failed", http.StatusInternalServerError)
+		writeError(w, r, "insert failed", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
@@ -208,7 +214,7 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
-		writeError(w, "invalid project id", http.StatusBadRequest)
+		writeError(w, r, "invalid project id", http.StatusBadRequest)
 		return
 	}
 	mod, ok := moduleFromURL(w, r)
@@ -217,7 +223,7 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	current := strings.TrimSpace(chi.URLParam(r, "slug"))
 	if current == "" {
-		writeError(w, "slug required", http.StatusBadRequest)
+		writeError(w, r, "slug required", http.StatusBadRequest)
 		return
 	}
 	var in struct {
@@ -229,17 +235,17 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		Metadata map[string]any `json:"metadata"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		writeError(w, "invalid body", http.StatusBadRequest)
+		writeError(w, r, "invalid body", http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(in.Type) != "" {
 		bodyMod, err := resolveBodyType(in.Type)
 		if err != nil {
-			writeError(w, err.Error(), http.StatusBadRequest)
+			writeEnumViolation(w, r, "type", in.Type, AllTypes())
 			return
 		}
 		if bodyMod.Type() != mod.Type() {
-			writeError(w, "body type does not match URL type", http.StatusBadRequest)
+			writeError(w, r, "body type does not match URL type", http.StatusBadRequest)
 			return
 		}
 	}
@@ -254,8 +260,8 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(payload.Slug) == "" {
 		payload.Slug = current
 	}
-	if msg := validateInput(mod, payload); msg != "" {
-		writeError(w, msg, http.StatusBadRequest)
+	if problem := validateInput(mod, payload); problem != nil {
+		writeValidationProblem(w, r, problem, http.StatusBadRequest)
 		return
 	}
 	update := updateEntry
@@ -264,15 +270,15 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := update(r, projectID, mod, current, payload)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, "not found", http.StatusNotFound)
+		writeError(w, r, "not found", http.StatusNotFound)
 		return
 	}
 	if errors.Is(err, errSlugTaken) {
-		writeError(w, "slug already exists for this type", http.StatusConflict)
+		writeError(w, r, "slug already exists for this type", http.StatusConflict)
 		return
 	}
 	if err != nil {
-		writeError(w, "update failed", http.StatusInternalServerError)
+		writeError(w, r, "update failed", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -285,7 +291,7 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromRequest(r)
 	if !ok {
-		writeError(w, "invalid project id", http.StatusBadRequest)
+		writeError(w, r, "invalid project id", http.StatusBadRequest)
 		return
 	}
 	mod, ok := moduleFromURL(w, r)
@@ -294,7 +300,7 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
 	if slug == "" {
-		writeError(w, "slug required", http.StatusBadRequest)
+		writeError(w, r, "slug required", http.StatusBadRequest)
 		return
 	}
 	del := deleteEntry
@@ -303,11 +309,11 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := del(r, projectID, mod, slug)
 	if err != nil {
-		writeError(w, "delete failed", http.StatusInternalServerError)
+		writeError(w, r, "delete failed", http.StatusInternalServerError)
 		return
 	}
 	if n == 0 {
-		writeError(w, "not found", http.StatusNotFound)
+		writeError(w, r, "not found", http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -321,7 +327,7 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 func moduleFromURL(w http.ResponseWriter, r *http.Request) (Module, bool) {
 	seg := strings.TrimSpace(chi.URLParam(r, "type"))
 	if seg == "" {
-		writeError(w, "type required", http.StatusBadRequest)
+		writeError(w, r, "type required", http.StatusBadRequest)
 		return nil, false
 	}
 	typ, err := TypeFromURLSegment(seg)
@@ -329,7 +335,7 @@ func moduleFromURL(w http.ResponseWriter, r *http.Request) (Module, bool) {
 		// Unknown type — 404, since the URL space for this type
 		// genuinely doesn't exist. Distinguishes from a 400 on
 		// malformed input.
-		writeError(w, err.Error(), http.StatusNotFound)
+		writeError(w, r, err.Error(), http.StatusNotFound)
 		return nil, false
 	}
 	mod, _ := RouteByType(typ)
@@ -397,20 +403,35 @@ var errSlugTaken = errors.New("slug already exists for this type")
 // validateInput bundles the shared (slug + title) checks with the
 // per-type Module check and the PAI-394 reserved-slug guard.
 // Returns "" on success, an actionable error string on failure.
-func validateInput(mod Module, in Input) string {
+type validationProblem struct {
+	Detail      string
+	Code        string
+	Field       string
+	ValidValues []string
+}
+
+func validateInput(mod Module, in Input) *validationProblem {
 	if err := ValidateSlug(in.Slug); err != nil {
-		return err.Error()
+		return &validationProblem{Detail: err.Error(), Code: "bad_request", Field: "slug"}
 	}
 	if IsReservedSlug(mod.Type(), in.Slug) {
-		return "slug is reserved for the unified subroute (rename it)"
+		return &validationProblem{Detail: "slug is reserved for the unified subroute (rename it)", Code: "bad_request", Field: "slug"}
 	}
 	if strings.TrimSpace(in.Title) == "" {
-		return "title required"
+		return &validationProblem{Detail: "title required", Code: "bad_request", Field: "title"}
+	}
+	if status := strings.TrimSpace(in.Status); status != "" && !contracts.Contains(contracts.KnowledgeStatuses, status) {
+		return &validationProblem{
+			Detail:      fmt.Sprintf("status %q is not valid; expected one of: %s", status, strings.Join(contracts.KnowledgeStatuses, ", ")),
+			Code:        "enum_violation",
+			Field:       "status",
+			ValidValues: append([]string(nil), contracts.KnowledgeStatuses...),
+		}
 	}
 	if err := mod.ValidateInput(in); err != nil {
-		return err.Error()
+		return &validationProblem{Detail: err.Error(), Code: "bad_request"}
 	}
-	return ""
+	return nil
 }
 
 // insertEntry writes a fresh knowledge entry. Issue numbering is
@@ -703,8 +724,86 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+func writeError(w http.ResponseWriter, r *http.Request, msg string, code int) {
+	writeProblem(w, r, validationProblem{Detail: msg, Code: codeForStatus(code)}, code)
+}
+
+func writeValidationProblem(w http.ResponseWriter, r *http.Request, problem *validationProblem, code int) {
+	if problem == nil {
+		return
+	}
+	writeProblem(w, r, *problem, code)
+}
+
+func writeEnumViolation(w http.ResponseWriter, r *http.Request, field, value string, validValues []string) {
+	writeProblem(w, r, validationProblem{
+		Detail:      fmt.Sprintf("%s %q is not valid; expected one of: %s", field, strings.TrimSpace(value), strings.Join(validValues, ", ")),
+		Code:        "enum_violation",
+		Field:       field,
+		ValidValues: append([]string(nil), validValues...),
+	}, http.StatusBadRequest)
+}
+
+func writeProblem(w http.ResponseWriter, r *http.Request, problem validationProblem, status int) {
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
+	code := strings.TrimSpace(problem.Code)
+	if code == "" {
+		code = codeForStatus(status)
+	}
+	detail := strings.TrimSpace(problem.Detail)
+	if detail == "" {
+		detail = http.StatusText(status)
+	}
+	payload := map[string]any{
+		"type":   "https://paimos.com/errors/" + code,
+		"title":  http.StatusText(status),
+		"status": status,
+		"detail": detail,
+		"code":   code,
+		"error":  detail,
+	}
+	if r != nil {
+		payload["instance"] = r.URL.RequestURI()
+		if reqID := strings.TrimSpace(r.Header.Get("X-PAIMOS-Request-Id")); reqID != "" {
+			payload["request_id"] = reqID
+		}
+	}
+	if _, ok := payload["request_id"]; !ok {
+		if reqID := strings.TrimSpace(w.Header().Get("X-PAIMOS-Request-Id")); reqID != "" {
+			payload["request_id"] = reqID
+		}
+	}
+	if problem.Field != "" {
+		payload["field"] = problem.Field
+	}
+	if len(problem.ValidValues) > 0 {
+		payload["valid_values"] = problem.ValidValues
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func codeForStatus(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "bad_request"
+	case http.StatusUnauthorized:
+		return "unauthorized"
+	case http.StatusForbidden:
+		return "forbidden"
+	case http.StatusNotFound:
+		return "not_found"
+	case http.StatusConflict:
+		return "conflict"
+	case http.StatusUnprocessableEntity:
+		return "unprocessable_entity"
+	default:
+		if status >= 500 {
+			return "internal_error"
+		}
+		return "http_error"
+	}
 }

@@ -40,6 +40,7 @@ const agentAttrCap = 64
 const (
 	agentAttrHeader   = "X-Paimos-Agent-Name"
 	sessionAttrHeader = "X-Paimos-Session-Id"
+	idempotencyHeader = "Idempotency-Key"
 )
 
 // sessionID is generated once per CLI invocation and sent on every
@@ -192,6 +193,13 @@ func (c *Client) prepareRequest(req *http.Request, hasBody bool, contentType, ac
 		// noise.
 		req.Header.Set(agentAttrHeader, agent)
 	}
+	if strings.EqualFold(req.Method, http.MethodPost) && hasBody {
+		if id, err := uuid.NewV7(); err == nil {
+			req.Header.Set(idempotencyHeader, id.String())
+		} else {
+			req.Header.Set(idempotencyHeader, uuid.NewString())
+		}
+	}
 
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -254,7 +262,7 @@ type httpError struct {
 }
 
 func (e *httpError) Error() string {
-	// Try to extract a `{error: "..."}` message; fall back to the raw
+	// Try to extract a Problem Details / `{error: "..."}` message; fall back to the raw
 	// body trimmed. Never return HTML — if the server returned HTML
 	// (e.g. behind a misconfigured proxy) say so explicitly.
 	msg := e.friendlyMessage()
@@ -267,10 +275,17 @@ func (e *httpError) friendlyMessage() string {
 		return "non-JSON response (proxy/WAF?)"
 	}
 	var shaped struct {
-		Error string `json:"error"`
+		Error       string   `json:"error"`
+		Detail      string   `json:"detail"`
+		Field       string   `json:"field"`
+		Code        string   `json:"code"`
+		ValidValues []string `json:"valid_values"`
 	}
 	if json.Unmarshal([]byte(trimmed), &shaped) == nil && shaped.Error != "" {
-		return shaped.Error
+		return formatProblemMessage(shaped.Detail, shaped.Error, shaped.Field, shaped.Code, shaped.ValidValues)
+	}
+	if json.Unmarshal([]byte(trimmed), &shaped) == nil && shaped.Detail != "" {
+		return formatProblemMessage(shaped.Detail, shaped.Error, shaped.Field, shaped.Code, shaped.ValidValues)
 	}
 	if len(trimmed) > 200 {
 		trimmed = trimmed[:200] + "…"
@@ -278,14 +293,48 @@ func (e *httpError) friendlyMessage() string {
 	return trimmed
 }
 
+func formatProblemMessage(detail, fallback, field, code string, valid []string) string {
+	msg := strings.TrimSpace(detail)
+	if msg == "" {
+		msg = strings.TrimSpace(fallback)
+	}
+	var suffix []string
+	if code != "" {
+		suffix = append(suffix, "code="+code)
+	}
+	if field != "" {
+		suffix = append(suffix, "field="+field)
+	}
+	if len(valid) > 0 {
+		suffix = append(suffix, "valid_values="+strings.Join(valid, ","))
+	}
+	if len(suffix) > 0 {
+		msg += " (" + strings.Join(suffix, "; ") + ")"
+	}
+	return msg
+}
+
 // reportError writes a failure to stderr in the caller-chosen format.
 // Returns an apiError so main() can suppress Cobra's own Error: prefix.
 func reportError(err error) error {
 	if he, ok := err.(*httpError); ok {
 		if flagJSON {
+			problem := he.problem()
 			out := map[string]any{
 				"error": he.friendlyMessage(),
 				"code":  he.Code,
+			}
+			if problem.Code != "" {
+				out["error_code"] = problem.Code
+			}
+			if problem.Field != "" {
+				out["field"] = problem.Field
+			}
+			if len(problem.ValidValues) > 0 {
+				out["valid_values"] = problem.ValidValues
+			}
+			if problem.RequestID != "" {
+				out["request_id"] = problem.RequestID
 			}
 			b, _ := json.Marshal(out)
 			fmt.Fprintln(stderr, string(b))
@@ -297,6 +346,19 @@ func reportError(err error) error {
 	// Non-HTTP error (config issue, I/O, marshaling …). Let main()
 	// print it uniformly.
 	return err
+}
+
+type apiProblem struct {
+	Code        string   `json:"code"`
+	Field       string   `json:"field"`
+	ValidValues []string `json:"valid_values"`
+	RequestID   string   `json:"request_id"`
+}
+
+func (e *httpError) problem() apiProblem {
+	var p apiProblem
+	_ = json.Unmarshal(e.Body, &p)
+	return p
 }
 
 // stdout/stderr are package-level so tests can swap them out for

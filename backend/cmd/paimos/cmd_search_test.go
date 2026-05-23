@@ -73,6 +73,43 @@ func TestSearchCommandPassesFiltersInOneRequest(t *testing.T) {
 	}
 }
 
+func TestIssueSearchAliasNormalizesType(t *testing.T) {
+	requests := 0
+	var handlerErr string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet || r.URL.Path != "/api/search" {
+			handlerErr = "unexpected request " + r.Method + " " + r.URL.Path
+			http.Error(w, `{"error":"unexpected request"}`, http.StatusNotFound)
+			return
+		}
+		if got := r.URL.Query().Get("type"); got != "task" {
+			handlerErr = "type = " + got
+			http.Error(w, `{"error":"bad type"}`, http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"projects":[],"issues":[{"issue_key":"PAI-3","title":"Alias row","type":"task","status":"new"}],"users":[],"tags":[],"has_more":false}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	out, _, err := executeCLIForTest(t, "issue", "search", "alias", "--type", "Task")
+	if err != nil {
+		t.Fatalf("executeCLIForTest: %v", err)
+	}
+	if handlerErr != "" {
+		t.Fatal(handlerErr)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	if !strings.Contains(out, "PAI-3") {
+		t.Fatalf("stdout missing alias row: %s", out)
+	}
+}
+
 func TestSearchCommandEmptyResult(t *testing.T) {
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

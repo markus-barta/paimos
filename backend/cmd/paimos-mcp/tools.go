@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/markus-barta/paimos/backend/handlers"
 )
 
 // Tool is the MCP-facing shape for one tool declaration: name, human
@@ -23,6 +25,40 @@ type Tool struct {
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
 	handler     func(args map[string]any) (string, error)
+}
+
+func stringEnum(domain string) map[string]any {
+	values := handlers.Schema.Enums[domain]
+	return map[string]any{
+		"type": "string",
+		"enum": append([]string(nil), values...),
+	}
+}
+
+func stringEnumForBinding(binding string) map[string]any {
+	return stringEnum(enumDomainForBinding(binding))
+}
+
+func enumDomainForBinding(binding string) string {
+	if domain := handlers.Schema.EnumFields[binding]; domain != "" {
+		return domain
+	}
+	return binding
+}
+
+func validateStringEnum(field, binding, raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	domain := enumDomainForBinding(binding)
+	values := handlers.Schema.Enums[domain]
+	for _, value := range values {
+		if raw == value {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s %q is not valid; expected one of: %s", field, raw, strings.Join(values, ", "))
 }
 
 // handleToolsList returns the v1 allowlist from the pickup doc:
@@ -171,9 +207,9 @@ func (s *Server) tools() []Tool {
 				"type": "object",
 				"properties": map[string]any{
 					"project_key": map[string]any{"type": "string"},
-					"status":      map[string]any{"type": "string"},
-					"type":        map[string]any{"type": "string"},
-					"priority":    map[string]any{"type": "string"},
+					"status":      stringEnumForBinding("issue.status"),
+					"type":        stringEnumForBinding("issue.type"),
+					"priority":    stringEnumForBinding("issue.priority"),
 					"limit":       map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
 				},
 			},
@@ -187,9 +223,9 @@ func (s *Server) tools() []Tool {
 				"properties": map[string]any{
 					"project_key":         map[string]any{"type": "string"},
 					"title":               map[string]any{"type": "string"},
-					"type":                map[string]any{"type": "string"},
-					"status":              map[string]any{"type": "string"},
-					"priority":            map[string]any{"type": "string"},
+					"type":                stringEnumForBinding("issue.type"),
+					"status":              stringEnumForBinding("issue.status"),
+					"priority":            stringEnumForBinding("issue.priority"),
 					"description":         map[string]any{"type": "string"},
 					"acceptance_criteria": map[string]any{"type": "string"},
 					"notes":               map[string]any{"type": "string"},
@@ -237,9 +273,9 @@ func (s *Server) tools() []Tool {
 				"properties": map[string]any{
 					"ref":                 map[string]any{"type": "string"},
 					"title":               map[string]any{"type": "string"},
-					"type":                map[string]any{"type": "string"},
-					"status":              map[string]any{"type": "string"},
-					"priority":            map[string]any{"type": "string"},
+					"type":                stringEnumForBinding("issue.type"),
+					"status":              stringEnumForBinding("issue.status"),
+					"priority":            stringEnumForBinding("issue.priority"),
 					"description":         map[string]any{"type": "string"},
 					"acceptance_criteria": map[string]any{"type": "string"},
 					"notes":               map[string]any{"type": "string"},
@@ -255,7 +291,7 @@ func (s *Server) tools() []Tool {
 				"type": "object",
 				"properties": map[string]any{
 					"source": map[string]any{"type": "string", "description": "source issue ref"},
-					"type":   map[string]any{"type": "string"},
+					"type":   stringEnumForBinding("relation.type"),
 					"target": map[string]any{"type": "string", "description": "target issue ref"},
 				},
 				"required": []string{"source", "type", "target"},
@@ -317,6 +353,9 @@ func (s *Server) toolIssueList(args map[string]any) (string, error) {
 	}
 	for _, k := range []string{"status", "type", "priority"} {
 		if v, _ := args[k].(string); v != "" {
+			if err := validateStringEnum(k, "issue."+k, v); err != nil {
+				return "", err
+			}
 			q.Set(k, v)
 		}
 	}
@@ -382,6 +421,20 @@ func (s *Server) toolIssueCreate(args map[string]any) (string, error) {
 	body := map[string]any{"title": title}
 	for _, k := range []string{"type", "status", "priority", "description", "acceptance_criteria", "notes"} {
 		if v, _ := args[k].(string); v != "" {
+			switch k {
+			case "type":
+				if err := validateStringEnum("type", "issue.type", v); err != nil {
+					return "", err
+				}
+			case "status":
+				if err := validateStringEnum("status", "issue.status", v); err != nil {
+					return "", err
+				}
+			case "priority":
+				if err := validateStringEnum("priority", "issue.priority", v); err != nil {
+					return "", err
+				}
+			}
 			body[k] = v
 		}
 	}
@@ -597,6 +650,20 @@ func (s *Server) toolIssueUpdate(args map[string]any) (string, error) {
 	body := map[string]any{}
 	for _, k := range []string{"title", "type", "status", "priority", "description", "acceptance_criteria", "notes"} {
 		if v, ok := args[k].(string); ok {
+			switch k {
+			case "type":
+				if err := validateStringEnum("type", "issue.type", v); err != nil {
+					return "", err
+				}
+			case "status":
+				if err := validateStringEnum("status", "issue.status", v); err != nil {
+					return "", err
+				}
+			case "priority":
+				if err := validateStringEnum("priority", "issue.priority", v); err != nil {
+					return "", err
+				}
+			}
 			body[k] = v
 		}
 	}
@@ -617,6 +684,9 @@ func (s *Server) toolRelationAdd(args map[string]any) (string, error) {
 	tgt, _ := args["target"].(string)
 	if src == "" || typ == "" || tgt == "" {
 		return "", fmt.Errorf("source, type, target all required")
+	}
+	if err := validateStringEnum("type", "relation.type", typ); err != nil {
+		return "", err
 	}
 	// Resolve target ref → numeric id.
 	tgtRaw, err := s.client.Do("GET", "/api/issues/"+url.PathEscape(tgt), nil)

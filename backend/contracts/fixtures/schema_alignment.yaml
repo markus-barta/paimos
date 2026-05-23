@@ -1,0 +1,54 @@
+version: 1
+cases:
+  - name: issue create accepts canonical enum values
+    operation: issue.create
+    inputs:
+      project_key: TEST
+      title: Contract task
+      type: task
+      priority: low
+    expect:
+      status: created
+      body:
+        title: Contract task
+        type: task
+        status: new
+        priority: low
+
+  - name: issue create rejects non-canonical enum type
+    operation: issue.create
+    inputs:
+      project_key: TEST
+      title: Bad enum
+      type: Tasky
+    expect:
+      error:
+        status: 400
+        code: enum_violation
+        field: type
+        valid_values: [epic, cost_unit, release, sprint, ticket, task]
+
+  - name: cli issue create normalizes case-only enums
+    operation: issue.create
+    inputs:
+      project_key: TEST
+      title: CLI normalized task
+      type: Task
+      priority: HIGH
+    expect:
+      normalized:
+        type: task
+        priority: high
+
+  - name: relation add rejects invalid relation enum
+    operation: relation.add
+    inputs:
+      source: TEST-1
+      type: BlocksHard
+      target: TEST-2
+    expect:
+      error:
+        status: 400
+        code: enum_violation
+        field: type
+        valid_values: [groups, sprint, depends_on, impacts, follows_from, blocks, related, applies_to_memory]

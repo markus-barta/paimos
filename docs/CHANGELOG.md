@@ -5,6 +5,28 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.2] — 2026-05-23
+
+### Changed
+
+- **PAI-483 / PAI-484..PAI-494** — **Intent contract hardening across
+  API, CLI, MCP, and frontend schema consumers.** The schema endpoint now
+  exposes the canonical issue enum sets used by generated frontend types,
+  write endpoints validate enum values consistently, and invalid inputs
+  return RFC 7807 Problem Details instead of ad-hoc error bodies. Batch and
+  mutation routes gained idempotency handling where clients retry writes,
+  while the CLI and MCP layers now preflight enum values, propagate
+  idempotency headers on writes, and share contract fixtures / coverage
+  registry tests so future endpoint drift is visible before release.
+- **PAI-400** — **Projektbericht numeric columns are explicitly
+  selectable and persistent.** The five numeric toggles (`SP`, `h`,
+  `AR SP`, `AR h`, `AR EUR`) persist under the catalogued
+  `paimos:lieferbericht:cols` key, flow into the PDF as the shared
+  `cols=` query parameter, and are reflected by the JSON report response
+  so preview/export clients use the same effective selection. Backend
+  coverage pins default, partial, and empty column sets while preserving
+  existing AR-EUR rounding.
+
 ## [3.7.1] — 2026-05-21
 
 ### Added

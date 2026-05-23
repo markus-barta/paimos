@@ -23,6 +23,7 @@ func issueCmd() *cobra.Command {
 	}
 	c.AddCommand(issueGetCmd())
 	c.AddCommand(issueListCmd())
+	c.AddCommand(searchCmd())
 	c.AddCommand(issueChildrenCmd())
 	c.AddCommand(issueCreateCmd())
 	c.AddCommand(issueUpdateCmd())

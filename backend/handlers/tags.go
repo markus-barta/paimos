@@ -142,8 +142,8 @@ func CreateTag(w http.ResponseWriter, r *http.Request) {
 	if body.Color == "" {
 		body.Color = "gray"
 	}
-	if !IsValidTagColor(body.Color) {
-		jsonError(w, "invalid color", http.StatusBadRequest)
+	if ev := validateEnumField("tag.color", body.Color); ev != nil {
+		writeEnumViolation(w, r, ev)
 		return
 	}
 
@@ -187,9 +187,11 @@ func UpdateTag(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "system tags cannot be renamed or recoloured", http.StatusForbidden)
 		return
 	}
-	if body.Color != nil && !IsValidTagColor(*body.Color) {
-		jsonError(w, "invalid color", http.StatusBadRequest)
-		return
+	if body.Color != nil {
+		if ev := validateEnumField("tag.color", *body.Color); ev != nil {
+			writeEnumViolation(w, r, ev)
+			return
+		}
 	}
 	if _, err := db.DB.Exec(`
 		UPDATE tags SET

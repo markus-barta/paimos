@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
+    "schema:generate": "cd .. && cd backend && go run ../scripts/generate-frontend-schema.go",
+    "schema:check": "npm run schema:generate && git diff --exit-code -- src/types/generated/schema.ts",
     "typecheck": "vue-tsc --noEmit",
     "lint": "vue-tsc --noEmit",
     "test": "vitest run",

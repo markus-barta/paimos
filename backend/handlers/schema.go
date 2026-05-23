@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/markus-barta/paimos/backend/contracts"
 	"github.com/markus-barta/paimos/backend/handlers/knowledge"
 )
 
@@ -34,6 +35,11 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.4.0 (PAI-494): added `enum_fields`, the field-to-enum binding
+// contract used by backend validators and generated client surfaces.
+// Also documents lowercase canonical enum wire values, knowledge-status
+// values (including proposed drafts), and Idempotency-Key conventions
+// for create-style agent writes.
 // 1.3.0 (PAI-394): added `knowledge` block (registered types,
 // URL segments, default statuses, entry shape, route map) and
 // `enums.knowledge_types`. Marks the collapse of the five
@@ -50,7 +56,7 @@ import (
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.3.0"
+const SchemaVersion = "1.4.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -58,6 +64,7 @@ type SchemaPayload struct {
 	Enums       map[string][]string            `json:"enums"`
 	Transitions map[string]map[string][]string `json:"transitions"`
 	Entities    map[string]SchemaEntity        `json:"entities"`
+	EnumFields  map[string]string              `json:"enum_fields"`
 	Conventions map[string]string              `json:"conventions"`
 	Scopes      []auth.ScopeDef                `json:"scopes"`
 	Knowledge   *SchemaKnowledge               `json:"knowledge,omitempty"`
@@ -103,10 +110,11 @@ type SchemaKnowledgeType struct {
 var Schema = SchemaPayload{
 	Version: SchemaVersion,
 	Enums: map[string][]string{
-		"status":   {"new", "backlog", "in-progress", "qa", "done", "delivered", "accepted", "invoiced", "cancelled"},
-		"priority": {"low", "medium", "high"},
-		"type":     {"epic", "cost_unit", "release", "sprint", "ticket", "task"},
-		"relation": {"groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related"},
+		"status":           append([]string(nil), contracts.IssueStatuses...),
+		"knowledge_status": append([]string(nil), contracts.KnowledgeStatuses...),
+		"priority":         append([]string(nil), contracts.IssuePriorities...),
+		"type":             append([]string(nil), contracts.IssueTypes...),
+		"relation":         append([]string(nil), contracts.RelationTypes...),
 		// tag_colors is populated in init() from handlers.TagColorPalette
 		// so the schema can never drift from the server-side validator.
 		"tag_colors": nil,
@@ -171,8 +179,19 @@ var Schema = SchemaPayload{
 			Optional: []string{},
 		},
 	},
+	EnumFields: map[string]string{
+		"issue.type":       "type",
+		"issue.status":     "status",
+		"issue.priority":   "priority",
+		"relation.type":    "relation",
+		"tag.color":        "tag_colors",
+		"knowledge.type":   "knowledge_types",
+		"knowledge.status": "knowledge_status",
+	},
 	Conventions: map[string]string{
 		"acceptance_criteria":    "markdown checkbox list: `- [ ] ...` / `- [x] ...`",
+		"enum_values":            "Enum values are canonical lowercase wire values. Display surfaces may render proper-case labels, but requests must submit the schema value.",
+		"idempotency_key":        "Create-style writes may accept `Idempotency-Key: <uuid-or-ulid>`; clients should reuse the same key only when retrying the same logical request.",
 		"issue_key":              "{PROJECT_KEY}-{N}, case-sensitive (e.g. PAI-83). `/issues/{id}` accepts either the numeric id or the key since v1.2.5.",
 		"multiline_inputs":       "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
 		"transitions_permissive": "status transitions are recommendations, not enforced; the backend accepts any→any to keep fix-by-hand flexible. Clients should surface the recommended list but allow override.",

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import i18n from '@/i18n'
 import { OTHER_STATUS_SENTINEL } from '@/composables/useIssueFilter'
+import { LS_LIEFERBERICHT_COLS } from '@/constants/storage'
 import LieferberichtExportModal from './LieferberichtExportModal.vue'
 
 vi.mock('@/stores/auth', () => ({
@@ -32,6 +33,8 @@ async function settle() {
   await Promise.resolve()
   await nextTick()
 }
+
+const colTestIds = ['lb-col-sp', 'lb-col-h', 'lb-col-ar-sp', 'lb-col-ar-h', 'lb-col-ar-eur'] as const
 
 function mountModal(props: {
   open: boolean
@@ -71,6 +74,12 @@ function mountModal(props: {
       el.remove()
     },
   }
+}
+
+function colInput(root: HTMLElement, testId: typeof colTestIds[number]) {
+  const input = root.querySelector<HTMLInputElement>(`[data-testid="${testId}"]`)
+  if (!input) throw new Error(`missing ${testId}`)
+  return input
 }
 
 describe('LieferberichtExportModal', () => {
@@ -124,6 +133,7 @@ describe('LieferberichtExportModal', () => {
     expect(url.searchParams.get('date_field')).toBe('completed')
     expect(url.searchParams.get('date_from')).toBe('2026-05-01')
     expect(url.searchParams.get('date_to')).toBe('2026-05-31')
+    expect(url.searchParams.get('cols')).toBe('sp,h,ar_sp,ar_h,ar_eur')
 
     mounted.unmount()
   })
@@ -149,5 +159,61 @@ describe('LieferberichtExportModal', () => {
     expect(url.searchParams.has('sprint_ids')).toBe(false)
 
     mounted.unmount()
+  })
+
+  it('persists numeric column visibility and sends the same selection to the PDF endpoint', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const mounted = mountModal({
+      open: true,
+      projectId: 7,
+      filterStatus: [],
+      filterTags: [],
+      filterSprints: [],
+      unsupportedActive: [],
+    })
+    await settle()
+
+    for (const id of colTestIds) {
+      const input = colInput(mounted.el, id)
+      expect(input.checked).toBe(true)
+      input.click()
+      await settle()
+    }
+    expect(JSON.parse(localStorage.getItem(LS_LIEFERBERICHT_COLS) ?? '{}')).toEqual({
+      sp: false,
+      h: false,
+      arSp: false,
+      arH: false,
+      arEur: false,
+    })
+
+    mounted.unmount()
+    const remounted = mountModal({
+      open: true,
+      projectId: 7,
+      filterStatus: [],
+      filterTags: [],
+      filterSprints: [],
+      unsupportedActive: [],
+    })
+    await settle()
+
+    for (const id of colTestIds) {
+      expect(colInput(remounted.el, id).checked).toBe(false)
+    }
+
+    colInput(remounted.el, 'lb-col-sp').click()
+    colInput(remounted.el, 'lb-col-ar-sp').click()
+    colInput(remounted.el, 'lb-col-ar-eur').click()
+    await settle()
+
+    remounted.el.querySelector<HTMLButtonElement>('.btn-primary')?.click()
+    await settle()
+
+    const [rawURL] = open.mock.calls[0]
+    const url = new URL(String(rawURL), 'http://paimos.test')
+    expect(url.searchParams.get('cols')).toBe('sp,ar_sp,ar_eur')
+
+    remounted.unmount()
   })
 })

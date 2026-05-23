@@ -28,6 +28,7 @@ type CachedSchema struct {
 	Enums       map[string][]string            `json:"enums"`
 	Transitions map[string]map[string][]string `json:"transitions"`
 	Entities    map[string]map[string]any      `json:"entities"`
+	EnumFields  map[string]string              `json:"enum_fields"`
 	Conventions map[string]string              `json:"conventions"`
 	// FetchedAt is locally added, not from the server. Makes `doctor`
 	// and `schema` show when the cache was last refreshed.

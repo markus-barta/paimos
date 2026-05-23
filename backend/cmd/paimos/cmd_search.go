@@ -58,6 +58,11 @@ func searchCmd() *cobra.Command {
 				q.Set("project", projectRef)
 			}
 			if issueType = strings.TrimSpace(issueType); issueType != "" {
+				var err error
+				issueType, err = normalizeEnumValue("issue.type", issueType)
+				if err != nil {
+					return err
+				}
 				q.Set("type", issueType)
 			}
 			if limit > 0 {

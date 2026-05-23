@@ -20,12 +20,28 @@ import { ref } from "vue";
 const BASE = "/api";
 
 export class ApiError extends Error {
+  code?: string;
+  field?: string;
+  valid_values?: string[];
+  request_id?: string;
+  error?: string;
+
   constructor(
     public status: number,
     message: string,
   ) {
     super(message);
   }
+}
+
+function apiErrorFromData(status: number, data: any, fallback: string): ApiError {
+  const message =
+    data && typeof data === "object"
+      ? data.detail ?? data.error ?? fallback
+      : fallback;
+  const err = new ApiError(status, message);
+  if (data && typeof data === "object") Object.assign(err, data);
+  return err;
 }
 
 // ── Session-expired signal ────────────────────────────────────
@@ -378,13 +394,11 @@ async function request<T>(
       res.status === 403 &&
       data &&
       typeof data === "object" &&
-      data.error === "must_change_password"
+      (data.code === "must_change_password" || data.error === "must_change_password")
     ) {
       mustChangePassword.value = true;
     }
-    const err = new ApiError(res.status, data.error ?? "request failed");
-    if (data && typeof data === "object") Object.assign(err, data);
-    throw err;
+    throw apiErrorFromData(res.status, data, "request failed");
   }
   return data as T;
 }
@@ -419,9 +433,7 @@ async function requestWithMeta<T>(
 
   const data = await readJSON<any>(res);
   if (!res.ok) {
-    const err = new ApiError(res.status, data.error ?? "request failed");
-    if (data && typeof data === "object") Object.assign(err, data);
-    throw err;
+    throw apiErrorFromData(res.status, data, "request failed");
   }
   return {
     data: data as T,
@@ -475,7 +487,7 @@ async function upload<T>(
       try {
         const data = JSON.parse(xhr.responseText);
         if (xhr.status >= 400) {
-          reject(new ApiError(xhr.status, data.error ?? "upload failed"));
+          reject(apiErrorFromData(xhr.status, data, "upload failed"));
           return;
         }
         resolve(data as T);
@@ -507,7 +519,8 @@ export function errMsg(e: unknown, fallback = "An error occurred"): string {
   // FirstLoginView, not a per-component toast. Same suppression.
   if (
     e instanceof ApiError &&
-    (e as { error?: string }).error === "must_change_password"
+    ((e as { code?: string }).code === "must_change_password" ||
+      (e as { error?: string }).error === "must_change_password")
   ) {
     return "";
   }

@@ -38,8 +38,8 @@ import (
 // The hash is computed over the marshaled schemaJSON bytes (including the
 // version string), so a version bump alone also shifts it.
 func TestSchemaPayloadHash(t *testing.T) {
-	const expectedVersion = "1.3.0"
-	const expectedHash = "9470819d3c3d2a9a897c4b1b6f7ad9d397d09765f09d4e416594e274b60ad925"
+	const expectedVersion = "1.4.0"
+	const expectedHash = "bfa31165df1bef40e3133f58005c18f16903b3439ec59933b67276ff61915030"
 
 	if handlers.SchemaVersion != expectedVersion {
 		t.Errorf("SchemaVersion = %q, test expects %q — update either the code or the test constant",
@@ -150,6 +150,39 @@ func TestSchemaTagColorsMatchValidator(t *testing.T) {
 	for _, c := range got {
 		if !handlers.IsValidTagColor(c) {
 			t.Errorf("tag_colors lists %q but IsValidTagColor rejects it", c)
+		}
+	}
+}
+
+// TestSchemaEnumFieldsResolve asserts every published field binding points
+// at a real enum domain. The binding map is how clients and agents know
+// which schema enum validates which request field.
+func TestSchemaEnumFieldsResolve(t *testing.T) {
+	want := map[string]string{
+		"issue.type":       "type",
+		"issue.status":     "status",
+		"issue.priority":   "priority",
+		"relation.type":    "relation",
+		"tag.color":        "tag_colors",
+		"knowledge.type":   "knowledge_types",
+		"knowledge.status": "knowledge_status",
+	}
+	for binding, domain := range want {
+		got, ok := handlers.Schema.EnumFields[binding]
+		if !ok {
+			t.Errorf("enum_fields[%q] missing", binding)
+			continue
+		}
+		if got != domain {
+			t.Errorf("enum_fields[%q] = %q, want %q", binding, got, domain)
+		}
+		if len(handlers.Schema.Enums[got]) == 0 {
+			t.Errorf("enum_fields[%q] points at empty or unknown enum domain %q", binding, got)
+		}
+	}
+	for binding, domain := range handlers.Schema.EnumFields {
+		if len(handlers.Schema.Enums[domain]) == 0 {
+			t.Errorf("enum_fields[%q] points at empty or unknown enum domain %q", binding, domain)
 		}
 	}
 }
@@ -281,7 +314,7 @@ func TestSchemaJSONParses(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("response not valid JSON: %v", err)
 	}
-	for _, k := range []string{"version", "enums", "transitions", "entities", "conventions"} {
+	for _, k := range []string{"version", "enums", "transitions", "entities", "enum_fields", "conventions"} {
 		if _, ok := out[k]; !ok {
 			t.Errorf("response missing top-level key %q", k)
 		}

@@ -54,6 +54,14 @@ type lbSubtotal struct {
 	ArEur         float64 `json:"ar_eur"`
 }
 
+type lbReportCols struct {
+	SP    bool `json:"sp"`
+	H     bool `json:"h"`
+	ARSP  bool `json:"ar_sp"`
+	ARH   bool `json:"ar_h"`
+	AREUR bool `json:"ar_eur"`
+}
+
 type lbGroup struct {
 	EpicKey   string     `json:"epic_key"`
 	EpicTitle string     `json:"epic_title"`
@@ -62,12 +70,13 @@ type lbGroup struct {
 }
 
 type lbReport struct {
-	ProjectID   int64      `json:"project_id"`
-	ProjectKey  string     `json:"project_key"`
-	ProjectName string     `json:"project_name"`
-	GeneratedAt string     `json:"generated_at"`
-	Groups      []lbGroup  `json:"groups"`
-	GrandTotal  lbSubtotal `json:"grand_total"`
+	ProjectID   int64        `json:"project_id"`
+	ProjectKey  string       `json:"project_key"`
+	ProjectName string       `json:"project_name"`
+	GeneratedAt string       `json:"generated_at"`
+	Cols        lbReportCols `json:"cols"`
+	Groups      []lbGroup    `json:"groups"`
+	GrandTotal  lbSubtotal   `json:"grand_total"`
 }
 
 // ── Query helper ─────────────────────────────────────────────────────────────
@@ -281,6 +290,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		ProjectKey:  projectKey,
 		ProjectName: projectName,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Cols:        lbReportColsFromSet(defaultLBColSet()),
 		Groups:      make([]lbGroup, 0, len(groupOrder)),
 	}
 
@@ -298,6 +308,26 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 	report.GrandTotal.ArEur = roundTo(report.GrandTotal.ArEur, 2)
 
 	return report, nil
+}
+
+func lbReportColsFromSet(set lbColSet) lbReportCols {
+	return lbReportCols{
+		SP:    set.SP,
+		H:     set.H,
+		ARSP:  set.ARSP,
+		ARH:   set.ARH,
+		AREUR: set.AREUR,
+	}
+}
+
+func requestLBColSet(r *http.Request) lbColSet {
+	// PAI-400: distinguish "param absent" (back-compat → all visible) from
+	// "param present but empty" (PAI-401 → zero numeric columns). url.Values.Get
+	// returns "" for both, so check the underlying slice directly.
+	if _, present := r.URL.Query()["cols"]; present {
+		return parseLBColSet(r.URL.Query().Get("cols"))
+	}
+	return defaultLBColSet()
 }
 
 func optVal(p *float64) float64 {
@@ -478,6 +508,7 @@ func GetLieferbericht(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	report.Cols = lbReportColsFromSet(requestLBColSet(r))
 
 	jsonOK(w, report)
 }

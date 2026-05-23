@@ -138,6 +138,13 @@ func (c *Client) Do(method, path string, body any) ([]byte, error) {
 	req.Header.Set("User-Agent", "paimos-mcp")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-PAIMOS-Session-Id", c.sessionID)
+	if method == http.MethodPost && body != nil {
+		if id, err := uuid.NewV7(); err == nil {
+			req.Header.Set("Idempotency-Key", id.String())
+		} else {
+			req.Header.Set("Idempotency-Key", uuid.NewString())
+		}
+	}
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
@@ -155,11 +162,32 @@ func (c *Client) Do(method, path string, body any) ([]byte, error) {
 	}
 	if resp.StatusCode >= 400 {
 		var shaped struct {
-			Error string `json:"error"`
+			Error       string   `json:"error"`
+			Detail      string   `json:"detail"`
+			Code        string   `json:"code"`
+			Field       string   `json:"field"`
+			ValidValues []string `json:"valid_values"`
 		}
 		msg := strings.TrimSpace(string(raw))
-		if json.Unmarshal(raw, &shaped) == nil && shaped.Error != "" {
-			msg = shaped.Error
+		if json.Unmarshal(raw, &shaped) == nil {
+			if shaped.Detail != "" {
+				msg = shaped.Detail
+			} else if shaped.Error != "" {
+				msg = shaped.Error
+			}
+			var suffix []string
+			if shaped.Code != "" {
+				suffix = append(suffix, "code="+shaped.Code)
+			}
+			if shaped.Field != "" {
+				suffix = append(suffix, "field="+shaped.Field)
+			}
+			if len(shaped.ValidValues) > 0 {
+				suffix = append(suffix, "valid_values="+strings.Join(shaped.ValidValues, ","))
+			}
+			if len(suffix) > 0 {
+				msg += " (" + strings.Join(suffix, "; ") + ")"
+			}
 		}
 		return raw, fmt.Errorf("API %d %s %s: %s", resp.StatusCode, method, path, msg)
 	}

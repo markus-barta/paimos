@@ -32,20 +32,11 @@
 //   - `useIssueFilter.ts` `KNOWN_STATUSES` — the URL-parser's tolerant
 //     set, different concept.
 
+import { ISSUE_STATUSES } from '@/types'
 import type { IssueStatus } from '@/types'
 
 /** All issue statuses, in canonical workflow order. */
-export const STATUSES: readonly IssueStatus[] = [
-  'new',
-  'backlog',
-  'in-progress',
-  'qa',
-  'done',
-  'delivered',
-  'accepted',
-  'invoiced',
-  'cancelled',
-] as const
+export const STATUSES: readonly IssueStatus[] = ISSUE_STATUSES
 
 /** Statuses the accruals report counts as completed work by default. */
 export const ACCRUALS_DEFAULT_STATUSES: readonly IssueStatus[] = [

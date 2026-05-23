@@ -355,7 +355,7 @@ func main() {
 
 			// Issues nested under project
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
-			r.With(auth.RequireProjectEdit).Post("/projects/{id}/issues", handlers.CreateIssue)
+			r.With(auth.RequireProjectEdit, handlers.IdempotencyMiddleware).Post("/projects/{id}/issues", handlers.CreateIssue)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/cost-units", handlers.ListCostUnits)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/releases", handlers.ListReleases)
@@ -394,7 +394,7 @@ func main() {
 			// caller is the paimos CLI run under an admin key. Single-issue
 			// endpoints still serve non-admins.
 			r.With(auth.RequireAdmin).Patch("/issues", handlers.UpdateIssuesBatch)
-			r.With(auth.RequireAdmin).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
+			r.With(auth.RequireAdmin, handlers.IdempotencyMiddleware).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
 
 			// Sprints
 			r.Get("/sprints", handlers.ListSprints)
@@ -443,7 +443,7 @@ func main() {
 
 			// Issue relations (v2)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/relations", handlers.ListIssueRelations)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/relations", handlers.CreateIssueRelation)
+			r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/relations", handlers.CreateIssueRelation)
 			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/members", handlers.ListIssuesByRelation)
 
@@ -554,7 +554,7 @@ func main() {
 
 			// Comments
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/comments", handlers.CreateComment)
+			r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/comments", handlers.CreateComment)
 			r.With(auth.RequireCommentEdit).Patch("/comments/{id}", handlers.UpdateCommentVisibility)
 			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
 

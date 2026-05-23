@@ -83,6 +83,19 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 	if body.Type == "" {
 		body.Type = inferType(body.ParentID)
 	}
+	for _, check := range []struct {
+		binding string
+		value   string
+	}{
+		{"issue.type", body.Type},
+		{"issue.status", body.Status},
+		{"issue.priority", body.Priority},
+	} {
+		if ev := validateEnumField(check.binding, check.value); ev != nil {
+			writeEnumViolation(w, r, ev)
+			return
+		}
+	}
 
 	// Validate hierarchy
 	if err := validateParent(body.Type, body.ParentID, &projectID); err != nil {
@@ -346,7 +359,23 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// also runs the check against the cleared state.
 	newType := existing.Type
 	if body.Type != nil {
+		if ev := validateEnumField("issue.type", *body.Type); ev != nil {
+			writeEnumViolation(w, r, ev)
+			return
+		}
 		newType = *body.Type
+	}
+	if body.Status != nil {
+		if ev := validateEnumField("issue.status", *body.Status); ev != nil {
+			writeEnumViolation(w, r, ev)
+			return
+		}
+	}
+	if body.Priority != nil {
+		if ev := validateEnumField("issue.priority", *body.Priority); ev != nil {
+			writeEnumViolation(w, r, ev)
+			return
+		}
 	}
 	newParent := existing.ParentID
 	if parentIDPresent {
@@ -795,6 +824,19 @@ func CreateOrphanIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Priority == "" {
 		body.Priority = "medium"
+	}
+	for _, check := range []struct {
+		binding string
+		value   string
+	}{
+		{"issue.type", body.Type},
+		{"issue.status", body.Status},
+		{"issue.priority", body.Priority},
+	} {
+		if ev := validateEnumField(check.binding, check.value); ev != nil {
+			writeEnumViolation(w, r, ev)
+			return
+		}
 	}
 
 	var orphanCreatedBy *int64

@@ -4708,6 +4708,26 @@ func migrate(db *sql.DB) error {
 			 CHECK (visibility IN ('internal','external'))`,
 			`CREATE INDEX IF NOT EXISTS idx_comments_visibility ON comments(visibility)`,
 		}},
+
+		// Migration 112: PAI-486 — idempotency cache for duplicate-prone
+		// create writes. Scoped by user + method + route/path + key so
+		// different users cannot collide on a client-generated key.
+		{112, []string{
+			`CREATE TABLE IF NOT EXISTS idempotency_keys (
+				key          TEXT NOT NULL,
+				user_id      INTEGER NOT NULL DEFAULT 0,
+				route        TEXT NOT NULL,
+				method       TEXT NOT NULL,
+				request_hash TEXT NOT NULL,
+				status_code  INTEGER NOT NULL,
+				response     BLOB NOT NULL,
+				headers_json TEXT NOT NULL DEFAULT '{}',
+				created_at   TEXT NOT NULL,
+				expires_at   TEXT NOT NULL,
+				PRIMARY KEY (key, user_id, route, method)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at)`,
+		}},
 	}
 
 	for _, m := range migrations {

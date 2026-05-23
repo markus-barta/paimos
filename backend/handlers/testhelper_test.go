@@ -246,7 +246,7 @@ func buildRouter() http.Handler {
 
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
-			r.With(auth.RequireProjectEdit).Post("/projects/{id}/issues", handlers.CreateIssue)
+			r.With(auth.RequireProjectEdit, handlers.IdempotencyMiddleware).Post("/projects/{id}/issues", handlers.CreateIssue)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/cost-units", handlers.ListCostUnits)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/releases", handlers.ListReleases)
 
@@ -254,7 +254,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
 			r.Get("/issues", handlers.ListOrLookupIssues)
 			r.With(auth.RequireAdmin).Patch("/issues", handlers.UpdateIssuesBatch)
-			r.With(auth.RequireAdmin).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
+			r.With(auth.RequireAdmin, handlers.IdempotencyMiddleware).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
 			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
@@ -285,7 +285,7 @@ func buildRouter() http.Handler {
 			r.Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
 
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/comments", handlers.CreateComment)
+			r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/comments", handlers.CreateComment)
 			r.With(auth.RequireCommentEdit).Patch("/comments/{id}", handlers.UpdateCommentVisibility)
 			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
 
@@ -367,7 +367,7 @@ func buildRouter() http.Handler {
 
 			// Issue relations (sprint assignment, groups, etc.)
 			r.Get("/issues/{id}/relations", handlers.ListIssueRelations)
-			r.Post("/issues/{id}/relations", handlers.CreateIssueRelation)
+			r.With(handlers.IdempotencyMiddleware).Post("/issues/{id}/relations", handlers.CreateIssueRelation)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
 			r.Get("/issues/{id}/members", handlers.ListIssuesByRelation)
 			r.Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)

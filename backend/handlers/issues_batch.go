@@ -286,6 +286,30 @@ func validateBatchCreate(items []BatchCreateItem, projectID int64) []BatchError 
 		if strings.TrimSpace(it.Title) == "" {
 			errs = append(errs, BatchError{Index: i, Error: "title is required"})
 		}
+		typ := it.Type
+		if typ == "" {
+			typ = inferType(it.ParentID)
+		}
+		status := it.Status
+		if status == "" {
+			status = "new"
+		}
+		priority := it.Priority
+		if priority == "" {
+			priority = "medium"
+		}
+		for _, check := range []struct {
+			binding string
+			value   string
+		}{
+			{"issue.type", typ},
+			{"issue.status", status},
+			{"issue.priority", priority},
+		} {
+			if ev := validateEnumField(check.binding, check.value); ev != nil {
+				errs = append(errs, BatchError{Index: i, Error: ev.Error()})
+			}
+		}
 		if it.ParentID != nil && it.ParentRef != nil {
 			errs = append(errs, BatchError{Index: i, Error: "parent_id and parent_ref are mutually exclusive"})
 		}
@@ -584,6 +608,22 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 	upd.EndDate = body.EndDate
 	upd.EstimateHours = body.EstimateHours
 	upd.EstimateLp = body.EstimateLp
+
+	if body.Type != nil {
+		if ev := validateEnumField("issue.type", *body.Type); ev != nil {
+			return upd, ev.Error()
+		}
+	}
+	if body.Status != nil {
+		if ev := validateEnumField("issue.status", *body.Status); ev != nil {
+			return upd, ev.Error()
+		}
+	}
+	if body.Priority != nil {
+		if ev := validateEnumField("issue.priority", *body.Priority); ev != nil {
+			return upd, ev.Error()
+		}
+	}
 
 	// Hierarchy validation — mirror UpdateIssue's check. Use presence
 	// (not just non-nil pointer) so an explicit-null parent_id still

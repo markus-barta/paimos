@@ -10,6 +10,7 @@ import type { MetaOption } from '@/components/MetaSelect.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import { STATUSES } from '@/constants/status'
+import { ISSUE_PRIORITIES, ISSUE_TYPES } from '@/types'
 
 const auth   = useAuthStore()
 const router = useRouter()
@@ -141,13 +142,13 @@ const priorityMap = ref<Record<string,string>>({
   'Minor':   'low',
 })
 
-const TYPE_VAL_OPTIONS: MetaOption[]     = ['epic','ticket','task','cost_unit','release'].map(v => ({ value: v, label: v === 'cost_unit' ? 'Cost Unit' : v.charAt(0).toUpperCase()+v.slice(1) }))
+const TYPE_VAL_OPTIONS: MetaOption[]     = ISSUE_TYPES.map(v => ({ value: v, label: v === 'cost_unit' ? 'Cost Unit' : v.charAt(0).toUpperCase()+v.slice(1) }))
 const typeEnabled = ref<Record<string,boolean>>({
   'Epic': true, 'Story': true, 'Bug': true, 'Task': true, 'Change Request': true, 'Sub-task': true,
   'Cost Unit': false, 'Release': false,
 })
 const STATUS_VAL_OPTIONS: MetaOption[]   = STATUSES.map(v => ({ value: v, label: v }))
-const PRIORITY_VAL_OPTIONS: MetaOption[] = ['high','medium','low'].map(v => ({ value: v, label: v.charAt(0).toUpperCase()+v.slice(1) }))
+const PRIORITY_VAL_OPTIONS: MetaOption[] = ISSUE_PRIORITIES.map(v => ({ value: v, label: v.charAt(0).toUpperCase()+v.slice(1) }))
 
 // Smart options
 const opts = ref({

@@ -126,6 +126,21 @@ Use --dry-run to print the request payload without hitting the API.`,
 			if err != nil {
 				return err
 			}
+			if typ != "" {
+				if typ, err = normalizeEnumValue("issue.type", typ); err != nil {
+					return err
+				}
+			}
+			if status != "" {
+				if status, err = normalizeEnumValue("issue.status", status); err != nil {
+					return err
+				}
+			}
+			if priority != "" {
+				if priority, err = normalizeEnumValue("issue.priority", priority); err != nil {
+					return err
+				}
+			}
 
 			body := map[string]any{"title": title}
 			if typ != "" {
@@ -298,6 +313,21 @@ Use --dry-run to print the payload without sending.`,
 			}
 			if closeNoteVal != "" && status == "" {
 				return &usageError{msg: "--close-note requires --status (can't leave a close note without closing)"}
+			}
+			if typ != "" {
+				if typ, err = normalizeEnumValue("issue.type", typ); err != nil {
+					return err
+				}
+			}
+			if status != "" {
+				if status, err = normalizeEnumValue("issue.status", status); err != nil {
+					return err
+				}
+			}
+			if priority != "" {
+				if priority, err = normalizeEnumValue("issue.priority", priority); err != nil {
+					return err
+				}
 			}
 			if closeNoteVal != "" && !terminalStatuses[status] {
 				return &usageError{
@@ -480,6 +510,11 @@ func issueEnsureStatusCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, want := args[0], args[1]
+			var err error
+			want, err = normalizeEnumValue("issue.status", want)
+			if err != nil {
+				return err
+			}
 			client, err := instanceClient()
 			if err != nil {
 				return err
@@ -574,6 +609,11 @@ func relationAddCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			src, typ, tgt := args[0], args[1], args[2]
+			var err error
+			typ, err = normalizeEnumValue("relation.type", typ)
+			if err != nil {
+				return err
+			}
 			client, err := instanceClient()
 			if err != nil {
 				return err

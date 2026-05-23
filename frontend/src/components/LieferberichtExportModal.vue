@@ -235,11 +235,11 @@ function download() {
       <div class="lb-export-row">
         <label class="lb-export-label">{{ t('lieferbericht.filters.columns') }}</label>
         <div class="lb-export-cols">
-          <label class="lb-export-check"><input type="checkbox" v-model="cols.sp" />    {{ t('lieferbericht.table.sp') }}</label>
-          <label class="lb-export-check"><input type="checkbox" v-model="cols.h" />     {{ t('lieferbericht.table.hours') }}</label>
-          <label class="lb-export-check"><input type="checkbox" v-model="cols.arSp" />  {{ t('lieferbericht.table.arSp') }}</label>
-          <label class="lb-export-check"><input type="checkbox" v-model="cols.arH" />   {{ t('lieferbericht.table.arHours') }}</label>
-          <label class="lb-export-check"><input type="checkbox" v-model="cols.arEur" /> {{ t('lieferbericht.table.arEur') }} EUR</label>
+          <label class="lb-export-check"><input data-testid="lb-col-sp" type="checkbox" v-model="cols.sp" /> {{ t('lieferbericht.table.sp') }}</label>
+          <label class="lb-export-check"><input data-testid="lb-col-h" type="checkbox" v-model="cols.h" /> {{ t('lieferbericht.table.hours') }}</label>
+          <label class="lb-export-check"><input data-testid="lb-col-ar-sp" type="checkbox" v-model="cols.arSp" /> {{ t('lieferbericht.table.arSp') }}</label>
+          <label class="lb-export-check"><input data-testid="lb-col-ar-h" type="checkbox" v-model="cols.arH" /> {{ t('lieferbericht.table.arHours') }}</label>
+          <label class="lb-export-check"><input data-testid="lb-col-ar-eur" type="checkbox" v-model="cols.arEur" /> {{ t('lieferbericht.table.arEur') }} EUR</label>
         </div>
       </div>
 

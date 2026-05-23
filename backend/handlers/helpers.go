@@ -17,6 +17,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -30,9 +31,90 @@ func jsonOK(w http.ResponseWriter, v any) {
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	writeProblem(w, nil, ProblemDetails{
+		Type:   fmt.Sprintf("https://paimos.com/errors/%s", codeForStatus(code)),
+		Title:  http.StatusText(code),
+		Status: code,
+		Detail: msg,
+		Code:   codeForStatus(code),
+		Error:  msg,
+	})
+}
+
+// ProblemDetails is the PAIMOS error envelope. It follows RFC 7807's
+// core fields and adds stable machine fields for clients/agents.
+type ProblemDetails struct {
+	Type        string   `json:"type"`
+	Title       string   `json:"title"`
+	Status      int      `json:"status"`
+	Detail      string   `json:"detail"`
+	Instance    string   `json:"instance,omitempty"`
+	Code        string   `json:"code"`
+	Field       string   `json:"field,omitempty"`
+	ValidValues []string `json:"valid_values,omitempty"`
+	RequestID   string   `json:"request_id,omitempty"`
+	Error       string   `json:"error,omitempty"`
+}
+
+func problemJSON(w http.ResponseWriter, r *http.Request, p ProblemDetails) {
+	writeProblem(w, r, p)
+}
+
+func writeProblem(w http.ResponseWriter, r *http.Request, p ProblemDetails) {
+	if p.Status == 0 {
+		p.Status = http.StatusInternalServerError
+	}
+	if p.Title == "" {
+		p.Title = http.StatusText(p.Status)
+	}
+	if p.Code == "" {
+		p.Code = codeForStatus(p.Status)
+	}
+	if p.Type == "" {
+		p.Type = fmt.Sprintf("https://paimos.com/errors/%s", p.Code)
+	}
+	if p.Detail == "" {
+		p.Detail = p.Title
+	}
+	if p.Error == "" {
+		p.Error = p.Detail
+	}
+	if r != nil {
+		p.Instance = r.URL.RequestURI()
+		if p.RequestID == "" {
+			p.RequestID = requestIDFromRequest(r)
+		}
+	}
+	if p.RequestID == "" {
+		p.RequestID = strings.TrimSpace(w.Header().Get(RequestIDHeader))
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(p.Status)
+	json.NewEncoder(w).Encode(p)
+}
+
+func codeForStatus(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "bad_request"
+	case http.StatusUnauthorized:
+		return "unauthorized"
+	case http.StatusForbidden:
+		return "forbidden"
+	case http.StatusNotFound:
+		return "not_found"
+	case http.StatusConflict:
+		return "conflict"
+	case http.StatusUnprocessableEntity:
+		return "unprocessable_entity"
+	case http.StatusRequestEntityTooLarge:
+		return "request_entity_too_large"
+	default:
+		if status >= 500 {
+			return "internal_error"
+		}
+		return fmt.Sprintf("http_%d", status)
+	}
 }
 
 // handleDBError checks for common DB errors and sends appropriate HTTP responses.

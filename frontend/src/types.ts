@@ -15,6 +15,28 @@
  * License along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type { IssuePriority, IssueStatus, IssueType, KnowledgeStatus, RelationType } from './types/generated/schema'
+
+export {
+  ENUM_FIELDS,
+  ISSUE_PRIORITIES,
+  ISSUE_STATUSES,
+  ISSUE_TYPES,
+  KNOWLEDGE_STATUSES,
+  KNOWLEDGE_TYPES,
+  RELATION_TYPES,
+  TAG_COLORS,
+} from './types/generated/schema'
+export type {
+  IssuePriority,
+  IssueStatus,
+  IssueType,
+  KnowledgeStatus,
+  KnowledgeType,
+  RelationType,
+  TagColor,
+} from './types/generated/schema'
+
 // PAI-53. Customer record. CRM-agnostic by design — external_* and
 // synced_at are all nullable; NULL across all three = a manually-managed
 // customer. The provider plugin layer (PAI-101) populates the externals
@@ -490,7 +512,7 @@ export interface IssueRelation {
   // blocks:       source = blocker, target = blocked (PAI-89).
   // related:      loose "see also" — direction is cosmetic (PAI-89).
   // applies_to_memory: source = ticket, target = memory entry (PAI-342).
-  type: 'groups' | 'sprint' | 'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related' | 'applies_to_memory'
+  type: RelationType
   target_key?: string
   target_title?: string
   // "outgoing" when the issue whose /relations endpoint was called is
@@ -498,10 +520,6 @@ export interface IssueRelation {
   // inverse labels without storing a second row. Added in PAI-89.
   direction?: 'outgoing' | 'incoming'
 }
-
-export type IssueStatus = 'new' | 'backlog' | 'in-progress' | 'qa' | 'done' | 'delivered' | 'accepted' | 'invoiced' | 'cancelled'
-export type IssuePriority = 'low' | 'medium' | 'high'
-export type IssueType = 'epic' | 'cost_unit' | 'release' | 'sprint' | 'ticket' | 'task'
 
 export interface Issue {
   id: number
@@ -637,11 +655,3 @@ export interface User {
   // `super_admin`; this remains for older clients and cautious UI gates.
   is_super_admin: boolean
 }
-
-// Tag color palette — must match backend ValidColors
-export const TAG_COLORS = [
-  'gray', 'slate', 'blue', 'indigo', 'purple',
-  'pink', 'red', 'orange', 'yellow', 'green', 'teal', 'cyan',
-] as const
-
-export type TagColor = typeof TAG_COLORS[number]

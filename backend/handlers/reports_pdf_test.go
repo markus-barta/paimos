@@ -64,6 +64,71 @@ func TestLieferbericht_UngroupedUsesProjectKey(t *testing.T) {
 	}
 }
 
+func TestLieferberichtJSON_ColsParam(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Column Project",
+		"key":  "COLS",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
+		"title":  "Billable ticket",
+		"type":   "ticket",
+		"status": "backlog",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	issueID := responseID(t, resp)
+	if _, err := db.DB.Exec("UPDATE issues SET ar_lp=1, rate_lp=12.345 WHERE id=?", issueID); err != nil {
+		t.Fatalf("set billing fields: %v", err)
+	}
+
+	type colsBody struct {
+		Cols struct {
+			SP    bool `json:"sp"`
+			H     bool `json:"h"`
+			ARSP  bool `json:"ar_sp"`
+			ARH   bool `json:"ar_h"`
+			AREUR bool `json:"ar_eur"`
+		} `json:"cols"`
+		GrandTotal struct {
+			AREUR float64 `json:"ar_eur"`
+		} `json:"grand_total"`
+	}
+
+	decode := func(query string) colsBody {
+		t.Helper()
+		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/reports/lieferbericht?scope=all_open%s", projectID, query), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		defer resp.Body.Close()
+		var body colsBody
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return body
+	}
+
+	defaultBody := decode("")
+	if !defaultBody.Cols.SP || !defaultBody.Cols.H || !defaultBody.Cols.ARSP || !defaultBody.Cols.ARH || !defaultBody.Cols.AREUR {
+		t.Fatalf("default cols = %+v, want all visible", defaultBody.Cols)
+	}
+
+	filteredBody := decode("&cols=sp,ar_eur")
+	if !filteredBody.Cols.SP || !filteredBody.Cols.AREUR || filteredBody.Cols.H || filteredBody.Cols.ARSP || filteredBody.Cols.ARH {
+		t.Fatalf("filtered cols = %+v, want only sp + ar_eur", filteredBody.Cols)
+	}
+	if filteredBody.GrandTotal.AREUR != 12.35 {
+		t.Fatalf("grand_total.ar_eur=%v, want rounded 12.35", filteredBody.GrandTotal.AREUR)
+	}
+
+	emptyBody := decode("&cols=")
+	if emptyBody.Cols.SP || emptyBody.Cols.H || emptyBody.Cols.ARSP || emptyBody.Cols.ARH || emptyBody.Cols.AREUR {
+		t.Fatalf("empty cols = %+v, want none visible", emptyBody.Cols)
+	}
+}
+
 func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	ts := newTestServer(t)
 
@@ -167,11 +232,11 @@ func TestLieferberichtPDF_TextSourceParam(t *testing.T) {
 	projectID := responseID(t, resp)
 
 	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
-		"title":           "Filled summary",
-		"description":     "Technical description here.",
-		"report_summary":  "Wir haben die Anmeldung stabiler gemacht.",
-		"type":            "ticket",
-		"status":          "done",
+		"title":          "Filled summary",
+		"description":    "Technical description here.",
+		"report_summary": "Wir haben die Anmeldung stabiler gemacht.",
+		"type":           "ticket",
+		"status":         "done",
 	})
 	assertStatus(t, resp, http.StatusCreated)
 

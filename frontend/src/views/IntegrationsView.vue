@@ -11,6 +11,7 @@ import AppModal from '@/components/AppModal.vue'
 import SettingsAITab from '@/components/settings/SettingsAITab.vue'
 import SettingsCRMTab from '@/components/settings/SettingsCRMTab.vue'
 import { STATUSES } from '@/constants/status'
+import { ISSUE_PRIORITIES, ISSUE_TYPES } from '@/types'
 
 const auth   = useAuthStore()
 const route  = useRoute()
@@ -198,9 +199,9 @@ const priorityMap = ref<Record<string,string>>({
   'Minor':   'low',
 })
 
-const TYPE_VAL_OPTIONS: MetaOption[]     = ['epic','ticket','task','cost_unit','release'].map(v => ({ value: v, label: v === 'cost_unit' ? 'Cost Unit' : v.charAt(0).toUpperCase()+v.slice(1) }))
+const TYPE_VAL_OPTIONS: MetaOption[]     = ISSUE_TYPES.map(v => ({ value: v, label: v === 'cost_unit' ? 'Cost Unit' : v.charAt(0).toUpperCase()+v.slice(1) }))
 const STATUS_VAL_OPTIONS: MetaOption[]   = STATUSES.map(v => ({ value: v, label: v }))
-const PRIORITY_VAL_OPTIONS: MetaOption[] = ['high','medium','low'].map(v => ({ value: v, label: v.charAt(0).toUpperCase()+v.slice(1) }))
+const PRIORITY_VAL_OPTIONS: MetaOption[] = ISSUE_PRIORITIES.map(v => ({ value: v, label: v.charAt(0).toUpperCase()+v.slice(1) }))
 
 const opts = ref({
   overwrite:            false,
