@@ -5,6 +5,38 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.5] — 2026-05-26
+
+### Added
+
+- **PAI-499** — **Day-scrubbing in the timer panel footer.** The PAI-495
+  daily-total row gained three ghost buttons between the day label and
+  the sum: prev/next chevrons walk one day at a time, and a centre dot
+  jumps back to today (disabled when already there). The label flips
+  between "Today" / "Yesterday" / "Tomorrow" for nearby days and falls
+  back to weekday + short date otherwise. Live-ticking elapsed of any
+  running timers only contributes when the selected day is today —
+  past days are settled, so adding live seconds to them would be
+  nonsense. Backend already accepted arbitrary `from`/`to` windows on
+  `/api/time-entries/today-summary`, so this is a frontend-only feature.
+- **PAI-496** — **Pin button on the customer portal side panel.** The
+  portal's `PortalIssueSidePanel` gained a pin icon in its header that
+  routes through the shared `useSidePanelPinned` singleton. Pinning
+  fires `AppLayout`'s existing inset (padding-right on `.main` driven
+  by `pinned && visible`) so the panel shrinks the header + content
+  together instead of overlaying them — matching the internal SPA's
+  behaviour exactly. Width is read from the shared `useSidePanelWidth`,
+  so the panel and the layout offset stay in lock-step. ESC dismissal
+  is skipped while pinned (the explicit X button still closes).
+  Leaving the portal route releases the inset cleanly.
+- **PAI-497** — **Prev/next issue navigation in the customer portal
+  side panel.** Two chevron buttons in the header walk through the
+  current tab+filter list without leaving the panel. The parent
+  (`PortalProjectView`) passes the active `tabBoundIssues` IDs and
+  handles the emitted `navigate` event by swapping the open issue;
+  buttons disable at list bounds (no wrap-around). Composes cleanly
+  with the pin button — navigating while pinned keeps the panel open.
+
 ## [3.7.4] — 2026-05-26
 
 ### Added
