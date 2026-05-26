@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.6] — 2026-05-26
+
+### Fixed
+
+- **PAI-500** — **Timer footer polish: no-jump layout, hover-only nav,
+  locale-aware labels.** The PAI-499 day-scrubbing row in the sidebar
+  timer panel switched from a flex/baseline/space-between layout to a
+  3-column grid (`1fr auto 1fr`) with `align-items: center`. Flipping
+  between short labels ("Today") and long ones ("Mon, May 26") no
+  longer shifts the `< • >` controls or the daily total — the nav
+  stays anchored to the panel centre and all three elements vertically
+  centre against each other instead of baseline-aligning. The nav
+  cluster also became opacity:0 by default and fades in on
+  `.timer-body:hover` or `:focus-within`, matching the "Stop all"
+  affordance and reducing noise when the user isn't actively scrubbing
+  days. Day label (`Today` / `Yesterday` / `Tomorrow`) and the
+  `toLocaleDateString` fallback now route through `useI18n`'s active
+  locale with `{date}`-interpolated tooltips (`timer.day.*` keys land
+  in en + de).
+
 ## [3.7.5] — 2026-05-26
 
 ### Added
