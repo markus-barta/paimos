@@ -43,6 +43,11 @@ export default {
     invoicedLabel: 'Verrechnet',
     // PAI-474: Side-Panel-Texte
     close: 'Schließen',
+    // PAI-496 / PAI-497: Side-Panel-Kopfzeile.
+    pin: 'Seitenleiste anheften',
+    unpin: 'Seitenleiste lösen',
+    prevIssue: 'Vorheriges Issue',
+    nextIssue: 'Nächstes Issue',
     reportSummary: 'Abnahmebericht',
     comments: 'Kommentare',
     noComments: 'Noch keine Kommentare.',

@@ -43,6 +43,11 @@ export default {
     invoicedLabel: 'Invoiced',
     // PAI-474: side panel copy
     close: 'Close',
+    // PAI-496 / PAI-497: side panel header controls.
+    pin: 'Pin sidebar',
+    unpin: 'Unpin sidebar',
+    prevIssue: 'Previous issue',
+    nextIssue: 'Next issue',
     reportSummary: 'Acceptance report',
     comments: 'Comments',
     noComments: 'No comments yet.',

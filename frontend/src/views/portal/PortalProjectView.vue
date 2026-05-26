@@ -20,7 +20,7 @@
   preserve the working set.
 -->
 <script setup lang="ts">
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -39,6 +39,11 @@ import type {
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
+import {
+  useSidePanelPinned,
+  setSidePanelPinned,
+  setSidePanelVisible,
+} from '@/composables/useSidePanelPinned'
 
 interface PortalProject {
   id: number
@@ -468,8 +473,36 @@ const ALL_COLUMNS = computed<PortalColumnDef[]>(() => [
 // then continue scanning without losing their place.
 const sidePanelIssueId = ref<number | null>(null)
 
+// PAI-496: pin state lives in the `useSidePanelPinned` singleton (same
+// store the internal IssueSidePanel uses) so AppLayout's inset logic —
+// padding-right on `.main` driven by `pinned && visible` — kicks in
+// automatically and the portal panel shrinks the page instead of
+// overlaying it. Width comes from the shared `useSidePanelWidth`, so
+// AppLayout's offset and the panel's actual width stay in lock-step.
+const { pinned: sidePanelPinned } = useSidePanelPinned()
+function onPinnedChange(v: boolean) {
+  setSidePanelPinned(v)
+}
+// Mirror IssueList's pattern: visible whenever an issue is open OR the
+// panel is pinned (pinned-no-issue still reserves layout space so the
+// user's centred view doesn't jump as they navigate between rows).
+watch(
+  [sidePanelIssueId, sidePanelPinned],
+  ([id, pinned]) => setSidePanelVisible(!!id || pinned),
+  { immediate: true },
+)
+// Leaving the portal route must release the inset, otherwise AppHeader
+// stays shrunk for the rest of the session.
+onUnmounted(() => setSidePanelVisible(false))
+
+const sidePanelIssueIds = computed(() => tabBoundIssues.value.map((i) => i.id))
+
 function onRowClick(issue: PortalIssue) {
   sidePanelIssueId.value = issue.id
+}
+
+function onSidePanelNavigate(id: number) {
+  sidePanelIssueId.value = id
 }
 
 function closeSidePanel() {
@@ -622,7 +655,11 @@ async function submitRequest() {
     <PortalIssueSidePanel
       :project-id="projectId"
       :issue-id="sidePanelIssueId"
+      :issue-ids="sidePanelIssueIds"
+      :pinned="sidePanelPinned"
       @close="closeSidePanel"
+      @navigate="onSidePanelNavigate"
+      @update:pinned="onPinnedChange"
       @accepted="onIssueAccepted"
       @rejected="onIssueRejected"
     />

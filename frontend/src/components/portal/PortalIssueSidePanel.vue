@@ -25,6 +25,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { api, errMsg } from '@/api/client'
 import { useMarkdown } from '@/composables/useMarkdown'
+import { useSidePanelWidth } from '@/composables/useSidePanelWidth'
 
 interface PortalIssueDetail {
   id: number
@@ -54,6 +55,19 @@ const props = defineProps<{
   projectId: number
   /** Issue id to show, or null to keep the panel closed. */
   issueId: number | null
+  /**
+   * PAI-497: ordered list of issue ids the parent considers "the
+   * current navigation context" (typically the active filter+tab set).
+   * Drives the prev/next buttons in the header. Omit (or pass <2 ids)
+   * to hide the buttons.
+   */
+  issueIds?: number[]
+  /**
+   * PAI-496: pinned flag, owned by the parent and mirrored to
+   * localStorage. When true the panel ignores ESC dismissal; the
+   * explicit close button still works.
+   */
+  pinned?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -62,6 +76,10 @@ const emit = defineEmits<{
   accepted: [issueId: number]
   /** Emitted after a successful reject; lets the parent refetch. */
   rejected: [issueId: number]
+  /** PAI-497: navigate to a sibling issue (parent swaps issueId). */
+  navigate: [issueId: number]
+  /** PAI-496: pin toggle; parent persists. */
+  'update:pinned': [pinned: boolean]
 }>()
 
 const { t } = useI18n()
@@ -115,6 +133,35 @@ function portalTypeLabel(type: string): string {
   return translated
 }
 
+// PAI-496: share the internal panel's resizable width so AppLayout's
+// inset (driven by useSidePanelPinned + useSidePanelWidth) and the
+// portal panel's actual width stay in lock-step.
+const { width: sidePanelWidth } = useSidePanelWidth()
+const asideStyle = computed(() => ({ width: sidePanelWidth.value + 'px' }))
+
+// PAI-497: prev/next navigation. Stays inside the parent-supplied
+// list; no wrap-around — matches the internal IssueSidePanel.
+const currentIdx = computed(() => {
+  if (!props.issueIds || props.issueId == null) return -1
+  return props.issueIds.indexOf(props.issueId)
+})
+const canPrev = computed(() => currentIdx.value > 0)
+const canNext = computed(
+  () => !!props.issueIds && currentIdx.value >= 0 && currentIdx.value < props.issueIds.length - 1,
+)
+const showNav = computed(() => !!props.issueIds && props.issueIds.length > 1)
+function goPrev() {
+  if (canPrev.value && props.issueIds) emit('navigate', props.issueIds[currentIdx.value - 1])
+}
+function goNext() {
+  if (canNext.value && props.issueIds) emit('navigate', props.issueIds[currentIdx.value + 1])
+}
+
+// PAI-496: pin toggle.
+function togglePin() {
+  emit('update:pinned', !props.pinned)
+}
+
 // Accept / Reject are available only on the customer-actionable states.
 const canAccept = computed(() => {
   if (!issue.value) return false
@@ -149,9 +196,10 @@ async function loadIssue() {
 
 watch(() => props.issueId, () => void loadIssue(), { immediate: true })
 
-// ESC to close — match the internal side-panel UX.
+// ESC to close — match the internal side-panel UX. PAI-496: when
+// pinned, ESC is a no-op; only the explicit close button dismisses.
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && props.issueId != null) {
+  if (event.key === 'Escape' && props.issueId != null && !props.pinned) {
     emit('close')
   }
 }
@@ -207,14 +255,48 @@ function fmtDate(iso: string): string {
 
 <template>
   <Transition name="psp-slide">
-    <aside v-if="issueId != null" class="psp" aria-modal="true" role="dialog">
+    <aside v-if="issueId != null" class="psp" :style="asideStyle" aria-modal="true" role="dialog">
       <header class="psp__header">
+        <!-- PAI-496: pin toggle — stops ESC from dismissing the panel. -->
+        <button
+          type="button"
+          class="psp__pin"
+          :class="{ 'psp__pin--active': pinned }"
+          @click="togglePin"
+          :title="pinned ? t('portal.unpin') : t('portal.pin')"
+          :aria-pressed="!!pinned"
+        >
+          <AppIcon :name="pinned ? 'pin' : 'pin-off'" :size="14" />
+        </button>
         <div class="psp__crumbs">
           <span class="psp__type">{{
             issue ? portalTypeLabel(issue.type) : ''
           }}</span>
           <span v-if="issue" class="psp__key">{{ issue.issue_key }}</span>
         </div>
+        <!-- PAI-497: prev/next siblings within the active filter. -->
+        <button
+          v-if="showNav"
+          type="button"
+          class="psp__nav"
+          :disabled="!canPrev"
+          @click="goPrev"
+          :title="t('portal.prevIssue')"
+          :aria-label="t('portal.prevIssue')"
+        >
+          <AppIcon name="chevron-up" :size="15" />
+        </button>
+        <button
+          v-if="showNav"
+          type="button"
+          class="psp__nav"
+          :disabled="!canNext"
+          @click="goNext"
+          :title="t('portal.nextIssue')"
+          :aria-label="t('portal.nextIssue')"
+        >
+          <AppIcon name="chevron-down" :size="15" />
+        </button>
         <button type="button" class="psp__close" @click="emit('close')" :aria-label="t('portal.close')">
           <AppIcon name="x" :size="16" />
         </button>
@@ -316,7 +398,9 @@ function fmtDate(iso: string): string {
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(440px, 96vw);
+  /* Width comes from useSidePanelWidth via :style; cap at 96vw as a
+     safety net so very-narrow viewports never overflow. */
+  max-width: 96vw;
   background: var(--bg-elevated, #ffffff);
   border-left: 1px solid var(--border, #e5e7eb);
   box-shadow: -12px 0 32px rgba(15, 23, 42, 0.10);
@@ -354,17 +438,34 @@ function fmtDate(iso: string): string {
   font-weight: 600;
 }
 
-.psp__close {
+.psp__close,
+.psp__pin,
+.psp__nav {
   background: none;
   border: none;
   cursor: pointer;
   padding: 0.25rem;
   color: var(--text-muted, #6b7280);
   border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.psp__close:hover {
+.psp__close:hover,
+.psp__pin:hover,
+.psp__nav:hover:not(:disabled) {
   background: var(--bg-subtle, #f3f4f6);
   color: var(--text, #111827);
+}
+.psp__pin--active {
+  color: var(--brand, #2563eb);
+}
+.psp__pin--active:hover {
+  color: var(--brand, #2563eb);
+}
+.psp__nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .psp__body {
