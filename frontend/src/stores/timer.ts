@@ -31,13 +31,21 @@ export const useTimerStore = defineStore('timer', () => {
   const runningEntries = ref<TimeEntry[]>([])
   const recentEntries = ref<TimeEntry[]>([])
   const elapsedMap = reactive<Map<number, number>>(new Map())
+  // PAI-495: hours summed from stopped time entries whose stopped_at
+  // falls inside the user's local day. The footer adds Σ elapsedMap for
+  // the currently-running timers on top so the displayed total ticks
+  // live without a server round-trip.
+  const todayStoppedHours = ref<number>(0)
   let tickInterval: ReturnType<typeof setInterval> | null = null
   let bc: BroadcastChannel | null = null
   if (typeof BroadcastChannel !== 'undefined') {
     try {
       bc = new BroadcastChannel(SYNC_CHANNEL)
       bc.onmessage = (e: MessageEvent<SyncMsg>) => {
-        if (e.data?.kind === 'changed') void fetchRunning()
+        if (e.data?.kind === 'changed') {
+          void fetchRunning()
+          void fetchTodayTotal()
+        }
       }
     } catch { bc = null }
   }
@@ -113,6 +121,29 @@ export const useTimerStore = defineStore('timer', () => {
     }
   }
 
+  // PAI-495: refresh the day-total from the server using the caller's
+  // local-day window. Browser-local midnight bounds get serialised as
+  // UTC ISO timestamps so the backend can range-filter without knowing
+  // the user's timezone.
+  async function fetchTodayTotal() {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    const params = new URLSearchParams({
+      from: start.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      to: end.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    })
+    try {
+      const res = await api.get<{ total_hours: number; count: number }>(
+        `/time-entries/today-summary?${params.toString()}`,
+      )
+      todayStoppedHours.value = res?.total_hours ?? 0
+    } catch {
+      todayStoppedHours.value = 0
+    }
+  }
+
   // Pending start — used for the confirmation dialog
   const pendingIssueId = ref<number | null>(null)
   const showStartDialog = ref(false)
@@ -179,6 +210,7 @@ export const useTimerStore = defineStore('timer', () => {
       await api.put(`/time-entries/${entryId}`, { stopped_at: now })
       await fetchRunning()
       await fetchRecent()
+      await fetchTodayTotal()
       broadcastChanged()
     } catch (e) {
       /* error swallowed */
@@ -197,13 +229,16 @@ export const useTimerStore = defineStore('timer', () => {
     }
     await fetchRunning()
     await fetchRecent()
+    await fetchTodayTotal()
     broadcastChanged()
   }
 
   return {
     runningEntries, recentEntries, elapsedMap, hasRunning,
+    todayStoppedHours,
     isRunning, getRunningEntry, formattedElapsed,
-    fetchRunning, fetchRecent, start, stop, stopAll,
+    fetchRunning, fetchRecent, fetchTodayTotal,
+    start, stop, stopAll,
     showStartDialog, pendingIssueId, confirmSwitch, confirmBoth, confirmCancel,
   }
 })

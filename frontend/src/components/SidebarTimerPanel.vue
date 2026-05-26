@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useTimerPanel } from '@/composables/useTimerPanel'
 import { useIssuePreview } from '@/composables/useIssuePreview'
 import { formatDuration } from '@/composables/useDurationInput'
@@ -14,6 +15,24 @@ const {
 } = useTimerPanel()
 
 const preview = useIssuePreview()
+
+// PAI-495: live today-total. Stopped entries are summed by the server
+// (fetchTodayTotal); running entries contribute their live elapsed
+// seconds from the per-tick map so the figure ticks alongside RUNNING.
+const todayTotalDisplay = computed(() => {
+  const stoppedSeconds = (timer.todayStoppedHours ?? 0) * 3600
+  let runningSeconds = 0
+  for (const e of runningEntries.value) {
+    runningSeconds += timer.elapsedMap.get(e.id) ?? 0
+  }
+  const total = Math.max(0, Math.floor(stoppedSeconds + runningSeconds))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`
+  return `${s}s`
+})
 </script>
 
 <template>
@@ -57,6 +76,12 @@ const preview = useIssuePreview()
           <span v-if="timer.isRunning(e.issue_id)" class="tp-running-dot" title="Running"></span>
           <button v-else class="tp-btn tp-btn--play" @click.stop="timer.start(e.issue_id)" title="Restart"><AppIcon name="play" :size="10" /></button>
         </div>
+      </div>
+      <!-- PAI-495: today-total footer. Sum of stopped bookings in the
+           user's local day plus live elapsed of any running timers. -->
+      <div class="tp-today">
+        <span class="tp-today-label">Today</span>
+        <span class="tp-today-total">{{ todayTotalDisplay }}</span>
       </div>
     </div>
   </div>
@@ -186,6 +211,20 @@ const preview = useIssuePreview()
 }
 @keyframes tp-dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .tp-empty { font-size: 10px; color: rgba(255,255,255,.3); padding: .3rem .4rem; font-style: italic; }
+/* PAI-495: today-total footer — hairline + small-caps label + right-aligned total. */
+.tp-today {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-top: .35rem; padding: .3rem .3rem .1rem;
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+.tp-today-label {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: rgba(255,255,255,.35);
+}
+.tp-today-total {
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,.7);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Timer start dialog ──────────────────────────────────────────────────── */
 .timer-dialog-backdrop {

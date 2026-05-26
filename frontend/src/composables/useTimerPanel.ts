@@ -42,12 +42,16 @@ export function useTimerPanel() {
   function toggleTimerPanel() {
     timerPanelOpen.value = !timerPanelOpen.value
     localStorage.setItem(LS_KEY, timerPanelOpen.value ? '1' : '0')
-    if (timerPanelOpen.value) timer.fetchRecent()
+    if (timerPanelOpen.value) {
+      timer.fetchRecent()
+      timer.fetchTodayTotal()
+    }
   }
 
   /** Call in onMounted */
   function initTimerPanel() {
     timer.fetchRunning()
+    timer.fetchTodayTotal()
     if (timerPanelOpen.value) timer.fetchRecent()
   }
 

@@ -505,6 +505,80 @@ func GetRunningTimers(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, entries)
 }
 
+// GetTimeEntriesTodaySummary returns the sum of stopped time entries
+// for the session user within the [from, to) window. The client sends
+// its browser-local day boundaries as RFC3339 so the server doesn't
+// need to know the user's timezone. Running entries are excluded —
+// the SidebarTimerPanel adds their live elapsed seconds client-side.
+// GET /api/time-entries/today-summary?from=<RFC3339>&to=<RFC3339>
+func GetTimeEntriesTodaySummary(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUser(r)
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
+	if fromStr == "" || toStr == "" {
+		jsonError(w, "from and to required", http.StatusBadRequest)
+		return
+	}
+	from, err := time.Parse(time.RFC3339, fromStr)
+	if err != nil {
+		jsonError(w, "invalid from", http.StatusBadRequest)
+		return
+	}
+	to, err := time.Parse(time.RFC3339, toStr)
+	if err != nil {
+		jsonError(w, "invalid to", http.StatusBadRequest)
+		return
+	}
+	if !to.After(from) {
+		jsonError(w, "to must be after from", http.StatusBadRequest)
+		return
+	}
+
+	// Filter by stopped_at — what counts as "booked today" is when the
+	// entry was completed, not when the timer was started (matches Mite /
+	// Toggl / standard time-tracking convention). Comparison uses the
+	// canonical Z-suffixed UTC form that both the frontend writer and the
+	// scanTimerEntry parser produce.
+	fromSQL := from.UTC().Format("2006-01-02T15:04:05Z")
+	toSQL := to.UTC().Format("2006-01-02T15:04:05Z")
+
+	rows, err := db.DB.Query(`
+		SELECT te.started_at, te.stopped_at, te.override
+		FROM time_entries te
+		WHERE te.user_id = ?
+		  AND te.stopped_at IS NOT NULL
+		  AND te.stopped_at >= ?
+		  AND te.stopped_at <  ?
+	`, user.ID, fromSQL, toSQL)
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var totalHours float64
+	count := 0
+	for rows.Next() {
+		e := models.TimeEntry{}
+		if err := rows.Scan(&e.StartedAt, &e.StoppedAt, &e.Override); err != nil {
+			continue
+		}
+		computeHours(&e)
+		if e.Hours != nil {
+			totalHours += *e.Hours
+		}
+		count++
+	}
+	jsonOK(w, map[string]any{
+		"total_hours": totalHours,
+		"count":       count,
+	})
+}
+
 // GetRecentTimers returns the N most recently stopped time entries for the session user.
 // GET /api/time-entries/recent
 func GetRecentTimers(w http.ResponseWriter, r *http.Request) {
