@@ -19,11 +19,17 @@ const preview = useIssuePreview()
 // PAI-495: live today-total. Stopped entries are summed by the server
 // (fetchTodayTotal); running entries contribute their live elapsed
 // seconds from the per-tick map so the figure ticks alongside RUNNING.
+// Running elapsed is only added when the user is viewing today —
+// past days are settled, the live tick would add nonsense to them.
+const isToday = computed(() => timer.isSelectedToday())
+
 const todayTotalDisplay = computed(() => {
   const stoppedSeconds = (timer.todayStoppedHours ?? 0) * 3600
   let runningSeconds = 0
-  for (const e of runningEntries.value) {
-    runningSeconds += timer.elapsedMap.get(e.id) ?? 0
+  if (isToday.value) {
+    for (const e of runningEntries.value) {
+      runningSeconds += timer.elapsedMap.get(e.id) ?? 0
+    }
   }
   const total = Math.max(0, Math.floor(stoppedSeconds + runningSeconds))
   const h = Math.floor(total / 3600)
@@ -33,6 +39,30 @@ const todayTotalDisplay = computed(() => {
   if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`
   return `${s}s`
 })
+
+function dayDeltaFromToday(d: Date): number {
+  const today = new Date()
+  const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  return Math.round((d.getTime() - todayMid) / 86_400_000)
+}
+
+function formatDayLabel(d: Date): string {
+  const delta = dayDeltaFromToday(d)
+  if (delta === 0) return 'Today'
+  if (delta === -1) return 'Yesterday'
+  if (delta === 1) return 'Tomorrow'
+  // Drop year — sidebar is narrow, year adds noise for nearby days.
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+const selectedDayLabel = computed(() => formatDayLabel(timer.selectedDate))
+const prevDayDate = computed(() => {
+  const d = new Date(timer.selectedDate); d.setDate(d.getDate() - 1); return d
+})
+const nextDayDate = computed(() => {
+  const d = new Date(timer.selectedDate); d.setDate(d.getDate() + 1); return d
+})
+const canGoNext = computed(() => !isToday.value)
 </script>
 
 <template>
@@ -78,9 +108,34 @@ const todayTotalDisplay = computed(() => {
         </div>
       </div>
       <!-- PAI-495: today-total footer. Sum of stopped bookings in the
-           user's local day plus live elapsed of any running timers. -->
+           user's local day plus live elapsed of any running timers.
+           Prev/today/next buttons scrub the displayed day; only "today"
+           ticks live since past days are settled. -->
       <div class="tp-today">
-        <span class="tp-today-label">Today</span>
+        <span class="tp-today-label">{{ selectedDayLabel }}</span>
+        <div class="tp-day-nav">
+          <button
+            type="button"
+            class="tp-day-btn"
+            :title="`Previous day — ${formatDayLabel(prevDayDate)}`"
+            @click.stop="timer.shiftSelectedDay(-1)"
+          ><AppIcon name="chevron-left" :size="11" /></button>
+          <button
+            type="button"
+            class="tp-day-btn tp-day-btn--today"
+            :class="{ 'tp-day-btn--today-active': isToday }"
+            :title="`Jump to today — ${formatDayLabel(new Date())}`"
+            :disabled="isToday"
+            @click.stop="timer.selectToday()"
+          ><span class="tp-day-dot"></span></button>
+          <button
+            type="button"
+            class="tp-day-btn"
+            :title="canGoNext ? `Next day — ${formatDayLabel(nextDayDate)}` : 'No future days'"
+            :disabled="!canGoNext"
+            @click.stop="timer.shiftSelectedDay(1)"
+          ><AppIcon name="chevron-right" :size="11" /></button>
+        </div>
         <span class="tp-today-total">{{ todayTotalDisplay }}</span>
       </div>
     </div>
@@ -225,6 +280,27 @@ const todayTotalDisplay = computed(() => {
   font-size: 11px; font-weight: 600; color: rgba(255,255,255,.7);
   font-variant-numeric: tabular-nums;
 }
+.tp-day-nav {
+  display: flex; align-items: center; gap: 1px;
+  margin: 0 auto; /* center between label and total */
+}
+.tp-day-btn {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,.3); border-radius: 3px;
+  transition: background .1s, color .1s;
+}
+.tp-day-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,.08); color: rgba(255,255,255,.85);
+}
+.tp-day-btn:disabled { cursor: default; opacity: .3; }
+.tp-day-btn--today { padding: 2px 5px; }
+.tp-day-dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: currentColor; display: block;
+}
+/* When already on today, dim the dot so the affordance reads as "you are here". */
+.tp-day-btn--today-active .tp-day-dot { background: rgba(74, 222, 128, .7); }
 
 /* ── Timer start dialog ──────────────────────────────────────────────────── */
 .timer-dialog-backdrop {

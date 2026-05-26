@@ -27,6 +27,10 @@ import type { TimeEntry } from '@/types'
 const SYNC_CHANNEL = 'paimos:timer'
 type SyncMsg = { kind: 'changed' }
 
+function localMidnight(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
 export const useTimerStore = defineStore('timer', () => {
   const runningEntries = ref<TimeEntry[]>([])
   const recentEntries = ref<TimeEntry[]>([])
@@ -36,6 +40,10 @@ export const useTimerStore = defineStore('timer', () => {
   // the currently-running timers on top so the displayed total ticks
   // live without a server round-trip.
   const todayStoppedHours = ref<number>(0)
+  // Local midnight of the day shown in the footer. Defaults to today;
+  // the footer's prev/today/next buttons mutate this and re-fetch.
+  // Future days are blocked client-side (canGoNext), not server-side.
+  const selectedDate = ref<Date>(localMidnight(new Date()))
   let tickInterval: ReturnType<typeof setInterval> | null = null
   let bc: BroadcastChannel | null = null
   if (typeof BroadcastChannel !== 'undefined') {
@@ -124,10 +132,10 @@ export const useTimerStore = defineStore('timer', () => {
   // PAI-495: refresh the day-total from the server using the caller's
   // local-day window. Browser-local midnight bounds get serialised as
   // UTC ISO timestamps so the backend can range-filter without knowing
-  // the user's timezone.
+  // the user's timezone. The window comes from selectedDate so the
+  // footer's prev/next buttons can scrub through past days.
   async function fetchTodayTotal() {
-    const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const start = selectedDate.value
     const end = new Date(start)
     end.setDate(end.getDate() + 1)
     const params = new URLSearchParams({
@@ -142,6 +150,25 @@ export const useTimerStore = defineStore('timer', () => {
     } catch {
       todayStoppedHours.value = 0
     }
+  }
+
+  function isSelectedToday(): boolean {
+    return selectedDate.value.getTime() === localMidnight(new Date()).getTime()
+  }
+
+  function shiftSelectedDay(deltaDays: number) {
+    const next = new Date(selectedDate.value)
+    next.setDate(next.getDate() + deltaDays)
+    // Clamp at today — no future days.
+    const todayMidnight = localMidnight(new Date())
+    if (next.getTime() > todayMidnight.getTime()) return
+    selectedDate.value = next
+    void fetchTodayTotal()
+  }
+
+  function selectToday() {
+    selectedDate.value = localMidnight(new Date())
+    void fetchTodayTotal()
   }
 
   // Pending start — used for the confirmation dialog
@@ -235,9 +262,10 @@ export const useTimerStore = defineStore('timer', () => {
 
   return {
     runningEntries, recentEntries, elapsedMap, hasRunning,
-    todayStoppedHours,
+    todayStoppedHours, selectedDate,
     isRunning, getRunningEntry, formattedElapsed,
     fetchRunning, fetchRecent, fetchTodayTotal,
+    isSelectedToday, shiftSelectedDay, selectToday,
     start, stop, stopAll,
     showStartDialog, pendingIssueId, confirmSwitch, confirmBoth, confirmCancel,
   }
