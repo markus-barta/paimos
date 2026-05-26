@@ -278,7 +278,12 @@ const canGoNext = computed(() => !isToday.value)
    aligning them (the icons made baseline read crooked). */
 .tp-today {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* PAI-501: minmax(0, 1fr) keeps the left/right columns the same
+     width regardless of content, which keeps the centre nav perfectly
+     anchored when the label flips between "Today" and "Mon, May 26".
+     Pair with white-space: nowrap below to stop the narrow sidebar
+     from line-wrapping the label inside its cell. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   margin-top: .35rem; padding: .3rem .3rem .1rem;
   border-top: 1px solid rgba(255,255,255,.07);
@@ -287,11 +292,13 @@ const canGoNext = computed(() => !isToday.value)
   text-align: left;
   font-size: 9px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; color: rgba(255,255,255,.35);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tp-today-total {
   text-align: right;
   font-size: 11px; font-weight: 600; color: rgba(255,255,255,.7);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* PAI-500: nav hides until the user hovers (or focuses into) the
    timer body, matching the "Stop all" affordance. Reduces noise when
