@@ -5,6 +5,21 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.7] — 2026-05-26
+
+### Fixed
+
+- **PAI-501** — **Timer footer: stop the label wrapping, stop the nav
+  drifting.** PAI-500's 3-cell grid still let "Sun, May 24" line-wrap
+  inside its 1fr column on the narrow sidebar, and the 1fr columns
+  sized to content so the centre nav drifted off-centre whenever the
+  label width differed from the total width. Switched to
+  `minmax(0, 1fr) auto minmax(0, 1fr)` so the side columns honour the
+  fr ratio regardless of content (nav stays anchored across day
+  selections); added `white-space: nowrap` + `overflow: hidden` +
+  `text-overflow: ellipsis` to both the label and the total so the
+  text never wraps and only truncates as a last resort.
+
 ## [3.7.6] — 2026-05-26
 
 ### Fixed
