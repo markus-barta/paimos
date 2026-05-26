@@ -5,6 +5,24 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.4] — 2026-05-26
+
+### Added
+
+- **PAI-495** — **Today-total footer for the sidebar timer panel.**
+  A new hairline-divided row at the bottom of the expanded
+  `SidebarTimerPanel` shows the live sum of every time booking for
+  the current local day across all of the session user's projects.
+  Stopped entries are summed server-side via the new
+  `GET /api/time-entries/today-summary?from=&to=` endpoint (the
+  client sends its browser-local day window, so server timezone
+  doesn't enter the calculation); the elapsed seconds of any
+  currently running timers are added on top so the figure ticks
+  alongside the RUNNING row. Refreshes on panel open, after
+  start/stop, and when a peer tab/window stops a timer over the
+  existing `paimos:timer` BroadcastChannel. Empty days render `0m`
+  so the row stays discoverable.
+
 ## [3.7.3] — 2026-05-23
 
 ### Fixed
