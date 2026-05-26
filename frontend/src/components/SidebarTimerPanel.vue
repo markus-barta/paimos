@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTimerPanel } from '@/composables/useTimerPanel'
 import { useIssuePreview } from '@/composables/useIssuePreview'
 import { formatDuration } from '@/composables/useDurationInput'
@@ -15,6 +16,9 @@ const {
 } = useTimerPanel()
 
 const preview = useIssuePreview()
+// PAI-500: route day labels + tooltips through the configured locale
+// so dates and button hints respect the user's language choice.
+const { t, locale } = useI18n()
 
 // PAI-495: live today-total. Stopped entries are summed by the server
 // (fetchTodayTotal); running entries contribute their live elapsed
@@ -48,11 +52,12 @@ function dayDeltaFromToday(d: Date): number {
 
 function formatDayLabel(d: Date): string {
   const delta = dayDeltaFromToday(d)
-  if (delta === 0) return 'Today'
-  if (delta === -1) return 'Yesterday'
-  if (delta === 1) return 'Tomorrow'
+  if (delta === 0) return t('timer.day.today')
+  if (delta === -1) return t('timer.day.yesterday')
+  if (delta === 1) return t('timer.day.tomorrow')
   // Drop year — sidebar is narrow, year adds noise for nearby days.
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  // PAI-500: use the active i18n locale so e.g. de renders "Di, 26. Mai".
+  return d.toLocaleDateString(locale.value, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 const selectedDayLabel = computed(() => formatDayLabel(timer.selectedDate))
@@ -117,21 +122,21 @@ const canGoNext = computed(() => !isToday.value)
           <button
             type="button"
             class="tp-day-btn"
-            :title="`Previous day — ${formatDayLabel(prevDayDate)}`"
+            :title="t('timer.day.prevDay', { date: formatDayLabel(prevDayDate) })"
             @click.stop="timer.shiftSelectedDay(-1)"
           ><AppIcon name="chevron-left" :size="11" /></button>
           <button
             type="button"
             class="tp-day-btn tp-day-btn--today"
             :class="{ 'tp-day-btn--today-active': isToday }"
-            :title="`Jump to today — ${formatDayLabel(new Date())}`"
+            :title="t('timer.day.jumpToToday', { date: formatDayLabel(new Date()) })"
             :disabled="isToday"
             @click.stop="timer.selectToday()"
           ><span class="tp-day-dot"></span></button>
           <button
             type="button"
             class="tp-day-btn"
-            :title="canGoNext ? `Next day — ${formatDayLabel(nextDayDate)}` : 'No future days'"
+            :title="canGoNext ? t('timer.day.nextDay', { date: formatDayLabel(nextDayDate) }) : t('timer.day.noFutureDays')"
             :disabled="!canGoNext"
             @click.stop="timer.shiftSelectedDay(1)"
           ><AppIcon name="chevron-right" :size="11" /></button>
@@ -266,24 +271,38 @@ const canGoNext = computed(() => !isToday.value)
 }
 @keyframes tp-dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .tp-empty { font-size: 10px; color: rgba(255,255,255,.3); padding: .3rem .4rem; font-style: italic; }
-/* PAI-495: today-total footer — hairline + small-caps label + right-aligned total. */
+/* PAI-495: today-total footer — hairline + small-caps label + right-aligned total.
+   PAI-500: 3-cell grid (1fr auto 1fr) so the centre nav stays anchored
+   regardless of how wide the label is; align-items:center vertically
+   centres label + nav + total against each other instead of baseline-
+   aligning them (the icons made baseline read crooked). */
 .tp-today {
-  display: flex; align-items: baseline; justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
   margin-top: .35rem; padding: .3rem .3rem .1rem;
   border-top: 1px solid rgba(255,255,255,.07);
 }
 .tp-today-label {
+  text-align: left;
   font-size: 9px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; color: rgba(255,255,255,.35);
 }
 .tp-today-total {
+  text-align: right;
   font-size: 11px; font-weight: 600; color: rgba(255,255,255,.7);
   font-variant-numeric: tabular-nums;
 }
+/* PAI-500: nav hides until the user hovers (or focuses into) the
+   timer body, matching the "Stop all" affordance. Reduces noise when
+   the user isn't actively scrubbing days. */
 .tp-day-nav {
   display: flex; align-items: center; gap: 1px;
-  margin: 0 auto; /* center between label and total */
+  justify-self: center;
+  opacity: 0; transition: opacity .15s;
 }
+.timer-body:hover .tp-day-nav,
+.tp-day-nav:focus-within { opacity: 1; }
 .tp-day-btn {
   background: none; border: none; cursor: pointer; padding: 2px 4px;
   display: flex; align-items: center; justify-content: center;

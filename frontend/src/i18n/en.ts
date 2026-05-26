@@ -16,6 +16,18 @@
  */
 
 export default {
+  // PAI-500: sidebar timer panel — day-nav labels + button tooltips.
+  timer: {
+    day: {
+      today: 'Today',
+      yesterday: 'Yesterday',
+      tomorrow: 'Tomorrow',
+      prevDay: 'Previous day — {date}',
+      jumpToToday: 'Jump to today — {date}',
+      nextDay: 'Next day — {date}',
+      noFutureDays: 'No future days',
+    },
+  },
   portal: {
     title: 'Customer Portal',
     logout: 'Logout',

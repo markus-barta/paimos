@@ -16,6 +16,18 @@
  */
 
 export default {
+  // PAI-500: Sidebar-Timer — Tag-Navigation und Tooltips.
+  timer: {
+    day: {
+      today: 'Heute',
+      yesterday: 'Gestern',
+      tomorrow: 'Morgen',
+      prevDay: 'Vorheriger Tag — {date}',
+      jumpToToday: 'Heute — {date}',
+      nextDay: 'Nächster Tag — {date}',
+      noFutureDays: 'Keine zukünftigen Tage',
+    },
+  },
   portal: {
     title: 'Kundenportal',
     logout: 'Abmelden',
