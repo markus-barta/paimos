@@ -5,6 +5,21 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.8] — 2026-05-26
+
+### Fixed
+
+- **Operational** — **Re-cut of v3.7.7.** The `v3.7.7` git tag pushed
+  fine but its CI workflow failed at the GHCR push step
+  (`failed to fetch oauth token: denied: denied`) — root cause was
+  storage exhaustion on the `markus-barta` user's GHCR package
+  (~2,000 lingering manifest versions accumulated over the project's
+  history). Pruned 1,666 untagged + old `sha-*`-only versions
+  (semver releases and the 20 most-recent `sha-*` rollback pins were
+  kept), then re-cut v3.7.7's content as v3.7.8. No code differences
+  vs. v3.7.7. If `v3.7.7` ever publishes via a stuck queued run it
+  will be byte-equivalent to v3.7.8 minus the CHANGELOG entry.
+
 ## [3.7.7] — 2026-05-26
 
 ### Fixed
