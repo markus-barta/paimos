@@ -1,6 +1,6 @@
 # scripts/release/
 
-Helpers used by the [release.yml](../../.github/workflows/release.yml) workflow
+Helpers used by the [release-v2.yml](../../.github/workflows/release-v2.yml) workflow
 (PAI-99 — signed + notarized macOS CLI release).
 
 ## mirror-apple-secrets.yml
@@ -19,7 +19,7 @@ gh secret list -R markus-barta/paimos          # confirm the 5 names appeared
 After it succeeds, **delete `MIRROR_PAT` from bp-esc and remove the workflow file** —
 neither is needed again unless secrets rotate.
 
-The secrets land with the names `release.yml` expects:
+The secrets land with the names `release-v2.yml` expects:
 
 - `APPLE_CERTIFICATE`            — base64 of the .p12
 - `APPLE_CERTIFICATE_PASSWORD`   — password for the .p12

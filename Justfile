@@ -25,6 +25,14 @@ release mode="":
 sbom:
     @./scripts/sbom.sh
 
+# Prune accumulated GHCR manifest versions (untagged + old sha-* tags).
+# Dry-run by default. Run periodically to keep the package well below
+# the threshold that triggered the 2026-05-26 push-denied incident
+# (see memory/paimos_ghcr_ghost_lock.md). Forward extra args to the
+# script, e.g.: `just ghcr-prune --execute --keep-recent-sha=10`.
+ghcr-prune *FLAGS:
+    @./scripts/ghcr-prune.sh {{FLAGS}}
+
 # Verify a published release image's signature, SBOM attestations, provenance,
 # and claim matrix before deploying it.
 verify-release tag:

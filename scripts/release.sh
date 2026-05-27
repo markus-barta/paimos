@@ -7,7 +7,7 @@
 #   scripts/release.sh patch|minor|major|<x.y.z>   # cut a release
 #   scripts/release.sh                             # dump commits since last tag, exit
 #
-# After this succeeds, CI publishes (see .github/workflows/ci.yml):
+# After this succeeds, CI publishes (see .github/workflows/ci-v2.yml):
 #   ghcr.io/markus-barta/paimos:<x.y.z>       (immutable, use for deploys)
 #   ghcr.io/markus-barta/paimos:<x>.<y>       (moving)
 #   ghcr.io/markus-barta/paimos:<x>           (moving)
