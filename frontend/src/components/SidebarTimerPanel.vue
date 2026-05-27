@@ -16,9 +16,11 @@ const {
 } = useTimerPanel()
 
 const preview = useIssuePreview()
-// PAI-500: route day labels + tooltips through the configured locale
-// so dates and button hints respect the user's language choice.
-const { t, locale } = useI18n()
+// PAI-500: route the named-day labels (Today / Yesterday / Tomorrow)
+// and tooltip text through i18n so they respect the user's language.
+// PAI-502: the date fallback no longer uses locale formatting — `DD.MM.`
+// is universal and beats the truncated locale form in the narrow sidebar.
+const { t } = useI18n()
 
 // PAI-495: live today-total. Stopped entries are summed by the server
 // (fetchTodayTotal); running entries contribute their live elapsed
@@ -55,9 +57,12 @@ function formatDayLabel(d: Date): string {
   if (delta === 0) return t('timer.day.today')
   if (delta === -1) return t('timer.day.yesterday')
   if (delta === 1) return t('timer.day.tomorrow')
-  // Drop year — sidebar is narrow, year adds noise for nearby days.
-  // PAI-500: use the active i18n locale so e.g. de renders "Di, 26. Mai".
-  return d.toLocaleDateString(locale.value, { weekday: 'short', month: 'short', day: 'numeric' })
+  // PAI-502: compact, universal DD.MM. — locale-formatted "Mon, May 25"
+  // truncated to "MON, MA…" in the narrow sidebar. Year is intentionally
+  // dropped (panel width can't fit it and rarely matters at this surface).
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}.${mm}.`
 }
 
 const selectedDayLabel = computed(() => formatDayLabel(timer.selectedDate))
