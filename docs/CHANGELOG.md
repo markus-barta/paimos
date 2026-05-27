@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.9] — 2026-05-27
+
+### Fixed
+
+- **Operational** — **Recovery from stuck workflow dispatch.** The
+  `v3.7.7` and `v3.7.8` tags both pushed but never produced images:
+  v3.7.7 failed at the GHCR push step (storage exhausted), and the
+  failed run wedged itself in a "Queued/attempt=2" state that no API
+  or UI cancel form could clear. Every subsequent push then silently
+  created zero workflow runs — paimos-repo-specific (other
+  markus-barta repos kept dispatching). Resolved by renaming the
+  workflow files (`ci.yml`/`release.yml` → `ci-v2.yml`/`release-v2.yml`)
+  to give GitHub a fresh workflow identity, plus refreshing the gosec
+  baseline whose line numbers had drifted. v3.7.9 ships v3.7.7's
+  intended code content (PAI-496/497 portal sidebar + PAI-499 day
+  scrubbing + PAI-500/501 footer polish) — all already documented in
+  the 3.7.5 / 3.7.6 / 3.7.7 entries below. The v3.7.7 and v3.7.8
+  GitHub tags remain on origin as historical pointers; they never
+  resolved to a container image.
+
 ## [3.7.8] — 2026-05-26
 
 ### Fixed
