@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.10] — 2026-05-27
+
+### Fixed
+
+- **PAI-502** — **Compact `DD.MM.` date in the timer footer.** The
+  locale-formatted fallback ("Mon, May 25") from PAI-500/501 truncated
+  to "MON, MA…" in the narrow sidebar once the user scrubbed back two
+  or more days. Replaced with a universal `DD.MM.` form (e.g. `25.05.`)
+  — dense, deterministic, no truncation, no year noise. Today /
+  Yesterday / Tomorrow still translate via `timer.day.*`.
+
 ## [3.7.9] — 2026-05-27
 
 ### Fixed
