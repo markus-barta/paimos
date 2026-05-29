@@ -5,6 +5,21 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.2] — 2026-05-29
+
+### Fixed
+
+- **PAI-509** — **Non-Issues project tabs now scroll.** Every primary
+  tab except Issues rendered its content into `.pd-page`'s bounded-flex
+  height with no scroll viewport of its own, so tall content (most
+  visibly the new Settings tab, but also Knowledge/Agents/Context/…)
+  was clipped with no way to scroll. Wrapped all non-Issues tabs in a
+  single bounded scroll viewport (`flex:1; min-height:0; overflow-y:auto`).
+  Issues stays exempt — `IssueList` keeps its own sticky-thead scroller —
+  and none of the wrapped components carry an in-flow vertical scroller
+  (the Knowledge side-panel is `position:fixed`), so there is exactly
+  one scrollbar per tab and no nesting.
+
 ## [3.8.1] — 2026-05-29
 
 ### Changed

@@ -903,9 +903,18 @@ watch(
         />
       </template>
 
+      <!-- PAI-509 — non-Issues tabs share ONE bounded scroll viewport.
+           Issues is exempt: IssueList owns its own internal overflow
+           scroller (sticky thead). Every other tab renders plain content
+           into .pd-page's bounded-flex height and would otherwise just
+           clip (Settings, Knowledge, …). This is the single scrollbar:
+           none of these components carry an in-flow vertical scroller of
+           their own, and the Knowledge side-panel is position:fixed — so
+           there is no nesting / double scroll. -->
+      <div v-else class="pd-tab-scroll">
       <!-- Overview tab — README-like + state callouts ───────────────── -->
       <ProjectOverviewTab
-        v-else-if="primaryTab === 'overview'"
+        v-if="primaryTab === 'overview'"
         :project="project"
         :issues="issues"
       />
@@ -1113,6 +1122,7 @@ watch(
           </div>
         </div>
       </section>
+      </div><!-- /.pd-tab-scroll -->
 
       <!-- Always-mounted, visually-hidden sentinels feed the
            footer-bar count badges for tabs the user has not yet
@@ -1500,6 +1510,22 @@ textarea { resize: vertical; min-height: 80px; }
   display: inline-flex; align-items: center; gap: .25rem;
   font-size: 11px; color: var(--bp-blue);
   margin-top: .15rem;
+}
+
+/* PAI-509 — the shared scroll viewport for every non-Issues primary
+   tab. A bounded flex child of .pd-page (flex:1 + min-height:0) so it
+   fills the space under the header and scrolls *internally* rather than
+   letting tall content (Settings, Knowledge, …) clip. Block flow inside
+   so the tab roots size to content; the Issues tab is NOT wrapped (its
+   IssueList keeps its own sticky-thead scroller), so there is never a
+   second scrollbar. padding-bottom gives the last row breathing room
+   above the footer bar. */
+.pd-tab-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding-bottom: 1.5rem;
 }
 
 .pd-page {
