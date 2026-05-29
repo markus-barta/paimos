@@ -77,6 +77,112 @@ func TestToolsCallRoundTripRetrieveAndBlastRadius(t *testing.T) {
 	}
 }
 
+// TestToolsCallAgentCRUD exercises the PAI-506 project-agent tools end
+// to end against a stub server: create → get (.json artifact, peeled) →
+// list → delete. Mirrors the issue/retrieve round-trip pattern above.
+func TestToolsCallAgentCRUD(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/projects", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":7,"key":"PAI"}]`))
+	})
+	mux.HandleFunc("/api/projects/7/agents", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":11,"project_id":7,"name":"builder","lane_tags":[],"metadata":{},"bootstrap_steps":[],"non_negotiable_rules":[]}`))
+		default: // GET (list)
+			_, _ = w.Write([]byte(`[{"id":11,"project_id":7,"name":"builder","lane_tags":[]}]`))
+		}
+	})
+	mux.HandleFunc("/api/projects/7/agents/builder.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"project":{"id":7,"name":"Paimos","key":"PAI"},"agent":{"id":11,"project_id":7,"name":"builder","description":"the builder","lane_tags":["dev"]},"repos":[],"environments":[],"deploy_recipes":[]}`))
+	})
+	mux.HandleFunc("/api/projects/7/agents/builder", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	client := testMCPClient(t, ts.URL)
+	srv := &Server{client: client, logger: func(string, ...any) {}}
+
+	call := func(id int, name string, args map[string]any) string {
+		t.Helper()
+		req := rpcRequest{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage([]byte(itoa(id))),
+			Method:  "tools/call",
+			Params:  mustJSON(t, map[string]any{"name": name, "arguments": args}),
+		}
+		resp := srv.dispatch(&req)
+		if resp.Error != nil {
+			t.Fatalf("%s error: %#v", name, resp.Error)
+		}
+		return extractToolText(t, resp.Result)
+	}
+
+	createText := call(1, "paimos_agent_create", map[string]any{
+		"project_key": "PAI",
+		"name":        "builder",
+	})
+	if !strings.Contains(createText, `"name":"builder"`) {
+		t.Fatalf("create result missing agent: %s", createText)
+	}
+
+	getText := call(2, "paimos_agent_get", map[string]any{
+		"project_key": "PAI",
+		"name":        "builder",
+	})
+	// `get` must return the peeled .agent object, NOT the whole artifact.
+	if !strings.Contains(getText, `"description":"the builder"`) {
+		t.Fatalf("get result missing peeled agent: %s", getText)
+	}
+	if strings.Contains(getText, `"deploy_recipes"`) {
+		t.Fatalf("get result leaked the artifact wrapper: %s", getText)
+	}
+
+	listText := call(3, "paimos_agent_list", map[string]any{"project_key": "PAI"})
+	if !strings.Contains(listText, `"name":"builder"`) {
+		t.Fatalf("list result missing agent: %s", listText)
+	}
+
+	delText := call(4, "paimos_agent_delete", map[string]any{
+		"project_key": "PAI",
+		"name":        "builder",
+	})
+	if !strings.Contains(delText, "deleted agent") {
+		t.Fatalf("delete result missing success message: %s", delText)
+	}
+}
+
+// itoa is a tiny dependency-free int→string for building JSON-RPC ids
+// in the agent CRUD test.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}
+
 func testMCPClient(t *testing.T, baseURL string) *mcpclient.Client {
 	t.Helper()
 	configDir := t.TempDir()

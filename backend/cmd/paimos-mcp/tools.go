@@ -63,8 +63,10 @@ func validateStringEnum(field, binding, raw string) error {
 
 // handleToolsList returns the v1 allowlist from the pickup doc:
 // paimos_schema, paimos_issue_get, _list, _create, _update,
-// _relation_add. Deliberately NO batch-update / apply — MCP context
-// grows fast and these belong in the CLI.
+// _relation_add, plus the PAI-506 project-agent CRUD family
+// paimos_agent_list / _get / _create / _update / _delete.
+// Deliberately NO batch-update / apply — MCP context grows fast and
+// these belong in the CLI.
 func (s *Server) handleToolsList() any {
 	tools := s.tools()
 	out := make([]map[string]any, 0, len(tools))
@@ -297,6 +299,120 @@ func (s *Server) tools() []Tool {
 				"required": []string{"source", "type", "target"},
 			},
 			handler: s.toolRelationAdd,
+		},
+		{
+			// PAI-506 — project-agent CRUD. Agents are project-scoped
+			// (project_key resolves to the numeric id used in the path).
+			Name:        "paimos_agent_list",
+			Description: "Lists agents declared on a project. Returns array of agent records (id, name, description, slash_command_name, lane_tags, metadata, body, bootstrap_steps, non_negotiable_rules), sorted by name. Empty array when none.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_key": map[string]any{"type": "string"},
+				},
+				"required": []string{"project_key"},
+			},
+			handler: s.toolAgentList,
+		},
+		{
+			Name:        "paimos_agent_get",
+			Description: "Fetches a single project agent by name. Returns the agent record alone (the project/repos/environments artifact wrapper is dropped).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_key": map[string]any{"type": "string"},
+					"name":        map[string]any{"type": "string", "description": "agent name (lowercase slug)"},
+				},
+				"required": []string{"project_key", "name"},
+			},
+			handler: s.toolAgentGet,
+		},
+		{
+			Name:        "paimos_agent_create",
+			Description: "Creates one project agent. project_key + name required; name is a lowercase slug ([a-z][a-z0-9_-]*, max 32; 'web-ui' reserved). Requires an api-key with admin + project-view scope.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_key":          map[string]any{"type": "string"},
+					"name":                 map[string]any{"type": "string"},
+					"description":          map[string]any{"type": "string"},
+					"slash_command_name":   map[string]any{"type": "string"},
+					"lane_tags":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"metadata":             map[string]any{"type": "object"},
+					"body":                 map[string]any{"type": "string"},
+					"bootstrap_steps":      agentBootstrapStepsSchema(),
+					"non_negotiable_rules": agentRulesSchema(),
+				},
+				"required": []string{"project_key", "name"},
+			},
+			handler: s.toolAgentCreate,
+		},
+		{
+			Name:        "paimos_agent_update",
+			Description: "Replaces a project agent in-place (full PUT). project_key + name (current name) required; pass `name` again to rename. Fields omitted are sent as the JSON zero value — fetch first with paimos_agent_get if you need to preserve them.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_key":          map[string]any{"type": "string"},
+					"name":                 map[string]any{"type": "string", "description": "current agent name; also the rename target"},
+					"description":          map[string]any{"type": "string"},
+					"slash_command_name":   map[string]any{"type": "string"},
+					"lane_tags":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"metadata":             map[string]any{"type": "object"},
+					"body":                 map[string]any{"type": "string"},
+					"bootstrap_steps":      agentBootstrapStepsSchema(),
+					"non_negotiable_rules": agentRulesSchema(),
+				},
+				"required": []string{"project_key", "name"},
+			},
+			handler: s.toolAgentUpdate,
+		},
+		{
+			Name:        "paimos_agent_delete",
+			Description: "Deletes a project agent by name. Returns a success message; 404 if no agent matched.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_key": map[string]any{"type": "string"},
+					"name":        map[string]any{"type": "string"},
+				},
+				"required": []string{"project_key", "name"},
+			},
+			handler: s.toolAgentDelete,
+		},
+	}
+}
+
+// agentBootstrapStepsSchema is the JSON-schema array shape for the
+// agent bootstrap_steps field ([]{title,command,rationale}).
+func agentBootstrapStepsSchema() map[string]any {
+	return map[string]any{
+		"type": "array",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"title":     map[string]any{"type": "string"},
+				"command":   map[string]any{"type": "string"},
+				"rationale": map[string]any{"type": "string"},
+			},
+			"required": []string{"title", "command"},
+		},
+	}
+}
+
+// agentRulesSchema is the JSON-schema array shape for the agent
+// non_negotiable_rules field ([]{title,body,memory_ref}).
+func agentRulesSchema() map[string]any {
+	return map[string]any{
+		"type": "array",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"title":      map[string]any{"type": "string"},
+				"body":       map[string]any{"type": "string"},
+				"memory_ref": map[string]any{"type": "string"},
+			},
+			"required": []string{"title", "body"},
 		},
 	}
 }
@@ -707,4 +823,131 @@ func (s *Server) toolRelationAdd(args map[string]any) (string, error) {
 		return "", err
 	}
 	return string(raw), nil
+}
+
+// ── PAI-506: project-agent CRUD ─────────────────────────────────────
+
+// agentProjectID resolves the required project_key arg to a numeric id.
+func (s *Server) agentProjectID(args map[string]any) (int64, error) {
+	projectKey, _ := args["project_key"].(string)
+	if strings.TrimSpace(projectKey) == "" {
+		return 0, fmt.Errorf("project_key is required")
+	}
+	return s.lookupProjectID(strings.TrimSpace(projectKey))
+}
+
+// agentWriteBody copies the agent write fields from the tool args into a
+// request body, preserving JSON types (arrays/objects pass through
+// unchanged since the MCP args are already decoded JSON). `name` is set
+// by the caller (it's required) so this only handles the optional rest.
+func agentWriteBody(args map[string]any) map[string]any {
+	body := map[string]any{}
+	for _, k := range []string{"description", "slash_command_name", "body"} {
+		if v, ok := args[k].(string); ok {
+			body[k] = v
+		}
+	}
+	for _, k := range []string{"lane_tags", "metadata", "bootstrap_steps", "non_negotiable_rules"} {
+		if v, ok := args[k]; ok {
+			body[k] = v
+		}
+	}
+	return body
+}
+
+// toolAgentList → GET /api/projects/{id}/agents.
+func (s *Server) toolAgentList(args map[string]any) (string, error) {
+	projectID, err := s.agentProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	raw, err := s.client.Do("GET", fmt.Sprintf("/api/projects/%d/agents", projectID), nil)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// toolAgentGet → GET /api/projects/{id}/agents/{name}.json, returning
+// the `.agent` sub-object (there is no plain GET for a single agent).
+func (s *Server) toolAgentGet(args map[string]any) (string, error) {
+	projectID, err := s.agentProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	name, _ := args["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	raw, err := s.client.Do("GET", fmt.Sprintf("/api/projects/%d/agents/%s.json", projectID, url.PathEscape(name)), nil)
+	if err != nil {
+		return "", err
+	}
+	var artifact struct {
+		Agent json.RawMessage `json:"agent"`
+	}
+	if err := json.Unmarshal(raw, &artifact); err != nil {
+		return "", fmt.Errorf("decode agent artifact: %w", err)
+	}
+	if len(artifact.Agent) == 0 {
+		return "", fmt.Errorf("agent artifact missing `agent` field")
+	}
+	return string(artifact.Agent), nil
+}
+
+// toolAgentCreate → POST /api/projects/{id}/agents.
+func (s *Server) toolAgentCreate(args map[string]any) (string, error) {
+	projectID, err := s.agentProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	name, _ := args["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	body := agentWriteBody(args)
+	body["name"] = name
+	raw, err := s.client.Do("POST", fmt.Sprintf("/api/projects/%d/agents", projectID), body)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// toolAgentUpdate → PUT /api/projects/{id}/agents/{name}.
+func (s *Server) toolAgentUpdate(args map[string]any) (string, error) {
+	projectID, err := s.agentProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	name, _ := args["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	body := agentWriteBody(args)
+	// The server treats the URL {name} as the current identifier and the
+	// body `name` as the (optional) rename target; default it to the URL
+	// name so a no-rename update keeps the same slug.
+	body["name"] = name
+	raw, err := s.client.Do("PUT", fmt.Sprintf("/api/projects/%d/agents/%s", projectID, url.PathEscape(name)), body)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// toolAgentDelete → DELETE /api/projects/{id}/agents/{name}.
+func (s *Server) toolAgentDelete(args map[string]any) (string, error) {
+	projectID, err := s.agentProjectID(args)
+	if err != nil {
+		return "", err
+	}
+	name, _ := args["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	if _, err := s.client.Do("DELETE", fmt.Sprintf("/api/projects/%d/agents/%s", projectID, url.PathEscape(name)), nil); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("deleted agent %q on project %d", name, projectID), nil
 }

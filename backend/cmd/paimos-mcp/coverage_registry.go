@@ -41,6 +41,14 @@ var routeCoverageRegistry = []routeCoverage{
 	{Method: "PUT", Path: "/api/issues/{id}", Classification: coverageMCPTool, Tool: "paimos_issue_update", Reason: "bounded single issue update"},
 	{Method: "POST", Path: "/api/issues/{id}/relations", Classification: coverageMCPTool, Tool: "paimos_relation_add", Reason: "single relation add with enum validation and idempotency"},
 
+	// PAI-506 — project-agent CRUD. get rides on the .json artifact
+	// (peeled to .agent); the others map 1:1 to their REST routes.
+	{Method: "GET", Path: "/api/projects/{id}/agents", Classification: coverageMCPTool, Tool: "paimos_agent_list", Reason: "list project agents"},
+	{Method: "GET", Path: "/api/projects/{id}/agents/{name}.json", Classification: coverageMCPTool, Tool: "paimos_agent_get", Reason: "single agent read via the canonical .json artifact"},
+	{Method: "POST", Path: "/api/projects/{id}/agents", Classification: coverageMCPTool, Tool: "paimos_agent_create", Reason: "single agent create with name validation"},
+	{Method: "PUT", Path: "/api/projects/{id}/agents/{name}", Classification: coverageMCPTool, Tool: "paimos_agent_update", Reason: "single agent replace (full PUT)"},
+	{Method: "DELETE", Path: "/api/projects/{id}/agents/{name}", Classification: coverageMCPTool, Tool: "paimos_agent_delete", Reason: "single agent delete"},
+
 	{Method: "POST", Path: "/api/projects/{key}/issues/batch", Classification: coverageDangerousDefault, Reason: "bulk mutation belongs in CLI/apply flows, not default MCP context"},
 	{Method: "PATCH", Path: "/api/issues", Classification: coverageDangerousDefault, Reason: "bulk update is too broad for the default MCP surface"},
 	{Method: "POST", Path: "/api/projects/{id}/anchors", Classification: coverageCoveredByTool, Tool: "paimos_retrieve", Reason: "anchors are consumed through retrieve/graph context rather than direct raw ingestion"},

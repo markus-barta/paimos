@@ -132,6 +132,8 @@ Get started:
 	// PAI-349: memory propose verb.
 	cmd.AddCommand(memoryCmd())
 	cmd.AddCommand(knowledgeCmd())
+	// PAI-506: first-class project-agent CRUD.
+	cmd.AddCommand(agentCmd())
 	// PAI-330: skill render with adapter dispatch.
 	cmd.AddCommand(skillCmd())
 	// PAI-352: paimos onboard — human-readable briefing renderer.

@@ -35,6 +35,13 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.5.0 (PAI-506): added the `agent` entity (create/update shape) and
+// the rich `agent` block (entry shape + route map) documenting the
+// project-scoped /api/projects/{id}/agents surface, plus the
+// `agent_name` convention (lowercase slug, max 32 chars, 'web-ui'
+// reserved). Makes first-class agent CRUD discoverable for CLI / MCP /
+// HTTP-only agents without reading source — mirrors the PAI-394
+// knowledge block.
 // 1.4.0 (PAI-494): added `enum_fields`, the field-to-enum binding
 // contract used by backend validators and generated client surfaces.
 // Also documents lowercase canonical enum wire values, knowledge-status
@@ -56,7 +63,7 @@ import (
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.4.0"
+const SchemaVersion = "1.5.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -68,6 +75,7 @@ type SchemaPayload struct {
 	Conventions map[string]string              `json:"conventions"`
 	Scopes      []auth.ScopeDef                `json:"scopes"`
 	Knowledge   *SchemaKnowledge               `json:"knowledge,omitempty"`
+	Agent       *SchemaAgent                   `json:"agent,omitempty"`
 }
 
 // SchemaEntity describes the create/update shape for a given entity type.
@@ -101,6 +109,17 @@ type SchemaKnowledgeType struct {
 	URLSegment    string `json:"url_segment"`
 	Label         string `json:"label"`
 	DefaultStatus string `json:"default_status"`
+}
+
+// SchemaAgent documents the project-scoped /api/projects/{id}/agents
+// surface introduced by PAI-326 / PAI-329 and exposed as first-class
+// CLI / MCP CRUD by PAI-506. Agents reading this block learn what shape
+// to send (`EntryShape`) and which URL each verb hits (`Routes`).
+// Unlike knowledge there's no dynamic type registry, so this is a
+// static literal populated in init().
+type SchemaAgent struct {
+	EntryShape SchemaEntity      `json:"entry_shape"`
+	Routes     map[string]string `json:"routes"`
 }
 
 // Schema is the compile-time-constant API schema. Backend enum changes
@@ -178,6 +197,13 @@ var Schema = SchemaPayload{
 			Required: []string{"body"},
 			Optional: []string{},
 		},
+		"agent": {
+			Required: []string{"name"},
+			Optional: []string{
+				"description", "slash_command_name", "lane_tags",
+				"metadata", "body", "bootstrap_steps", "non_negotiable_rules",
+			},
+		},
 	},
 	EnumFields: map[string]string{
 		"issue.type":       "type",
@@ -193,6 +219,7 @@ var Schema = SchemaPayload{
 		"enum_values":            "Enum values are canonical lowercase wire values. Display surfaces may render proper-case labels, but requests must submit the schema value.",
 		"idempotency_key":        "Create-style writes may accept `Idempotency-Key: <uuid-or-ulid>`; clients should reuse the same key only when retrying the same logical request.",
 		"issue_key":              "{PROJECT_KEY}-{N}, case-sensitive (e.g. PAI-83). `/issues/{id}` accepts either the numeric id or the key since v1.2.5.",
+		"agent_name":             "lowercase slug ^[a-z][a-z0-9_-]*$, max 32 chars, 'web-ui' reserved",
 		"multiline_inputs":       "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
 		"transitions_permissive": "status transitions are recommendations, not enforced; the backend accepts any→any to keep fix-by-hand flexible. Clients should surface the recommended list but allow override.",
 		"relation_direction":     "GET /api/issues/{id}/relations tags each row with direction=outgoing|incoming so clients can render inverse labels (e.g. 'follows up on X' vs 'followed up by Y') without a second DB row.",
@@ -255,6 +282,28 @@ func init() {
 			"create": "POST /api/projects/{id}/knowledge",
 			"update": "PUT /api/projects/{id}/knowledge/{type}/{slug}",
 			"delete": "DELETE /api/projects/{id}/knowledge/{type}/{slug}",
+		},
+	}
+	// PAI-506: the project-scoped agent surface. Static literal (no
+	// dynamic type registry like knowledge) — documents the entry shape
+	// and the route map so the single-agent read (.json artifact, peel
+	// `.agent`) is discoverable. The `get` route is the .json artifact
+	// since there is no plain GET /agents/{name}.
+	Schema.Agent = &SchemaAgent{
+		EntryShape: SchemaEntity{
+			Required: []string{"name"},
+			Optional: []string{
+				"description", "slash_command_name", "lane_tags",
+				"metadata", "body", "bootstrap_steps", "non_negotiable_rules",
+			},
+		},
+		Routes: map[string]string{
+			"list":   "GET /api/projects/{id}/agents",
+			"get":    "GET /api/projects/{id}/agents/{name}.json",
+			"rev":    "GET /api/projects/{id}/agents/{name}.rev",
+			"create": "POST /api/projects/{id}/agents",
+			"update": "PUT /api/projects/{id}/agents/{name}",
+			"delete": "DELETE /api/projects/{id}/agents/{name}",
 		},
 	}
 	b, err := json.MarshalIndent(&Schema, "", "  ")
