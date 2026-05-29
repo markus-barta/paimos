@@ -225,34 +225,47 @@ opt in to per-project guarding by setting
   their legacy names (documented in the module) to avoid wiping
   existing user preferences.
 
-### Project settings IA (PAI-505)
+### Project settings IA (PAI-505 → PAI-508)
 
-The project page (`ProjectDetailView.vue`) separates two kinds of
-surfaces, and new features must land in the right one:
+The project page (`ProjectDetailView.vue`) is built entirely from
+**footer-bar tabs** (`ProjectFooterBar`) — there is no ⋯-menu modal for
+project configuration anymore. PAI-508 eliminated the Edit Project
+modal:
 
-- **First-class concepts** live as **primary tabs** on the project
-  page (the bottom `ProjectFooterBar`): Issues, Overview, Knowledge,
-  **Agents** (PAI-504), Docs, Coop, Context. These are things a user
-  works *with* day to day, not project configuration. Each tab is its
-  own component; counts are fed by always-mounted hidden sentinels so
-  the footer badges stay live regardless of the active tab. Writes are
+- **First-class concepts** are left-aligned **content tabs**: Issues,
+  Overview, Knowledge, **Agents** (PAI-504), Docs, Coop, Context. These
+  are things a user works *with* day to day. Each tab is its own
+  component; counts are fed by always-mounted hidden sentinels so the
+  footer badges stay live regardless of the active tab. Writes are
   gated on `isAdmin && canEdit(projectId)`; reads are open to project
   viewers — never gate on `isAdmin` alone.
-- **Configuration** lives in the **Edit Project modal**, which is
-  organised into four sub-tabs (styled after `SettingsView`'s
-  `.tab-bar`): **General** (name, key, description+AI, status, tags,
-  product owner, logo), **Billing** (customer, customer label, rates),
-  **Environments** (`ProjectInventoriesSection` — shared environments +
-  deploy recipes), and **Danger** (archive / delete / purge). Panels
-  are `v-show`'d so field state and the shared Cancel / Save footer
-  survive tab switches; the footer persists the General + Billing
-  fields, while Environments self-saves inline.
+- **Project configuration** lives in the **Settings tab** — a
+  **right-aligned, admin-only** footer tab (gear icon + "Settings"
+  label), separated from the content tabs by a flex spacer
+  (`.pfb__spacer`). The footer renders the button only when
+  `canEditSettings` (`isAdmin && canEdit(projectId)`) is true; a
+  hand-typed `?tab=settings` deep link falls through to the default
+  `issues` tab for non-admins. The tab body is a single scrollable
+  surface (no sub-tab bar) split into three plain `<h3>` sections:
+  **General** (name, key, description+AI, status, tags, product owner,
+  logo), **Billing** (customer, customer label, rates), and **Danger
+  zone** (archive / delete / purge). General + Billing share one
+  `<form @submit.prevent="saveProject">` with a single Save button; the
+  Danger zone sits outside that form with its own inline action buttons.
+  The form is kept populated by a `watch` on `project.id` (repopulates
+  only when the project identity changes, so in-progress edits and tag
+  add/remove are never clobbered).
+- **Environments + deploy recipes** (`ProjectInventoriesSection`) moved
+  out of settings entirely and now render under the **Context** tab,
+  alongside repos (`ProjectContextSection`), so all per-project
+  infrastructure config lives on one tab.
 
 **Rule for future additions:** a first-class concept (like Agents or
-Knowledge) gets a primary footer-bar tab, *not* a slot in the settings
-modal. Genuine project *configuration* goes in the matching Edit
-Project sub-tab — add a new sub-tab only when it genuinely doesn't fit
-General / Billing / Environments / Danger.
+Knowledge) gets a left-aligned content footer-bar tab. Genuine project
+*configuration* goes in the Settings tab — add it to the matching
+General / Billing / Danger section; per-project infrastructure
+(repos, environments, recipes) belongs on the Context tab. Nothing
+hides in a ⋯-menu modal.
 
 ## 6. Testing
 

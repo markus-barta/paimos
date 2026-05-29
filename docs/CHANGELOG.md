@@ -5,6 +5,22 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.1] — 2026-05-29
+
+### Changed
+
+- **PAI-508** — **Project settings move out of the ⋯ modal into a
+  Settings footer tab.** The "Edit Project" modal (and its ⋯-menu
+  entry) is gone. Project configuration now lives in a right-aligned,
+  admin-only **Settings** footer tab (gear + label) with plain
+  **General / Billing / Danger** sections — no sub-tabs — reusing the
+  same save logic the modal had. Environments + deploy recipes move to
+  the **Context** tab alongside linked repos. Pure relocation: no new
+  capability and no API change; it closes the discoverability gap that
+  PAI-504/505 began, so first-class concepts (agents, knowledge) and
+  settings are all footer tabs and nothing hides behind a menu. IA
+  documented in `docs/DEVELOPER_GUIDE.md`.
+
 ## [3.8.0] — 2026-05-29
 
 ### Added

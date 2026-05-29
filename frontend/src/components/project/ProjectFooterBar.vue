@@ -25,6 +25,9 @@ export type ProjectPrimaryTab =
   | 'docs'
   | 'coop'
   | 'context'
+  // PAI-508 — project settings (formerly the Edit Project modal) is now
+  // a right-aligned, admin-only footer tab rather than a ⋯-menu modal.
+  | 'settings'
 
 const props = defineProps<{
   modelValue: ProjectPrimaryTab
@@ -38,6 +41,10 @@ const props = defineProps<{
   // (Cooperation = a structured summary, not a list count). When true
   // the tab renders a small filled dot; when false/null no badge.
   coopPopulated?: boolean | null
+  // PAI-508 — gates the right-aligned Settings tab. Only admins with
+  // edit rights on this project see it; non-admins never get the button
+  // (deep-link access is separately guarded in ProjectDetailView).
+  canEditSettings?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -88,6 +95,23 @@ function select(t: ProjectPrimaryTab) {
         :class="{ 'pfb__count--zero': t.count === 0 }"
       >{{ t.count }}</span>
       <span v-else-if="t.dot" class="pfb__dot" aria-label="populated"></span>
+    </button>
+
+    <!-- PAI-508 — spacer pushes Settings to the far-right edge so it
+         reads as project chrome, distinct from the content tabs. Admin-
+         only (canEditSettings); non-admins never see the button. -->
+    <span class="pfb__spacer" />
+    <button
+      v-if="canEditSettings"
+      type="button"
+      class="pfb__tab pfb__tab--settings"
+      :class="{ 'pfb__tab--active': modelValue === 'settings' }"
+      role="tab"
+      :aria-selected="modelValue === 'settings'"
+      @click="select('settings')"
+    >
+      <AppIcon name="settings" :size="13" class="pfb__icon" />
+      <span class="pfb__label">Settings</span>
     </button>
   </nav>
 </template>
@@ -163,6 +187,14 @@ function select(t: ProjectPrimaryTab) {
 
 .pfb__label {
   white-space: nowrap;
+}
+
+/* PAI-508 — flexible gap between the content tabs and the right-aligned
+   Settings tab. Pushes Settings to the far edge without disturbing the
+   left-aligned cluster. */
+.pfb__spacer {
+  flex: 1 1 auto;
+  min-width: 1rem;
 }
 
 /* Count is informational, not decorative. Same muted treatment for

@@ -111,7 +111,7 @@ onMounted(() => {
       </header>
       <div v-if="description" class="pot-md" v-html="descriptionHtml" />
       <div v-else class="pot-empty">
-        No description yet — add one in <strong>Edit project</strong> to give agents and
+        No description yet — add one in <strong>Settings</strong> to give agents and
         teammates a quick sense of what this project is for.
       </div>
     </section>
