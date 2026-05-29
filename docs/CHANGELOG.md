@@ -5,6 +5,50 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] — 2026-05-29
+
+### Added
+
+- **PAI-504** — **Agents are a first-class project tab.** The
+  project-page footer bar gains an **Agents** tab, peer to Knowledge.
+  The declarable-agents editor (PAI-326/329) that previously lived
+  only inside the Edit Project modal is now reachable directly as a
+  primary tab (and via `?tab=agents`), with the same inline
+  create/edit/delete UX and a live count badge. Writes stay
+  admin-gated (`isAdmin && canEditProject`); reads follow the project
+  view guard.
+- **PAI-506** — **First-class agent CRUD in the CLI, MCP, and
+  schema.** New `paimos agent {list,get,create,update,delete}` verb,
+  mirroring `paimos knowledge`: `--project` (key or id), file inputs
+  (`--body-file`, `--bootstrap-steps-file`, `--rules-file`),
+  `--metadata` JSON, `--json` output, and idempotent partial update by
+  name. Five matching MCP tools (`paimos_agent_*`). Agent endpoints +
+  entry shape are now discoverable in `GET /api/schema` (schema bumped
+  to `1.5.0`). Previously agent writes were UI / raw-API only, forcing
+  scripted/LLM workflows to hand-roll `curl`.
+
+### Changed
+
+- **PAI-505** — **Edit Project settings restructured into a coherent
+  IA.** The modal's accreted fields are grouped into four scannable
+  sub-tabs — **General** (name, key, description, status, tags, owner,
+  logo), **Billing** (customer, label, rates), **Environments**
+  (shared inventories), and **Danger** (archive/delete/purge) — styled
+  after the app Settings tabs. Agents moved out to its own primary tab
+  (PAI-504); no first-class concept is reachable only from inside the
+  settings modal. The settings IA is documented in
+  `docs/DEVELOPER_GUIDE.md` so future additions have an obvious home.
+
+### Documentation
+
+- **PAI-503** — **Doc sync for v3.7.4..v3.7.10.** README feature
+  catalogue now lists the timer-panel today-total footer + day
+  scrubbing (PAI-495/499) and the customer-portal side-panel pin +
+  prev/next navigation (PAI-496/497); `docs/api-minimal.md` documents
+  the previously-missing `GET /api/time-entries/today-summary`
+  endpoint. (Hero-screenshot refresh and the `paimos-site` sibling
+  sync remain deferred — see the PAI-503 ticket.)
+
 ## [3.7.10] — 2026-05-27
 
 ### Fixed

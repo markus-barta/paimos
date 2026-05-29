@@ -146,6 +146,15 @@ up, browser open, done.
   validation before commit
 - **Custom views**: saved filter + column sets, per-user ordering, pin
   to sidebar
+- **Timer-panel enhancements (v3.7.4–v3.7.6)**: a today-total row in the
+  sidebar timer footer summing daily entries via a new
+  `GET /api/time-entries/today-summary` endpoint (PAI-495); day-scrubbing
+  prev/today/next nav to review past days while running timers stay
+  locked to today (PAI-499); wrap-free centred footer layout
+  (PAI-500, PAI-501) and compact `DD.MM.` date format (PAI-502)
+- **Customer-portal side-panel enhancements (v3.7.5)**: a pin button that
+  anchors the detail panel, plus prev/next issue navigation through the
+  filtered list without leaving the panel (PAI-496, PAI-497)
 - **External-user portal** with read-only projects + accept/reject
   workflow and acceptance reports — Projektbericht snapshots stored
   with QR/short-URL acceptance pages, batch-accept on included issues,
@@ -453,6 +462,10 @@ obligation.
 - Manual time entries with start/stop fields
 - Running timers (active session tracking per user)
 - Recent timers list for quick re-entry
+- Sidebar timer-footer daily total — live sum of the day's bookings
+  via `GET /api/time-entries/today-summary` (PAI-495)
+- Day-scrubbing prev/today/next nav in the timer footer to review
+  past days; running timers stay locked to today (PAI-499)
 - Per-user accrual totals across projects
 - Billing lifecycle: `accepted_at`, `invoiced_at`, `invoice_number`
 - Time rollup from child issues
@@ -502,6 +515,8 @@ obligation.
 - Accept / reject issues with undo
 - Project summary (open / in-progress / testing / closed counts)
 - Acceptance report (timeline of decisions)
+- Pinned side-panel issue detail with prev/next navigation through the
+  filtered list, without leaving the panel (PAI-496, PAI-497)
 
 </details>
 

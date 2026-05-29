@@ -106,6 +106,9 @@ PUT    /time-entries/:id            partial update — super-admin can edit any 
 DELETE /time-entries/:id            super-admin can delete any user's entry
 GET    /time-entries/running        active timers for current user
 GET    /time-entries/recent         recent entries for quick re-entry
+GET    /time-entries/today-summary  ?from=<RFC3339>&to=<RFC3339> (both required)
+                                      — sum of the current user's stopped entries in [from, to)
+                                      → {total_hours, count} (PAI-495)
 ```
 
 Cross-user writes are stamped in `mutation_log` and emit a
