@@ -225,6 +225,35 @@ opt in to per-project guarding by setting
   their legacy names (documented in the module) to avoid wiping
   existing user preferences.
 
+### Project settings IA (PAI-505)
+
+The project page (`ProjectDetailView.vue`) separates two kinds of
+surfaces, and new features must land in the right one:
+
+- **First-class concepts** live as **primary tabs** on the project
+  page (the bottom `ProjectFooterBar`): Issues, Overview, Knowledge,
+  **Agents** (PAI-504), Docs, Coop, Context. These are things a user
+  works *with* day to day, not project configuration. Each tab is its
+  own component; counts are fed by always-mounted hidden sentinels so
+  the footer badges stay live regardless of the active tab. Writes are
+  gated on `isAdmin && canEdit(projectId)`; reads are open to project
+  viewers — never gate on `isAdmin` alone.
+- **Configuration** lives in the **Edit Project modal**, which is
+  organised into four sub-tabs (styled after `SettingsView`'s
+  `.tab-bar`): **General** (name, key, description+AI, status, tags,
+  product owner, logo), **Billing** (customer, customer label, rates),
+  **Environments** (`ProjectInventoriesSection` — shared environments +
+  deploy recipes), and **Danger** (archive / delete / purge). Panels
+  are `v-show`'d so field state and the shared Cancel / Save footer
+  survive tab switches; the footer persists the General + Billing
+  fields, while Environments self-saves inline.
+
+**Rule for future additions:** a first-class concept (like Agents or
+Knowledge) gets a primary footer-bar tab, *not* a slot in the settings
+modal. Genuine project *configuration* goes in the matching Edit
+Project sub-tab — add a new sub-tab only when it genuinely doesn't fit
+General / Billing / Environments / Danger.
+
 ## 6. Testing
 
 - **Backend**: `cd backend && go test ./...` — covers handlers,

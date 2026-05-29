@@ -1,10 +1,14 @@
 <script setup lang="ts">
-// PAI-356 / PAI-359 — Project-page footer bar. Six mutually-exclusive
-// tabs in one continuous row: the three primary content modes
-// (Issues / Overview / Knowledge) plus the three workspace surfaces
-// the legacy aux-panel dock used to host (Docs / Coop / Context).
-// PAI-359 collapses the dock pattern into peer tabs so there's one
-// canonical project-navigation surface, not two stacked rows.
+// PAI-356 / PAI-359 — Project-page footer bar. Mutually-exclusive
+// tabs in one continuous row: the primary content modes
+// (Issues / Overview / Knowledge / Agents) plus the three workspace
+// surfaces the legacy aux-panel dock used to host (Docs / Coop /
+// Context). PAI-359 collapses the dock pattern into peer tabs so
+// there's one canonical project-navigation surface, not two stacked
+// rows.
+// PAI-504 — Agents promoted from the Edit Project modal to a
+// first-class peer tab (sibling of Knowledge); its count badge is
+// fed by an always-mounted sentinel like Docs / Context.
 //
 // Counters: numbers for tabs that have a meaningful count (Issues,
 // Knowledge, Docs, Context-as-repo-count); a tiny dot for boolean
@@ -17,6 +21,7 @@ export type ProjectPrimaryTab =
   | 'issues'
   | 'overview'
   | 'knowledge'
+  | 'agents'
   | 'docs'
   | 'coop'
   | 'context'
@@ -26,6 +31,7 @@ const props = defineProps<{
   // Numeric counters — null hides the badge entirely.
   openIssues?: number | null
   knowledgeEntries?: number | null
+  agentCount?: number | null
   docsCount?: number | null
   contextRepos?: number | null
   // Boolean "populated" state for tabs whose data is non-numeric
@@ -51,6 +57,7 @@ const tabs = computed<TabSpec[]>(() => [
   { key: 'issues',    label: 'Issues',    icon: 'layout-list',    count: props.openIssues       ?? null                  },
   { key: 'overview',  label: 'Overview',  icon: 'house',          count: null                                            },
   { key: 'knowledge', label: 'Knowledge', icon: 'book-open',      count: props.knowledgeEntries ?? null                  },
+  { key: 'agents',    label: 'Agents',    icon: 'bot',            count: props.agentCount       ?? null                  },
   { key: 'docs',      label: 'Docs',      icon: 'file-text',      count: props.docsCount        ?? null                  },
   { key: 'coop',      label: 'Coop',      icon: 'handshake',      dot: props.coopPopulated === true                       },
   { key: 'context',   label: 'Context',   icon: 'git-branch',     count: props.contextRepos     ?? null                  },

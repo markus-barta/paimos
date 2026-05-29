@@ -51,11 +51,14 @@ import {
 import DocumentsSection from '@/components/customer/DocumentsSection.vue'
 import CooperationSection from '@/components/customer/CooperationSection.vue'
 import ProjectContextSection from '@/components/project/ProjectContextSection.vue'
-import ProjectAgentsSection from '@/components/project/ProjectAgentsSection.vue'
+import ProjectAgentsTab from '@/components/project/ProjectAgentsTab.vue'
 import ProjectInventoriesSection from '@/components/project/ProjectInventoriesSection.vue'
 // PAI-339: project page primary tab structure (Overview / Issues /
 // Knowledge). Settings is the existing "Edit project" modal reached
-// via the ⋯ menu; Agents lives inside Edit Project (PAI-326/329).
+// via the ⋯ menu.
+// PAI-504 — Agents is now a first-class primary tab (peer of
+// Knowledge), no longer mounted inside Edit Project; it wraps the
+// existing ProjectAgentsSection via ProjectAgentsTab.
 // PAI-360 — unified Knowledge tab (single list + type filter chips)
 // supersedes the PAI-339 ProjectKnowledgeTab + KnowledgeCategoryPanel
 // pill-row pattern.
@@ -117,6 +120,10 @@ const customers = ref<Customer[]>([])
 // sentinels emit @count / @populated regardless of which tab is
 // active — see template).
 const docCount = ref(0)
+// PAI-504: agent count feeds the footer-bar badge. Kept fresh by an
+// always-mounted sentinel ProjectAgentsTab (mirrors docCount /
+// contextSummary) so the badge is live regardless of the active tab.
+const agentCount = ref(0)
 const cooperationPopulated = ref(false)
 const contextSummary = ref({ repoCount: 0, hasManifest: false, populated: false })
 
@@ -175,17 +182,19 @@ function onMenuImport() { closeOverflow(); triggerImport() }
 function onMenuEdit() { closeOverflow(); openEdit() }
 
 // ── Primary tabs (PAI-339) ───────────────────────────────────────────────
-// Issues / Overview / Knowledge — Settings is the existing "Edit
-// project" modal reached via the ⋯ menu; Agents lives inside Edit
-// Project too (PAI-326/329). The default landing tab is 'issues' to
-// preserve the existing UX — daily users hit /projects/:id and
-// expect the issue list, not a marketing card.
-// PAI-359 — six mutually-exclusive primary tabs. Docs / Coop /
-// Context were workspace-dock toggles in PAI-279; that pattern is
-// gone — they're peer tabs now.
-type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge' | 'docs' | 'coop' | 'context'
+// Issues / Overview / Knowledge / Agents — Settings is the existing
+// "Edit project" modal reached via the ⋯ menu. The default landing
+// tab is 'issues' to preserve the existing UX — daily users hit
+// /projects/:id and expect the issue list, not a marketing card.
+// PAI-359 — mutually-exclusive primary tabs. Docs / Coop / Context
+// were workspace-dock toggles in PAI-279; that pattern is gone —
+// they're peer tabs now.
+// PAI-504 — Agents joins as a first-class peer tab (was previously
+// buried in the Edit Project modal); reads allowed for project
+// viewers, writes gated on (isAdmin && canEditProject) like Knowledge.
+type ProjectPrimaryTab = 'issues' | 'overview' | 'knowledge' | 'agents' | 'docs' | 'coop' | 'context'
 const PROJECT_PRIMARY_TABS: ProjectPrimaryTab[] = [
-  'issues', 'overview', 'knowledge', 'docs', 'coop', 'context',
+  'issues', 'overview', 'knowledge', 'agents', 'docs', 'coop', 'context',
 ]
 // Honor `?tab=knowledge` query param so deep-links from elsewhere
 // (e.g. the IssueDetail "Applicable Memories" panel — PAI-342)
@@ -246,6 +255,7 @@ async function refreshViews() {
 
 function resetWorkspaceState() {
   docCount.value = 0
+  agentCount.value = 0
   cooperationPopulated.value = false
   contextSummary.value = { repoCount: 0, hasManifest: false, populated: false }
 }
@@ -276,6 +286,18 @@ const showEdit  = ref(false)
 const editForm  = ref(emptyProjectEditForm())
 const editError = ref('')
 const saving    = ref(false)
+// PAI-505 — sub-tab IA inside the Edit Project modal. Four panels
+// (General / Billing / Environments / Danger) toggled via v-show on
+// this local ref; reset to 'general' on every open (see openEdit).
+// See the IA comment above the <AppModal title="Edit Project"> below.
+type ProjectEditTab = 'general' | 'billing' | 'environments' | 'danger'
+const editTab = ref<ProjectEditTab>('general')
+const EDIT_TABS: { key: ProjectEditTab; label: string }[] = [
+  { key: 'general',      label: 'General'      },
+  { key: 'billing',      label: 'Billing'      },
+  { key: 'environments', label: 'Environments' },
+  { key: 'danger',       label: 'Danger'       },
+]
 
 // PAI-146 expansion: AI optimize composable + onAccept handler for
 // the project description. The edit modal is admin-gated, so the
@@ -338,6 +360,9 @@ function openEdit() {
   if (!project.value) return
   editForm.value = projectToEditForm(project.value)
   editError.value = ''
+  // PAI-505: always land on General so the modal opens predictably,
+  // regardless of which sub-tab was last viewed.
+  editTab.value = 'general'
   showEdit.value = true
 }
 
@@ -889,6 +914,17 @@ watch(
         :initial-memory-slug="initialKnowledgeSlug"
       />
 
+      <!-- Agents tab — PAI-504 first-class peer of Knowledge. Wraps
+           ProjectAgentsSection (the same inline editor that used to
+           live in the Edit Project modal). Reads allowed for project
+           viewers; writes gated on (isAdmin && canEditProject). -->
+      <ProjectAgentsTab
+        v-else-if="primaryTab === 'agents'"
+        :project-id="projectId"
+        :can-write="isAdmin && canEditProject"
+        @count="(n: number) => agentCount = n"
+      />
+
       <!-- PAI-359 — Docs / Coop / Context as first-class primary
            tabs. Each renders full-page when its tab is active; the
            legacy aux-panel dock + workspace rail (PAI-279) is gone.
@@ -923,6 +959,16 @@ watch(
            render with display:none. Skipped for the active tab to
            avoid double-mount + double-fetch. -->
       <div class="pd-sentinels" aria-hidden="true">
+        <!-- PAI-504: agent-count sentinel. can-write=false so the
+             hidden mount never exposes write affordances; skipped when
+             Agents is the active tab to avoid double-mount + double
+             GET (mirrors the Docs / Context sentinels below). -->
+        <ProjectAgentsTab
+          v-if="primaryTab !== 'agents'"
+          :project-id="projectId"
+          :can-write="false"
+          @count="(n: number) => agentCount = n"
+        />
         <DocumentsSection
           v-if="primaryTab !== 'docs'"
           scope="project"
@@ -955,6 +1001,7 @@ watch(
           v-model="primaryTab"
           :open-issues="issues.length"
           :knowledge-entries="project.counts?.knowledge_entries ?? null"
+          :agent-count="agentCount"
           :docs-count="docCount"
           :context-repos="contextSummary.repoCount"
           :coop-populated="cooperationPopulated"
@@ -982,145 +1029,185 @@ watch(
     @cancel="showImportModal=false; pendingImportFile=null"
   />
 
-  <!-- Edit project modal -->
+  <!-- Edit project modal — PAI-505 sub-tab IA ────────────────────────
+       The modal is the project *settings* surface. Its concerns are
+       grouped into four sub-tabs so the form stops being one long
+       scroll:
+         • General      — name, key, description (+AI), status, tags,
+                           product owner, logo.
+         • Billing       — customer link, customer label, rates (with
+                           inherited-rate hints).
+         • Environments  — shared inventories (environments + deploy
+                           recipes), via ProjectInventoriesSection.
+         • Danger        — archive / delete / purge.
+       The Cancel / Save changes footer is shared and persists the
+       General + Billing form fields exactly as before; Environments
+       self-saves inside its own component.
+
+       IA rule for future additions: first-class concepts (agents,
+       knowledge) live in primary tabs, NOT in settings — they get a
+       footer-bar tab on the project page. Genuine *configuration*
+       goes in the matching settings sub-tab here (and a new sub-tab
+       only if it doesn't fit General / Billing / Environments /
+       Danger). Mirrored in docs/DEVELOPER_GUIDE.md → "Project
+       settings IA". -->
   <AppModal title="Edit Project" :open="showEdit" @close="showEdit=false" max-width="1100px">
+      <!-- Sub-tab bar — styled after SettingsView's .tab-bar / .tab-btn. -->
+      <div class="ep-tab-bar">
+        <button
+          v-for="t in EDIT_TABS"
+          :key="t.key"
+          type="button"
+          :class="['ep-tab-btn', { active: editTab === t.key }]"
+          @click="editTab = t.key"
+        >{{ t.label }}</button>
+      </div>
+
       <form @submit.prevent="saveProject" class="form">
-        <div class="field">
-          <label>Name</label>
-          <input v-model="editForm.name" type="text" required autofocus />
-        </div>
-        <div class="field">
-          <label>Key <span class="label-hint">— used in issue IDs, e.g. WEB-1</span></label>
-          <input v-model="editForm.key" type="text" maxlength="6" style="text-transform:uppercase" />
-        </div>
-        <div class="field">
-          <div class="field-label-row">
-            <label>Description</label>
-            <AiActionMenu surface="issue"
-              host-key="project-detail:description"
-              field="project_description"
-              field-label="Project description"
-              :issue-id="0"
-              :text="() => editForm.description"
-              :on-accept="onProjectDescriptionAccept"
+        <!-- ── General ──────────────────────────────────────────── -->
+        <div v-show="editTab === 'general'" class="ep-panel">
+          <div class="field">
+            <label>Name</label>
+            <input v-model="editForm.name" type="text" required autofocus />
+          </div>
+          <div class="field">
+            <label>Key <span class="label-hint">— used in issue IDs, e.g. WEB-1</span></label>
+            <input v-model="editForm.key" type="text" maxlength="6" style="text-transform:uppercase" />
+          </div>
+          <div class="field">
+            <div class="field-label-row">
+              <label>Description</label>
+              <AiActionMenu surface="issue"
+                host-key="project-detail:description"
+                field="project_description"
+                field-label="Project description"
+                :issue-id="0"
+                :text="() => editForm.description"
+                :on-accept="onProjectDescriptionAccept"
+              />
+            </div>
+            <textarea v-model="editForm.description" rows="3"></textarea>
+            <AiSurfaceFeedback host-key="project-detail:description" :apply="applyProjectAiResult" />
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <MetaSelect v-model="editForm.status" :options="PROJECT_STATUS_OPTIONS" />
+          </div>
+          <div class="field">
+            <label>Tags</label>
+            <TagSelector
+              :all-tags="allTags"
+              :selected-ids="projectTagIds"
+              @add="addProjectTag"
+              @remove="removeProjectTag"
             />
           </div>
-          <textarea v-model="editForm.description" rows="3"></textarea>
-          <AiSurfaceFeedback host-key="project-detail:description" :apply="applyProjectAiResult" />
+          <div class="field">
+            <label>Product Owner</label>
+            <select v-model="editForm.product_owner">
+              <option :value="null">— none —</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.username }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Logo <span class="label-hint">— square image, max 200×200px · JPG/PNG</span></label>
+            <div class="logo-upload-row">
+              <img v-if="project?.logo_path" :src="project.logo_path" class="logo-preview" alt="Current logo" />
+              <div v-else class="logo-placeholder">No logo</div>
+              <input ref="logoInputRef" type="file" accept="image/jpeg,image/png" style="display:none" @change="uploadLogo" />
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="logoUploading" @click="logoInputRef?.click()">
+                {{ logoUploading ? 'Uploading…' : project?.logo_path ? 'Replace' : 'Upload' }}
+              </button>
+              <button v-if="project?.logo_path" type="button" class="btn btn-ghost btn-sm" @click="deleteLogo">Remove</button>
+            </div>
+            <div v-if="logoError" class="field-error">{{ logoError }}</div>
+          </div>
         </div>
-        <div class="field">
-          <label>Status</label>
-          <MetaSelect v-model="editForm.status" :options="PROJECT_STATUS_OPTIONS" />
+
+        <!-- ── Billing ──────────────────────────────────────────── -->
+        <div v-show="editTab === 'billing'" class="ep-panel">
+          <div class="field">
+            <label>Customer <span class="label-hint">— links rates + documents to a Customer record</span></label>
+            <select v-model="editForm.customer_id">
+              <option :value="null">— Unassigned —</option>
+              <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Customer label <span class="label-hint">— legacy freeform reference (PMO26 era)</span></label>
+            <input v-model="editForm.customer_label" type="text" placeholder="e.g. CUST-123" />
+          </div>
+          <div style="display:flex;gap:.75rem">
+            <div class="field" style="flex:1">
+              <label>Rate (€/h)</label>
+              <input v-model.number="editForm.rate_hourly" type="number" step="0.01" placeholder="e.g. 120" />
+              <span v-if="inheritedRateLabel('hourly')" class="pd-inherit-hint">
+                <AppIcon name="link" :size="11" /> {{ inheritedRateLabel('hourly') }}
+              </span>
+            </div>
+            <div class="field" style="flex:1">
+              <label>Rate (€/LP)</label>
+              <input v-model.number="editForm.rate_lp" type="number" step="0.01" placeholder="e.g. 1200" />
+              <span v-if="inheritedRateLabel('lp')" class="pd-inherit-hint">
+                <AppIcon name="link" :size="11" /> {{ inheritedRateLabel('lp') }}
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="field">
-          <label>Tags</label>
-          <TagSelector
-            :all-tags="allTags"
-            :selected-ids="projectTagIds"
-            @add="addProjectTag"
-            @remove="removeProjectTag"
+
+        <!-- ── Environments ─────────────────────────────────────── -->
+        <!-- PAI-329: project-level shared inventories (environments +
+             deploy recipes). Self-saving component; mounted only while
+             the modal is open so the GET fires on demand. PAI-505
+             moved it under its own sub-tab (no markup change). -->
+        <div v-show="editTab === 'environments'" class="ep-panel">
+          <ProjectInventoriesSection
+            v-if="showEdit"
+            :project-id="projectId"
+            :can-write="isAdmin && canEditProject"
           />
         </div>
-        <div class="field">
-          <label>Product Owner</label>
-          <select v-model="editForm.product_owner">
-            <option :value="null">— none —</option>
-            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.username }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Customer <span class="label-hint">— links rates + documents to a Customer record</span></label>
-          <select v-model="editForm.customer_id">
-            <option :value="null">— Unassigned —</option>
-            <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Customer label <span class="label-hint">— legacy freeform reference (PMO26 era)</span></label>
-          <input v-model="editForm.customer_label" type="text" placeholder="e.g. CUST-123" />
-        </div>
-        <div style="display:flex;gap:.75rem">
-          <div class="field" style="flex:1">
-            <label>Rate (€/h)</label>
-            <input v-model.number="editForm.rate_hourly" type="number" step="0.01" placeholder="e.g. 120" />
-            <span v-if="inheritedRateLabel('hourly')" class="pd-inherit-hint">
-              <AppIcon name="link" :size="11" /> {{ inheritedRateLabel('hourly') }}
-            </span>
-          </div>
-          <div class="field" style="flex:1">
-            <label>Rate (€/LP)</label>
-            <input v-model.number="editForm.rate_lp" type="number" step="0.01" placeholder="e.g. 1200" />
-            <span v-if="inheritedRateLabel('lp')" class="pd-inherit-hint">
-              <AppIcon name="link" :size="11" /> {{ inheritedRateLabel('lp') }}
-            </span>
+
+        <!-- ── Danger ───────────────────────────────────────────── -->
+        <div v-show="editTab === 'danger'" class="ep-panel">
+          <div class="danger-zone">
+            <div class="danger-zone-label">Danger zone</div>
+            <div class="danger-zone-actions">
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                @click="openPurge"
+              >
+                Purge time entries
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                :disabled="archiving"
+                @click="toggleArchive"
+              >
+                {{ archiving ? 'Saving…' : project?.status === 'active' ? 'Archive project' : 'Restore to active' }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger btn-sm"
+                @click="showDeleteConfirm=true"
+              >
+                Delete project
+              </button>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Logo <span class="label-hint">— square image, max 200×200px · JPG/PNG</span></label>
-          <div class="logo-upload-row">
-            <img v-if="project?.logo_path" :src="project.logo_path" class="logo-preview" alt="Current logo" />
-            <div v-else class="logo-placeholder">No logo</div>
-            <input ref="logoInputRef" type="file" accept="image/jpeg,image/png" style="display:none" @change="uploadLogo" />
-            <button type="button" class="btn btn-ghost btn-sm" :disabled="logoUploading" @click="logoInputRef?.click()">
-              {{ logoUploading ? 'Uploading…' : project?.logo_path ? 'Replace' : 'Upload' }}
-            </button>
-            <button v-if="project?.logo_path" type="button" class="btn btn-ghost btn-sm" @click="deleteLogo">Remove</button>
-          </div>
-          <div v-if="logoError" class="field-error">{{ logoError }}</div>
-        </div>
+
+        <!-- Shared footer — persists General + Billing form fields
+             exactly as before (saveProject), regardless of sub-tab.
+             Environments + Danger self-save / act inline. -->
         <div v-if="editError" class="form-error">{{ editError }}</div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" @click="showEdit=false">Cancel</button>
           <button type="submit" class="btn btn-primary" :disabled="saving">
             {{ saving ? 'Saving…' : 'Save changes' }}
           </button>
-        </div>
-
-        <!-- PAI-326: declarable agents per project. Lives inside the
-             Edit Project modal because that's the canonical project-
-             settings surface; mounted only while the modal is open so
-             the GET fires when the operator actually wants it. -->
-        <ProjectAgentsSection
-          v-if="showEdit"
-          :project-id="projectId"
-          :can-write="isAdmin && canEditProject"
-        />
-
-        <!-- PAI-329: project-level shared inventories (environments +
-             deploy recipes). Same modal-mount discipline. -->
-        <ProjectInventoriesSection
-          v-if="showEdit"
-          :project-id="projectId"
-          :can-write="isAdmin && canEditProject"
-        />
-
-        <!-- Danger zone -->
-        <div class="danger-zone">
-          <div class="danger-zone-label">Danger zone</div>
-          <div class="danger-zone-actions">
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              @click="openPurge"
-            >
-              Purge time entries
-            </button>
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              :disabled="archiving"
-              @click="toggleArchive"
-            >
-              {{ archiving ? 'Saving…' : project?.status === 'active' ? 'Archive project' : 'Restore to active' }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-danger btn-sm"
-              @click="showDeleteConfirm=true"
-            >
-              Delete project
-            </button>
-          </div>
         </div>
       </form>
     </AppModal>
@@ -1280,6 +1367,26 @@ watch(
 
 .form { display: flex; flex-direction: column; gap: 1rem; }
 .field { display: flex; flex-direction: column; gap: .35rem; }
+
+/* PAI-505 — Edit Project sub-tab bar. Styled after SettingsView's
+   .tab-bar / .tab-btn so the modal IA reads as the same family as the
+   app-level Settings tabs. Panels are v-show'd so field state + the
+   shared Save footer survive tab switches. */
+.ep-tab-bar {
+  display: flex; gap: 0; margin-bottom: 1.25rem;
+  border-bottom: 2px solid var(--border);
+}
+.ep-tab-btn {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; padding: .55rem 1.1rem;
+  font-size: 13px; font-weight: 500; color: var(--text-muted);
+  cursor: pointer; transition: color .15s, border-color .15s;
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-family: inherit;
+}
+.ep-tab-btn:hover { color: var(--text); }
+.ep-tab-btn.active { color: var(--bp-blue-dark); border-bottom-color: var(--bp-blue); font-weight: 600; }
+.ep-panel { display: flex; flex-direction: column; gap: 1rem; }
 .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 .label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; }
 .form-error { font-size: 13px; color: #c0392b; background: #fde8e8; padding: .5rem .75rem; border-radius: var(--radius); }
