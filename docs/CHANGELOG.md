@@ -5,6 +5,22 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.2] — 2026-06-01
+
+### Added
+
+- **PAI-563 / PAI-564 / PAI-565 / PAI-572** — IssueList envelopes now expose
+  `returned`, `has_more`, `fingerprint`, and `selection_fingerprint` metadata.
+  The ordered query fingerprint stays stable across page windows, while the
+  selection fingerprint identifies the all-matching set used by IDs-only
+  selection expansion.
+
+### Changed
+
+- **PAI-565** — Project `Select all matching` now resolves IDs through the
+  project-scoped `/api/projects/{id}/issues?ids_only=1` path and rejects a
+  response whose selection fingerprint no longer matches the visible list.
+
 ## [3.9.1] — 2026-06-01
 
 ### Fixed

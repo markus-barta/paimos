@@ -41,15 +41,19 @@ func TestIssueListV2ProjectEnvelopeSortAndWindow(t *testing.T) {
 			Title       string `json:"title"`
 			Description string `json:"description"`
 		} `json:"issues"`
-		Total    int    `json:"total"`
-		Offset   int    `json:"offset"`
-		Limit    int    `json:"limit"`
-		Sort     string `json:"sort"`
-		Order    string `json:"order"`
-		Revision string `json:"revision"`
+		Total                int    `json:"total"`
+		Offset               int    `json:"offset"`
+		Limit                int    `json:"limit"`
+		Returned             int    `json:"returned"`
+		HasMore              bool   `json:"has_more"`
+		Sort                 string `json:"sort"`
+		Order                string `json:"order"`
+		Revision             string `json:"revision"`
+		Fingerprint          string `json:"fingerprint"`
+		SelectionFingerprint string `json:"selection_fingerprint"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&first)
-	if first.Total != 3 || first.Offset != 0 || first.Limit != 2 {
+	if first.Total != 3 || first.Offset != 0 || first.Limit != 2 || first.Returned != 2 || !first.HasMore {
 		t.Fatalf("bad envelope metadata: %+v", first)
 	}
 	if first.Sort != "title" || first.Order != "asc" {
@@ -57,6 +61,9 @@ func TestIssueListV2ProjectEnvelopeSortAndWindow(t *testing.T) {
 	}
 	if first.Revision == "" || strings.ContainsAny(first.Revision, `/"`) {
 		t.Fatalf("revision should be the bare list revision hash, got %q", first.Revision)
+	}
+	if first.Fingerprint == "" || first.SelectionFingerprint == "" || first.Fingerprint == first.SelectionFingerprint {
+		t.Fatalf("bad fingerprints: fingerprint=%q selection=%q", first.Fingerprint, first.SelectionFingerprint)
 	}
 	if got := []string{first.Issues[0].Title, first.Issues[1].Title}; got[0] != "Alpha" || got[1] != "Beta" {
 		t.Fatalf("page 1 order=%v, want Alpha,Beta", got)
@@ -71,12 +78,20 @@ func TestIssueListV2ProjectEnvelopeSortAndWindow(t *testing.T) {
 		Issues []struct {
 			Title string `json:"title"`
 		} `json:"issues"`
-		Total  int `json:"total"`
-		Offset int `json:"offset"`
+		Total                int    `json:"total"`
+		Offset               int    `json:"offset"`
+		Returned             int    `json:"returned"`
+		HasMore              bool   `json:"has_more"`
+		Fingerprint          string `json:"fingerprint"`
+		SelectionFingerprint string `json:"selection_fingerprint"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&second)
-	if second.Total != 3 || second.Offset != 2 || len(second.Issues) != 1 || second.Issues[0].Title != "Gamma" {
+	if second.Total != 3 || second.Offset != 2 || second.Returned != 1 || second.HasMore || len(second.Issues) != 1 || second.Issues[0].Title != "Gamma" {
 		t.Fatalf("page 2 envelope=%+v, want only Gamma", second)
+	}
+	if second.Fingerprint != first.Fingerprint || second.SelectionFingerprint != first.SelectionFingerprint {
+		t.Fatalf("fingerprints should be stable across windows: first=%q/%q second=%q/%q",
+			first.Fingerprint, first.SelectionFingerprint, second.Fingerprint, second.SelectionFingerprint)
 	}
 }
 
@@ -91,12 +106,13 @@ func TestIssueListV2IdsOnlyStaysProjectScoped(t *testing.T) {
 	resp := ts.get(t, fmt.Sprintf("/api/projects/%d/issues?ids_only=1&status=backlog", p1), ts.adminCookie)
 	assertStatus(t, resp, http.StatusOK)
 	var body struct {
-		IDs       []int64 `json:"ids"`
-		Total     int     `json:"total"`
-		Truncated bool    `json:"truncated"`
+		IDs         []int64 `json:"ids"`
+		Total       int     `json:"total"`
+		Truncated   bool    `json:"truncated"`
+		Fingerprint string  `json:"fingerprint"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if body.Total != 1 || len(body.IDs) != 1 || body.IDs[0] != want1 || body.Truncated {
+	if body.Total != 1 || len(body.IDs) != 1 || body.IDs[0] != want1 || body.Truncated || body.Fingerprint == "" {
 		t.Fatalf("ids_only leaked or miscounted: %+v, want [%d]", body, want1)
 	}
 }
@@ -118,10 +134,13 @@ func TestIssueListV2GlobalSortValidationAndNegatedProjectFilter(t *testing.T) {
 			ProjectID int64  `json:"project_id"`
 			IssueKey  string `json:"issue_key"`
 		} `json:"issues"`
-		Total int `json:"total"`
+		Total       int    `json:"total"`
+		Returned    int    `json:"returned"`
+		HasMore     bool   `json:"has_more"`
+		Fingerprint string `json:"fingerprint"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&env)
-	if env.Total != 1 || len(env.Issues) != 1 || env.Issues[0].ProjectID != p2 || env.Issues[0].IssueKey != "OTH-1" {
+	if env.Total != 1 || env.Returned != 1 || env.HasMore || env.Fingerprint == "" || len(env.Issues) != 1 || env.Issues[0].ProjectID != p2 || env.Issues[0].IssueKey != "OTH-1" {
 		t.Fatalf("negated project_ids response=%+v, want OTH-1 only", env)
 	}
 }
@@ -151,14 +170,18 @@ func TestPortalIssueListV2EnvelopeSearchAndWindow(t *testing.T) {
 		Issues []struct {
 			Title string `json:"title"`
 		} `json:"issues"`
-		Total int    `json:"total"`
-		Limit int    `json:"limit"`
-		Query string `json:"query"`
-		Sort  string `json:"sort"`
-		Order string `json:"order"`
+		Total                int    `json:"total"`
+		Limit                int    `json:"limit"`
+		Returned             int    `json:"returned"`
+		HasMore              bool   `json:"has_more"`
+		Query                string `json:"query"`
+		Sort                 string `json:"sort"`
+		Order                string `json:"order"`
+		Fingerprint          string `json:"fingerprint"`
+		SelectionFingerprint string `json:"selection_fingerprint"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&env)
-	if env.Total != 2 || env.Limit != 1 || env.Query != "alp" || env.Sort != "title" || env.Order != "asc" {
+	if env.Total != 2 || env.Limit != 1 || env.Returned != 1 || !env.HasMore || env.Query != "alp" || env.Sort != "title" || env.Order != "asc" || env.Fingerprint == "" || env.SelectionFingerprint == "" {
 		t.Fatalf("bad portal envelope metadata: %+v", env)
 	}
 	if len(env.Issues) != 1 || env.Issues[0].Title != "Alpha request" {

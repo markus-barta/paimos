@@ -75,6 +75,35 @@ describe('projectDetail service', () => {
     expect(api.get).toHaveBeenCalledWith('/projects/7/issues?fields=list&q=ab')
   })
 
+  it('preserves project issue envelope metadata when requested', async () => {
+    const envelope = {
+      issues: [{ id: 1 }],
+      total: 4,
+      returned: 1,
+      offset: 0,
+      limit: 1,
+      has_more: true,
+      fingerprint: 'query-a',
+      selection_fingerprint: 'select-a',
+    }
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ id: 7 } as never)
+      .mockResolvedValueOnce(envelope as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+
+    const data = await loadProjectDetailData(7, '', '', { envelope: true, limit: 1, offset: 0 })
+
+    expect(data.issueTotal).toBe(4)
+    expect(data.issueEnvelope?.has_more).toBe(true)
+    expect(data.issueEnvelope?.fingerprint).toBe('query-a')
+    expect(data.issueEnvelope?.selection_fingerprint).toBe('select-a')
+  })
+
   it('delegates issue, lifecycle, and purge loads to the API layer', async () => {
     vi.mocked(api.get).mockResolvedValue([] as never)
     vi.mocked(api.post).mockResolvedValue({ count: 2, total_hours: 3 } as never)

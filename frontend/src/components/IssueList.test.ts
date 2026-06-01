@@ -180,9 +180,10 @@ async function settle() {
   }
 }
 
-function mountIssueList(issues: Issue[]) {
+function mountIssueList(issues: Issue[], props: { projectId?: number; resultTotal?: number; selectionFingerprint?: string } = {}) {
   const el = document.createElement('div')
   document.body.appendChild(el)
+  const listRef = ref<InstanceType<typeof IssueList> | null>(null)
 
   const Harness = defineComponent({
     setup() {
@@ -194,10 +195,18 @@ function mountIssueList(issues: Issue[]) {
         projects: ref([]),
         sprints: ref([]),
       })
-      return { issues }
+      return { issues, listRef, props }
     },
     components: { IssueList },
-    template: '<IssueList :issues="issues" />',
+    template: `
+      <IssueList
+        ref="listRef"
+        :issues="issues"
+        :project-id="props.projectId"
+        :result-total="props.resultTotal"
+        :selection-fingerprint="props.selectionFingerprint"
+      />
+    `,
   })
 
   const app = createApp(Harness)
@@ -207,10 +216,25 @@ function mountIssueList(issues: Issue[]) {
 
   return {
     el,
+    listRef,
     unmount() {
       app.unmount()
       el.remove()
     },
+  }
+}
+
+function selectedIdSet(exposed: unknown): Set<number> {
+  const value = (exposed as { selectedIds?: Set<number> | { value: Set<number> } }).selectedIds
+  return value instanceof Set ? value : value?.value ?? new Set<number>()
+}
+
+function setSelectedIds(exposed: unknown, ids: number[]) {
+  const target = exposed as { selectedIds?: Set<number> | { value: Set<number> } }
+  if (target.selectedIds && !(target.selectedIds instanceof Set) && 'value' in target.selectedIds) {
+    target.selectedIds.value = new Set(ids)
+  } else {
+    target.selectedIds = new Set(ids)
   }
 }
 
@@ -275,6 +299,46 @@ describe('IssueList progressive rendering', () => {
     expect(JSON.parse(localStorage.getItem('paimos:filters:global') ?? '{}')).toMatchObject({
       columnWidths: {},
     })
+
+    mounted.unmount()
+  })
+
+  it('expands project selections through the project-scoped ids endpoint', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url.startsWith('/projects/42/issues?')) {
+        return Promise.resolve({
+          ids: [1, 2],
+          total: 2,
+          truncated: false,
+          cap: 5000,
+          fingerprint: 'select-a',
+        }) as never
+      }
+      return Promise.resolve([]) as never
+    })
+
+    const mounted = mountIssueList([makeIssue(1)], {
+      projectId: 42,
+      resultTotal: 2,
+      selectionFingerprint: 'select-a',
+    })
+    await settle()
+
+    const exposed = mounted.listRef.value as unknown as {
+      toggleSelectionMode: () => void
+    }
+    exposed.toggleSelectionMode()
+    setSelectedIds(exposed, [1])
+    await settle()
+
+    mounted.el.querySelector<HTMLButtonElement>('.select-all-matching')!.click()
+    await settle()
+
+    const idsOnlyCall = vi.mocked(api.get).mock.calls
+      .map(([url]) => String(url))
+      .find((url) => url.startsWith('/projects/42/issues?'))
+    expect(idsOnlyCall).toContain('ids_only=1')
+    expect(selectedIdSet(exposed).has(2)).toBe(true)
 
     mounted.unmount()
   })

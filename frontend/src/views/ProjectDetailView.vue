@@ -138,6 +138,9 @@ const exporting     = ref(false)
 const projectIssueQuery = computed(() => search.scope === 'project' ? search.query : '')
 const projectServerFilterQuery = ref('')
 const projectIssueTotal = ref(0)
+const projectIssueHasMore = ref(false)
+const projectIssueFingerprint = ref('')
+const projectIssueSelectionFingerprint = ref('')
 const projectIssuesLoadingMore = ref(false)
 const projectIssueSortKey = ref('')
 const projectIssueSortDir = ref<'asc' | 'desc'>('asc')
@@ -148,6 +151,13 @@ const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, proj
   sort: projectIssueSortKey.value || undefined,
   order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
 }))
+
+function applyProjectIssueEnvelopeMeta(env: IssueListEnvelope<Issue>) {
+  projectIssueTotal.value = env.total
+  projectIssueHasMore.value = env.has_more ?? (env.total > issues.value.length)
+  projectIssueFingerprint.value = env.fingerprint ?? ''
+  projectIssueSelectionFingerprint.value = env.selection_fingerprint ?? ''
+}
 const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
 let projectLoadRequestSeq = 0
 let projectIssueRequestSeq = 0
@@ -621,12 +631,23 @@ async function load() {
     && loadSortDir === projectIssueSortDir.value
   ) {
     issues.value = data.issues
-    projectIssueTotal.value = data.issueTotal
+    if (data.issueEnvelope) {
+      applyProjectIssueEnvelopeMeta(data.issueEnvelope)
+    } else {
+      projectIssueTotal.value = data.issueTotal
+      projectIssueHasMore.value = false
+      projectIssueFingerprint.value = ''
+      projectIssueSelectionFingerprint.value = ''
+    }
     await issueFreshness.prime({
       issues: data.issues,
       total: data.issueTotal,
       offset: 0,
       limit: data.issues.length,
+      has_more: projectIssueHasMore.value,
+      returned: data.issues.length,
+      fingerprint: projectIssueFingerprint.value,
+      selection_fingerprint: projectIssueSelectionFingerprint.value,
     })
   } else {
     await replaceProjectIssues(projectIssueQuery.value)
@@ -665,7 +686,7 @@ async function replaceProjectIssues(q: string): Promise<boolean> {
   })
   if (request !== projectIssueRequestSeq) return false
   issues.value = env.issues
-  projectIssueTotal.value = env.total
+  applyProjectIssueEnvelopeMeta(env)
   await issueFreshness.prime(env)
   return true
 }
@@ -683,16 +704,20 @@ async function loadMoreProjectIssues(limit: number) {
     })
     if (request !== projectIssueRequestSeq) return
     issues.value = [...issues.value, ...env.issues]
-    projectIssueTotal.value = env.total
+    applyProjectIssueEnvelopeMeta(env)
     await issueFreshness.prime({
       issues: issues.value,
       total: env.total,
       offset: 0,
       limit: issues.value.length,
+      returned: issues.value.length,
+      has_more: projectIssueHasMore.value,
       sort: env.sort,
       order: env.order,
       query: env.query,
       revision: env.revision,
+      fingerprint: projectIssueFingerprint.value,
+      selection_fingerprint: projectIssueSelectionFingerprint.value,
     })
   } finally {
     if (request === projectIssueRequestSeq) projectIssuesLoadingMore.value = false
@@ -812,7 +837,7 @@ function applyFreshProjectIssues(env: IssueListEnvelope<Issue>) {
   const scroller = currentMainScroll()
   const top = scroller?.scrollTop ?? 0
   issues.value = env.issues
-  projectIssueTotal.value = env.total
+  applyProjectIssueEnvelopeMeta(env)
   void nextTick(() => {
     if (scroller) scroller.scrollTop = top
   })
@@ -975,6 +1000,9 @@ watch(
           :issues="issues"
           :search-query-override="projectIssueQuery"
           :result-total="projectIssueTotal"
+          :result-has-more="projectIssueHasMore"
+          :result-fingerprint="projectIssueFingerprint"
+          :selection-fingerprint="projectIssueSelectionFingerprint"
           :loading-more="projectIssuesLoadingMore"
           :url-sync-selection="true"
           @load-all="loadAllProjectIssues"

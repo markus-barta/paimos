@@ -68,12 +68,16 @@ Internal list endpoints support the same explicit envelope:
 {
   "issues": [],
   "total": 0,
+  "returned": 0,
   "offset": 0,
   "limit": 100,
+  "has_more": false,
   "sort": "title",
   "order": "asc",
   "query": "abc",
-  "revision": "W/..."
+  "revision": "...",
+  "fingerprint": "...",
+  "selection_fingerprint": "..."
 }
 ```
 
@@ -82,9 +86,15 @@ Internal list endpoints support the same explicit envelope:
   preserving the legacy bare-array response unless `envelope=1` is set.
 - `GET /api/portal/projects/{id}/issues?envelope=1` returns a portal-safe
   envelope with the same window/count shape.
-- `limit` + `offset` are the loaded window. `total` is the full
-  matching set count. `ids_only=1` returns the full matching id set up
-  to the existing bounded cap.
+- `limit` + `offset` are the loaded window. `returned` is the number of
+  rows in this response, `has_more` reports whether another window
+  exists, and `total` is the full matching set count. `ids_only=1`
+  returns the full matching id set up to the existing bounded cap plus
+  the same `selection_fingerprint`.
+- `fingerprint` identifies the ordered query family for cache windows.
+  It is stable across `offset` changes. `selection_fingerprint`
+  identifies the all-matching result set for selection/bulk operations,
+  independent from display sort.
 - `sort` and `order` are allowlisted server inputs. Unknown columns or
   invalid order values return `400`.
 - `q` searches the full matching set before windowing. Global/project

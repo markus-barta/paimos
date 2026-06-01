@@ -86,6 +86,9 @@ const projectId = Number(route.params.id)
 const project = ref<PortalProject | null>(null)
 const issues = ref<PortalIssue[]>([])
 const totalIssues = ref(0)
+const portalIssueHasMore = ref(false)
+const portalIssueFingerprint = ref('')
+const portalIssueSelectionFingerprint = ref('')
 const loading = ref(true)
 const loadingMore = ref(false)
 const PORTAL_PAGE = 100
@@ -178,6 +181,9 @@ async function fetchIssues(opts: { replace?: boolean; limit?: number; offset?: n
   if (request !== portalIssueRequestSeq) return
   issues.value = opts.replace === false ? [...issues.value, ...env.issues] : env.issues
   totalIssues.value = env.total
+  portalIssueHasMore.value = env.has_more ?? (env.total > issues.value.length)
+  portalIssueFingerprint.value = env.fingerprint ?? ''
+  portalIssueSelectionFingerprint.value = env.selection_fingerprint ?? ''
 }
 
 async function loadAll() {
@@ -291,7 +297,7 @@ const tabCounts = computed(() => ({
   accepted: searchedIssues.value.filter((i) => inTab(i, 'accepted')).length,
 }))
 
-const portalHasMore = computed(() => totalIssues.value > issues.value.length)
+const portalHasMore = computed(() => portalIssueHasMore.value || totalIssues.value > issues.value.length)
 
 async function loadMoreIssues() {
   if (loadingMore.value || !portalHasMore.value) return
@@ -675,7 +681,12 @@ async function submitRequest() {
         @sort="onSort"
         @row-click="(issue: any) => onRowClick(issue as PortalIssue)"
       />
-      <div v-if="portalHasMore" class="pv__load-more">
+      <div
+        v-if="portalHasMore"
+        class="pv__load-more"
+        :data-query-fingerprint="portalIssueFingerprint || undefined"
+        :data-selection-fingerprint="portalIssueSelectionFingerprint || undefined"
+      >
         <span>{{ issues.length.toLocaleString() }} / {{ totalIssues.toLocaleString() }}</span>
         <button type="button" class="pv__load-more-btn" :disabled="loadingMore" @click="loadMoreIssues">
           {{ loadingMore ? 'Loading...' : 'Load all' }}

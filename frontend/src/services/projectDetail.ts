@@ -6,6 +6,7 @@ export interface ProjectDetailData {
   project: Project
   issues: Issue[]
   issueTotal: number
+  issueEnvelope?: IssueListEnvelope<Issue>
   users: User[]
   allTags: Tag[]
   costUnits: string[]
@@ -86,11 +87,13 @@ export async function loadProjectDetailData(
 
   const issues = Array.isArray(issuePayload) ? issuePayload : issuePayload.issues
   const issueTotal = Array.isArray(issuePayload) ? issuePayload.length : issuePayload.total
+  const issueEnvelope = Array.isArray(issuePayload) ? undefined : issuePayload
 
   return {
     project,
     issues,
     issueTotal,
+    issueEnvelope,
     users,
     allTags,
     costUnits,

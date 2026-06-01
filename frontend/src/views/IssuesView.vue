@@ -9,14 +9,7 @@ import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
 import { useIssueRefreshPromptStore } from '@/stores/issueRefreshPrompt'
 import { issueSearchSummary } from '@/utils/issueSearchSummary'
-import type { Issue, Project, Tag, Sprint, User, SavedView } from '@/types'
-
-interface IssueEnvelope {
-  issues: Issue[]
-  total: number
-  offset: number
-  limit: number
-}
+import type { Issue, IssueListEnvelope, Project, Tag, Sprint, User, SavedView } from '@/types'
 
 const search = useSearchStore()
 const issueRefreshPrompt = useIssueRefreshPromptStore()
@@ -26,6 +19,9 @@ const PAGE = 100
 // Browse mode (no ?q)
 const issues      = ref<Issue[]>([])
 const total       = ref(0)
+const issueHasMore = ref(false)
+const issueFingerprint = ref('')
+const issueSelectionFingerprint = ref('')
 const loading     = ref(true)
 const loadingMore = ref(false)
 const error       = ref('')
@@ -105,7 +101,7 @@ async function selectTab(view: SavedView) {
 const isSearchMode = computed(() => trimmedSearchQuery.value.length >= 2)
 
 const remaining = computed(() => Math.max(0, total.value - issues.value.length))
-const hasMore   = computed(() => remaining.value > 0)
+const hasMore   = computed(() => issueHasMore.value || remaining.value > 0)
 const canAutoLoadMore = computed(() => !isSearchMode.value && hasMore.value)
 const searchHasMore = computed(() => isSearchMode.value && hasMore.value)
 const searchSubtitle = computed(() =>
@@ -128,17 +124,20 @@ function currentMainScroll(): HTMLElement | null {
   return document.querySelector('.main-content')
 }
 
-function applyFreshIssues(envelope: IssueEnvelope) {
+function applyFreshIssues(envelope: IssueListEnvelope<Issue>) {
   const scroller = currentMainScroll()
   const top = scroller?.scrollTop ?? 0
   issues.value = envelope.issues
   total.value = envelope.total
+  issueHasMore.value = envelope.has_more ?? (envelope.total > envelope.issues.length)
+  issueFingerprint.value = envelope.fingerprint ?? ''
+  issueSelectionFingerprint.value = envelope.selection_fingerprint ?? ''
   void nextTick(() => {
     if (scroller) scroller.scrollTop = top
   })
 }
 
-const freshness = useFreshness<IssueEnvelope>(issuesPath, {
+const freshness = useFreshness<IssueListEnvelope<Issue>>(issuesPath, {
   apply: applyFreshIssues,
   count: (payload) => payload.total,
 })
@@ -193,7 +192,7 @@ async function fetchIssues(limit: number, replace = false) {
     }
     if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
     const url = `/issues?${params.toString()}`
-    const data = await api.get<IssueEnvelope>(url)
+    const data = await api.get<IssueListEnvelope<Issue>>(url)
     if (request !== issueRequestSeq) return
     if (replace) {
       issues.value = data.issues
@@ -201,11 +200,18 @@ async function fetchIssues(limit: number, replace = false) {
       issues.value = [...issues.value, ...data.issues]
     }
     total.value = data.total
+    issueHasMore.value = data.has_more ?? (total.value > issues.value.length)
+    issueFingerprint.value = data.fingerprint ?? ''
+    issueSelectionFingerprint.value = data.selection_fingerprint ?? ''
     await freshness.prime({
       issues: issues.value,
       total: data.total,
       offset: 0,
       limit: issues.value.length,
+      has_more: issueHasMore.value,
+      returned: issues.value.length,
+      fingerprint: issueFingerprint.value,
+      selection_fingerprint: issueSelectionFingerprint.value,
     })
   } catch (e: unknown) {
     if (request !== issueRequestSeq) return
@@ -341,6 +347,9 @@ function onDeleted(id: number) {
         ref="issueListRef"
         :issues="issues"
         :result-total="total"
+        :result-has-more="issueHasMore"
+        :result-fingerprint="issueFingerprint"
+        :selection-fingerprint="issueSelectionFingerprint"
         :loading-more="loadingMore"
         :url-sync-selection="true"
         @load-all="loadAll"

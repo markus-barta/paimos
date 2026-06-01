@@ -82,14 +82,18 @@ type portalIssue struct {
 }
 
 type portalIssueListEnvelope struct {
-	Issues   []portalIssue `json:"issues"`
-	Total    int           `json:"total"`
-	Offset   int           `json:"offset"`
-	Limit    int           `json:"limit"`
-	Sort     string        `json:"sort,omitempty"`
-	Order    string        `json:"order,omitempty"`
-	Query    string        `json:"query,omitempty"`
-	Revision string        `json:"revision,omitempty"`
+	Issues               []portalIssue `json:"issues"`
+	Total                int           `json:"total"`
+	Returned             int           `json:"returned"`
+	Offset               int           `json:"offset"`
+	Limit                int           `json:"limit"`
+	HasMore              bool          `json:"has_more"`
+	Sort                 string        `json:"sort,omitempty"`
+	Order                string        `json:"order,omitempty"`
+	Query                string        `json:"query,omitempty"`
+	Revision             string        `json:"revision,omitempty"`
+	Fingerprint          string        `json:"fingerprint,omitempty"`
+	SelectionFingerprint string        `json:"selection_fingerprint,omitempty"`
 }
 
 // portalSummary is the browse-view KPI payload. Pricing aggregates were
@@ -494,15 +498,23 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		issues = append(issues, pi)
 	}
 	if q.Get("envelope") == "1" {
+		sortKey := strings.ToLower(strings.TrimSpace(q.Get("sort")))
+		order := strings.ToLower(strings.TrimSpace(q.Get("order")))
+		fingerprint := issueListFingerprint("portal", projectID, where, countArgs, searchTerm, sortKey, order)
+		selectionFingerprint := issueListFingerprint("portal-ids", projectID, where, countArgs, searchTerm)
 		jsonOK(w, portalIssueListEnvelope{
-			Issues:   issues,
-			Total:    total,
-			Offset:   offset,
-			Limit:    limit,
-			Sort:     strings.ToLower(strings.TrimSpace(q.Get("sort"))),
-			Order:    strings.ToLower(strings.TrimSpace(q.Get("order"))),
-			Query:    searchTerm,
-			Revision: issueListRevision(w),
+			Issues:               issues,
+			Total:                total,
+			Returned:             len(issues),
+			Offset:               offset,
+			Limit:                limit,
+			HasMore:              issueListHasMore(total, offset, len(issues), limit),
+			Sort:                 sortKey,
+			Order:                order,
+			Query:                searchTerm,
+			Revision:             issueListRevision(w),
+			Fingerprint:          fingerprint,
+			SelectionFingerprint: selectionFingerprint,
 		})
 		return
 	}

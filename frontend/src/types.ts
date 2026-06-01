@@ -586,12 +586,16 @@ export interface Issue {
 export interface IssueListEnvelope<T = Issue> {
   issues: T[]
   total: number
+  returned?: number
   offset: number
   limit: number
+  has_more?: boolean
   sort?: string
   order?: 'asc' | 'desc' | ''
   query?: string
   revision?: string
+  fingerprint?: string
+  selection_fingerprint?: string
 }
 
 export interface TimeEntry {

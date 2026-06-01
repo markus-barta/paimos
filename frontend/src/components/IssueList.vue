@@ -71,6 +71,9 @@ const props = defineProps<{
   initialViewId?: number
   initialPanelIssueId?: number
   resultTotal?: number
+  resultHasMore?: boolean
+  resultFingerprint?: string
+  selectionFingerprint?: string
   loadingMore?: boolean
   searchQueryOverride?: string
   // PAI-479. When true, this IssueList owns the `?selected=<ISSUE_KEY>` query
@@ -333,10 +336,20 @@ async function selectAllMatching() {
     for (const [key, value] of new URLSearchParams(serverFilterQuery.value)) {
       params.set(key, value)
     }
-    if (props.projectId !== undefined) params.set('project_ids', String(props.projectId))
-    const resp = await api.get<{ ids: number[]; total: number; truncated: boolean; cap: number }>(
-      `/issues?${params.toString()}`,
+    const endpoint = props.projectId !== undefined
+      ? `/projects/${props.projectId}/issues`
+      : '/issues'
+    const resp = await api.get<{ ids: number[]; total: number; truncated: boolean; cap: number; fingerprint?: string }>(
+      `${endpoint}?${params.toString()}`,
     )
+    if (
+      props.selectionFingerprint
+      && resp.fingerprint
+      && resp.fingerprint !== props.selectionFingerprint
+    ) {
+      expandSelectionError.value = 'The list changed while expanding selection. Refresh and try again.'
+      return
+    }
     const next = new Set<number>(selectedIds.value)
     for (const id of resp.ids ?? []) next.add(id)
     selectedIds.value = next
@@ -1037,7 +1050,7 @@ async function onSectionDrop(e: DragEvent, groupId: number | 'backlog') {
 const renderedIssues = computed(() => finalIssues.value.slice(0, renderLimit.value))
 const hasMore = computed(() => (props.compact || !treeView.value) && renderLimit.value < finalIssues.value.length)
 const serverHasMore = computed(() =>
-  props.resultTotal !== undefined && props.resultTotal > props.issues.length,
+  props.resultHasMore ?? (props.resultTotal !== undefined && props.resultTotal > props.issues.length),
 )
 const primaryIssueCount = computed(() => {
   if (
@@ -1158,7 +1171,11 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 </script>
 
 <template>
-  <div class="issue-list-root">
+  <div
+    class="issue-list-root"
+    :data-query-fingerprint="resultFingerprint || undefined"
+    :data-selection-fingerprint="selectionFingerprint || undefined"
+  >
   <!-- Transient flash toast (copy-to-clipboard, view saved, …) -->
   <Transition name="flash-toast">
     <div v-if="flashToast" class="flash-toast">{{ flashToast }}</div>

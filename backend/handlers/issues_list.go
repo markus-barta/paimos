@@ -16,6 +16,8 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,20 +31,45 @@ import (
 )
 
 type issueListEnvelope struct {
-	Issues   []models.Issue `json:"issues"`
-	Total    int            `json:"total"`
-	Offset   int            `json:"offset"`
-	Limit    int            `json:"limit"`
-	Sort     string         `json:"sort,omitempty"`
-	Order    string         `json:"order,omitempty"`
-	Query    string         `json:"query,omitempty"`
-	Revision string         `json:"revision,omitempty"`
+	Issues               []models.Issue `json:"issues"`
+	Total                int            `json:"total"`
+	Returned             int            `json:"returned"`
+	Offset               int            `json:"offset"`
+	Limit                int            `json:"limit"`
+	HasMore              bool           `json:"has_more"`
+	Sort                 string         `json:"sort,omitempty"`
+	Order                string         `json:"order,omitempty"`
+	Query                string         `json:"query,omitempty"`
+	Revision             string         `json:"revision,omitempty"`
+	Fingerprint          string         `json:"fingerprint,omitempty"`
+	SelectionFingerprint string         `json:"selection_fingerprint,omitempty"`
+}
+
+type issueIDsOnlyEnvelope struct {
+	IDs         []int64 `json:"ids"`
+	Total       int     `json:"total"`
+	Truncated   bool    `json:"truncated"`
+	Cap         int     `json:"cap"`
+	Fingerprint string  `json:"fingerprint,omitempty"`
 }
 
 func issueListRevision(w http.ResponseWriter) string {
 	etag := strings.TrimSpace(w.Header().Get("ETag"))
 	etag = strings.TrimPrefix(etag, "W/")
 	return strings.Trim(etag, `"`)
+}
+
+func issueListFingerprint(parts ...any) string {
+	h := sha256.New()
+	for _, part := range parts {
+		fmt.Fprintf(h, "%#v\n", part)
+	}
+	sum := h.Sum(nil)
+	return hex.EncodeToString(sum[:16])
+}
+
+func issueListHasMore(total int, offset int, returned int, limit int) bool {
+	return limit > 0 && offset+returned < total
 }
 
 func parseIssueListWindow(r *http.Request, defaultLimit int) (limit int, offset int) {
@@ -158,7 +185,7 @@ func stripIssueListFields(issues []models.Issue) {
 	}
 }
 
-func writeIssueIDsOnly(w http.ResponseWriter, whereSQL string, args []any) {
+func writeIssueIDsOnly(w http.ResponseWriter, whereSQL string, args []any, fingerprint string) {
 	const idsOnlyCap = MaxBatchSize * 50
 	total, err := countMatchingIssues(whereSQL, args)
 	if err != nil {
@@ -188,11 +215,12 @@ func writeIssueIDsOnly(w http.ResponseWriter, whereSQL string, args []any) {
 		ids = ids[:idsOnlyCap]
 		truncated = true
 	}
-	jsonOK(w, map[string]any{
-		"ids":       ids,
-		"total":     total,
-		"truncated": truncated,
-		"cap":       idsOnlyCap,
+	jsonOK(w, issueIDsOnlyEnvelope{
+		IDs:         ids,
+		Total:       total,
+		Truncated:   truncated,
+		Cap:         idsOnlyCap,
+		Fingerprint: fingerprint,
 	})
 }
 
@@ -273,8 +301,9 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	selectionFingerprint := issueListFingerprint("project-ids", projectID, whereSQL, args, searchTerm)
 	if r.URL.Query().Get("ids_only") == "1" {
-		writeIssueIDsOnly(w, whereSQL, args)
+		writeIssueIDsOnly(w, whereSQL, args, selectionFingerprint)
 		return
 	}
 
@@ -286,6 +315,8 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query += orderBy
+	countArgs := append([]any{}, args...)
+	fingerprint := issueListFingerprint("project", projectID, whereSQL, countArgs, searchTerm, sortKey, order)
 	args = append(args, orderArgs...)
 
 	limit, offset := parseIssueListWindow(r, 0)
@@ -316,20 +347,24 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Query().Get("envelope") == "1" {
-		total, err := countMatchingIssues(whereSQL, args[:len(args)-len(orderArgs)])
+		total, err := countMatchingIssues(whereSQL, countArgs)
 		if err != nil {
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		jsonOK(w, issueListEnvelope{
-			Issues:   issues,
-			Total:    total,
-			Offset:   offset,
-			Limit:    limit,
-			Sort:     sortKey,
-			Order:    order,
-			Query:    searchTerm,
-			Revision: issueListRevision(w),
+			Issues:               issues,
+			Total:                total,
+			Returned:             len(issues),
+			Offset:               offset,
+			Limit:                limit,
+			HasMore:              issueListHasMore(total, offset, len(issues), limit),
+			Sort:                 sortKey,
+			Order:                order,
+			Query:                searchTerm,
+			Revision:             issueListRevision(w),
+			Fingerprint:          fingerprint,
+			SelectionFingerprint: selectionFingerprint,
 		})
 		return
 	}
@@ -478,8 +513,9 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	selectionFingerprint := issueListFingerprint("global-ids", whereSQL, args, searchTerm)
 	if q.Get("ids_only") == "1" {
-		writeIssueIDsOnly(w, whereSQL, args)
+		writeIssueIDsOnly(w, whereSQL, args, selectionFingerprint)
 		return
 	}
 
@@ -491,6 +527,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	query += orderBy
 	countArgs := append([]any{}, args...)
+	fingerprint := issueListFingerprint("global", whereSQL, countArgs, searchTerm, sortKey, order)
 	args = append(args, orderArgs...)
 	query += " LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
@@ -524,14 +561,18 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, issueListEnvelope{
-		Issues:   issues,
-		Total:    total,
-		Offset:   offset,
-		Limit:    limit,
-		Sort:     sortKey,
-		Order:    order,
-		Query:    searchTerm,
-		Revision: issueListRevision(w),
+		Issues:               issues,
+		Total:                total,
+		Returned:             len(issues),
+		Offset:               offset,
+		Limit:                limit,
+		HasMore:              issueListHasMore(total, offset, len(issues), limit),
+		Sort:                 sortKey,
+		Order:                order,
+		Query:                searchTerm,
+		Revision:             issueListRevision(w),
+		Fingerprint:          fingerprint,
+		SelectionFingerprint: selectionFingerprint,
 	})
 }
 
