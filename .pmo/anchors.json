@@ -1,8 +1,8 @@
 {
   "repo": "paimos",
   "schema_version": "1",
-  "repo_revision": "23f91785aab94ee9887e758685066e59ef9cb7af",
-  "generated_at": "2026-04-26T16:22:24Z",
+  "repo_revision": "28830d17f18da31202d662ca46f038bc3d1b07e5",
+  "generated_at": "2026-06-01T15:23:19Z",
   "anchors": {
     "PAI-65": [
       {
@@ -32,19 +32,49 @@
       },
       {
         "file": "backend/handlers/project_context.go",
-        "line": 154,
+        "line": 157,
         "label": "anchor ingest endpoint",
         "confidence": "declared",
         "symbol": null
       }
     ],
+    "PAI-78": [
+      {
+        "file": "backend/cmd/paimos/cmd_anchors_test.go",
+        "line": 75,
+        "label": "symbol extraction",
+        "confidence": "declared",
+        "symbol": {
+          "name": "TestBuildAnchorIndexExtractsSymbolMetadata",
+          "kind": "function",
+          "start_line": 64,
+          "end_line": 107,
+          "language": "go"
+        }
+      }
+    ],
     "PAI-79": [
       {
         "file": "backend/handlers/project_context.go",
-        "line": 298,
+        "line": 322,
         "label": "blast radius endpoint",
         "confidence": "declared",
         "symbol": null
+      }
+    ],
+    "PAI-80": [
+      {
+        "file": "backend/cmd/paimos/cmd_anchors_test.go",
+        "line": 70,
+        "label": "retrieve endpoint",
+        "confidence": "declared",
+        "symbol": {
+          "name": "TestBuildAnchorIndexExtractsSymbolMetadata",
+          "kind": "function",
+          "start_line": 64,
+          "end_line": 107,
+          "language": "go"
+        }
       }
     ]
   }
