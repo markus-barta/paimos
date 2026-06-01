@@ -25,6 +25,7 @@ const issueSelectionFingerprint = ref('')
 const loading     = ref(true)
 const loadingMore = ref(false)
 const error       = ref('')
+const issueWindowMode = ref<'page' | 'all'>('page')
 
 // Shared
 const users     = ref<User[]>([])
@@ -41,7 +42,9 @@ const trimmedSearchQuery = computed(() => search.query.trim())
 const serverFilterQuery = ref('')
 const serverSortKey = ref('')
 const serverSortDir = ref<'asc' | 'desc'>('asc')
-const freshnessLimit = computed(() => Math.max(PAGE, issues.value.length || PAGE))
+const freshnessLimit = computed(() =>
+  issueWindowMode.value === 'all' ? 0 : Math.max(PAGE, issues.value.length || PAGE),
+)
 const issuesPath = computed(() => {
   const params = new URLSearchParams(serverFilterQuery.value)
   params.set('fields', 'list')
@@ -92,6 +95,7 @@ const displayTabs = computed(() => {
 
 async function selectTab(view: SavedView) {
   activeTabId.value = view.id
+  issueWindowMode.value = 'page'
   await fetchIssues(PAGE, true)
   nextTick(() => issueListRef.value?.applyView(view))
 }
@@ -222,6 +226,7 @@ async function fetchIssues(limit: number, replace = false) {
 async function load() {
   loading.value = true
   error.value = ''
+  issueWindowMode.value = 'page'
   await Promise.all([fetchIssues(PAGE, true), fetchMeta()])
   loading.value = false
   // Apply first tab
@@ -239,29 +244,34 @@ async function loadMore(n: number) {
 
 async function loadAll() {
   loadingMore.value = true
-  await fetchIssues(remaining.value)
+  issueWindowMode.value = 'all'
+  await fetchIssues(0, true)
   loadingMore.value = false
+}
+
+function currentWindowLimit() {
+  return issueWindowMode.value === 'all' ? 0 : PAGE
 }
 
 // Re-fetch when search query changes (search-as-filter overlay).
 watch(trimmedSearchQuery, () => {
   if (searchReloadTimer) clearTimeout(searchReloadTimer)
   searchReloadTimer = setTimeout(() => {
-    void fetchIssues(PAGE, true)
+    void fetchIssues(currentWindowLimit(), true)
   }, 150)
 })
 
 function onServerFilterChange(query: string) {
   if (serverFilterQuery.value === query) return
   serverFilterQuery.value = query
-  void fetchIssues(PAGE, true)
+  void fetchIssues(currentWindowLimit(), true)
 }
 
 function onServerSortChange(key: string, dir: 'asc' | 'desc') {
   if (serverSortKey.value === key && serverSortDir.value === dir) return
   serverSortKey.value = key
   serverSortDir.value = dir
-  void fetchIssues(PAGE, true)
+  void fetchIssues(currentWindowLimit(), true)
 }
 
 // ── Infinite scroll sentinel ──────────────────────────────────────────────────

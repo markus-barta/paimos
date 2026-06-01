@@ -49,6 +49,11 @@ describe('projectDetail service', () => {
       sort: 'title',
       order: 'asc',
     })).toBe('/projects/7/issues?status=backlog&fields=list&envelope=1&limit=100&offset=0&sort=title&order=asc&q=ab')
+    expect(buildProjectIssuesUrl(7, '', '', {
+      envelope: true,
+      limit: 0,
+      offset: 0,
+    })).toBe('/projects/7/issues?fields=list&envelope=1&limit=0&offset=0')
   })
 
   it('builds CSV export URLs with optional selected ids', () => {

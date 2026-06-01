@@ -142,11 +142,12 @@ const projectIssueHasMore = ref(false)
 const projectIssueFingerprint = ref('')
 const projectIssueSelectionFingerprint = ref('')
 const projectIssuesLoadingMore = ref(false)
+const projectIssueWindowMode = ref<'page' | 'all'>('page')
 const projectIssueSortKey = ref('')
 const projectIssueSortDir = ref<'asc' | 'desc'>('asc')
 const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value, {
   envelope: true,
-  limit: Math.max(PROJECT_ISSUE_PAGE, issues.value.length || PROJECT_ISSUE_PAGE),
+  limit: projectWindowLimit(),
   offset: 0,
   sort: projectIssueSortKey.value || undefined,
   order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
@@ -157,6 +158,10 @@ function applyProjectIssueEnvelopeMeta(env: IssueListEnvelope<Issue>) {
   projectIssueHasMore.value = env.has_more ?? (env.total > issues.value.length)
   projectIssueFingerprint.value = env.fingerprint ?? ''
   projectIssueSelectionFingerprint.value = env.selection_fingerprint ?? ''
+}
+
+function projectWindowLimit() {
+  return projectIssueWindowMode.value === 'all' ? 0 : PROJECT_ISSUE_PAGE
 }
 const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
 let projectLoadRequestSeq = 0
@@ -611,6 +616,7 @@ async function load() {
   const request = ++projectLoadRequestSeq
   loading.value = true
   resetWorkspaceState()
+  projectIssueWindowMode.value = 'page'
   const loadQuery = projectIssueQuery.value
   const loadFilters = projectServerFilterQuery.value
   const loadSortKey = projectIssueSortKey.value
@@ -679,7 +685,7 @@ watch(() => route.params.id, (newId, oldId) => {
 async function replaceProjectIssues(q: string): Promise<boolean> {
   const request = ++projectIssueRequestSeq
   const env = await loadProjectIssuesEnvelope(projectId.value, q, projectServerFilterQuery.value, {
-    limit: PROJECT_ISSUE_PAGE,
+    limit: projectWindowLimit(),
     offset: 0,
     sort: projectIssueSortKey.value || undefined,
     order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
@@ -725,8 +731,14 @@ async function loadMoreProjectIssues(limit: number) {
 }
 
 async function loadAllProjectIssues() {
-  const remaining = Math.max(0, projectIssueTotal.value - issues.value.length)
-  if (remaining > 0) await loadMoreProjectIssues(remaining)
+  if (projectIssuesLoadingMore.value) return
+  projectIssuesLoadingMore.value = true
+  projectIssueWindowMode.value = 'all'
+  try {
+    await replaceProjectIssues(projectIssueQuery.value)
+  } finally {
+    projectIssuesLoadingMore.value = false
+  }
 }
 
 // Re-fetch issues when search query changes (search-as-filter overlay).

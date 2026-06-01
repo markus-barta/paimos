@@ -5,6 +5,15 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.3] — 2026-06-01
+
+### Changed
+
+- **PAI-563 / PAI-564 / PAI-571** — IssueList "show all" is now an explicit
+  `limit=0` window mode. Global, project, and portal lists preserve that mode
+  across compatible query transitions such as sorting instead of snapping back
+  to the first 100 rows.
+
 ## [3.9.2] — 2026-06-01
 
 ### Added

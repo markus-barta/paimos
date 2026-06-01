@@ -75,7 +75,7 @@ func issueListHasMore(total int, offset int, returned int, limit int) bool {
 func parseIssueListWindow(r *http.Request, defaultLimit int) (limit int, offset int) {
 	limit = defaultLimit
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+		if v, err := strconv.Atoi(l); err == nil && v >= 0 {
 			limit = v
 		}
 	}
@@ -529,8 +529,10 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 	countArgs := append([]any{}, args...)
 	fingerprint := issueListFingerprint("global", whereSQL, countArgs, searchTerm, sortKey, order)
 	args = append(args, orderArgs...)
-	query += " LIMIT ? OFFSET ?"
-	args = append(args, limit, offset)
+	if limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
 
 	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)

@@ -92,6 +92,7 @@ const portalIssueSelectionFingerprint = ref('')
 const loading = ref(true)
 const loadingMore = ref(false)
 const PORTAL_PAGE = 100
+const portalIssueWindowMode = ref<'page' | 'all'>('page')
 let portalIssueRequestSeq = 0
 
 // Filter state owned by this view; mirrored to the URL on every change.
@@ -166,7 +167,7 @@ async function fetchIssues(opts: { replace?: boolean; limit?: number; offset?: n
   const request = ++portalIssueRequestSeq
   const params = new URLSearchParams()
   params.set('envelope', '1')
-  params.set('limit', String(opts.limit ?? PORTAL_PAGE))
+  params.set('limit', String(opts.limit ?? (portalIssueWindowMode.value === 'all' ? 0 : PORTAL_PAGE)))
   params.set('offset', String(opts.offset ?? (opts.replace === false ? issues.value.length : 0)))
   if (filters.value.status.length) params.set('status', filters.value.status.join(','))
   if (filters.value.type.length) params.set('type', filters.value.type.join(','))
@@ -188,6 +189,7 @@ async function fetchIssues(opts: { replace?: boolean; limit?: number; offset?: n
 
 async function loadAll() {
   loading.value = true
+  portalIssueWindowMode.value = 'page'
   try {
     const [p, _] = await Promise.all([
       api.get<PortalProject>(`/portal/projects/${projectId}`),
@@ -302,11 +304,12 @@ const portalHasMore = computed(() => portalIssueHasMore.value || totalIssues.val
 async function loadMoreIssues() {
   if (loadingMore.value || !portalHasMore.value) return
   loadingMore.value = true
+  portalIssueWindowMode.value = 'all'
   try {
     await fetchIssues({
-      replace: false,
-      limit: Math.max(1, totalIssues.value - issues.value.length),
-      offset: issues.value.length,
+      replace: true,
+      limit: 0,
+      offset: 0,
     })
   } finally {
     loadingMore.value = false

@@ -88,9 +88,11 @@ Internal list endpoints support the same explicit envelope:
   envelope with the same window/count shape.
 - `limit` + `offset` are the loaded window. `returned` is the number of
   rows in this response, `has_more` reports whether another window
-  exists, and `total` is the full matching set count. `ids_only=1`
-  returns the full matching id set up to the existing bounded cap plus
-  the same `selection_fingerprint`.
+  exists, and `total` is the full matching set count. `limit=0` is the
+  explicit "show all" mode and is preserved across compatible query
+  transitions such as sorting. `ids_only=1` returns the full matching id
+  set up to the existing bounded cap plus the same
+  `selection_fingerprint`.
 - `fingerprint` identifies the ordered query family for cache windows.
   It is stable across `offset` changes. `selection_fingerprint`
   identifies the all-matching result set for selection/bulk operations,

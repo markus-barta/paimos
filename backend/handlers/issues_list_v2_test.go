@@ -145,6 +145,30 @@ func TestIssueListV2GlobalSortValidationAndNegatedProjectFilter(t *testing.T) {
 	}
 }
 
+func TestIssueListV2GlobalLimitZeroMeansUnbounded(t *testing.T) {
+	ts := newTestServer(t)
+	projectID := seedBatchProject(t, "PAI", "PAI")
+	seedListV2Issue(t, projectID, 1, "One", "backlog")
+	seedListV2Issue(t, projectID, 2, "Two", "backlog")
+	seedListV2Issue(t, projectID, 3, "Three", "backlog")
+
+	resp := ts.get(t, "/api/issues?fields=list&limit=0&offset=0&sort=key&order=asc", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	var env struct {
+		Issues []struct {
+			IssueKey string `json:"issue_key"`
+		} `json:"issues"`
+		Total    int  `json:"total"`
+		Limit    int  `json:"limit"`
+		Returned int  `json:"returned"`
+		HasMore  bool `json:"has_more"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&env)
+	if env.Total != 3 || env.Limit != 0 || env.Returned != 3 || env.HasMore || len(env.Issues) != 3 {
+		t.Fatalf("limit=0 envelope=%+v, want all three issues with no more pages", env)
+	}
+}
+
 func TestPortalIssueListV2EnvelopeSearchAndWindow(t *testing.T) {
 	ts := newTestServer(t)
 	projectID := seedBatchProject(t, "Portal", "PRT")

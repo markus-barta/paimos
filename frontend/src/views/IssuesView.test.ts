@@ -10,6 +10,7 @@ import IssuesView from './IssuesView.vue'
 vi.mock('@/api/client', () => ({
   api: {
     get: vi.fn(),
+    getWithMeta: vi.fn(),
   },
   errMsg: (_error: unknown, fallback: string) => fallback,
 }))
@@ -24,7 +25,7 @@ vi.mock('@/components/AppIcon.vue', () => ({
 vi.mock('@/components/IssueList.vue', () => ({
   default: {
     props: ['issues'],
-    emits: ['created', 'updated', 'deleted'],
+    emits: ['created', 'updated', 'deleted', 'server-sort-change'],
     setup(_props: unknown, { expose }: { expose: (exposed: unknown) => void }) {
       expose({
         activeFilterCount: 0,
@@ -33,7 +34,7 @@ vi.mock('@/components/IssueList.vue', () => ({
       })
       return {}
     },
-    template: '<div class="issue-list-stub"></div>',
+    template: '<button class="sort-stub" @click="$emit(\'server-sort-change\', \'title\', \'asc\')">sort</button>',
   },
 }))
 
@@ -107,6 +108,8 @@ async function settle() {
 describe('IssuesView search summary', () => {
   beforeEach(() => {
     vi.mocked(api.get).mockReset()
+    vi.mocked(api.getWithMeta).mockReset()
+    vi.mocked(api.getWithMeta).mockResolvedValue({ status: 304, etag: '', data: null } as never)
     Object.defineProperty(globalThis, 'IntersectionObserver', {
       configurable: true,
       value: MockIntersectionObserver,
@@ -124,12 +127,24 @@ describe('IssuesView search summary', () => {
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url.startsWith('/issues?')) {
         issueUrls.push(url)
+        if (url.includes('limit=0')) {
+          return {
+            issues: Array.from({ length: 123 }, (_, i) => makeIssue(i + 1)),
+            total: 123,
+            offset: 0,
+            limit: 0,
+            returned: 123,
+            has_more: false,
+          }
+        }
         if (url.includes('offset=0')) {
           return {
             issues: Array.from({ length: 100 }, (_, i) => makeIssue(i + 1)),
             total: 123,
             offset: 0,
             limit: 100,
+            returned: 100,
+            has_more: true,
           }
         }
         return {
@@ -137,6 +152,8 @@ describe('IssuesView search summary', () => {
           total: 123,
           offset: 100,
           limit: 23,
+          returned: 23,
+          has_more: false,
         }
       }
       return []
@@ -165,9 +182,14 @@ describe('IssuesView search summary', () => {
 
     expect(issueUrls).toEqual([
       '/issues?fields=list&limit=100&offset=0&q=ma',
-      '/issues?fields=list&limit=23&offset=100&q=ma',
+      '/issues?fields=list&limit=0&offset=0&q=ma',
     ])
     expect(header.textContent).toContain('123 matches for "ma" · best matches first')
+
+    document.querySelector<HTMLButtonElement>('.sort-stub')!.click()
+    await settle()
+
+    expect(issueUrls[issueUrls.length - 1]).toBe('/issues?fields=list&limit=0&offset=0&sort=title&order=asc&q=ma')
 
     app.unmount()
   })
