@@ -91,6 +91,7 @@ const emit = defineEmits<{
   'views-changed':   []
   'load-all':         []
   'server-filter-change': [query: string]
+  'server-sort-change': [key: string, dir: 'asc' | 'desc']
 }>()
 
 const router = useRouter()
@@ -209,6 +210,12 @@ function appendSignedList(params: URLSearchParams, key: string, values: string[]
   if (out.length > 0) params.set(key, out.join(','))
 }
 
+// PAI-466: three-state CUSTOMERPORTAL quick-filter. The state is local,
+// but it participates in the v2 server query so counts and bulk selection
+// match the visible list instead of only the loaded rows.
+type PortalVisibilityFilter = 'any' | 'visible' | 'hidden'
+const portalVisibilityFilter = ref<PortalVisibilityFilter>('any')
+
 const serverFilterQuery = computed(() => {
   const params = new URLSearchParams()
   appendSignedList(params, 'status', filterStatus.value)
@@ -216,10 +223,12 @@ const serverFilterQuery = computed(() => {
   appendSignedList(params, 'type', filterType.value)
   appendSignedList(params, 'cost_unit', filterCostUnit.value)
   appendSignedList(params, 'release', filterRelease.value)
-  appendSignedList(params, 'tags', filterTags.value, { numeric: true, positivesOnly: true })
-  appendSignedList(params, 'sprints', filterSprints.value, { numeric: true, positivesOnly: true })
-  appendSignedList(params, 'assignee_id', filterAssignee.value, { positivesOnly: true })
-  appendSignedList(params, 'project_ids', filterProjects.value, { numeric: true, positivesOnly: true })
+  appendSignedList(params, 'tags', filterTags.value, { numeric: true })
+  appendSignedList(params, 'sprints', filterSprints.value, { numeric: true })
+  appendSignedList(params, 'assignee_id', filterAssignee.value)
+  appendSignedList(params, 'project_ids', filterProjects.value, { numeric: true })
+  appendSignedList(params, 'parent_id', filterEpic.value, { numeric: true })
+  if (portalVisibilityFilter.value !== 'any') params.set('portal_visibility', portalVisibilityFilter.value)
   if (dateFilterActive.value) {
     params.set('date_field', effectiveDateField.value || 'completed')
     if (filterDateFrom.value) params.set('date_from', filterDateFrom.value)
@@ -282,17 +291,6 @@ function resetColumnWidth(key: string) {
 }
 
 // ── Selection composable ──────────────────────────────────────────────────
-// PAI-466: three-state CUSTOMERPORTAL quick-filter. Lives next to the
-// existing filter bar and post-filters whatever the main filter chain
-// produced. Three states cycle on click:
-//   visible — only issues carrying the CUSTOMERPORTAL tag
-//   hidden  — only issues missing it
-//   any     — no constraint (default)
-// State is local-only; not persisted to saved views (yet — gates on
-// PAI-469's IssueFilterBar extraction).
-type PortalVisibilityFilter = 'any' | 'visible' | 'hidden'
-const portalVisibilityFilter = ref<PortalVisibilityFilter>('any')
-
 const portalFilteredIssues = computed<Issue[]>(() => {
   if (portalVisibilityFilter.value === 'any') return filteredIssues.value
   return filteredIssues.value.filter((issue) => {
@@ -335,6 +333,7 @@ async function selectAllMatching() {
     for (const [key, value] of new URLSearchParams(serverFilterQuery.value)) {
       params.set(key, value)
     }
+    if (props.projectId !== undefined) params.set('project_ids', String(props.projectId))
     const resp = await api.get<{ ids: number[]; total: number; truncated: boolean; cap: number }>(
       `/issues?${params.toString()}`,
     )
@@ -632,7 +631,10 @@ function setEpicMode(m: EpicMode) {
 onMounted(() => { loadFilters(); loadColumnWidthsFromLocalStorage(); sprintNav.loadSprintNav() })
 watch(filterWatchSources, () => { if (!applyingView) saveFilters() })
 watch(serverFilterQuery, (query) => emit('server-filter-change', query), { immediate: true })
-watch([sortKey, sortDir], () => { if (!applyingView) saveFilters() })
+watch([sortKey, sortDir], ([key, dir]) => {
+  if (!applyingView) saveFilters()
+  emit('server-sort-change', key, dir === 'desc' ? 'desc' : 'asc')
+}, { immediate: true })
 
 // ── Table appearance ──────────────────────────────────────────────────────
 const { showBorders, showStripes } = useTableAppearance()

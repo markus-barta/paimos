@@ -42,6 +42,13 @@ describe('projectDetail service', () => {
     expect(buildProjectIssuesUrl(7, 'a')).toBe('/projects/7/issues?fields=list')
     expect(buildProjectIssuesUrl(7, 'ab')).toBe('/projects/7/issues?fields=list&q=ab')
     expect(buildProjectIssuesUrl(7, 'hello world')).toBe('/projects/7/issues?fields=list&q=hello%20world')
+    expect(buildProjectIssuesUrl(7, 'ab', 'status=backlog', {
+      envelope: true,
+      limit: 100,
+      offset: 0,
+      sort: 'title',
+      order: 'asc',
+    })).toBe('/projects/7/issues?status=backlog&fields=list&envelope=1&limit=100&offset=0&sort=title&order=asc&q=ab')
   })
 
   it('builds CSV export URLs with optional selected ids', () => {
@@ -64,6 +71,7 @@ describe('projectDetail service', () => {
 
     expect(data.project.id).toBe(7)
     expect(data.issues).toHaveLength(1)
+    expect(data.issueTotal).toBe(1)
     expect(api.get).toHaveBeenCalledWith('/projects/7/issues?fields=list&q=ab')
   })
 

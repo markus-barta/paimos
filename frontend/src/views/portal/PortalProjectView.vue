@@ -36,6 +36,7 @@ import type {
   RowAction,
   SharedFilterState,
 } from '@/components/issue-list/types'
+import type { IssueListEnvelope } from '@/types'
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
@@ -84,7 +85,11 @@ const projectId = Number(route.params.id)
 
 const project = ref<PortalProject | null>(null)
 const issues = ref<PortalIssue[]>([])
+const totalIssues = ref(0)
 const loading = ref(true)
+const loadingMore = ref(false)
+const PORTAL_PAGE = 100
+let portalIssueRequestSeq = 0
 
 // Filter state owned by this view; mirrored to the URL on every change.
 const filters = ref<SharedFilterState>({
@@ -154,8 +159,12 @@ const PRIORITY_OPTIONS: FilterOption[] = [
 // no tag filter exists in the portal bar (see enabledFilters above).
 
 // ── Data fetching ────────────────────────────────────────────────────────
-async function fetchIssues() {
+async function fetchIssues(opts: { replace?: boolean; limit?: number; offset?: number } = {}) {
+  const request = ++portalIssueRequestSeq
   const params = new URLSearchParams()
+  params.set('envelope', '1')
+  params.set('limit', String(opts.limit ?? PORTAL_PAGE))
+  params.set('offset', String(opts.offset ?? (opts.replace === false ? issues.value.length : 0)))
   if (filters.value.status.length) params.set('status', filters.value.status.join(','))
   if (filters.value.type.length) params.set('type', filters.value.type.join(','))
   if (filters.value.priority.length) params.set('priority', filters.value.priority.join(','))
@@ -165,7 +174,10 @@ async function fetchIssues() {
   if (sortDir.value) params.set('order', sortDir.value)
   const qs = params.toString()
   const url = `/portal/projects/${projectId}/issues${qs ? '?' + qs : ''}`
-  issues.value = await api.get<PortalIssue[]>(url)
+  const env = await api.get<IssueListEnvelope<PortalIssue>>(url)
+  if (request !== portalIssueRequestSeq) return
+  issues.value = opts.replace === false ? [...issues.value, ...env.issues] : env.issues
+  totalIssues.value = env.total
 }
 
 async function loadAll() {
@@ -173,7 +185,7 @@ async function loadAll() {
   try {
     const [p, _] = await Promise.all([
       api.get<PortalProject>(`/portal/projects/${projectId}`),
-      fetchIssues(),
+      fetchIssues({ replace: true }),
     ])
     project.value = p
   } catch {
@@ -215,12 +227,12 @@ function writeUrlState() {
 
 watch(filters, () => {
   writeUrlState()
-  void fetchIssues()
+  void fetchIssues({ replace: true })
 }, { deep: true })
 
 watch([sortCol, sortDir], () => {
   writeUrlState()
-  void fetchIssues()
+  void fetchIssues({ replace: true })
 })
 
 watch(activeTab, writeUrlState)
@@ -279,6 +291,22 @@ const tabCounts = computed(() => ({
   accepted: searchedIssues.value.filter((i) => inTab(i, 'accepted')).length,
 }))
 
+const portalHasMore = computed(() => totalIssues.value > issues.value.length)
+
+async function loadMoreIssues() {
+  if (loadingMore.value || !portalHasMore.value) return
+  loadingMore.value = true
+  try {
+    await fetchIssues({
+      replace: false,
+      limit: Math.max(1, totalIssues.value - issues.value.length),
+      offset: issues.value.length,
+    })
+  } finally {
+    loadingMore.value = false
+  }
+}
+
 // ── KPI stat bar ────────────────────────────────────────────────────────
 // KPIs reflect the post-search/post-filter set so the strip always
 // answers "how does my visible workload break down right now?" rather
@@ -322,7 +350,7 @@ async function acceptIssue(issue: PortalIssue) {
     // the UX consistent with v3.5.3.
     issues.value = issues.value.filter((i) => i.id !== issue.id)
   } catch {
-    void fetchIssues()
+    void fetchIssues({ replace: true })
   }
 }
 
@@ -333,7 +361,7 @@ async function rejectIssue(issue: PortalIssue) {
     })
     issues.value = issues.value.filter((i) => i.id !== issue.id)
   } catch {
-    void fetchIssues()
+    void fetchIssues({ replace: true })
   }
 }
 
@@ -528,10 +556,10 @@ useSidebarSelectionUrl({
 // and the tab counts / KPIs update. The panel reloads its own copy
 // internally so the in-place pill update is already done.
 async function onIssueAccepted(_id: number) {
-  await fetchIssues()
+  await fetchIssues({ replace: true })
 }
 async function onIssueRejected(_id: number) {
-  await fetchIssues()
+  await fetchIssues({ replace: true })
 }
 
 // ── New Request modal ───────────────────────────────────────────────────
@@ -547,7 +575,7 @@ async function submitRequest() {
     showRequestModal.value = false
     requestTitle.value = ''
     requestDesc.value = ''
-    await fetchIssues()
+    await fetchIssues({ replace: true })
   } catch (e: unknown) {
     requestError.value = errMsg(e, 'Failed')
   } finally {
@@ -647,6 +675,12 @@ async function submitRequest() {
         @sort="onSort"
         @row-click="(issue: any) => onRowClick(issue as PortalIssue)"
       />
+      <div v-if="portalHasMore" class="pv__load-more">
+        <span>{{ issues.length.toLocaleString() }} / {{ totalIssues.toLocaleString() }}</span>
+        <button type="button" class="pv__load-more-btn" :disabled="loadingMore" @click="loadMoreIssues">
+          {{ loadingMore ? 'Loading...' : 'Load all' }}
+        </button>
+      </div>
     </section>
 
     <!-- PAI-474: customer-facing slide-in detail panel. Loads from the
@@ -849,6 +883,30 @@ async function submitRequest() {
 .pv__tab--active .pv__tab-count {
   background: color-mix(in srgb, var(--brand, #2563eb) 12%, transparent);
   color: var(--brand, #2563eb);
+}
+
+.pv__load-more {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 0 0.25rem;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.8125rem;
+}
+.pv__load-more-btn {
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-subtle, #f3f4f6);
+  color: var(--text, #1f2937);
+  border-radius: 6px;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pv__load-more-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* Modal */

@@ -100,6 +100,36 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
     editingCell.value = null
   }
 
+  function cloneIssue(issue: Issue): Issue {
+    return {
+      ...issue,
+      sprint_ids: [...(issue.sprint_ids ?? [])],
+      tags: [...(issue.tags ?? [])],
+      children: issue.children ? [...issue.children] : undefined,
+    }
+  }
+
+  function applyOptimisticPatch(issue: Issue, payload: Record<string, unknown>): Issue {
+    const previous = cloneIssue(issue)
+    for (const [key, value] of Object.entries(payload)) {
+      ;(issue as unknown as Record<string, unknown>)[key] = value
+    }
+    if ('assignee_id' in payload) {
+      const id = payload.assignee_id
+      issue.assignee = typeof id === 'number'
+        ? opts.users.value.find(u => u.id === id) ?? null
+        : null
+    }
+    issue.updated_at = new Date().toISOString()
+    opts.emit.updated(issue)
+    return previous
+  }
+
+  function restoreIssue(issue: Issue, previous: Issue) {
+    Object.assign(issue, previous)
+    opts.emit.updated(previous)
+  }
+
   async function saveCellEdit(issue: Issue, field: EditableField, value: string) {
     const payload: Record<string, unknown> = {}
     if (field === 'assignee_id') {
@@ -129,11 +159,12 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
       }
     }
 
+    const previous = applyOptimisticPatch(issue, payload)
     try {
       const updated = await api.put<Issue>(`/issues/${issue.id}`, payload)
       opts.emit.updated(updated)
     } catch (e: unknown) {
-      /* error swallowed — row keeps previous state */
+      restoreIssue(issue, previous)
     }
   }
 
@@ -181,6 +212,11 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
 
   async function toggleSprint(issue: Issue, sprintId: number) {
     const assigned = (issue.sprint_ids ?? []).includes(sprintId)
+    const previous = cloneIssue(issue)
+    issue.sprint_ids = assigned
+      ? (issue.sprint_ids ?? []).filter(id => id !== sprintId)
+      : [...(issue.sprint_ids ?? []), sprintId]
+    opts.emit.updated(issue)
     try {
       if (assigned) {
         await api.delete(`/issues/${issue.id}/relations`, { target_id: sprintId, type: 'sprint' })
@@ -190,7 +226,7 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
       const updated = await api.get<Issue>(`/issues/${issue.id}`)
       opts.emit.updated(updated)
     } catch (e: unknown) {
-      /* error swallowed — row keeps previous state */
+      restoreIssue(issue, previous)
     }
   }
 

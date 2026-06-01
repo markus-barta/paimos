@@ -1,10 +1,11 @@
 import { api, csrfHeaders } from '@/api/client'
 import type { CollisionStrategy, PreflightResult } from '@/components/ImportCollisionModal.vue'
-import type { Customer, Issue, Project, SavedView, Tag, User } from '@/types'
+import type { Customer, Issue, IssueListEnvelope, Project, SavedView, Tag, User } from '@/types'
 
 export interface ProjectDetailData {
   project: Project
   issues: Issue[]
+  issueTotal: number
   users: User[]
   allTags: Tag[]
   costUnits: string[]
@@ -30,10 +31,28 @@ export interface ProjectPurgeUser {
   username: string
 }
 
-export function buildProjectIssuesUrl(projectId: number, query: string, filters = ''): string {
+export interface ProjectIssuesRequestOptions {
+  envelope?: boolean
+  limit?: number
+  offset?: number
+  sort?: string
+  order?: 'asc' | 'desc'
+}
+
+export function buildProjectIssuesUrl(
+  projectId: number,
+  query: string,
+  filters = '',
+  opts: ProjectIssuesRequestOptions = {},
+): string {
   const q = query.trim()
   const params = new URLSearchParams(filters)
   params.set('fields', 'list')
+  if (opts.envelope) params.set('envelope', '1')
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit))
+  if (opts.offset !== undefined) params.set('offset', String(opts.offset))
+  if (opts.sort) params.set('sort', opts.sort)
+  if (opts.order) params.set('order', opts.order)
   if (q.length >= 2) params.set('q', q)
   return `/projects/${projectId}/issues?${params.toString().replace(/\+/g, '%20')}`
 }
@@ -46,10 +65,17 @@ export function buildProjectCsvExportUrl(projectId: number, selectedIds: number[
   return url
 }
 
-export async function loadProjectDetailData(projectId: number, query: string, filters = ''): Promise<ProjectDetailData> {
-  const [project, issues, users, costUnits, releases, allTags, allViews, customers] = await Promise.all([
+export async function loadProjectDetailData(
+  projectId: number,
+  query: string,
+  filters = '',
+  issueOpts: ProjectIssuesRequestOptions = {},
+): Promise<ProjectDetailData> {
+  const [project, issuePayload, users, costUnits, releases, allTags, allViews, customers] = await Promise.all([
     api.get<Project>(`/projects/${projectId}`),
-    api.get<Issue[]>(buildProjectIssuesUrl(projectId, query, filters)),
+    issueOpts.envelope
+      ? loadProjectIssuesEnvelope(projectId, query, filters, issueOpts)
+      : api.get<Issue[]>(buildProjectIssuesUrl(projectId, query, filters)),
     api.get<User[]>('/users'),
     api.get<string[]>(`/projects/${projectId}/cost-units`).catch(() => []),
     api.get<string[]>(`/projects/${projectId}/releases`).catch(() => []),
@@ -58,9 +84,13 @@ export async function loadProjectDetailData(projectId: number, query: string, fi
     api.get<Customer[]>('/customers').catch(() => [] as Customer[]),
   ])
 
+  const issues = Array.isArray(issuePayload) ? issuePayload : issuePayload.issues
+  const issueTotal = Array.isArray(issuePayload) ? issuePayload.length : issuePayload.total
+
   return {
     project,
     issues,
+    issueTotal,
     users,
     allTags,
     costUnits,
@@ -72,6 +102,15 @@ export async function loadProjectDetailData(projectId: number, query: string, fi
 
 export function loadProjectIssues(projectId: number, query: string, filters = ''): Promise<Issue[]> {
   return api.get<Issue[]>(buildProjectIssuesUrl(projectId, query, filters))
+}
+
+export function loadProjectIssuesEnvelope(
+  projectId: number,
+  query: string,
+  filters = '',
+  opts: ProjectIssuesRequestOptions = {},
+): Promise<IssueListEnvelope<Issue>> {
+  return api.get<IssueListEnvelope<Issue>>(buildProjectIssuesUrl(projectId, query, filters, { ...opts, envelope: true }))
 }
 
 export async function uploadProjectLogo(projectId: number, file: File): Promise<Project> {

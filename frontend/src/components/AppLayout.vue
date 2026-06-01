@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSearchStore } from '@/stores/search'
@@ -58,8 +58,29 @@ function goTo2FASetup() {
 }
 
 // ── Collapsible sidebar ──────────────────────────────────────────────────────
+const MOBILE_SIDEBAR_QUERY = '(max-width: 720px)'
 const sidebarCollapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1')
-const isExpanded = computed(() => !sidebarCollapsed.value)
+const mobileSidebarCompact = ref(false)
+const effectiveSidebarCollapsed = computed(() => sidebarCollapsed.value || mobileSidebarCompact.value)
+const isExpanded = computed(() => !effectiveSidebarCollapsed.value)
+
+let sidebarMediaQuery: MediaQueryList | null = null
+
+function syncSidebarMediaQuery() {
+  mobileSidebarCompact.value = !!sidebarMediaQuery?.matches
+}
+
+function initSidebarMediaQuery() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+  sidebarMediaQuery = window.matchMedia(MOBILE_SIDEBAR_QUERY)
+  syncSidebarMediaQuery()
+  sidebarMediaQuery.addEventListener('change', syncSidebarMediaQuery)
+}
+
+function disposeSidebarMediaQuery() {
+  sidebarMediaQuery?.removeEventListener('change', syncSidebarMediaQuery)
+  sidebarMediaQuery = null
+}
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -129,10 +150,15 @@ const sidebarStyle = computed(() => {
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 startVisitTracking()
 onMounted(() => {
+  initSidebarMediaQuery()
   initTimerPanel()
   loadSidebarSprints()
   loadRecentProjects()
   loadDevSummary()
+})
+
+onBeforeUnmount(() => {
+  disposeSidebarMediaQuery()
 })
 </script>
 
@@ -144,7 +170,7 @@ onMounted(() => {
     <AppDevLoginBanner />
     <AppImpersonationBanner />
     <SessionExpiredModal />
-    <div :class="['layout', { 'sidebar-collapsed': sidebarCollapsed }]">
+    <div :class="['layout', { 'sidebar-collapsed': effectiveSidebarCollapsed, 'sidebar-mobile-compact': mobileSidebarCompact }]">
 
     <aside
       :class="['sidebar']"
@@ -202,12 +228,13 @@ onMounted(() => {
 
       <!-- Edge hover zone — VS Code style collapse/expand trigger -->
       <div
+        v-if="!mobileSidebarCompact"
         class="sidebar-edge"
         @click.stop="toggleSidebar"
-        :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        :title="effectiveSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       >
         <div class="sidebar-edge-chevron">
-          <AppIcon :name="sidebarCollapsed ? 'chevron-right' : 'chevron-left'" :size="13" />
+          <AppIcon :name="effectiveSidebarCollapsed ? 'chevron-right' : 'chevron-left'" :size="13" />
         </div>
       </div>
 

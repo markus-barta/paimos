@@ -255,7 +255,7 @@ onUnmounted(stopColumnResize)
 </script>
 
 <template>
-  <table class="issue-table">
+  <table class="issue-table" :class="{ 'issue-table--selection-mode': selectionMode }">
     <colgroup v-if="!compact">
       <col v-if="selectionMode" class="sel-col" />
       <col v-if="isVisible('key')" :style="colStyle('key')" />
@@ -717,7 +717,22 @@ onUnmounted(stopColumnResize)
 .clickable-cell::before { content: '✎'; position: absolute; left: -14px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--bp-blue); opacity: 0; transition: opacity .15s; pointer-events: none; }
 .clickable-cell:hover::before { opacity: .6; }
 
-.sel-th, .sel-td { width: 36px; text-align: center; padding: 0 .5rem !important; }
+.sel-th, .sel-td {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  text-align: center;
+  padding: 0 .5rem !important;
+  position: sticky;
+  left: 0;
+  background: var(--bg-card);
+  z-index: 12;
+}
+.issue-table thead .sel-th { background: var(--bg); z-index: 13; }
+.issue-table tbody tr.row-active-panel .sel-td { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); }
+.issue-table tbody tr.row-selected .sel-td { background: var(--bp-blue-pale); }
+.issue-table tbody tr:hover .sel-td { background: #f0f2f4; }
+.issue-table tbody tr.row-selected:hover .sel-td { background: var(--bp-blue-pale); }
 .sel-cb { width: 15px; height: 15px; padding: 0; border: revert; border-radius: revert; background: revert; cursor: pointer; accent-color: var(--bp-blue); }
 .row-selected { background: var(--bp-blue-pale) !important; }
 .row-active-panel { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); box-shadow: inset 3px 0 0 var(--bp-blue); }
@@ -755,6 +770,7 @@ onUnmounted(stopColumnResize)
 }
 
 .col-key { position: sticky; left: 0; z-index: 11; }
+.issue-table--selection-mode .col-key { left: 36px; }
 .issue-table thead .col-key { background: var(--bg); z-index: 12; }
 .issue-table tbody .col-key { background: var(--bg-card); }
 .issue-table tbody tr.row-active-panel .col-key { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); }

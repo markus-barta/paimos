@@ -43,12 +43,18 @@ provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 const trimmedSearchQuery = computed(() => search.query.trim())
 const serverFilterQuery = ref('')
+const serverSortKey = ref('')
+const serverSortDir = ref<'asc' | 'desc'>('asc')
 const freshnessLimit = computed(() => Math.max(PAGE, issues.value.length || PAGE))
 const issuesPath = computed(() => {
   const params = new URLSearchParams(serverFilterQuery.value)
   params.set('fields', 'list')
   params.set('limit', String(freshnessLimit.value))
   params.set('offset', '0')
+  if (serverSortKey.value) {
+    params.set('sort', serverSortKey.value)
+    params.set('order', serverSortDir.value)
+  }
   if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
   return `/issues?${params.toString()}`
 })
@@ -181,6 +187,10 @@ async function fetchIssues(limit: number, replace = false) {
     params.set('fields', 'list')
     params.set('limit', String(limit))
     params.set('offset', String(offset))
+    if (serverSortKey.value) {
+      params.set('sort', serverSortKey.value)
+      params.set('order', serverSortDir.value)
+    }
     if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
     const url = `/issues?${params.toString()}`
     const data = await api.get<IssueEnvelope>(url)
@@ -238,6 +248,13 @@ watch(trimmedSearchQuery, () => {
 function onServerFilterChange(query: string) {
   if (serverFilterQuery.value === query) return
   serverFilterQuery.value = query
+  void fetchIssues(PAGE, true)
+}
+
+function onServerSortChange(key: string, dir: 'asc' | 'desc') {
+  if (serverSortKey.value === key && serverSortDir.value === dir) return
+  serverSortKey.value = key
+  serverSortDir.value = dir
   void fetchIssues(PAGE, true)
 }
 
@@ -331,6 +348,7 @@ function onDeleted(id: number) {
         @updated="onUpdated"
         @deleted="onDeleted"
         @server-filter-change="onServerFilterChange"
+        @server-sort-change="onServerSortChange"
       />
 
       <div v-if="!isSearchMode && showEmptyFilterBanner" class="empty-filter-banner">

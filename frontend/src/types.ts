@@ -583,6 +583,17 @@ export interface Issue {
   invoice_number: string
 }
 
+export interface IssueListEnvelope<T = Issue> {
+  issues: T[]
+  total: number
+  offset: number
+  limit: number
+  sort?: string
+  order?: 'asc' | 'desc' | ''
+  query?: string
+  revision?: string
+}
+
 export interface TimeEntry {
   id: number
   issue_id: number   // renamed from ticket_id in migration 32

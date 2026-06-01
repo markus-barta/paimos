@@ -5,6 +5,45 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] — 2026-06-01
+
+### Added
+
+- **PAI-560 / PAI-561 / PAI-562** — Added the IssueList v2 foundation:
+  documented current list ownership and failure modes in `docs/ISSUELIST_V2.md`,
+  and introduced server-side list envelopes for global, project, and portal
+  issue lists with explicit `total`, `limit`, `offset`, `sort`, `order`,
+  `query`, and `revision` metadata.
+- **PAI-574** — Added regression coverage for list envelopes, project-scoped
+  `ids_only`, negated project filters, portal-safe search/window responses,
+  and optimistic inline-edit rollback/reconciliation.
+
+### Changed
+
+- **PAI-563 / PAI-564 / PAI-566** — Project, global, and portal issue lists now
+  request server-backed search/sort/window metadata instead of treating the
+  currently loaded client rows as the full universe. Project issue lists page
+  through the envelope and keep `Load all` behavior explicit.
+- **PAI-565 / PAI-572** — "Select all matching" now resolves IDs through the
+  same server query used by the visible page and stays project-scoped in
+  project views.
+- **PAI-567** — Inline status/priority/assignee/release/sprint edits now apply
+  optimistic patches, reconcile with the server-confirmed row, and roll back
+  only the affected edit on failure.
+
+### Fixed
+
+- **PAI-560** — Selection mode no longer lets the checkbox column overlap the
+  frozen issue-key column during horizontal scroll; actions remain frozen on
+  the right edge.
+- **PAI-560** — The authenticated app shell automatically uses its compact
+  sidebar rail on small screens so IssueList keeps a usable mobile table
+  viewport instead of being squeezed by the full 230px sidebar.
+- **PAI-484 / PAI-485 / PAI-487 / PAI-488 / PAI-494** — Hardened schema-contract
+  error handling: enum validation paths keep returning Problem Details JSON,
+  CLI enum validation has fixture coverage, and the frontend preserves nested
+  Problem Details metadata.
+
 ## [3.8.3] — 2026-06-01
 
 ### Added

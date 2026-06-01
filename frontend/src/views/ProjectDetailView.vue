@@ -28,6 +28,7 @@ import {
 } from '@/config/projectDetailEdit'
 import { buildProjectPurgePayload, emptyProjectPurgeForm } from '@/config/projectPurge'
 import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
+import type { IssueListEnvelope } from '@/types'
 import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import {
   addProjectTag as addProjectTagRequest,
@@ -37,7 +38,7 @@ import {
   deleteProjectLogo,
   executeProjectTimeEntryPurge,
   loadProjectDetailData,
-  loadProjectIssues,
+  loadProjectIssuesEnvelope,
   loadProjectPurgeUsers,
   preflightProjectCsvImport,
   previewProjectTimeEntryPurge,
@@ -131,11 +132,22 @@ const contextSummary = ref({ repoCount: 0, hasManifest: false, populated: false 
 provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sprints })
 
 const loading       = ref(true)
+const PROJECT_ISSUE_PAGE = 100
 const issueListRef  = ref<InstanceType<typeof IssueList> | null>(null)
 const exporting     = ref(false)
 const projectIssueQuery = computed(() => search.scope === 'project' ? search.query : '')
 const projectServerFilterQuery = ref('')
-const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value))
+const projectIssueTotal = ref(0)
+const projectIssuesLoadingMore = ref(false)
+const projectIssueSortKey = ref('')
+const projectIssueSortDir = ref<'asc' | 'desc'>('asc')
+const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value, {
+  envelope: true,
+  limit: Math.max(PROJECT_ISSUE_PAGE, issues.value.length || PROJECT_ISSUE_PAGE),
+  offset: 0,
+  sort: projectIssueSortKey.value || undefined,
+  order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
+}))
 const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
 let projectLoadRequestSeq = 0
 let projectIssueRequestSeq = 0
@@ -591,12 +603,31 @@ async function load() {
   resetWorkspaceState()
   const loadQuery = projectIssueQuery.value
   const loadFilters = projectServerFilterQuery.value
-  const data = await loadProjectDetailData(projectId.value, loadQuery, loadFilters)
+  const loadSortKey = projectIssueSortKey.value
+  const loadSortDir = projectIssueSortDir.value
+  const data = await loadProjectDetailData(projectId.value, loadQuery, loadFilters, {
+    envelope: true,
+    limit: PROJECT_ISSUE_PAGE,
+    offset: 0,
+    sort: loadSortKey || undefined,
+    order: loadSortKey ? loadSortDir : undefined,
+  })
   if (request !== projectLoadRequestSeq) return
   project.value = data.project
-  if (loadQuery === projectIssueQuery.value && loadFilters === projectServerFilterQuery.value) {
+  if (
+    loadQuery === projectIssueQuery.value
+    && loadFilters === projectServerFilterQuery.value
+    && loadSortKey === projectIssueSortKey.value
+    && loadSortDir === projectIssueSortDir.value
+  ) {
     issues.value = data.issues
-    await issueFreshness.prime(data.issues)
+    projectIssueTotal.value = data.issueTotal
+    await issueFreshness.prime({
+      issues: data.issues,
+      total: data.issueTotal,
+      offset: 0,
+      limit: data.issues.length,
+    })
   } else {
     await replaceProjectIssues(projectIssueQuery.value)
   }
@@ -626,11 +657,51 @@ watch(() => route.params.id, (newId, oldId) => {
 
 async function replaceProjectIssues(q: string): Promise<boolean> {
   const request = ++projectIssueRequestSeq
-  const nextIssues = await loadProjectIssues(projectId.value, q, projectServerFilterQuery.value)
+  const env = await loadProjectIssuesEnvelope(projectId.value, q, projectServerFilterQuery.value, {
+    limit: PROJECT_ISSUE_PAGE,
+    offset: 0,
+    sort: projectIssueSortKey.value || undefined,
+    order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
+  })
   if (request !== projectIssueRequestSeq) return false
-  issues.value = nextIssues
-  await issueFreshness.prime(nextIssues)
+  issues.value = env.issues
+  projectIssueTotal.value = env.total
+  await issueFreshness.prime(env)
   return true
+}
+
+async function loadMoreProjectIssues(limit: number) {
+  if (projectIssuesLoadingMore.value) return
+  projectIssuesLoadingMore.value = true
+  const request = ++projectIssueRequestSeq
+  try {
+    const env = await loadProjectIssuesEnvelope(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value, {
+      limit,
+      offset: issues.value.length,
+      sort: projectIssueSortKey.value || undefined,
+      order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
+    })
+    if (request !== projectIssueRequestSeq) return
+    issues.value = [...issues.value, ...env.issues]
+    projectIssueTotal.value = env.total
+    await issueFreshness.prime({
+      issues: issues.value,
+      total: env.total,
+      offset: 0,
+      limit: issues.value.length,
+      sort: env.sort,
+      order: env.order,
+      query: env.query,
+      revision: env.revision,
+    })
+  } finally {
+    if (request === projectIssueRequestSeq) projectIssuesLoadingMore.value = false
+  }
+}
+
+async function loadAllProjectIssues() {
+  const remaining = Math.max(0, projectIssueTotal.value - issues.value.length)
+  if (remaining > 0) await loadMoreProjectIssues(remaining)
 }
 
 // Re-fetch issues when search query changes (search-as-filter overlay).
@@ -644,6 +715,13 @@ watch(trimmedProjectIssueQuery, (q) => {
 function onServerFilterChange(query: string) {
   if (projectServerFilterQuery.value === query) return
   projectServerFilterQuery.value = query
+  void replaceProjectIssues(projectIssueQuery.value)
+}
+
+function onServerSortChange(key: string, dir: 'asc' | 'desc') {
+  if (projectIssueSortKey.value === key && projectIssueSortDir.value === dir) return
+  projectIssueSortKey.value = key
+  projectIssueSortDir.value = dir
   void replaceProjectIssues(projectIssueQuery.value)
 }
 
@@ -688,6 +766,7 @@ watch(() => route.query.report, () => nextTick(applyLieferberichtHandoffFromRout
 
 function onCreated(issue: Issue) {
   issues.value.push(issue)
+  projectIssueTotal.value += 1
   if (issue.cost_unit && !costUnits.value.includes(issue.cost_unit))
     costUnits.value = [...costUnits.value, issue.cost_unit].sort()
   const releaseLabel = issue.type === 'release' ? issue.title : issue.release
@@ -702,6 +781,7 @@ function onUpdated(issue: Issue) {
 
 function onDeleted(id: number) {
   issues.value = issues.value.filter(i => i.id !== id)
+  projectIssueTotal.value = Math.max(0, projectIssueTotal.value - 1)
 }
 
 // ── Last change metadata ───────────────────────────────────────────────────────
@@ -728,18 +808,19 @@ function currentMainScroll(): HTMLElement | null {
   return document.querySelector('.main-content')
 }
 
-function applyFreshProjectIssues(nextIssues: Issue[]) {
+function applyFreshProjectIssues(env: IssueListEnvelope<Issue>) {
   const scroller = currentMainScroll()
   const top = scroller?.scrollTop ?? 0
-  issues.value = nextIssues
+  issues.value = env.issues
+  projectIssueTotal.value = env.total
   void nextTick(() => {
     if (scroller) scroller.scrollTop = top
   })
 }
 
-const issueFreshness = useFreshness<Issue[]>(issueListPath, {
+const issueFreshness = useFreshness<IssueListEnvelope<Issue>>(issueListPath, {
   apply: applyFreshProjectIssues,
-  count: (payload) => payload.length,
+  count: (payload) => payload.total,
 })
 const issueFreshnessStale = computed(() => issueFreshness.stale.value)
 const issueFreshnessCount = computed(() => issueFreshness.newCount.value)
@@ -893,13 +974,17 @@ watch(
           :project-id="projectId"
           :issues="issues"
           :search-query-override="projectIssueQuery"
+          :result-total="projectIssueTotal"
+          :loading-more="projectIssuesLoadingMore"
           :url-sync-selection="true"
+          @load-all="loadAllProjectIssues"
           @created="onCreated"
           @updated="onUpdated"
           @deleted="onDeleted"
           @view-applied="onViewApplied"
           @views-changed="refreshViews"
           @server-filter-change="onServerFilterChange"
+          @server-sort-change="onServerSortChange"
         />
       </template>
 

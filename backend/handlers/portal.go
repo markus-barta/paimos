@@ -81,6 +81,17 @@ type portalIssue struct {
 	UpdatedAt          string  `json:"updated_at"`
 }
 
+type portalIssueListEnvelope struct {
+	Issues   []portalIssue `json:"issues"`
+	Total    int           `json:"total"`
+	Offset   int           `json:"offset"`
+	Limit    int           `json:"limit"`
+	Sort     string        `json:"sort,omitempty"`
+	Order    string        `json:"order,omitempty"`
+	Query    string        `json:"query,omitempty"`
+	Revision string        `json:"revision,omitempty"`
+}
+
 // portalSummary is the browse-view KPI payload. Pricing aggregates were
 // removed in PAI-474 — customers see prices in the Projektbericht
 // (acceptance report) at sign-off time, not while browsing.
@@ -206,6 +217,38 @@ func portalCSVInts(raw string) []int64 {
 		}
 	}
 	return out
+}
+
+func appendPortalIssueSearchFilter(where string, args []any, raw string) (string, []any) {
+	fts := strings.TrimSpace(raw)
+	if fts == "" {
+		return where, args
+	}
+	likePattern := "%" + fts + "%"
+	keyOrBodyMatchSQL := `
+				SELECT ii.id
+				FROM issues ii
+				LEFT JOIN projects pp ON pp.id = ii.project_id
+				WHERE ii.deleted_at IS NULL AND (
+					ii.title LIKE ? OR ii.description LIKE ? OR ii.acceptance_criteria LIKE ?
+					OR ii.report_summary LIKE ?
+					OR (COALESCE(pp.key,'') || '-' || CAST(ii.issue_number AS TEXT)) LIKE ?
+				)`
+	if len(fts) >= 2 {
+		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
+			where += ` AND i.id IN (
+				SELECT CAST(entity_id AS INTEGER) FROM search_index
+				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
+				UNION` + keyOrBodyMatchSQL + `
+			)`
+			args = append(args, ftsToken, likePattern, likePattern, likePattern, likePattern, likePattern)
+			return where, args
+		}
+	}
+	where += ` AND i.id IN (` + keyOrBodyMatchSQL + `
+			)`
+	args = append(args, likePattern, likePattern, likePattern, likePattern, likePattern)
+	return where, args
 }
 
 // ── GET /api/portal/projects ─────────────────────────────────────────────────
@@ -381,17 +424,8 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		where += " AND i.cost_unit = ?"
 		args = append(args, v)
 	}
-	if fts := strings.TrimSpace(q.Get("q")); len(fts) >= 2 {
-		// PAI-283 phase 2: sanitize FTS5 input — skip the filter
-		// entirely if no tokenizable content remains.
-		if ftsToken, useFTS := sanitizeFTS5Token(fts); useFTS {
-			where += ` AND i.id IN (
-				SELECT CAST(entity_id AS INTEGER) FROM search_index
-				WHERE entity_type IN ('issue','comment') AND search_index MATCH ?
-			)`
-			args = append(args, ftsToken)
-		}
-	}
+	searchTerm := strings.TrimSpace(q.Get("q"))
+	where, args = appendPortalIssueSearchFilter(where, args, searchTerm)
 
 	// PAI-461: sort + order, both allowlisted. Default preserves the
 	// pre-PAI-461 behaviour (most-recent first by updated_at).
@@ -408,7 +442,20 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.DB.Query(fmt.Sprintf(`
+	countArgs := append([]any{}, args...)
+	var total int
+	if err := db.DB.QueryRow(fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM issues i
+		LEFT JOIN projects p ON p.id = i.project_id
+		%s
+	`, where), countArgs...).Scan(&total); err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	limit, offset := parseIssueListWindow(r, 0)
+	listSQL := fmt.Sprintf(`
 		SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 		       i.title, i.description, i.acceptance_criteria,
 		       i.report_summary,
@@ -419,7 +466,13 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN projects p ON p.id = i.project_id
 		%s
 		ORDER BY %s %s
-	`, where, sortCol, orderDir), args...)
+	`, where, sortCol, orderDir)
+	if limit > 0 {
+		listSQL += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+
+	rows, err := db.DB.Query(listSQL, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -439,6 +492,19 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		issues = append(issues, pi)
+	}
+	if q.Get("envelope") == "1" {
+		jsonOK(w, portalIssueListEnvelope{
+			Issues:   issues,
+			Total:    total,
+			Offset:   offset,
+			Limit:    limit,
+			Sort:     strings.ToLower(strings.TrimSpace(q.Get("sort"))),
+			Order:    strings.ToLower(strings.TrimSpace(q.Get("order"))),
+			Query:    searchTerm,
+			Revision: issueListRevision(w),
+		})
+		return
 	}
 	jsonOK(w, issues)
 }

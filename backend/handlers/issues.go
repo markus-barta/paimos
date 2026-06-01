@@ -469,70 +469,167 @@ func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
 	if rel := q.Get("release"); rel != "" {
 		query, args = applyMultiFilter(query, args, "i.release", rel)
 	}
-	// assignee_id: multi-value, special "unassigned" sentinel
+	// assignee_id: multi-value, optional ! negation, special "unassigned" sentinel
 	if aid := q.Get("assignee_id"); aid != "" {
 		vals := splitCSV(aid)
-		hasUnassigned := false
-		ids := []string{}
-		for _, v := range vals {
+		var posIDs, negIDs []string
+		hasPosUnassigned := false
+		hasNegUnassigned := false
+		for _, raw := range vals {
+			negated := strings.HasPrefix(raw, "!")
+			v := strings.TrimPrefix(raw, "!")
 			if v == "unassigned" {
-				hasUnassigned = true
+				if negated {
+					hasNegUnassigned = true
+				} else {
+					hasPosUnassigned = true
+				}
+				continue
+			}
+			if negated {
+				negIDs = append(negIDs, v)
 			} else {
-				ids = append(ids, v)
+				posIDs = append(posIDs, v)
 			}
 		}
-		if len(ids) > 0 && hasUnassigned {
-			ph := ""
-			for _, id := range ids {
-				if ph != "" {
-					ph += ","
-				}
-				ph += "?"
-				args = append(args, id)
-			}
+		if len(posIDs) > 0 && hasPosUnassigned {
+			ph := buildPlaceholders(len(posIDs))
 			query += " AND (i.assignee_id IN (" + ph + ") OR i.assignee_id IS NULL)"
-		} else if len(ids) > 0 {
-			ph := ""
-			for _, id := range ids {
-				if ph != "" {
-					ph += ","
-				}
-				ph += "?"
+			for _, id := range posIDs {
 				args = append(args, id)
 			}
+		} else if len(posIDs) > 0 {
+			ph := buildPlaceholders(len(posIDs))
 			query += " AND i.assignee_id IN (" + ph + ")"
-		} else if hasUnassigned {
+			for _, id := range posIDs {
+				args = append(args, id)
+			}
+		} else if hasPosUnassigned {
 			query += " AND i.assignee_id IS NULL"
 		}
-	}
-	// tags: comma-separated tag IDs (ANY match)
-	if tags := q.Get("tags"); tags != "" {
-		tagIDs := splitCSV(tags)
-		if len(tagIDs) > 0 {
-			ph := ""
-			for _, tid := range tagIDs {
-				if ph != "" {
-					ph += ","
-				}
-				ph += "?"
-				args = append(args, tid)
+		if len(negIDs) > 0 {
+			ph := buildPlaceholders(len(negIDs))
+			query += " AND (i.assignee_id IS NULL OR i.assignee_id NOT IN (" + ph + "))"
+			for _, id := range negIDs {
+				args = append(args, id)
 			}
-			query += " AND i.id IN (SELECT issue_id FROM issue_tags WHERE tag_id IN (" + ph + "))"
+		}
+		if hasNegUnassigned {
+			query += " AND i.assignee_id IS NOT NULL"
 		}
 	}
-	// sprints: comma-separated sprint IDs
+	// tags: comma-separated tag IDs (ANY positive match, excluded negatives)
+	if tags := q.Get("tags"); tags != "" {
+		tagIDs := splitCSV(tags)
+		var pos, neg []string
+		for _, raw := range tagIDs {
+			if strings.HasPrefix(raw, "!") {
+				neg = append(neg, strings.TrimPrefix(raw, "!"))
+			} else {
+				pos = append(pos, raw)
+			}
+		}
+		if len(pos) > 0 {
+			ph := buildPlaceholders(len(pos))
+			query += " AND i.id IN (SELECT issue_id FROM issue_tags WHERE tag_id IN (" + ph + "))"
+			for _, tid := range pos {
+				args = append(args, tid)
+			}
+		}
+		if len(neg) > 0 {
+			ph := buildPlaceholders(len(neg))
+			query += " AND NOT EXISTS (SELECT 1 FROM issue_tags it_neg WHERE it_neg.issue_id = i.id AND it_neg.tag_id IN (" + ph + "))"
+			for _, tid := range neg {
+				args = append(args, tid)
+			}
+		}
+	}
+	// sprints: comma-separated sprint IDs (ANY positive match, excluded negatives)
 	if sprints := q.Get("sprints"); sprints != "" {
 		sids := splitCSV(sprints)
-		if len(sids) > 0 {
-			ph := ""
-			for _, sid := range sids {
-				if ph != "" {
-					ph += ","
-				}
-				ph += "?"
+		var pos, neg []string
+		for _, raw := range sids {
+			if strings.HasPrefix(raw, "!") {
+				neg = append(neg, strings.TrimPrefix(raw, "!"))
+			} else {
+				pos = append(pos, raw)
+			}
+		}
+		if len(pos) > 0 {
+			ph := buildPlaceholders(len(pos))
+			query += " AND i.id IN (SELECT target_id FROM issue_relations WHERE type='sprint' AND source_id IN (" + ph + "))"
+			for _, sid := range pos {
 				args = append(args, sid)
 			}
-			query += " AND i.id IN (SELECT target_id FROM issue_relations WHERE type='sprint' AND source_id IN (" + ph + "))"
+		}
+		if len(neg) > 0 {
+			ph := buildPlaceholders(len(neg))
+			query += " AND NOT EXISTS (SELECT 1 FROM issue_relations ir_neg WHERE ir_neg.target_id = i.id AND ir_neg.type='sprint' AND ir_neg.source_id IN (" + ph + "))"
+			for _, sid := range neg {
+				args = append(args, sid)
+			}
+		}
+	}
+	// parent_id: used by IssueList's epic filter. Same signed-list contract
+	// as the other filters, with "none" matching top-level issues.
+	if parent := q.Get("parent_id"); parent != "" {
+		vals := splitCSV(parent)
+		var posIDs, negIDs []string
+		hasPosNone := false
+		hasNegNone := false
+		for _, raw := range vals {
+			negated := strings.HasPrefix(raw, "!")
+			v := strings.TrimPrefix(raw, "!")
+			if v == "none" {
+				if negated {
+					hasNegNone = true
+				} else {
+					hasPosNone = true
+				}
+				continue
+			}
+			if negated {
+				negIDs = append(negIDs, v)
+			} else {
+				posIDs = append(posIDs, v)
+			}
+		}
+		if len(posIDs) > 0 && hasPosNone {
+			ph := buildPlaceholders(len(posIDs))
+			query += " AND (i.parent_id IN (" + ph + ") OR i.parent_id IS NULL)"
+			for _, id := range posIDs {
+				args = append(args, id)
+			}
+		} else if len(posIDs) > 0 {
+			ph := buildPlaceholders(len(posIDs))
+			query += " AND i.parent_id IN (" + ph + ")"
+			for _, id := range posIDs {
+				args = append(args, id)
+			}
+		} else if hasPosNone {
+			query += " AND i.parent_id IS NULL"
+		}
+		if len(negIDs) > 0 {
+			ph := buildPlaceholders(len(negIDs))
+			query += " AND (i.parent_id IS NULL OR i.parent_id NOT IN (" + ph + "))"
+			for _, id := range negIDs {
+				args = append(args, id)
+			}
+		}
+		if hasNegNone {
+			query += " AND i.parent_id IS NOT NULL"
+		}
+	}
+	if v := strings.TrimSpace(q.Get("portal_visibility")); v != "" {
+		if tagID, ok := customerPortalTagID(); ok {
+			switch v {
+			case "visible":
+				query += " AND EXISTS (SELECT 1 FROM issue_tags it_portal WHERE it_portal.issue_id = i.id AND it_portal.tag_id = ?)"
+				args = append(args, tagID)
+			case "hidden":
+				query += " AND NOT EXISTS (SELECT 1 FROM issue_tags it_portal WHERE it_portal.issue_id = i.id AND it_portal.tag_id = ?)"
+				args = append(args, tagID)
+			}
 		}
 	}
 	query, args = applyIssueDateFilter(query, args, q)
