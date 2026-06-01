@@ -70,8 +70,8 @@ export const permissionsEpoch = ref<number>(-1);
 
 // PAI-321: true while the current user has must_change_password set.
 // Flipped on by the global 403 interceptor when the backend returns
-// `{"error":"must_change_password"}`; flipped off by the first-login
-// screen on a successful change. Drives the global redirect to
+// Problem Details with `code:"must_change_password"`; flipped off by
+// the first-login screen on a successful change. Drives the global redirect to
 // /first-login. The router guard reads this and forces navigation to
 // the change-password screen even on direct deep-links.
 export const mustChangePassword = ref(false);
@@ -383,13 +383,10 @@ async function request<T>(
 
   const data = await readJSON<any>(res);
   if (!res.ok) {
-    // PAI-321: a 403 with `{"error":"must_change_password"}` is the
-    // backend's signal that the current user has the first-login gate
-    // set. Flip the global ref so the router guard / App-level
-    // listener routes the user to the change-password screen. The
-    // call still throws — components that handle the error see a
-    // distinct ApiError shape (data.error === "must_change_password")
-    // and can suppress their own toast via errMsg.
+    // PAI-321/485: a 403 Problem Details body with
+    // code="must_change_password" is the backend's signal that the
+    // current user has the first-login gate set. Keep accepting the
+    // legacy error alias during migration.
     if (
       res.status === 403 &&
       data &&

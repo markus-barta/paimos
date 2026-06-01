@@ -33,13 +33,14 @@
 //   - POST /api/auth/impersonation/end — escape hatch for a
 //                                super-admin acting as a gated user.
 //
-// Anything else returns 403 with `{"error":"must_change_password"}`.
-// The SPA's axios interceptor recognises that error code and routes
-// the user to the change-password screen.
+// Anything else returns 403 Problem Details with
+// `code:"must_change_password"`. A compatibility `error` alias stays
+// in the body while older clients finish migrating.
 
 package auth
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -109,11 +110,32 @@ func MustChangePasswordGate(next http.Handler) http.Handler {
 			return
 		}
 		if userMustChangePassword(user.ID) {
-			http.Error(w, `{"error":"must_change_password"}`, http.StatusForbidden)
+			writeMustChangePasswordProblem(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func writeMustChangePasswordProblem(w http.ResponseWriter, r *http.Request) {
+	const code = "must_change_password"
+	reqID := strings.TrimSpace(w.Header().Get("X-PAIMOS-Request-Id"))
+	if reqID == "" {
+		reqID = strings.TrimSpace(r.Header.Get("X-PAIMOS-Request-Id"))
+	}
+	body := map[string]any{
+		"type":       "https://paimos.com/errors/" + code,
+		"title":      "Password change required",
+		"status":     http.StatusForbidden,
+		"detail":     "password change required before continuing",
+		"instance":   r.URL.RequestURI(),
+		"code":       code,
+		"error":      code,
+		"request_id": reqID,
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 // ClearMustChangePassword wipes the flag for a user. Called from

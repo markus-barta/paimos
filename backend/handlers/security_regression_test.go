@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -530,8 +531,8 @@ func TestRegression_PermsEpoch_002_HeaderBumpsOnRoleChange(t *testing.T) {
 }
 
 // PAI-321 — a freshly created user with must_change_password is
-// blocked from non-allowlisted endpoints with 403
-// {"error":"must_change_password"} until they POST /auth/password.
+// blocked from non-allowlisted endpoints with 403 Problem Details
+// carrying code=must_change_password until they POST /auth/password.
 func TestRegression_MustChange_001_BlocksProtectedEndpoints(t *testing.T) {
 	ts := newTestServer(t)
 	// Create a user that requires a password change. Admin path.
@@ -560,8 +561,22 @@ func TestRegression_MustChange_001_BlocksProtectedEndpoints(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("INV-MUSTCHG-001 violated: /projects returned %d, want 403", resp.StatusCode)
 	}
-	if !strings.Contains(string(body), "must_change_password") {
-		t.Errorf("INV-MUSTCHG-001 violated: 403 body missing marker, got %q", string(body))
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/problem+json") {
+		t.Errorf("INV-MUSTCHG-001 violated: content-type=%q, want application/problem+json", ct)
+	}
+	var problem struct {
+		Code      string `json:"code"`
+		Error     string `json:"error"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(body, &problem); err != nil {
+		t.Fatalf("decode must-change problem: %v; body=%q", err, string(body))
+	}
+	if problem.Code != "must_change_password" || problem.Error != "must_change_password" {
+		t.Errorf("INV-MUSTCHG-001 violated: problem marker = code=%q error=%q", problem.Code, problem.Error)
+	}
+	if header := resp.Header.Get("X-PAIMOS-Request-Id"); header == "" || problem.RequestID != header {
+		t.Errorf("INV-MUSTCHG-001 violated: request_id=%q header=%q", problem.RequestID, header)
 	}
 }
 

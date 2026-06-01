@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { api, sessionExpired } from './client'
+import { ApiError, api, errMsg, mustChangePassword, sessionExpired } from './client'
 
 /**
  * ACME-1 regression guards for the 401 → sessionExpired interceptor.
@@ -52,6 +52,7 @@ describe('api client 401 interceptor', () => {
   beforeEach(() => {
     originalFetch = globalThis.fetch
     sessionExpired.value = false
+    mustChangePassword.value = false
   })
 
   afterEach(() => {
@@ -119,5 +120,52 @@ describe('api client 401 interceptor', () => {
     }))
 
     await expect(api.get('/ai/action')).rejects.toThrow('invalid JSON response: nullboom')
+  })
+
+  it('hydrates ApiError from Problem Details bodies', async () => {
+    stubFetch(async () => makeResponse(400, {
+      type: 'https://paimos.com/errors/enum_violation',
+      title: 'Invalid enum value',
+      status: 400,
+      detail: 'type "Tasky" is not valid',
+      code: 'enum_violation',
+      field: 'type',
+      valid_values: ['ticket', 'task'],
+      request_id: 'req-1',
+    }))
+
+    try {
+      await api.post('/projects/6/issues', { title: 'Bad', type: 'Tasky' })
+      throw new Error('expected request to fail')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError)
+      const err = e as ApiError
+      expect(err.message).toBe('type "Tasky" is not valid')
+      expect(err.code).toBe('enum_violation')
+      expect(err.field).toBe('type')
+      expect(err.valid_values).toEqual(['ticket', 'task'])
+      expect(err.request_id).toBe('req-1')
+    }
+  })
+
+  it('uses Problem Details code for the must-change-password gate', async () => {
+    stubFetch(async () => makeResponse(403, {
+      type: 'https://paimos.com/errors/must_change_password',
+      title: 'Password change required',
+      status: 403,
+      detail: 'password change required before continuing',
+      code: 'must_change_password',
+      error: 'must_change_password',
+      request_id: 'req-2',
+    }))
+
+    let caught: unknown
+    try {
+      await api.get('/projects')
+    } catch (e) {
+      caught = e
+    }
+    expect(mustChangePassword.value).toBe(true)
+    expect(errMsg(caught)).toBe('')
   })
 })
