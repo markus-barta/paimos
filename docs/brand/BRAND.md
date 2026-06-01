@@ -140,7 +140,7 @@ criteria (at least two must hold):
 |---|---|---|
 | 1 | A plugin or extensions system exists and is used by third parties | ✗ not yet |
 | 2 | Multiple AI agents / workflows can be orchestrated together | ✓ **met** — the `POST /api/ai/action` dispatcher exposes 11 admin-tunable actions (with sub-actions, per-row placement, prompt CRUD, dry-run); the `paimos` CLI, `paimos-mcp`, and the in-app AI assist surfaces compose three control planes around the same registry |
-| 3 | A public API enables integration with other tools | ✓ **met** — `/api/openapi.json`, `/api/schema` (self-describing), the agent-context layer (`/projects/:id/{repos,manifest,anchors,graph,retrieve}` + `/issues/:id/anchors`), `paimos-mcp` for MCP clients |
+| 3 | A public API enables integration with other tools | ✓ **met** — `/api/openapi.json`, `/api/schema` (self-describing), the agent-context layer (`/projects/:id/{repos,knowledge,anchors,graph,retrieve}` + `/projects/:id/agents/{name}.json` + `/issues/:id/anchors`), `paimos-mcp` for MCP clients |
 | 4 | A marketplace or template store is live | ✗ not yet |
 
 Two-of-four cleared. Criterion #1 (third-party plugin loop) and #4

@@ -159,7 +159,7 @@ paimos doctor
 #   ✓ config   ok — ppm (https://pm.barta.cm) [url=config:ppm, credential=keyring:paimos-cli/ppm]
 #   ✓ health   ok
 #   ✓ auth     ok — user=mba
-#   ✓ schema   ok — version=1.1.0
+#   ✓ schema   ok — version=1.5.0
 ```
 
 CI-safe; exit 0 all green, 1 warnings only, 2 any failure.
@@ -560,7 +560,7 @@ The server publishes a single source of truth at `GET /api/schema`. The CLI cach
 ```sh
 $ paimos schema
 instance: ppm (https://pm.barta.cm)
-version:  1.2.0
+version:  1.5.0
 enum priority: low, medium, high
 enum relation: groups, sprint, depends_on, impacts, follows_from, blocks, related
 enum status:   new, backlog, in-progress, qa, done, delivered, accepted, invoiced, cancelled

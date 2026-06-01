@@ -15,6 +15,8 @@ defineEmits<{ remove: [id: number] }>()
 // every other tag. The styling lives on a modifier class so the rest
 // of the palette is untouched.
 const isCustomerPortal = computed(() => props.tag.name === 'CUSTOMERPORTAL')
+const customerPortalTooltip = 'issue is shown in customer portal'
+const displayName = computed(() => isCustomerPortal.value ? 'CP' : props.tag.name)
 </script>
 
 <template>
@@ -24,9 +26,10 @@ const isCustomerPortal = computed(() => props.tag.name === 'CUSTOMERPORTAL')
       `tag-${tag.color}`,
       { 'tag-system': tag.system, 'tag-customerportal': isCustomerPortal },
     ]"
+    :title="isCustomerPortal ? customerPortalTooltip : undefined"
   >
     <AppIcon v-if="isCustomerPortal" name="eye" :size="11" class="tag-prefix-icon" />
-    {{ tag.name }}
+    {{ displayName }}
     <button v-if="removable" class="tag-remove" @click.stop="$emit('remove', tag.id)" aria-label="Remove tag">
       <AppIcon name="x" :size="11" :stroke-width="2.5" />
     </button>

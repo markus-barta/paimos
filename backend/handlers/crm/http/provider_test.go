@@ -20,7 +20,63 @@ import (
 	"time"
 
 	"github.com/markus-barta/paimos/backend/handlers/crm"
+	"github.com/markus-barta/paimos/backend/handlers/crm/contracttest"
 )
+
+func TestProviderSharedContract(t *testing.T) {
+	const secret = "shared-secret"
+	ts := httptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if err := VerifyRequest(r, secret, time.Now(), raw); err != nil {
+			stdhttp.Error(w, "bad signature", stdhttp.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/import":
+			_ = json.NewEncoder(w).Encode(customerImportPayload{
+				Name:        "Contract GmbH",
+				Industry:    "Software",
+				ExternalID:  "contract-1",
+				ExternalURL: "https://crm.example/customers/contract-1",
+			})
+		case "/v1/sync":
+			name := "Contract GmbH Updated"
+			externalURL := "https://crm.example/customers/contract-1"
+			_ = json.NewEncoder(w).Encode(partialUpdatePayload{
+				Name:        &name,
+				ExternalURL: &externalURL,
+			})
+		case "/v1/deep-link":
+			_ = json.NewEncoder(w).Encode(deepLinkResponse{URL: "https://crm.example/customers/contract-1"})
+		default:
+			stdhttp.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	cfg := crm.ProviderConfig{Values: map[string]string{
+		"base_url":    ts.URL,
+		"hmac_secret": secret,
+	}}
+	wantSyncName := "Contract GmbH Updated"
+	wantSyncURL := "https://crm.example/customers/contract-1"
+	contracttest.AssertProviderCoreFlows(t, &Provider{}, cfg, contracttest.Fixture{
+		ImportRef:      "crm://contract",
+		SyncExternalID: "contract-1",
+		WantImport: crm.CustomerImport{
+			Name:        "Contract GmbH",
+			Industry:    "Software",
+			ExternalID:  "contract-1",
+			ExternalURL: "https://crm.example/customers/contract-1",
+		},
+		WantSync: crm.PartialUpdate{
+			Name:        &wantSyncName,
+			ExternalURL: &wantSyncURL,
+		},
+		WantDeepLinkContains: []string{"contract-1"},
+	})
+}
 
 func TestProviderSignedCoreFlows(t *testing.T) {
 	const secret = "shared-secret"

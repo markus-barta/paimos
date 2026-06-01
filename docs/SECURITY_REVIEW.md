@@ -164,7 +164,7 @@ PRs touching `backend/handlers/attachments.go`, `backend/handlers/documents.go`,
 
 - [ ] Does the upload path validate MIME by magic bytes, not just by client-reported `Content-Type` (**INV-FILES-04**)?
 - [ ] Does the download path enforce scope-aware authorization before streaming bytes (**INV-FILES-02**)?
-- [ ] Are non-image types served with `Content-Disposition: attachment`? (**INV-FILES-03** — note: PAI-110 is the application-layer fix; reverse-proxy mitigation is interim per `HARDENING.md` § 3.4.)
+- [ ] Are non-inline-safe attachment types rejected on upload or served with `Content-Disposition: attachment` plus restrictive CSP? (**INV-FILES-03** — PAI-110 shipped the application-layer fix; reverse-proxy rules are defense in depth per `HARDENING.md` § 3.4; freshness tracked by PAI-551.)
 - [ ] Does the change introduce any new file-output path that should match SQLite's 0o600 expectation rather than 0o644?
 
 ### 4.4 · Audit-touching changes

@@ -79,7 +79,10 @@ func TestPerf_ListIssues(t *testing.T) {
 	epicIDs := make([]int64, 50)
 	ticketIDs := make([]int64, 200)
 	allIDs := make([]int64, 0, 1000)
-	issueNum := 1
+	var issueNum int
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(issue_number), 0) + 1 FROM issues WHERE project_id = ?`, projectID).Scan(&issueNum); err != nil {
+		t.Fatalf("next issue number: %v", err)
+	}
 
 	// Helper to get next issue number and insert
 	insertIssue := func(iType, title string, parentID *int64, assigneeID int64) int64 {
@@ -187,9 +190,9 @@ func TestPerf_ListIssues(t *testing.T) {
 	// ── Benchmark at different scales ────────────────────────────────────
 
 	scales := []struct {
-		name     string
-		query    string
-		maxMS    int64 // target max response time in milliseconds
+		name  string
+		query string
+		maxMS int64 // target max response time in milliseconds
 	}{
 		{"100 issues (filtered)", fmt.Sprintf("/api/projects/%d/issues?type=epic", projectID), 100},
 		{"400 issues (mixed)", fmt.Sprintf("/api/projects/%d/issues?type=epic,ticket", projectID), 200},

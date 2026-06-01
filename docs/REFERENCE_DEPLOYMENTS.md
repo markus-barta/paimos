@@ -44,7 +44,7 @@ A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* refer
 
 ## 2 · Active reference deployments
 
-Two as of 2026-05-12. Both real, both production-like, both used to validate the current release flow.
+Two as of 2026-06-01. Both real, both production-like, both used to validate the current release flow.
 
 ### 2.1 · ppm · `pm.barta.cm`
 
@@ -58,13 +58,15 @@ Two as of 2026-05-12. Both real, both production-like, both used to validate the
 | AI assist | OpenRouter (configured), `anthropic/claude-sonnet-4.5` model |
 | OIDC | not configured (local password + TOTP) |
 | Active since | v1.x (continuously upgraded; no fresh-install in current era) |
-| Last verified runtime | 2026-05-12: `3.2.4-dev+c3362e9` (`sha-c3362e9` canary) |
+| Last verified runtime | 2026-06-01: `3.8.2` (`/api/health`, schema `1.5.0`) |
 | Backup pattern | per-deploy via `scripts/deploy.sh`; `$BACKUP_ROOT` on the same host (acknowledged limitation tracked under [§3 Findings](#3--structured-findings) F-08) |
 | Audience | the maintainer + a small group; canary for every release before pmo |
 
 **Role in the project:** ppm is the **first production deployment for every release**. The release flow is `just release` → `just verify-release` → `just deploy-ppm` → wait → `just deploy-pmo`. ppm is where bugs in a release first show up if they do; pmo is the second deployment that validates it.
 
 **This is the maintainer's own instance**, which is both a strength (real engagement, every defect is felt) and a weakness (operator and maintainer are the same person, so the validation isn't independent).
+
+**2026-06-01 drift note:** ppm was briefly behind pmo because the deploy script still edited the old `/home/mba/docker` compose directory while the live csb1 stack was sourced from `/home/mba/Code/nixcfg/hosts/csb1/docker`. The deploy config and nixcfg compose pin now agree on `3.8.2`. The broader freshness guardrail is tracked by PAI-551.
 
 ### 2.2 · pmo · `pm.bytepoets.com`
 
@@ -78,7 +80,7 @@ Two as of 2026-05-12. Both real, both production-like, both used to validate the
 | AI assist | OpenRouter (separately-configured key, separate billing) |
 | OIDC | not configured |
 | Active since | v1.x |
-| Last verified runtime | 2026-05-12: `3.2.4` |
+| Last verified runtime | 2026-06-01: `3.8.2` (`/api/health`, schema `1.5.0`) |
 | Backup pattern | per-deploy + scheduled (operator-controlled cadence) |
 | Audience | bytepoets internal; second canary; **operator is independent of maintainer** |
 
@@ -106,6 +108,7 @@ Findings logged in chronological order. Each finding has the **observation** (wh
 | **F-10** | 2026-04-26 | both | The release → verify → deploy → doc-sync gap surfaced repeatedly: README / docs / paimos-site / brand assets drift between code releases | Without an explicit reminder, the doc pass after release was easy to skip | `scripts/release-doc-sync.sh` + `just doc-sync` recipe + the five-command flow documented in DEPLOY.md | PAI-187 |
 | **F-11** | 2026-04-26 | both | Test report visibility in production was implicit — a deploy could ship a green-CI version with no actual test reports surfaced in the admin UI | The product confused "no reports" with "ready" | Test-report runtime visibility hardening: explicit `ready` / `partial` / `missing_reports` states surfaced; admin-side bundle ingest path | v2.0.1 / PAI-188 |
 | **F-12** | 2026-04-26 | both | The empty-AI-action-catalog F-01 fix was tested by hand but had no regression coverage — a future refactor could regress it silently | Bug-fix-without-test is debt | `ai_action_catalog_test.go` covers the catalogue assembly across registry / placement / admin override; CI regression layer covers it | v2.0.1 / PAI-189 wave-1 |
+| **F-13** | 2026-06-01 | ppm | ppm was behind pmo even though the release flow expects ppm to lead | Deploy config edited a deprecated compose path; live ppm compose came from nixcfg | `scripts/deploy.ppm.conf` now points at the nixcfg compose directory and the nixcfg ppm image pin is `3.8.2`; `scripts/check-knowledge-freshness.sh` catches stale runtime/version claims before release | PAI-551 |
 
 ### What this list demonstrates
 

@@ -25,6 +25,12 @@ release mode="":
 sbom:
     @./scripts/sbom.sh
 
+# Check source docs and pulled ppm knowledge cache for stale high-risk
+# project facts (removed manifest API, version examples, shipped security
+# gaps). Set PAIMOS_CHECK_LIVE=1 to compare ppm/pmo health endpoints too.
+knowledge-freshness:
+    @./scripts/check-knowledge-freshness.sh
+
 # Prune accumulated GHCR manifest versions (untagged + old sha-* tags).
 # Dry-run by default. Run periodically to keep the package well below
 # the threshold that triggered the 2026-05-26 push-denied incident

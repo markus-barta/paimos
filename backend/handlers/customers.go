@@ -89,10 +89,10 @@ func GetCustomer(w http.ResponseWriter, r *http.Request) {
 // customerCreateBody mirrors the column set 1:1. External-CRM fields
 // are optional; manual customers leave all three nil.
 type customerCreateBody struct {
-	Name             string   `json:"name"`
-	ExternalID       *string  `json:"external_id"`
-	ExternalURL      *string  `json:"external_url"`
-	ExternalProvider *string  `json:"external_provider"`
+	Name             string  `json:"name"`
+	ExternalID       *string `json:"external_id"`
+	ExternalURL      *string `json:"external_url"`
+	ExternalProvider *string `json:"external_provider"`
 	// PAI-273 read-compat: a v1 caller can still send these; we pass
 	// them through to the customers row AND seed a primary contact
 	// downstream of the insert so future GETs read from the new model.
@@ -102,22 +102,24 @@ type customerCreateBody struct {
 	Country      string `json:"country"`
 	Industry     string `json:"industry"`
 	// PAI-273 metadata expansion.
-	Website                string   `json:"website"`
-	Domain                 string   `json:"domain"`
-	VATID                  string   `json:"vat_id"`
-	EmployeeCount          *int64   `json:"employee_count"`
-	AnnualRevenueCents     *int64   `json:"annual_revenue_cents"`
-	Description            string   `json:"description"`
-	Phone                  string   `json:"phone"`
-	BillingAddressStreet   string   `json:"billing_address_street"`
-	BillingAddressCity     string   `json:"billing_address_city"`
-	BillingAddressZip      string   `json:"billing_address_zip"`
-	BillingAddressCountry  string   `json:"billing_address_country"`
-	VisitAddressStreet     string   `json:"visit_address_street"`
-	VisitAddressZip        string   `json:"visit_address_zip"`
-	RateHourly             *float64 `json:"rate_hourly"`
-	RateLp                 *float64 `json:"rate_lp"`
-	Notes                  string   `json:"notes"`
+	Website               string   `json:"website"`
+	Domain                string   `json:"domain"`
+	VATID                 string   `json:"vat_id"`
+	TaxID                 string   `json:"tax_id"`
+	CompanyRegisterNumber string   `json:"company_register_number"`
+	EmployeeCount         *int64   `json:"employee_count"`
+	AnnualRevenueCents    *int64   `json:"annual_revenue_cents"`
+	Description           string   `json:"description"`
+	Phone                 string   `json:"phone"`
+	BillingAddressStreet  string   `json:"billing_address_street"`
+	BillingAddressCity    string   `json:"billing_address_city"`
+	BillingAddressZip     string   `json:"billing_address_zip"`
+	BillingAddressCountry string   `json:"billing_address_country"`
+	VisitAddressStreet    string   `json:"visit_address_street"`
+	VisitAddressZip       string   `json:"visit_address_zip"`
+	RateHourly            *float64 `json:"rate_hourly"`
+	RateLp                *float64 `json:"rate_lp"`
+	Notes                 string   `json:"notes"`
 }
 
 func CreateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +137,8 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO customers(
 			name, external_id, external_url, external_provider, synced_at,
 			contact_name, contact_email, address, country, industry,
-			website, domain, vat_id, employee_count, annual_revenue_cents,
+			website, domain, vat_id, tax_id, company_register_number,
+			employee_count, annual_revenue_cents,
 			description, phone,
 			billing_address_street, billing_address_city, billing_address_zip, billing_address_country,
 			visit_address_street, visit_address_zip,
@@ -143,13 +146,15 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 		) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?,
 		          ?, ?, ?, ?, ?,
 		          ?, ?,
+		          ?, ?,
 		          ?, ?, ?, ?,
 		          ?, ?,
 		          ?, ?, ?)
 	`,
 		body.Name, body.ExternalID, body.ExternalURL, body.ExternalProvider,
 		body.ContactName, body.ContactEmail, body.Address, body.Country, body.Industry,
-		body.Website, body.Domain, body.VATID, body.EmployeeCount, body.AnnualRevenueCents,
+		body.Website, body.Domain, body.VATID, body.TaxID, body.CompanyRegisterNumber,
+		body.EmployeeCount, body.AnnualRevenueCents,
 		body.Description, body.Phone,
 		body.BillingAddressStreet, body.BillingAddressCity, body.BillingAddressZip, body.BillingAddressCountry,
 		body.VisitAddressStreet, body.VisitAddressZip,
@@ -178,31 +183,33 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 // the COALESCE pattern ("only fields you pass are written") matches the
 // existing issue / project handlers.
 type customerUpdateBody struct {
-	Name             *string  `json:"name"`
-	ExternalID       *string  `json:"external_id"`
-	ExternalURL      *string  `json:"external_url"`
-	ExternalProvider *string  `json:"external_provider"`
-	ContactName      *string  `json:"contact_name"`
-	ContactEmail     *string  `json:"contact_email"`
-	Address          *string  `json:"address"`
-	Country          *string  `json:"country"`
-	Industry         *string  `json:"industry"`
-	Website                *string  `json:"website"`
-	Domain                 *string  `json:"domain"`
-	VATID                  *string  `json:"vat_id"`
-	EmployeeCount          *int64   `json:"employee_count"`
-	AnnualRevenueCents     *int64   `json:"annual_revenue_cents"`
-	Description            *string  `json:"description"`
-	Phone                  *string  `json:"phone"`
-	BillingAddressStreet   *string  `json:"billing_address_street"`
-	BillingAddressCity     *string  `json:"billing_address_city"`
-	BillingAddressZip      *string  `json:"billing_address_zip"`
-	BillingAddressCountry  *string  `json:"billing_address_country"`
-	VisitAddressStreet     *string  `json:"visit_address_street"`
-	VisitAddressZip        *string  `json:"visit_address_zip"`
-	RateHourly             *float64 `json:"rate_hourly"`
-	RateLp                 *float64 `json:"rate_lp"`
-	Notes                  *string  `json:"notes"`
+	Name                  *string  `json:"name"`
+	ExternalID            *string  `json:"external_id"`
+	ExternalURL           *string  `json:"external_url"`
+	ExternalProvider      *string  `json:"external_provider"`
+	ContactName           *string  `json:"contact_name"`
+	ContactEmail          *string  `json:"contact_email"`
+	Address               *string  `json:"address"`
+	Country               *string  `json:"country"`
+	Industry              *string  `json:"industry"`
+	Website               *string  `json:"website"`
+	Domain                *string  `json:"domain"`
+	VATID                 *string  `json:"vat_id"`
+	TaxID                 *string  `json:"tax_id"`
+	CompanyRegisterNumber *string  `json:"company_register_number"`
+	EmployeeCount         *int64   `json:"employee_count"`
+	AnnualRevenueCents    *int64   `json:"annual_revenue_cents"`
+	Description           *string  `json:"description"`
+	Phone                 *string  `json:"phone"`
+	BillingAddressStreet  *string  `json:"billing_address_street"`
+	BillingAddressCity    *string  `json:"billing_address_city"`
+	BillingAddressZip     *string  `json:"billing_address_zip"`
+	BillingAddressCountry *string  `json:"billing_address_country"`
+	VisitAddressStreet    *string  `json:"visit_address_street"`
+	VisitAddressZip       *string  `json:"visit_address_zip"`
+	RateHourly            *float64 `json:"rate_hourly"`
+	RateLp                *float64 `json:"rate_lp"`
+	Notes                 *string  `json:"notes"`
 }
 
 func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -245,10 +252,12 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 			address           = COALESCE(?, address),
 			country           = COALESCE(?, country),
 			industry          = COALESCE(?, industry),
-			website                 = COALESCE(?, website),
-			domain                  = COALESCE(?, domain),
-			vat_id                  = COALESCE(?, vat_id),
-			employee_count          = CASE WHEN ? IS NOT NULL THEN ? ELSE employee_count END,
+				website                 = COALESCE(?, website),
+				domain                  = COALESCE(?, domain),
+				vat_id                  = COALESCE(?, vat_id),
+				tax_id                  = COALESCE(?, tax_id),
+				company_register_number = COALESCE(?, company_register_number),
+				employee_count          = CASE WHEN ? IS NOT NULL THEN ? ELSE employee_count END,
 			annual_revenue_cents    = CASE WHEN ? IS NOT NULL THEN ? ELSE annual_revenue_cents END,
 			description             = COALESCE(?, description),
 			phone                   = COALESCE(?, phone),
@@ -269,7 +278,7 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 		body.ExternalURL, body.ExternalURL,
 		body.ExternalProvider, body.ExternalProvider,
 		body.ContactName, body.ContactEmail, body.Address, body.Country, body.Industry,
-		body.Website, body.Domain, body.VATID,
+		body.Website, body.Domain, body.VATID, body.TaxID, body.CompanyRegisterNumber,
 		body.EmployeeCount, body.EmployeeCount,
 		body.AnnualRevenueCents, body.AnnualRevenueCents,
 		body.Description, body.Phone,
@@ -361,7 +370,8 @@ func customerSelectColumns() string {
 	return `c.id, c.name, c.external_id, c.external_url, c.external_provider,
 		c.synced_at, c.contact_name, c.contact_email, c.address, c.country,
 		c.industry,
-		c.website, c.domain, c.vat_id, c.employee_count, c.annual_revenue_cents,
+		c.website, c.domain, c.vat_id, c.tax_id, c.company_register_number,
+		c.employee_count, c.annual_revenue_cents,
 		c.description, c.phone,
 		c.billing_address_street, c.billing_address_city,
 		c.billing_address_zip, c.billing_address_country,
@@ -376,7 +386,8 @@ func scanCustomer(s rowScanner) *models.Customer {
 		&c.ID, &c.Name, &c.ExternalID, &c.ExternalURL, &c.ExternalProvider,
 		&c.SyncedAt, &c.ContactName, &c.ContactEmail, &c.Address, &c.Country,
 		&c.Industry,
-		&c.Website, &c.Domain, &c.VATID, &c.EmployeeCount, &c.AnnualRevenueCents,
+		&c.Website, &c.Domain, &c.VATID, &c.TaxID, &c.CompanyRegisterNumber,
+		&c.EmployeeCount, &c.AnnualRevenueCents,
 		&c.Description, &c.Phone,
 		&c.BillingAddressStreet, &c.BillingAddressCity,
 		&c.BillingAddressZip, &c.BillingAddressCountry,

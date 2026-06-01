@@ -5,6 +5,42 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.3] — 2026-06-01
+
+### Added
+
+- **PAI-551** — Added `scripts/check-knowledge-freshness.sh` and wired it
+  into release hygiene. The check catches removed project-manifest API
+  references, stale install/schema examples, and shipped security gaps
+  that are still documented as open.
+- **PAI-552** — Added `paimos curl`, a raw API helper that uses the active
+  instance URL and configured auth, so operator runbooks can call endpoints
+  such as `/portal/overview` without hand-assembling bearer headers.
+- **PAI-555** — Added a shared CRM provider contract-test harness under
+  `backend/handlers/crm/contracttest`; HubSpot and HTTP sidecar providers
+  now exercise the same ImportRef / Sync / DeepLink contract.
+- **PAI-558** — Added explicit customer legal identifier fields:
+  `tax_id` for UID/tax number and `company_register_number` for FN.
+
+### Changed
+
+- **PAI-553** — Updated source docs and PAI knowledge for the current data
+  model through M114 and API schema `1.5.0`.
+- **PAI-557** — Projektbericht customer party blocks now print postal
+  address lines plus UID and FN when those customer fields are available.
+- **PAI-559** — The `CUSTOMERPORTAL` tag chip now renders as the compact
+  eye + `CP` marker with the tooltip "issue is shown in customer portal".
+
+### Fixed
+
+- **PAI-554** — Fixed project issue-number allocation under concurrent
+  creates. M113 adds an atomic per-project counter plus a unique database
+  backstop on `(project_id, issue_number)`. The duplicate ppm row was
+  repaired before the migration: id `2183` is now `PAI-555`.
+- **PAI-556** — Projektbericht PDFs now reserve roughly 3cm more vertical
+  clearance before the paper signature line so printed reports are easier
+  to sign by hand.
+
 ## [3.8.2] — 2026-05-29
 
 ### Fixed

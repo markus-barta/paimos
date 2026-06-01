@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/go-pdf/fpdf"
+
+	"github.com/markus-barta/paimos/backend/models"
 )
 
 // Regression: fpdf's character-width table has 65536 entries, so any rune outside
@@ -313,5 +315,49 @@ func TestResolveBrandingLogoForPDF_FallbackOnMissing(t *testing.T) {
 	}
 	if !bytes.Equal(data, logoPNG) {
 		t.Fatalf("expected embedded fallback bytes")
+	}
+}
+
+func TestProjektberichtCustomerPartyHelpersIncludePostalAndLegalDetails(t *testing.T) {
+	customer := &models.Customer{
+		Name:                  "ACME GmbH",
+		BillingAddressStreet:  "Hauptplatz 1",
+		BillingAddressZip:     "8010",
+		BillingAddressCity:    "Graz",
+		BillingAddressCountry: "Austria",
+		TaxID:                 "ATU12345678",
+		CompanyRegisterNumber: "FN 123456x",
+		ContactName:           "Jane Doe",
+		ContactEmail:          "jane@example.com",
+	}
+
+	lines := []string{customer.Name}
+	lines = append(lines, projectReportCustomerAddressLines(customer)...)
+	if taxID := firstNonEmpty(customer.TaxID, customer.VATID); taxID != "" {
+		lines = append(lines, "UID: "+taxID)
+	}
+	if fn := strings.TrimSpace(customer.CompanyRegisterNumber); fn != "" {
+		lines = append(lines, "FN: "+fn)
+	}
+	if contact := projectReportCustomerContact(customer); contact != "" {
+		lines = append(lines, "Kontakt: "+contact)
+	}
+
+	got := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"ACME GmbH",
+		"Hauptplatz 1",
+		"8010, Graz",
+		"Austria",
+		"UID: ATU12345678",
+		"FN: FN 123456x",
+		"Kontakt: Jane Doe <jane@example.com>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("customer party lines missing %q:\n%s", want, got)
+		}
+	}
+	if projektberichtPaperSignatureTopPaddingMM < 40 {
+		t.Fatalf("paper signature top padding=%vmm, want at least 40mm", projektberichtPaperSignatureTopPaddingMM)
 	}
 }

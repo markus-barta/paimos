@@ -22,6 +22,7 @@ package handlers
 // and type-ordering in one place.
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
@@ -36,9 +37,9 @@ import (
 // ImportRow is the normalised representation of one issue to be imported,
 // regardless of source (CSV, Jira, …).
 type ImportRow struct {
-	OrigKey            string   // original issue key, e.g. "ACME-1"
-	Type               string   // "epic" | "ticket" | "task"
-	ParentKey          string   // original key of parent issue, or ""
+	OrigKey            string // original issue key, e.g. "ACME-1"
+	Type               string // "epic" | "ticket" | "task"
+	ParentKey          string // original key of parent issue, or ""
 	Title              string
 	Description        string
 	AcceptanceCriteria string
@@ -64,12 +65,12 @@ const (
 // PreflightResult is returned before a real import so the UI can show a
 // confirmation dialog.
 type PreflightResult struct {
-	ProjectKey    string   `json:"project_key"`
-	ProjectExists bool     `json:"project_exists"`
-	Total         int      `json:"total"`
-	CollisionKeys []string `json:"collision_keys"`
-	CollisionCount int     `json:"collision_count"`
-	NewCount      int      `json:"new_count"`
+	ProjectKey     string   `json:"project_key"`
+	ProjectExists  bool     `json:"project_exists"`
+	Total          int      `json:"total"`
+	CollisionKeys  []string `json:"collision_keys"`
+	CollisionCount int      `json:"collision_count"`
+	NewCount       int      `json:"new_count"`
 }
 
 // ImportResult is returned after a successful import.
@@ -293,22 +294,23 @@ func resolveAssignee(username string) *int64 {
 	return nil
 }
 
-func nextIssueNumber(projectID int64) int {
-	var n int
-	db.DB.QueryRow(
-		"SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?", projectID,
-	).Scan(&n)
-	return n
-}
-
 func insertIssue(projectID int64, row ImportRow, keyToID map[string]int64) (int64, error) {
 	status := normaliseImportStatus(row.Status)
 	priority := row.Priority
 	if priority == "" {
 		priority = "medium"
 	}
-	num := nextIssueNumber(projectID)
-	res, err := db.DB.Exec(`
+	ctx := context.Background()
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	num, err := db.NextIssueNumber(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	res, err := tx.ExecContext(ctx, `
 		INSERT INTO issues(
 			project_id, issue_number, type, parent_id,
 			title, description, acceptance_criteria, notes,
@@ -322,7 +324,14 @@ func insertIssue(projectID int64, row ImportRow, keyToID map[string]int64) (int6
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func overwriteIssue(id int64, row ImportRow, keyToID map[string]int64) error {

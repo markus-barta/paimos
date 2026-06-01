@@ -152,12 +152,12 @@ type ConfigSchema struct {
 // input element + storage path: secret fields are encrypted at rest and
 // never returned in API responses, only flagged with HasValue=true.
 type ConfigField struct {
-	Key         string   `json:"key"`
-	Label       string   `json:"label"`
-	Type        string   `json:"type"`               // "string" | "secret" | "number" | "select"
-	Required    bool     `json:"required"`
-	Help        string   `json:"help,omitempty"`     // single-line help text shown under the input
-	Placeholder string   `json:"placeholder,omitempty"`
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Type        string `json:"type"` // "string" | "secret" | "number" | "select"
+	Required    bool   `json:"required"`
+	Help        string `json:"help,omitempty"` // single-line help text shown under the input
+	Placeholder string `json:"placeholder,omitempty"`
 	// Options is non-empty only for Type="select".
 	Options []ConfigOption `json:"options,omitempty"`
 }
@@ -200,15 +200,17 @@ type CustomerImport struct {
 	Country      string
 	Industry     string
 	// PAI-273 metadata expansion.
-	Website              string
-	Domain               string
-	VATID                string
-	EmployeeCount        *int64
-	AnnualRevenueCents   *int64
-	Description          string
-	Phone                string
-	VisitAddressStreet   string
-	VisitAddressZip      string
+	Website               string
+	Domain                string
+	VATID                 string
+	TaxID                 string
+	CompanyRegisterNumber string
+	EmployeeCount         *int64
+	AnnualRevenueCents    *int64
+	Description           string
+	Phone                 string
+	VisitAddressStreet    string
+	VisitAddressZip       string
 	// ExternalID + ExternalURL are filled in by the provider; the
 	// generic import handler combines them with the provider's ID()
 	// before calling the customer-create flow.
@@ -246,21 +248,23 @@ type ContactImport struct {
 // authoritative current set, upsert by external_id and let the handler
 // reconcile the primary flag".
 type PartialUpdate struct {
-	Name         *string
-	ContactName  *string
-	ContactEmail *string
-	Address      *string
-	Country      *string
-	Industry     *string
-	Website              *string
-	Domain               *string
-	VATID                *string
-	EmployeeCount        *int64
-	AnnualRevenueCents   *int64
-	Description          *string
-	Phone                *string
-	VisitAddressStreet   *string
-	VisitAddressZip      *string
-	ExternalURL          *string // deep-link can change if the external system migrates IDs
-	Contacts             []ContactImport
+	Name                  *string
+	ContactName           *string
+	ContactEmail          *string
+	Address               *string
+	Country               *string
+	Industry              *string
+	Website               *string
+	Domain                *string
+	VATID                 *string
+	TaxID                 *string
+	CompanyRegisterNumber *string
+	EmployeeCount         *int64
+	AnnualRevenueCents    *int64
+	Description           *string
+	Phone                 *string
+	VisitAddressStreet    *string
+	VisitAddressZip       *string
+	ExternalURL           *string // deep-link can change if the external system migrates IDs
+	Contacts              []ContactImport
 }

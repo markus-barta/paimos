@@ -120,6 +120,7 @@ Get started:
 	cmd.AddCommand(attachCmd())
 	cmd.AddCommand(timeCmd())
 	cmd.AddCommand(searchCmd())
+	cmd.AddCommand(curlCmd())
 	cmd.AddCommand(anchorsCmd())
 	// PAI-358: manifestCmd removed with the project_manifests table.
 	cmd.AddCommand(issueCmd())

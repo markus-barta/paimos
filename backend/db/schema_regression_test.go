@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 112
+const latestSchemaVersion = 114
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -114,6 +114,7 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"project_report_snapshots",
 		"role_permissions",
 		"super_admin_audit",
+		"project_issue_counters",
 	} {
 		if !tableExists(t, db, table) {
 			t.Fatalf("expected table %s to exist", table)
@@ -157,6 +158,12 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "project_cooperation", "report_customer_responsibilities") {
 		t.Fatal("expected project_cooperation.report_customer_responsibilities to exist (PAI-407 / M107)")
+	}
+	if !columnExists(t, db, "customers", "tax_id") {
+		t.Fatal("expected customers.tax_id to exist (PAI-558 / M114)")
+	}
+	if !columnExists(t, db, "customers", "company_register_number") {
+		t.Fatal("expected customers.company_register_number to exist (PAI-558 / M114)")
 	}
 	// PAI-324 / M93 — agent + session attribution on history snapshots.
 	if !columnExists(t, db, "issue_history", "agent_name") {
@@ -263,6 +270,7 @@ func TestSchemaContainsCriticalIndexes(t *testing.T) {
 		"idx_project_report_permissions_project",
 		"idx_project_report_snapshots_project",
 		"idx_project_report_snapshots_code",
+		"idx_issues_project_number_unique",
 	} {
 		found, err := SchemaHasIndex(db, index)
 		if err != nil {

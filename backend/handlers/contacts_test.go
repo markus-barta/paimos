@@ -253,6 +253,8 @@ func Test_Customer_NewMetadataFields_RoundTrip(t *testing.T) {
 		"name":                    "MXP",
 		"website":                 "https://mxp.com",
 		"vat_id":                  "ATU12345678",
+		"tax_id":                  "ATU87654321",
+		"company_register_number": "FN 123456x",
 		"description":             "long description here",
 		"phone":                   "+43 660 1111",
 		"billing_address_street":  "Hauptplatz 1",
@@ -263,7 +265,7 @@ func Test_Customer_NewMetadataFields_RoundTrip(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	var c models.Customer
 	decode(t, resp, &c)
-	if c.Website != "https://mxp.com" || c.VATID != "ATU12345678" || c.BillingAddressStreet != "Hauptplatz 1" {
+	if c.Website != "https://mxp.com" || c.VATID != "ATU12345678" || c.TaxID != "ATU87654321" || c.CompanyRegisterNumber != "FN 123456x" || c.BillingAddressStreet != "Hauptplatz 1" {
 		t.Errorf("new metadata fields didn't round-trip: %+v", c)
 	}
 }

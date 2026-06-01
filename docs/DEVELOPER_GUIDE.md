@@ -17,8 +17,10 @@ failure-mode guarantees.
   is the local/CI stale-anchor guard.
 - `scripts/upload-anchors.sh <project-key-or-id> <repo-id>` is the
   default CI-ready upload wrapper for the committed index.
-- `go run ./backend/cmd/paimos manifest pull --project PAI --repo-root .`
-  mirrors PMO manifest context into `.pmo/` and `AGENTS.md`.
+- `paimos --instance ppm sync pull --project PAI --workspace .`
+  refreshes canonical project artifacts into `.paimos/cache/`; use
+  `paimos onboard --project PAI` for a one-shot briefing. The legacy
+  `paimos manifest pull` flow was removed in PAI-358.
 
 **Adding a CRM sync provider** (HubSpot, Pipedrive, Salesforce, …):
 see [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go

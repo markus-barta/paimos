@@ -47,6 +47,8 @@ function makeCustomer(overrides: Partial<Customer> = {}): Customer {
     website: '',
     domain: '',
     vat_id: '',
+    tax_id: '',
+    company_register_number: '',
     employee_count: null,
     annual_revenue_cents: null,
     description: '',

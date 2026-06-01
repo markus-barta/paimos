@@ -66,6 +66,8 @@ export interface Customer {
   website: string
   domain: string
   vat_id: string
+  tax_id: string
+  company_register_number: string
   employee_count: number | null
   annual_revenue_cents: number | null
   description: string

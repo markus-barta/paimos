@@ -33,7 +33,7 @@ Go / TypeScript / JavaScript / Vue script:
 Python / shell / YAML:
 
 ```yaml
-# @paimos PAI-N "manifest mirror job"
+# @paimos PAI-N "knowledge sync job"
 ```
 
 SQL:
@@ -54,7 +54,7 @@ Markdown / HTML / Vue template:
 - Prefer one to a few anchors per issue, not every touched line.
 - Update the anchor when the canonical entry point moves.
 - Remove the anchor when the issue no longer maps to a live code path.
-- Labels should be short and stable, for example `"anchor ingest endpoint"` or `"manifest mirror command"`.
+- Labels should be short and stable, for example `"anchor ingest endpoint"` or `"knowledge sync command"`.
 
 ## Multi-repo and monorepo guidance
 

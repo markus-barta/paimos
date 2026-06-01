@@ -189,12 +189,12 @@ A gap (no test, manual-only verification, etc.) is named explicitly. Gaps drive 
 |---|---|---|---|
 | **INV-FILES-01** | Attachment uploads are scoped to a single issue; cross-issue access requires explicit re-link. | `handlers/attachments.go` | `quick_test.go` |
 | **INV-FILES-02** | Attachment downloads check authorization (scope-aware per INV-AUTHZ-07) before streaming bytes. | `handlers/attachments.go:Download`; `handlers/documents.go:Download` | `security_regression_test.go` |
-| **INV-FILES-03** | File-serving sets `Content-Disposition: attachment` for non-image types so a user-uploaded `.html` does not render in the browser. | **GAP — open in PAI-110** (active-content upload hardening, postponed per `claim-matrix.md`) | not yet enforced; tracked |
+| **INV-FILES-03** | File-serving sets `Content-Disposition: attachment` for non-image types so a user-uploaded `.html` does not render in the browser. | `handlers/attachment_safety.go`; `handlers/attachments.go:UploadAttachment/Download` | `attachment_safety_test.go`; PAI-110 shipped |
 | **INV-FILES-04** | MIME type is validated server-side by magic bytes for images, not only by client-reported `Content-Type`. | `handlers/imageutil.go` | `quick_test.go` covers image upload happy path; **gap**: no negative-case test for spoofed MIME |
 | **INV-FILES-05** | Uploaded images are re-encoded server-side (re-compression strips embedded scripts in SVG-as-PNG style attacks). | `handlers/imageutil.go:NormalizeImage` | manual verification; partial regression in `quick_test.go` |
 | **INV-FILES-06** | Branding asset uploads (logo, favicon) check size + format; SVGs are served with restrictive CSP. | `handlers/branding.go` | `branding_test.go` |
 
-PAI-110 is the open child of PAI-109 that closes the **INV-FILES-03** gap end-to-end. Until it ships, operators serving PAIMOS in environments where adversarial uploads are plausible should configure the reverse proxy to force `Content-Disposition: attachment` for `*.html` and `*.svg` paths.
+PAI-110 shipped the **INV-FILES-03** application-layer fix end-to-end. Uploads now reject browser-executable content (HTML, SVG, JavaScript, executable types) using declared type, magic-byte sniffing, and payload-shape checks; the serve path re-sniffs stored bytes and forces anything outside the inline allowlist (PNG, JPEG, GIF, WebP, PDF) to download with a restrictive CSP.
 
 ### 4.4 · Audit
 
@@ -270,7 +270,7 @@ Invariants are retired when the underlying capability is removed (e.g., if PAIMO
 |---|---|
 | INV-AUTH-04 — no automated rate-limit regression test | follow-on under PAI-126 |
 | INV-AUTH-08 — no OIDC integration test with mocked IdP | follow-on |
-| INV-FILES-03 — active-content upload hardening | **PAI-110** (open) |
+| INV-FILES-03 — active-content upload hardening | closed by PAI-110; freshness guard tracked by PAI-551 |
 | INV-FILES-04 — no spoofed-MIME negative-case test | follow-on under PAI-126 |
 | INV-AUDIT-04 — no regression test for incident_log status transitions | follow-on |
 | INV-AUDIT-06 — no time-warp test for retention sweeper | follow-on |

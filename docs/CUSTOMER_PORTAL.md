@@ -67,9 +67,9 @@ delivered/done set, or when the issue is cancelled.
 
 Two affordances on every row:
 
-- **Distinct chip** in the tags column: the `CUSTOMERPORTAL` chip
-  renders with an eye glyph + solid border (vs the regular dashed
-  system-tag treatment).
+- **Distinct chip** in the tags column: the `CUSTOMERPORTAL` tag renders
+  as a compact eye + `CP` marker with a solid border and a tooltip
+  ("issue is shown in customer portal").
 - **Always-visible eye glyph** in the type cell: even when the user
   has hidden the tags column entirely, the glyph survives. The
   CUSTOMERPORTAL marker is load-bearing — it never disappears.

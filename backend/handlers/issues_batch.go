@@ -188,14 +188,6 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 		_ = tx.Rollback()
 	}()
 
-	var nextNum int
-	if err := tx.QueryRow(
-		"SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id=?", projectID,
-	).Scan(&nextNum); err != nil {
-		jsonError(w, "numbering failed", http.StatusInternalServerError)
-		return
-	}
-
 	var createdByID *int64
 	if user := auth.GetUser(r); user != nil {
 		createdByID = &user.ID
@@ -203,7 +195,11 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 
 	insertedIDs := make([]int64, len(items))
 	for i, it := range items {
-		nextNum++
+		nextNum, err := db.NextIssueNumber(r.Context(), tx, projectID)
+		if err != nil {
+			jsonError(w, "numbering failed", http.StatusInternalServerError)
+			return
+		}
 		typ := it.Type
 		if typ == "" {
 			typ = inferType(it.ParentID)

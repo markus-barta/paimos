@@ -146,14 +146,14 @@ The seven domains map roughly to [`THREAT_MODEL.md` §4](THREAT_MODEL.md) invari
 
 | Item | Verification | Invariant |
 |---|---|---|
-| Reverse proxy forces `Content-Disposition: attachment` for `*.html`, `*.svg`, `*.htm`, and any user-uploadable type that browsers might render inline | upload an HTML file with embedded JS; download it; expect browser to *download* not *render* | **INV-FILES-03 (PAI-110 still open at the application layer; mitigated at proxy until then)** |
+| Application upload/serve hardening rejects active content and forces non-inline-safe stored bytes to download; reverse proxy may keep a belt-and-suspenders `Content-Disposition: attachment` rule for user-uploadable active types | upload HTML/SVG/JS payloads; expect upload rejection or forced download with restrictive CSP on legacy bytes | **INV-FILES-03 (PAI-110 shipped; freshness tracked by PAI-551)** |
 | MinIO bucket access scoped to PAIMOS only (separate IAM credential, not the root credential) | MinIO admin UI: confirm the access key has `s3:GetObject` / `PutObject` only for `${BUCKET}/*` | – |
 | Attachment uploads bounded by `BRAND_MINIO_BUCKET` env (default `paimos-attachments`); not a shared bucket with other apps | `MINIO_BUCKET` is dedicated | INV-FILES-01 |
 | MinIO + PAIMOS use TLS to each other in production (or share a private network) | `MINIO_USE_SSL=true` if endpoint is on the public internet | – |
 | Branding-asset uploads (logo, favicon) restricted to admin role | UI: non-admin user cannot reach `Settings → Visual → Workspace Branding` | INV-FILES-06 |
 | Image upload size limit (PAIMOS default ~25 MiB; configurable) sane for your operational context | upload a 30 MiB image; expect `413` | – |
 
-> **Note:** PAI-110 (active-content upload hardening at the application layer) is still open; the proxy-layer mitigation above is the recommended interim. After PAI-110 ships, this row becomes redundant — but the proxy-layer defence is cheap to keep.
+> **Note:** PAI-110 shipped application-layer active-content upload hardening. Keeping the proxy-layer defence is still cheap defense in depth, but it is no longer the primary mitigation. See `THREAT_MODEL.md` INV-FILES-03; freshness tracking lives in PAI-551.
 
 ### 3.5 · Audit and observability
 

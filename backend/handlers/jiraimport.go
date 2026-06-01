@@ -30,25 +30,25 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/storage"
-	"github.com/go-chi/chi/v5"
 )
 
 // ── Import job store (in-memory) ─────────────────────────────────────────────
 
 type importJob struct {
-	ID          string        `json:"id"`
-	Status      string        `json:"status"` // "running", "complete", "error"
-	Result      *importResult `json:"result,omitempty"`
-	Error       string        `json:"error,omitempty"`
-	Started     time.Time     `json:"started"`
-	Finished    *time.Time    `json:"finished,omitempty"`
-	Total       int           `json:"total"`
-	Processed   int           `json:"processed"`
-	CurrentKey  string        `json:"current_key,omitempty"`
-	Phase       string        `json:"phase,omitempty"` // "fetching", "importing", "linking"
+	ID         string        `json:"id"`
+	Status     string        `json:"status"` // "running", "complete", "error"
+	Result     *importResult `json:"result,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	Started    time.Time     `json:"started"`
+	Finished   *time.Time    `json:"finished,omitempty"`
+	Total      int           `json:"total"`
+	Processed  int           `json:"processed"`
+	CurrentKey string        `json:"current_key,omitempty"`
+	Phase      string        `json:"phase,omitempty"` // "fetching", "importing", "linking"
 }
 
 var (
@@ -71,9 +71,9 @@ type jiraSearchResp struct {
 }
 
 type jiraIssue struct {
-	ID     string      `json:"id"`
-	Key    string      `json:"key"`
-	Fields jiraFields  `json:"fields"`
+	ID     string     `json:"id"`
+	Key    string     `json:"key"`
+	Fields jiraFields `json:"fields"`
 }
 
 type jiraFields struct {
@@ -101,8 +101,8 @@ type jiraFields struct {
 	Comment *struct {
 		Comments []jiraComment `json:"comments"`
 	} `json:"comment"`
-	Attachment  []jiraAttachment `json:"attachment"`
-	IssueLinks  []jiraIssueLink  `json:"issuelinks"`
+	Attachment []jiraAttachment `json:"attachment"`
+	IssueLinks []jiraIssueLink  `json:"issuelinks"`
 	// Custom fields (paimos Jira)
 	CustomStory  any      `json:"customfield_10801"` // Story / user story text (ADF)
 	CustomAC     any      `json:"customfield_10100"` // Acceptance Criteria (ADF)
@@ -131,8 +131,10 @@ type jiraAttachment struct {
 	Content  string `json:"content"` // download URL
 }
 
-type jiraNamedObj struct{ Name string `json:"name"` }
-type jiraUser     struct {
+type jiraNamedObj struct {
+	Name string `json:"name"`
+}
+type jiraUser struct {
 	DisplayName  string `json:"displayName"`
 	EmailAddress string `json:"emailAddress"`
 }
@@ -148,7 +150,7 @@ type jiraComment struct {
 type importJiraRequest struct {
 	ProjectKey      string            `json:"project_key"`
 	TargetProjectID int64             `json:"target_project_id"`
-	NewProjectName  string            `json:"new_project_name"`  // create new project if set
+	NewProjectName  string            `json:"new_project_name"` // create new project if set
 	TypeMap         map[string]string `json:"type_map"`
 	StatusMap       map[string]string `json:"status_map"`
 	PriorityMap     map[string]string `json:"priority_map"`
@@ -415,7 +417,8 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 	emailRows, _ := db.DB.Query("SELECT id, username FROM users")
 	if emailRows != nil {
 		for emailRows.Next() {
-			var id int64; var uname string
+			var id int64
+			var uname string
 			emailRows.Scan(&id, &uname)
 			userEmailMap[uname] = id
 		}
@@ -587,18 +590,20 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 			issueID = existingID
 			res.Updated++
 		} else {
-			// Assign next issue_number atomically (same pattern as CreateIssue)
-			var nextNum int
-			if err := db.DB.QueryRow(
-				"SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?",
-				req.TargetProjectID,
-			).Scan(&nextNum); err != nil {
+			tx, err := db.DB.BeginTx(context.Background(), nil)
+			if err != nil {
+				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: "numbering: " + err.Error()})
+				continue
+			}
+			nextNum, err := db.NextIssueNumber(context.Background(), tx, req.TargetProjectID)
+			if err != nil {
+				_ = tx.Rollback()
 				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: "numbering: " + err.Error()})
 				continue
 			}
 
 			// Insert new — full field parity with normal CREATE
-			sqlRes, err := db.DB.Exec(`
+			sqlRes, err := tx.ExecContext(context.Background(), `
 				INSERT INTO issues(project_id, issue_number, title, description, acceptance_criteria, notes, type, status, priority,
 					assignee_id, jira_id, jira_text, jira_version,
 					estimate_hours, estimate_lp, ar_lp, rate_lp, end_date, release,
@@ -609,10 +614,15 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 				estimateHours, estimateLp, arLp, rateLp, endDate, jiraVersion,
 				actorID, createdAt, updatedAt)
 			if err != nil {
+				_ = tx.Rollback()
 				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
 				continue
 			}
 			issueID, _ = sqlRes.LastInsertId()
+			if err := tx.Commit(); err != nil {
+				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
+				continue
+			}
 			res.Imported++
 		}
 

@@ -471,46 +471,50 @@ func (p searchHitPayload) toCRM() crm.SearchHit {
 }
 
 type customerImportPayload struct {
-	Name               string                 `json:"name"`
-	ContactName        string                 `json:"contact_name,omitempty"`
-	ContactEmail       string                 `json:"contact_email,omitempty"`
-	Address            string                 `json:"address,omitempty"`
-	Country            string                 `json:"country,omitempty"`
-	Industry           string                 `json:"industry,omitempty"`
-	Website            string                 `json:"website,omitempty"`
-	Domain             string                 `json:"domain,omitempty"`
-	VATID              string                 `json:"vat_id,omitempty"`
-	EmployeeCount      *int64                 `json:"employee_count,omitempty"`
-	AnnualRevenueCents *int64                 `json:"annual_revenue_cents,omitempty"`
-	Description        string                 `json:"description,omitempty"`
-	Phone              string                 `json:"phone,omitempty"`
-	VisitAddressStreet string                 `json:"visit_address_street,omitempty"`
-	VisitAddressZip    string                 `json:"visit_address_zip,omitempty"`
-	ExternalID         string                 `json:"external_id"`
-	ExternalURL        string                 `json:"external_url,omitempty"`
-	Contacts           []contactImportPayload `json:"contacts,omitempty"`
+	Name                  string                 `json:"name"`
+	ContactName           string                 `json:"contact_name,omitempty"`
+	ContactEmail          string                 `json:"contact_email,omitempty"`
+	Address               string                 `json:"address,omitempty"`
+	Country               string                 `json:"country,omitempty"`
+	Industry              string                 `json:"industry,omitempty"`
+	Website               string                 `json:"website,omitempty"`
+	Domain                string                 `json:"domain,omitempty"`
+	VATID                 string                 `json:"vat_id,omitempty"`
+	TaxID                 string                 `json:"tax_id,omitempty"`
+	CompanyRegisterNumber string                 `json:"company_register_number,omitempty"`
+	EmployeeCount         *int64                 `json:"employee_count,omitempty"`
+	AnnualRevenueCents    *int64                 `json:"annual_revenue_cents,omitempty"`
+	Description           string                 `json:"description,omitempty"`
+	Phone                 string                 `json:"phone,omitempty"`
+	VisitAddressStreet    string                 `json:"visit_address_street,omitempty"`
+	VisitAddressZip       string                 `json:"visit_address_zip,omitempty"`
+	ExternalID            string                 `json:"external_id"`
+	ExternalURL           string                 `json:"external_url,omitempty"`
+	Contacts              []contactImportPayload `json:"contacts,omitempty"`
 }
 
 func (p customerImportPayload) toCRM() crm.CustomerImport {
 	return crm.CustomerImport{
-		Name:               p.Name,
-		ContactName:        p.ContactName,
-		ContactEmail:       p.ContactEmail,
-		Address:            p.Address,
-		Country:            p.Country,
-		Industry:           p.Industry,
-		Website:            p.Website,
-		Domain:             p.Domain,
-		VATID:              p.VATID,
-		EmployeeCount:      p.EmployeeCount,
-		AnnualRevenueCents: p.AnnualRevenueCents,
-		Description:        p.Description,
-		Phone:              p.Phone,
-		VisitAddressStreet: p.VisitAddressStreet,
-		VisitAddressZip:    p.VisitAddressZip,
-		ExternalID:         p.ExternalID,
-		ExternalURL:        p.ExternalURL,
-		Contacts:           contactsToCRM(p.Contacts),
+		Name:                  p.Name,
+		ContactName:           p.ContactName,
+		ContactEmail:          p.ContactEmail,
+		Address:               p.Address,
+		Country:               p.Country,
+		Industry:              p.Industry,
+		Website:               p.Website,
+		Domain:                p.Domain,
+		VATID:                 p.VATID,
+		TaxID:                 p.TaxID,
+		CompanyRegisterNumber: p.CompanyRegisterNumber,
+		EmployeeCount:         p.EmployeeCount,
+		AnnualRevenueCents:    p.AnnualRevenueCents,
+		Description:           p.Description,
+		Phone:                 p.Phone,
+		VisitAddressStreet:    p.VisitAddressStreet,
+		VisitAddressZip:       p.VisitAddressZip,
+		ExternalID:            p.ExternalID,
+		ExternalURL:           p.ExternalURL,
+		Contacts:              contactsToCRM(p.Contacts),
 	}
 }
 
@@ -548,43 +552,47 @@ func contactsToCRM(in []contactImportPayload) []crm.ContactImport {
 }
 
 type partialUpdatePayload struct {
-	Name               *string                `json:"name,omitempty"`
-	ContactName        *string                `json:"contact_name,omitempty"`
-	ContactEmail       *string                `json:"contact_email,omitempty"`
-	Address            *string                `json:"address,omitempty"`
-	Country            *string                `json:"country,omitempty"`
-	Industry           *string                `json:"industry,omitempty"`
-	Website            *string                `json:"website,omitempty"`
-	Domain             *string                `json:"domain,omitempty"`
-	VATID              *string                `json:"vat_id,omitempty"`
-	EmployeeCount      *int64                 `json:"employee_count,omitempty"`
-	AnnualRevenueCents *int64                 `json:"annual_revenue_cents,omitempty"`
-	Description        *string                `json:"description,omitempty"`
-	Phone              *string                `json:"phone,omitempty"`
-	VisitAddressStreet *string                `json:"visit_address_street,omitempty"`
-	VisitAddressZip    *string                `json:"visit_address_zip,omitempty"`
-	ExternalURL        *string                `json:"external_url,omitempty"`
-	Contacts           []contactImportPayload `json:"contacts,omitempty"`
+	Name                  *string                `json:"name,omitempty"`
+	ContactName           *string                `json:"contact_name,omitempty"`
+	ContactEmail          *string                `json:"contact_email,omitempty"`
+	Address               *string                `json:"address,omitempty"`
+	Country               *string                `json:"country,omitempty"`
+	Industry              *string                `json:"industry,omitempty"`
+	Website               *string                `json:"website,omitempty"`
+	Domain                *string                `json:"domain,omitempty"`
+	VATID                 *string                `json:"vat_id,omitempty"`
+	TaxID                 *string                `json:"tax_id,omitempty"`
+	CompanyRegisterNumber *string                `json:"company_register_number,omitempty"`
+	EmployeeCount         *int64                 `json:"employee_count,omitempty"`
+	AnnualRevenueCents    *int64                 `json:"annual_revenue_cents,omitempty"`
+	Description           *string                `json:"description,omitempty"`
+	Phone                 *string                `json:"phone,omitempty"`
+	VisitAddressStreet    *string                `json:"visit_address_street,omitempty"`
+	VisitAddressZip       *string                `json:"visit_address_zip,omitempty"`
+	ExternalURL           *string                `json:"external_url,omitempty"`
+	Contacts              []contactImportPayload `json:"contacts,omitempty"`
 }
 
 func (p partialUpdatePayload) toCRM() crm.PartialUpdate {
 	return crm.PartialUpdate{
-		Name:               p.Name,
-		ContactName:        p.ContactName,
-		ContactEmail:       p.ContactEmail,
-		Address:            p.Address,
-		Country:            p.Country,
-		Industry:           p.Industry,
-		Website:            p.Website,
-		Domain:             p.Domain,
-		VATID:              p.VATID,
-		EmployeeCount:      p.EmployeeCount,
-		AnnualRevenueCents: p.AnnualRevenueCents,
-		Description:        p.Description,
-		Phone:              p.Phone,
-		VisitAddressStreet: p.VisitAddressStreet,
-		VisitAddressZip:    p.VisitAddressZip,
-		ExternalURL:        p.ExternalURL,
-		Contacts:           contactsToCRM(p.Contacts),
+		Name:                  p.Name,
+		ContactName:           p.ContactName,
+		ContactEmail:          p.ContactEmail,
+		Address:               p.Address,
+		Country:               p.Country,
+		Industry:              p.Industry,
+		Website:               p.Website,
+		Domain:                p.Domain,
+		VATID:                 p.VATID,
+		TaxID:                 p.TaxID,
+		CompanyRegisterNumber: p.CompanyRegisterNumber,
+		EmployeeCount:         p.EmployeeCount,
+		AnnualRevenueCents:    p.AnnualRevenueCents,
+		Description:           p.Description,
+		Phone:                 p.Phone,
+		VisitAddressStreet:    p.VisitAddressStreet,
+		VisitAddressZip:       p.VisitAddressZip,
+		ExternalURL:           p.ExternalURL,
+		Contacts:              contactsToCRM(p.Contacts),
 	}
 }

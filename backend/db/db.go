@@ -4728,6 +4728,36 @@ func migrate(db *sql.DB) error {
 			)`,
 			`CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at)`,
 		}},
+
+		// Migration 113: PAI-554 — project-scoped issue-number
+		// allocation moved from racy MAX(issue_number)+1 reads to an
+		// atomic per-project counter. The unique index is the database
+		// backstop; deployments with pre-existing duplicates must repair
+		// them before this migration can apply.
+		{113, []string{
+			`CREATE TABLE IF NOT EXISTS project_issue_counters (
+					project_id   INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+					next_number INTEGER NOT NULL CHECK(next_number >= 1)
+				)`,
+			`INSERT INTO project_issue_counters(project_id, next_number)
+			 SELECT p.id, COALESCE(MAX(i.issue_number), 0) + 1
+			 FROM projects p
+			 LEFT JOIN issues i ON i.project_id = p.id
+			 GROUP BY p.id
+			 ON CONFLICT(project_id) DO UPDATE SET
+			   next_number = max(project_issue_counters.next_number, excluded.next_number)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_project_number_unique
+				 ON issues(project_id, issue_number)
+				 WHERE project_id IS NOT NULL`,
+		}},
+
+		// Migration 114: PAI-558 — explicit legal identifiers for
+		// customer records. tax_id is the report-facing UID/VAT value;
+		// company_register_number stores the Firmenbuchnummer / FN.
+		{114, []string{
+			`ALTER TABLE customers ADD COLUMN tax_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE customers ADD COLUMN company_register_number TEXT NOT NULL DEFAULT ''`,
+		}},
 	}
 
 	for _, m := range migrations {

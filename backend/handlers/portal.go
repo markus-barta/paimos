@@ -530,13 +530,12 @@ func PortalSubmitRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	var maxNum int
-	if err := tx.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(issue_number), 0) FROM issues WHERE project_id=?", projectID).Scan(&maxNum); err != nil {
+	nextNum, err := db.NextIssueNumber(r.Context(), tx, projectID)
+	if err != nil {
 		log.Printf("PortalSubmitRequest: next issue_number: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	nextNum := maxNum + 1
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	res, err := tx.ExecContext(r.Context(), `
@@ -709,14 +708,21 @@ func PortalRejectIssue(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	user := auth.GetUser(r)
 
-	// Create child task describing the rejection
-	var nextNum int
-	if err := db.DB.QueryRow("SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?", projectID).Scan(&nextNum); err != nil {
+	// Create child task describing the rejection.
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	nextNum, err := db.NextIssueNumber(r.Context(), tx, projectID)
+	if err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	sqlRes, err := db.DB.Exec(`
+	sqlRes, err := tx.ExecContext(r.Context(), `
 		INSERT INTO issues (project_id, issue_number, type, parent_id, title, description,
 			status, priority, assignee_id, created_by, created_at, updated_at, notes)
 		VALUES (?, ?, 'task', ?, ?, ?, 'backlog', ?, ?, ?, ?, ?, '[portal rejection]')
@@ -727,8 +733,12 @@ func PortalRejectIssue(w http.ResponseWriter, r *http.Request) {
 	childID, _ := sqlRes.LastInsertId()
 
 	// Reopen parent to in-progress, clear accepted_at/accepted_by
-	if _, err := db.DB.Exec("UPDATE issues SET status='in-progress', accepted_at=NULL, accepted_by=NULL, updated_at=? WHERE id=?", now, issueID); err != nil {
+	if _, err := tx.ExecContext(r.Context(), "UPDATE issues SET status='in-progress', accepted_at=NULL, accepted_by=NULL, updated_at=? WHERE id=?", now, issueID); err != nil {
 		log.Printf("PortalRejectIssue: reopen parent id=%d: %v", issueID, err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}

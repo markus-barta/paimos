@@ -102,9 +102,8 @@ func createKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 	// Same per-project numbering scheme CreateIssue uses, so issue_key
 	// resolution stays consistent (PAI-339: a memory entry's PAI-NNN
 	// alias works the same as a ticket's).
-	var nextNum int
-	if err := tx.QueryRowContext(r.Context(),
-		`SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?`, projectID).Scan(&nextNum); err != nil {
+	nextNum, err := db.NextIssueNumber(r.Context(), tx, projectID)
+	if err != nil {
 		return knowledge.Output{}, err
 	}
 

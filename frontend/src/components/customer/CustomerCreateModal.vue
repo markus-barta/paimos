@@ -27,6 +27,7 @@ const emit = defineEmits<{ close: []; created: [customer: Customer] }>()
 const form = ref({
   name: '', industry: '', contact_name: '', contact_email: '',
   address: '', country: '',
+  tax_id: '', company_register_number: '',
   rate_hourly: null as number | null, rate_lp: null as number | null,
   notes: '',
 })
@@ -46,7 +47,11 @@ async function applyCustomerAiResult(info: { action: string; intent?: string; va
 
 watch(() => props.open, (open) => {
   if (open) {
-    form.value = { name: '', industry: '', contact_name: '', contact_email: '', address: '', country: '', rate_hourly: null, rate_lp: null, notes: '' }
+    form.value = {
+      name: '', industry: '', contact_name: '', contact_email: '',
+      address: '', country: '', tax_id: '', company_register_number: '',
+      rate_hourly: null, rate_lp: null, notes: '',
+    }
     error.value = ''
   }
 })
@@ -99,6 +104,17 @@ async function submit() {
       <div class="field">
         <label>Address <span class="label-hint">— optional</span></label>
         <input v-model="form.address" type="text" placeholder="Hauptstr. 1, 80331 München" />
+      </div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label>UID <span class="label-hint">— optional</span></label>
+          <input v-model="form.tax_id" type="text" placeholder="ATU12345678" />
+        </div>
+        <div class="field">
+          <label>FN <span class="label-hint">— optional</span></label>
+          <input v-model="form.company_register_number" type="text" placeholder="FN 123456x" />
+        </div>
       </div>
 
       <div class="field-grid">

@@ -27,6 +27,10 @@ if grep -qF "TODO fill in before committing" docs/CHANGELOG.md; then
   fail=1
 fi
 
+if ! "$ROOT/scripts/check-knowledge-freshness.sh"; then
+  fail=1
+fi
+
 if [[ $fail -ne 0 ]]; then
   exit 1
 fi

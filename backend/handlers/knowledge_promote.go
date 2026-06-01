@@ -241,10 +241,8 @@ func promoteMemoryTx(r *http.Request, mod knowledge.Module, srcID int64, srcScop
 	)
 	switch toScope {
 	case "project":
-		var nextNum int
-		if err := tx.QueryRowContext(r.Context(),
-			`SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id = ?`,
-			toProjectID).Scan(&nextNum); err != nil {
+		nextNum, err := db.NextIssueNumber(r.Context(), tx, toProjectID)
+		if err != nil {
 			return knowledge.Output{}, err
 		}
 		res, err := tx.ExecContext(r.Context(), `

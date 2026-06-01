@@ -109,6 +109,7 @@ $RECYCLE.BIN/
 docs/RUNBOOK.md
 
 # ── AI agent tools ────────────────────────────────────────────────────────────
+.paimos/cache/
 .opencode/node_modules/
 .opencode/package.json
 .opencode/bun.lock

@@ -460,9 +460,8 @@ func insertEntry(r *http.Request, projectID int64, mod Module, in Input) (Output
 	}
 	defer tx.Rollback()
 
-	var nextNum int
-	if err := tx.QueryRowContext(r.Context(),
-		`SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?`, projectID).Scan(&nextNum); err != nil {
+	nextNum, err := db.NextIssueNumber(r.Context(), tx, projectID)
+	if err != nil {
 		return Output{}, err
 	}
 

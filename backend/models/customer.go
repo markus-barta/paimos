@@ -30,12 +30,12 @@ package models
 // existing API consumers keep working until the read-fallback hits zero
 // in prod logs.
 type Customer struct {
-	ID               int64    `json:"id"`
-	Name             string   `json:"name"`
-	ExternalID       *string  `json:"external_id"`
-	ExternalURL      *string  `json:"external_url"`
-	ExternalProvider *string  `json:"external_provider"`
-	SyncedAt         *string  `json:"synced_at"`
+	ID               int64   `json:"id"`
+	Name             string  `json:"name"`
+	ExternalID       *string `json:"external_id"`
+	ExternalURL      *string `json:"external_url"`
+	ExternalProvider *string `json:"external_provider"`
+	SyncedAt         *string `json:"synced_at"`
 	// Legacy single-contact fields — see PAI-273 read/write compat in
 	// handlers/customers.go. Removed in a follow-up after prod logs
 	// confirm zero fallback hits.
@@ -47,24 +47,26 @@ type Customer struct {
 	// PAI-273 metadata expansion. All nullable / empty-default; the
 	// frontend About card hides any row whose value is empty so
 	// adding a field later is purely additive.
-	Website                string   `json:"website"`
-	Domain                 string   `json:"domain"`
-	VATID                  string   `json:"vat_id"`
-	EmployeeCount          *int64   `json:"employee_count"`
-	AnnualRevenueCents     *int64   `json:"annual_revenue_cents"`
-	Description            string   `json:"description"`
-	Phone                  string   `json:"phone"`
-	BillingAddressStreet   string   `json:"billing_address_street"`
-	BillingAddressCity     string   `json:"billing_address_city"`
-	BillingAddressZip      string   `json:"billing_address_zip"`
-	BillingAddressCountry  string   `json:"billing_address_country"`
-	VisitAddressStreet     string   `json:"visit_address_street"`
-	VisitAddressZip        string   `json:"visit_address_zip"`
-	RateHourly             *float64 `json:"rate_hourly"`
-	RateLp                 *float64 `json:"rate_lp"`
-	Notes                  string   `json:"notes"`
-	CreatedAt              string   `json:"created_at"`
-	UpdatedAt              string   `json:"updated_at"`
+	Website               string   `json:"website"`
+	Domain                string   `json:"domain"`
+	VATID                 string   `json:"vat_id"`
+	TaxID                 string   `json:"tax_id"`
+	CompanyRegisterNumber string   `json:"company_register_number"`
+	EmployeeCount         *int64   `json:"employee_count"`
+	AnnualRevenueCents    *int64   `json:"annual_revenue_cents"`
+	Description           string   `json:"description"`
+	Phone                 string   `json:"phone"`
+	BillingAddressStreet  string   `json:"billing_address_street"`
+	BillingAddressCity    string   `json:"billing_address_city"`
+	BillingAddressZip     string   `json:"billing_address_zip"`
+	BillingAddressCountry string   `json:"billing_address_country"`
+	VisitAddressStreet    string   `json:"visit_address_street"`
+	VisitAddressZip       string   `json:"visit_address_zip"`
+	RateHourly            *float64 `json:"rate_hourly"`
+	RateLp                *float64 `json:"rate_lp"`
+	Notes                 string   `json:"notes"`
+	CreatedAt             string   `json:"created_at"`
+	UpdatedAt             string   `json:"updated_at"`
 	// Aggregates filled in by list / detail handlers. Omitted from the
 	// response when zero so the JSON stays tight for tests.
 	ProjectCount int `json:"project_count,omitempty"`

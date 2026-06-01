@@ -16,7 +16,100 @@ import (
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/handlers/crm"
+	"github.com/markus-barta/paimos/backend/handlers/crm/contracttest"
 )
+
+func TestProviderSharedContract(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); !strings.HasPrefix(got, "Bearer ") {
+			t.Fatalf("expected Bearer auth, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/crm/v3/objects/companies/100":
+			_, _ = w.Write([]byte(`{
+				"id":"100",
+				"properties":{
+					"name":"Contract GmbH",
+					"industry":"Software",
+					"city":"Vienna",
+					"country":"Austria",
+					"website":"https://contract.example",
+					"domain":"contract.example",
+					"description":"Contract fixture",
+					"phone":"+43 1 234",
+					"address":"Main Street 1",
+					"zip":"1010",
+					"numberofemployees":"42",
+					"annualrevenue":"1234.56"
+				}
+			}`))
+		case "/crm/v3/objects/companies/100/associations/contacts":
+			http.NotFound(w, r)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	prev := apiBase
+	apiBase = srv.URL
+	t.Cleanup(func() { apiBase = prev })
+
+	employees := int64(42)
+	revenue := int64(123456)
+	name := "Contract GmbH"
+	industry := "Software"
+	address := "Vienna, Austria"
+	country := "Austria"
+	website := "https://contract.example"
+	domain := "contract.example"
+	description := "Contract fixture"
+	phone := "+43 1 234"
+	street := "Main Street 1"
+	zip := "1010"
+	externalURL := "https://app.hubspot.com/contacts/12345678/company/100"
+	cfg := crm.ProviderConfig{Values: map[string]string{
+		"token":     "valid-token-not-real-just-long-enough-xx",
+		"portal_id": "12345678",
+	}}
+	contracttest.AssertProviderCoreFlows(t, &Provider{}, cfg, contracttest.Fixture{
+		ImportRef:      "100",
+		SyncExternalID: "100",
+		WantImport: crm.CustomerImport{
+			Name:               name,
+			Industry:           industry,
+			Address:            address,
+			Country:            country,
+			Website:            website,
+			Domain:             domain,
+			EmployeeCount:      &employees,
+			AnnualRevenueCents: &revenue,
+			Description:        description,
+			Phone:              phone,
+			VisitAddressStreet: street,
+			VisitAddressZip:    zip,
+			ExternalID:         "100",
+			ExternalURL:        externalURL,
+		},
+		WantSync: crm.PartialUpdate{
+			Name:               &name,
+			Industry:           &industry,
+			Address:            &address,
+			Country:            &country,
+			Website:            &website,
+			Domain:             &domain,
+			EmployeeCount:      &employees,
+			AnnualRevenueCents: &revenue,
+			Description:        &description,
+			Phone:              &phone,
+			VisitAddressStreet: &street,
+			VisitAddressZip:    &zip,
+			ExternalURL:        &externalURL,
+		},
+		WantDeepLinkContains: []string{"12345678", "100"},
+	})
+}
 
 // TestValidateConfig_AcceptsBothTokenFlavours pins the PAI-258 invariant:
 // the validator must NOT gate on a `pat-` prefix because HubSpot also

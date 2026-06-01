@@ -122,9 +122,9 @@ func TestProviderConnection(w http.ResponseWriter, r *http.Request) {
 // ── Admin: get one provider's config (no secret values) ─────────────
 
 type providerConfigResponse struct {
-	ProviderID string                       `json:"provider_id"`
-	Enabled    bool                         `json:"enabled"`
-	Fields     []providerConfigFieldValue   `json:"fields"`
+	ProviderID string                     `json:"provider_id"`
+	Enabled    bool                       `json:"enabled"`
+	Fields     []providerConfigFieldValue `json:"fields"`
 }
 
 type providerConfigFieldValue struct {
@@ -289,11 +289,11 @@ func PutProviderEnabled(w http.ResponseWriter, r *http.Request) {
 // short user-facing string. Per-provider isolation: one broken
 // integration does not kill the whole dropdown.
 type searchProviderResult struct {
-	ID      string          `json:"id"`
-	Name    string          `json:"name"`
-	LogoURL string          `json:"logo_url"`
-	Hits    []SearchHit     `json:"hits"`
-	Error   string          `json:"error,omitempty"`
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	LogoURL string      `json:"logo_url"`
+	Hits    []SearchHit `json:"hits"`
+	Error   string      `json:"error,omitempty"`
 }
 
 type searchResponse struct {
@@ -502,21 +502,25 @@ func ImportCustomer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	taxID := strings.TrimSpace(imp.TaxID)
+	if taxID == "" {
+		taxID = strings.TrimSpace(imp.VATID)
+	}
 	res, err := db.DB.Exec(`
 		INSERT INTO customers(
 			name, external_id, external_url, external_provider, synced_at,
 			contact_name, contact_email, address, country, industry,
-			website, domain, description, phone,
+			website, domain, vat_id, tax_id, company_register_number, description, phone,
 			employee_count, annual_revenue_cents,
 			visit_address_street, visit_address_zip
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		          ?, ?, ?, ?,
+		          ?, ?, ?, ?, ?, ?, ?,
 		          ?, ?,
 		          ?, ?)
 	`,
 		imp.Name, nullableStr(imp.ExternalID), nullableStr(imp.ExternalURL), nullableStr(p.ID()), now,
 		imp.ContactName, imp.ContactEmail, imp.Address, imp.Country, imp.Industry,
-		imp.Website, imp.Domain, imp.Description, imp.Phone,
+		imp.Website, imp.Domain, imp.VATID, taxID, imp.CompanyRegisterNumber, imp.Description, imp.Phone,
 		imp.EmployeeCount, imp.AnnualRevenueCents,
 		imp.VisitAddressStreet, imp.VisitAddressZip,
 	)
@@ -585,6 +589,10 @@ func SyncCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	taxID := upd.TaxID
+	if taxID == nil {
+		taxID = upd.VATID
+	}
 	// COALESCE-style update: any field the provider didn't return stays
 	// as it was. Crucially, rate_hourly / rate_lp / notes / contact_*
 	// (when nil in upd) are NEVER touched — this is the "PAIMOS-only
@@ -599,6 +607,9 @@ func SyncCustomer(w http.ResponseWriter, r *http.Request) {
 			industry      = COALESCE(?, industry),
 			website                = COALESCE(?, website),
 			domain                 = COALESCE(?, domain),
+			vat_id                 = COALESCE(?, vat_id),
+			tax_id                 = COALESCE(?, tax_id),
+			company_register_number = COALESCE(?, company_register_number),
 			description            = COALESCE(?, description),
 			phone                  = COALESCE(?, phone),
 			employee_count         = CASE WHEN ? IS NOT NULL THEN ? ELSE employee_count END,
@@ -609,8 +620,9 @@ func SyncCustomer(w http.ResponseWriter, r *http.Request) {
 			synced_at     = ?,
 			updated_at    = ?
 		WHERE id=?
-	`, upd.Name, upd.ContactName, upd.ContactEmail, upd.Address, upd.Country, upd.Industry,
-		upd.Website, upd.Domain, upd.Description, upd.Phone,
+		`, upd.Name, upd.ContactName, upd.ContactEmail, upd.Address, upd.Country, upd.Industry,
+		upd.Website, upd.Domain, upd.VATID, taxID, upd.CompanyRegisterNumber,
+		upd.Description, upd.Phone,
 		upd.EmployeeCount, upd.EmployeeCount,
 		upd.AnnualRevenueCents, upd.AnnualRevenueCents,
 		upd.VisitAddressStreet, upd.VisitAddressZip,

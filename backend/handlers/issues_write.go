@@ -103,11 +103,15 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Assign issue_number atomically
-	var nextNum int
-	if err := db.DB.QueryRow(
-		"SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?", projectID,
-	).Scan(&nextNum); err != nil {
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonError(w, "tx begin failed", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	nextNum, err := db.NextIssueNumber(r.Context(), tx, projectID)
+	if err != nil {
 		jsonError(w, "numbering failed", http.StatusInternalServerError)
 		return
 	}
@@ -117,7 +121,7 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		createdByID = &user.ID
 	}
 
-	res, err := db.DB.Exec(`
+	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
 		                   acceptance_criteria,notes,report_summary,
 		                   status,priority,cost_unit,release,
@@ -145,13 +149,21 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		if sid <= 0 {
 			continue
 		}
-		if _, err := db.DB.Exec(
+		if _, err := tx.ExecContext(r.Context(),
 			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?, ?, 'sprint')`,
 			sid, id,
 		); err != nil {
 			log.Printf("CreateIssue: sprint relation insert failed (sprint=%d, issue=%d): %v", sid, id, err)
 		}
-		upsertIssueEntityRelation(sid, id, "sprint")
+	}
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "commit failed", http.StatusInternalServerError)
+		return
+	}
+	for _, sid := range body.SprintIDs {
+		if sid > 0 {
+			upsertIssueEntityRelation(sid, id, "sprint")
+		}
 	}
 
 	issue := getIssueByID(id)
@@ -179,11 +191,15 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Assign next issue_number
-	var nextNum int
-	if err := db.DB.QueryRow(
-		"SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?", src.ProjectID,
-	).Scan(&nextNum); err != nil {
+	tx, err := db.DB.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonError(w, "tx begin failed", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	nextNum, err := db.NextIssueNumber(r.Context(), tx, *src.ProjectID)
+	if err != nil {
 		jsonError(w, "numbering failed", http.StatusInternalServerError)
 		return
 	}
@@ -193,7 +209,7 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 		createdByID = &user.ID
 	}
 
-	res, err := db.DB.Exec(`
+	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
 		                   acceptance_criteria,notes,report_summary,
 		                   status,priority,cost_unit,release,
@@ -219,13 +235,13 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 	newID, _ := res.LastInsertId()
 
 	// Copy tags
-	tagRows, err := db.DB.Query("SELECT tag_id FROM issue_tags WHERE issue_id=?", sourceID)
+	tagRows, err := tx.QueryContext(r.Context(), "SELECT tag_id FROM issue_tags WHERE issue_id=?", sourceID)
 	if err == nil {
 		defer tagRows.Close()
 		for tagRows.Next() {
 			var tagID int64
 			if tagRows.Scan(&tagID) == nil {
-				if _, err := db.DB.Exec("INSERT INTO issue_tags(issue_id,tag_id) VALUES(?,?)", newID, tagID); err != nil {
+				if _, err := tx.ExecContext(r.Context(), "INSERT INTO issue_tags(issue_id,tag_id) VALUES(?,?)", newID, tagID); err != nil {
 					log.Printf("CloneIssue: copy tag issue=%d tag=%d: %v", newID, tagID, err)
 					continue
 				}
@@ -234,9 +250,13 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add relation: clone → original (type "related")
-	if _, err := db.DB.Exec(`INSERT INTO issue_relations(source_id, target_id, type) VALUES(?,?,?)`,
+	if _, err := tx.ExecContext(r.Context(), `INSERT INTO issue_relations(source_id, target_id, type) VALUES(?,?,?)`,
 		newID, sourceID, "related"); err != nil {
 		log.Printf("CloneIssue: insert relation clone=%d source=%d: %v", newID, sourceID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "commit failed", http.StatusInternalServerError)
+		return
 	}
 	upsertIssueEntityRelation(newID, sourceID, "related")
 

@@ -206,10 +206,11 @@ HTTP layer surfaces the message string verbatim to the admin client.
 
 ## 6. Contract test harness
 
-A minimal contract test lives in
-`backend/handlers/crm/contract_test.go` (TODO — file when the second
-provider lands; until then the HubSpot integration tests are the de
-facto contract). The eventual harness will:
+The shared provider-contract harness lives in
+`backend/handlers/crm/contracttest`. HubSpot and the HTTP sidecar
+provider both exercise it in their package tests, while keeping
+provider-specific regression tests beside the implementation. The
+harness:
 
 - Boot a fake HTTP upstream
 - Run your provider's `ImportRef` against it with a known reference
@@ -217,8 +218,9 @@ facto contract). The eventual harness will:
 - Repeat for `Sync`
 - Verify `DeepLink` is constructed with the expected pattern
 
-To opt in, add a test that calls `crm.Reset()`, `crm.Register(&Provider{})`,
-and a few table-driven calls.
+To opt in, add a provider test that builds a fake upstream, prepares a
+`contracttest.Fixture`, and calls
+`contracttest.AssertProviderCoreFlows(t, &Provider{}, cfg, fixture)`.
 
 ---
 

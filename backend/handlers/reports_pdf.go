@@ -750,9 +750,11 @@ type projectReportParty struct {
 	Lines []string
 }
 
+const projektberichtPaperSignatureTopPaddingMM = 40.0
+
 func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, report *lbReport, opts lbRenderOpts, palette lbPDFPalette, marginL, usableW float64) {
 	_, pageH := pdf.GetPageSize()
-	if pdf.GetY()+112 > pageH-12 {
+	if pdf.GetY()+142 > pageH-12 {
 		pdf.AddPage()
 	}
 	y := pdf.GetY()
@@ -772,7 +774,7 @@ func drawProjektberichtConfirmation(pdf *fpdf.Fpdf, report *lbReport, opts lbRen
 	pdf.SetXY(marginL, y)
 	pdf.MultiCell(usableW, 3.4, text, "", "L", false)
 
-	y = pdf.GetY() + 10
+	y = pdf.GetY() + projektberichtPaperSignatureTopPaddingMM
 	pdf.SetFont("DejaVu", "", 6.5)
 	lineY := y
 	colW := (usableW - 16) / 3
@@ -888,11 +890,12 @@ func projectReportCustomerParty(report *lbReport) projectReportParty {
 	party.Lines = append(party.Lines, name)
 
 	if customer != nil {
-		if address := projectReportCustomerAddress(customer); address != "" {
-			party.Lines = append(party.Lines, address)
+		party.Lines = append(party.Lines, projectReportCustomerAddressLines(customer)...)
+		if taxID := firstNonEmpty(customer.TaxID, customer.VATID); taxID != "" {
+			party.Lines = append(party.Lines, "UID: "+taxID)
 		}
-		if vat := strings.TrimSpace(customer.VATID); vat != "" {
-			party.Lines = append(party.Lines, "UID/VAT: "+vat)
+		if fn := strings.TrimSpace(customer.CompanyRegisterNumber); fn != "" {
+			party.Lines = append(party.Lines, "FN: "+fn)
 		}
 		if contact := projectReportCustomerContact(customer); contact != "" {
 			party.Lines = append(party.Lines, "Kontakt: "+contact)
@@ -925,17 +928,17 @@ func projectReportContractorParty() projectReportParty {
 	}
 }
 
-func projectReportCustomerAddress(c *models.Customer) string {
+func projectReportCustomerAddressLines(c *models.Customer) []string {
 	if c == nil {
-		return ""
+		return nil
 	}
-	if address := compactAddress(c.BillingAddressStreet, c.BillingAddressZip, c.BillingAddressCity, c.BillingAddressCountry); address != "" {
-		return address
+	if lines := compactPostalAddressLines(c.BillingAddressStreet, c.BillingAddressZip, c.BillingAddressCity, c.BillingAddressCountry); len(lines) > 0 {
+		return lines
 	}
-	if address := compactAddress(c.VisitAddressStreet, c.VisitAddressZip, "", c.Country); address != "" {
-		return address
+	if lines := compactPostalAddressLines(c.VisitAddressStreet, c.VisitAddressZip, "", c.Country); len(lines) > 0 {
+		return lines
 	}
-	return joinNonEmpty(c.Address, c.Country)
+	return compactPostalAddressLines(c.Address, "", "", c.Country)
 }
 
 func projectReportCustomerContact(c *models.Customer) string {
@@ -960,6 +963,25 @@ func compactAddress(street, zip, city, country string) string {
 	country = strings.TrimSpace(country)
 	zipCity := joinNonEmpty(zip, city)
 	return joinNonEmpty(street, zipCity, country)
+}
+
+func compactPostalAddressLines(street, zip, city, country string) []string {
+	street = strings.TrimSpace(street)
+	zip = strings.TrimSpace(zip)
+	city = strings.TrimSpace(city)
+	country = strings.TrimSpace(country)
+	zipCity := joinNonEmpty(zip, city)
+	lines := make([]string, 0, 3)
+	if street != "" {
+		lines = append(lines, street)
+	}
+	if zipCity != "" {
+		lines = append(lines, zipCity)
+	}
+	if country != "" {
+		lines = append(lines, country)
+	}
+	return lines
 }
 
 func joinNonEmpty(parts ...string) string {

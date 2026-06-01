@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <code>phase 2 — platform</code> · <code>v3.8.2</code> · <code>AGPL-3.0</code>
+  <code>phase 2 — platform</code> · <code>v3.8.3</code> · <code>AGPL-3.0</code>
 </p>
 
 <p align="center">
@@ -568,8 +568,9 @@ obligation.
 <summary>API surface (route groups)</summary>
 
 - **Agent Context**: per-project `/api/projects/{id}/repos`
-  (CRUD), `/api/projects/{id}/manifest` (GET/PUT structured project
-  facts), `/api/projects/{id}/anchors` (POST bulk-ingest of issue→file
+  (CRUD), `/api/projects/{id}/knowledge` (unified knowledge plane),
+  `/api/projects/{id}/agents/{name}.json` (canonical agent artifact),
+  `/api/projects/{id}/anchors` (POST bulk-ingest of issue→file
   locations), `/api/projects/{id}/graph` (typed entity graph
   traversal), `/api/projects/{id}/retrieve` (mixed-context query),
   plus per-issue `/api/issues/{id}/anchors`

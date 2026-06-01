@@ -1,8 +1,8 @@
 # PAIMOS Data Model
 
-**Status**: Current (active schema as of `v1.1.1`)  
-**Last verified**: 2026-04-20  
-**Schema source of truth**: `backend/db/db.go` — migrations run in order on startup.  
+**Status**: Current with known maintenance follow-up (active API schema `1.5.0`)
+**Last verified**: 2026-06-01 against `backend/db/db.go`, `backend/handlers/schema.go`, and live ppm/pmo `/api/schema`
+**Schema source of truth**: `backend/db/db.go` — migrations run in order on startup.
 **Legacy**: `docs/archive/DATA_MODEL.md` captures the v0.3.5 pre-release baseline and is kept for archival reference only.
 
 > This is the canonical data-model document. The v1.0.0 / v1.1.1
@@ -239,7 +239,8 @@ Additional type-specific states live in separate fields, not in `status`:
 | Field | Type | Notes |
 |-------|------|-------|
 | `product_owner` | INTEGER NULL | FK→users — project lead |
-| `customer_id` | TEXT | External customer reference |
+| `customer_label` | TEXT | Legacy external/customer label retained after M70 |
+| `customer_id` | INTEGER NULL | FK→customers.id — assigned customer record |
 
 ---
 
@@ -514,6 +515,23 @@ stay NULL. Length cap is enforced application-side (64 chars each,
 `handlers.agentAttrCap`) before the INSERT — SQLite `ALTER TABLE` can't
 add CHECK retroactively. PAI-209 undo/redo is unaffected; the new
 columns are purely informational.
+
+### Report, portal, comment visibility, idempotency, issue counters (M107-M114)
+
+The post-M101 migration ledger is active in `backend/db/db.go` and should stay reflected here:
+
+| Migration | Area | Purpose |
+|---|---|---|
+| M107 | `project_cooperation`, `project_report_permissions`, `project_report_snapshots` | Projektbericht report metadata, immutable snapshot evidence, report-facing permissions. |
+| M108 | `issues.report_summary` | Customer-facing report text used by Projektbericht export and portal acceptance pages. |
+| M109 | `CUSTOMERPORTAL` system tag | The marker that makes issues visible in the customer portal. |
+| M110 | customer-portal backfill | One-time terminal-status visibility backfill plus `mutation_log` audit rows with `undoable=0`. |
+| M111 | `comments.visibility` | Internal vs external comment visibility; new comments default to `internal`. |
+| M112 | `idempotency_keys` | Duplicate-prone create-write idempotency cache scoped by key, user, route, and method. |
+| M113 | `project_issue_counters`, `idx_issues_project_number_unique` | Atomic per-project issue-number allocation plus a database uniqueness backstop (PAI-554). |
+| M114 | `customers.tax_id`, `customers.company_register_number` | Explicit customer legal identifiers: UID/tax number and Firmenbuchnummer/FN (PAI-558). |
+
+PAI-553 tracks the remaining hardening: keep this ledger and the published schema version aligned whenever future migrations land.
 
 ---
 

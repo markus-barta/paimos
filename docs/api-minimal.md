@@ -324,14 +324,16 @@ the top-level `knowledge` block.
   function / method / class / type when the repo-side scanner can parse it.
 - `graph` exposes typed entity relations (issues, repos, anchors, project).
 - `graph/blast-radius` answers "what else is affected if this changes?" in a grouped-by-type shape.
-- `retrieve` returns mixed context hits from issue text, anchors, manifest,
-  ADR/NFR manifest sections, derived symbols, and graph-neighbor expansion.
-  It uses project-scoped lexical search plus deterministic local vector
-  scoring and reciprocal-rank fusion across issue and context documents.
-  Response shape includes `hits`, `strategy`, and `meta`.
+- `retrieve` returns mixed context hits from issue text, anchors, knowledge
+  entries, canonical agent/project inventories, derived symbols, and
+  graph-neighbor expansion. It uses project-scoped lexical search plus
+  deterministic local vector scoring and reciprocal-rank fusion across issue
+  and context documents. Response shape includes `hits`, `strategy`, and
+  `meta`.
 
-Recommended manifest keys in v1: `repos`, `commands`, `stack`, `services`,
-`owners`, `nfrs`, `adrs`.
+There is no project manifest blob after PAI-358. Agents should compose
+context from `repos`, `knowledge`, `anchors`, `graph`, `retrieve`, and
+`agents/{name}.json`.
 
 ## Auto-watch sync (PAI-331)
 

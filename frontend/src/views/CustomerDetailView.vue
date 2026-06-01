@@ -214,6 +214,7 @@ const showEdit = ref(false)
 const editForm = ref({
   name: '', industry: '', contact_name: '', contact_email: '',
   address: '', country: '',
+  tax_id: '', company_register_number: '',
   rate_hourly: null as number | null, rate_lp: null as number | null,
   notes: '',
 })
@@ -240,6 +241,8 @@ function openEdit() {
     contact_email: customer.value.contact_email,
     address: customer.value.address,
     country: customer.value.country,
+    tax_id: customer.value.tax_id,
+    company_register_number: customer.value.company_register_number,
     rate_hourly: customer.value.rate_hourly,
     rate_lp: customer.value.rate_lp,
     notes: customer.value.notes,
@@ -665,6 +668,14 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
               <dt><AppIcon name="hash" :size="13" /> VAT</dt>
               <dd>{{ customer.vat_id }}</dd>
             </template>
+            <template v-if="customer.tax_id">
+              <dt><AppIcon name="hash" :size="13" /> UID</dt>
+              <dd>{{ customer.tax_id }}</dd>
+            </template>
+            <template v-if="customer.company_register_number">
+              <dt><AppIcon name="hash" :size="13" /> FN</dt>
+              <dd>{{ customer.company_register_number }}</dd>
+            </template>
             <template v-if="customer.employee_count != null">
               <dt><AppIcon name="users" :size="13" /> Employees</dt>
               <dd>{{ customer.employee_count.toLocaleString() }}</dd>
@@ -685,6 +696,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
           <p
             v-if="!customer.industry && !customer.country && !customer.address
                   && !customer.website && !customer.phone && !customer.vat_id
+                  && !customer.tax_id && !customer.company_register_number
                   && customer.employee_count == null && customer.annual_revenue_cents == null"
             class="cd-info-empty"
           >
@@ -755,6 +767,10 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
         <div class="cd-form-field"><label>Contact email</label><input v-model="editForm.contact_email" type="email" /></div>
       </div>
       <div class="cd-form-field"><label>Address</label><input v-model="editForm.address" type="text" /></div>
+      <div class="cd-form-grid">
+        <div class="cd-form-field"><label>UID</label><input v-model="editForm.tax_id" type="text" /></div>
+        <div class="cd-form-field"><label>FN</label><input v-model="editForm.company_register_number" type="text" /></div>
+      </div>
       <div class="cd-form-grid">
         <div class="cd-form-field"><label>Hourly rate (€/h)</label><input v-model.number="editForm.rate_hourly" type="number" step="0.01" /></div>
         <div class="cd-form-field"><label>LP rate (€/LP)</label><input v-model.number="editForm.rate_lp" type="number" step="0.01" /></div>

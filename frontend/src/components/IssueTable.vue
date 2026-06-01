@@ -394,7 +394,7 @@ onUnmounted(stopColumnResize)
             <span
               v-if="hasCustomerPortal(i)"
               class="customerportal-marker"
-              :title="$t('visibility.label')"
+              title="issue is shown in customer portal"
             >
               <AppIcon name="eye" :size="11" />
             </span>
@@ -407,7 +407,7 @@ onUnmounted(stopColumnResize)
             <span
               v-if="hasCustomerPortal(i)"
               class="customerportal-marker"
-              :title="$t('visibility.label')"
+              title="issue is shown in customer portal"
             >
               <AppIcon name="eye" :size="11" />
             </span>

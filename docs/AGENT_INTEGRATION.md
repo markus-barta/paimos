@@ -128,9 +128,13 @@ structured environment facts instead of just prose.
 curl -s -H "Authorization: Bearer $KEY" \
   https://paimos.example.com/api/projects/2/repos
 
-# Read the structured manifest
+# Read unified project knowledge
 curl -s -H "Authorization: Bearer $KEY" \
-  https://paimos.example.com/api/projects/2/manifest
+  https://paimos.example.com/api/projects/2/knowledge
+
+# Fetch the canonical agent artifact
+curl -s -H "Authorization: Bearer $KEY" \
+  https://paimos.example.com/api/projects/2/agents/codex.json
 
 # Retrieve mixed context hits for a question
 curl -s -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
@@ -142,15 +146,15 @@ curl -s -H "Authorization: Bearer $KEY" \
   https://paimos.example.com/api/issues/PAI-42/anchors
 ```
 
-Recommended manifest fields in v1:
+Project context is no longer a manifest blob (PAI-358). Use the
+first-class surfaces instead:
 
 - `repos` — linked repos or subtrees relevant to the project
-- `commands` — build/test/dev/deploy commands an agent can run
-- `stack` — languages, frameworks, runtime versions, major libraries
-- `services` — databases, queues, third-party systems, local ports
-- `owners` — humans or teams responsible for code areas or environments
-- `nfrs` — uptime/perf/security constraints worth preserving
-- `adrs` — decision records or architectural notes
+- `knowledge` — memories, runbooks, guidelines, external systems, related projects
+- `agents/{name}.json` — canonical agent artifact including commands, rules, and inventories
+- `anchors` — issue-to-file anchors uploaded by repo-side tooling
+- `graph` / `graph/blast-radius` — typed relationships and impact views
+- `retrieve` — mixed context search across issues, anchors, knowledge, graph neighbours, and repo context
 
 Anchors are uploaded to `/api/projects/:id/anchors` by a repo-side tool
 that maps issue keys to file/line locations. Each anchor carries repo
@@ -311,7 +315,7 @@ description so it knows how to reach a PAIMOS instance:
 - Log time:      `POST /issues/{id}/time-entries`
 - Search:        `GET  /search?q=...`
 - Project ctx:   `GET  /projects/{id}/repos`
-- Manifest:      `GET  /projects/{id}/manifest`
+- Knowledge:     `GET  /projects/{id}/knowledge`
 - Retrieve:      `POST /projects/{id}/retrieve`
 - Anchors:       `GET  /issues/{id}/anchors`
 
