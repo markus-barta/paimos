@@ -17,7 +17,7 @@ curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_
 Or, pinned to a version:
 
 ```bash
-VER=3.8.3
+VER=3.9.0
 curl -fL https://github.com/markus-barta/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos
 ```
@@ -63,7 +63,7 @@ curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_
 Every release ships a `sha256sums.txt` next to the tarballs:
 
 ```bash
-VER=3.8.3
+VER=3.9.0
 curl -fLO https://github.com/markus-barta/paimos/releases/download/v$VER/sha256sums.txt
 curl -fLO https://github.com/markus-barta/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz
 shasum -a 256 -c sha256sums.txt --ignore-missing
@@ -89,7 +89,7 @@ also builds from source declaratively.
 ## After install — first-use checklist
 
 ```bash
-paimos --version    # 3.8.3
+paimos --version    # 3.9.0
 ```
 
 ### 1. Log in
