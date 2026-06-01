@@ -40,7 +40,9 @@ type issueListEnvelope struct {
 }
 
 func issueListRevision(w http.ResponseWriter) string {
-	return strings.Trim(w.Header().Get("ETag"), `"`)
+	etag := strings.TrimSpace(w.Header().Get("ETag"))
+	etag = strings.TrimPrefix(etag, "W/")
+	return strings.Trim(etag, `"`)
 }
 
 func parseIssueListWindow(r *http.Request, defaultLimit int) (limit int, offset int) {

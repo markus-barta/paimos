@@ -94,7 +94,7 @@ if [[ "$(cat VERSION 2>/dev/null)" == "$NEW" ]] && \
   # (default macOS collation is case-insensitive and put `docs/` before
   # `VERSION`, breaking a naive equality check).
   CHANGED=$( { git diff --name-only HEAD; git diff --cached --name-only; } | LC_ALL=C sort -u | grep -v '^$' || true )
-  EXPECTED=$'README.md\nVERSION\ndocs/CHANGELOG.md'
+  EXPECTED=$'README.md\nVERSION\ndocs/CHANGELOG.md\ndocs/INSTALL.md'
   if [[ "$CHANGED" == "$EXPECTED" ]]; then
     echo "Resuming half-applied $NEW_TAG (VERSION + README + CHANGELOG already match)."
     RESUMING=1
@@ -147,6 +147,16 @@ tmp=$(mktemp)
 sed -E "s|<code>v[0-9]+\.[0-9]+\.[0-9]+</code>|<code>v$NEW</code>|" README.md > "$tmp"
 mv "$tmp" README.md
 
+# 2b. Install examples. PAI-551's freshness gate checks the pinned CLI
+#     tarball examples and the `paimos --version` smoke line against VERSION,
+#     so the release commit must move them with the badge.
+tmp=$(mktemp)
+sed -E \
+  -e "s|VER=[0-9]+\.[0-9]+\.[0-9]+|VER=$NEW|g" \
+  -e "s|(paimos --version[[:space:]]+# )[0-9]+\.[0-9]+\.[0-9]+|\1$NEW|" \
+  docs/INSTALL.md > "$tmp"
+mv "$tmp" docs/INSTALL.md
+
 # 3. CHANGELOG entry. If an entry for this version already exists (drift case),
 #    just correct its date. Otherwise prepend a draft and open $EDITOR.
 if grep -qE "^## \[$NEW\] " docs/CHANGELOG.md; then
@@ -176,7 +186,7 @@ fi
 "$ROOT/scripts/check-release-hygiene.sh"
 
 # 4. Commit + tag + push
-git add VERSION README.md docs/CHANGELOG.md
+git add VERSION README.md docs/CHANGELOG.md docs/INSTALL.md
 git commit -m "release: $NEW_TAG"
 git tag -a "$NEW_TAG" -m "release $NEW"
 git push origin main

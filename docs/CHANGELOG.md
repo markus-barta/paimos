@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.1] — 2026-06-01
+
+### Fixed
+
+- **PAI-562** — IssueList envelope `revision` metadata now reports the bare
+  list revision hash instead of a partially trimmed weak ETag string.
+- **PAI-551** — The release script now updates the pinned `docs/INSTALL.md`
+  version examples alongside `VERSION`, README, and CHANGELOG so the
+  knowledge-freshness gate stays green during non-interactive release cuts.
+
 ## [3.9.0] — 2026-06-01
 
 ### Added

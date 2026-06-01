@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -40,11 +41,12 @@ func TestIssueListV2ProjectEnvelopeSortAndWindow(t *testing.T) {
 			Title       string `json:"title"`
 			Description string `json:"description"`
 		} `json:"issues"`
-		Total  int    `json:"total"`
-		Offset int    `json:"offset"`
-		Limit  int    `json:"limit"`
-		Sort   string `json:"sort"`
-		Order  string `json:"order"`
+		Total    int    `json:"total"`
+		Offset   int    `json:"offset"`
+		Limit    int    `json:"limit"`
+		Sort     string `json:"sort"`
+		Order    string `json:"order"`
+		Revision string `json:"revision"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&first)
 	if first.Total != 3 || first.Offset != 0 || first.Limit != 2 {
@@ -52,6 +54,9 @@ func TestIssueListV2ProjectEnvelopeSortAndWindow(t *testing.T) {
 	}
 	if first.Sort != "title" || first.Order != "asc" {
 		t.Fatalf("bad sort metadata: sort=%q order=%q", first.Sort, first.Order)
+	}
+	if first.Revision == "" || strings.ContainsAny(first.Revision, `/"`) {
+		t.Fatalf("revision should be the bare list revision hash, got %q", first.Revision)
 	}
 	if got := []string{first.Issues[0].Title, first.Issues[1].Title}; got[0] != "Alpha" || got[1] != "Beta" {
 		t.Fatalf("page 1 order=%v, want Alpha,Beta", got)
