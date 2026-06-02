@@ -64,6 +64,13 @@ jobs:
         working-directory: backend
         run: go test -count=1 -run '^TestRegression_|^TestAuthzFuzz_' ./handlers/...
 
+      # PAI-578: the hygiene/freshness scripts use ripgrep (`rg`), which is
+      # not preinstalled on the ubuntu-24 runner image. Without it,
+      # check-knowledge-freshness.sh's `rg -q` probes all fail "command not
+      # found" and falsely report INSTALL.md version drift.
+      - name: Install ripgrep (hygiene scripts depend on rg)
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Release hygiene
         run: ./scripts/check-release-hygiene.sh
 
@@ -167,9 +174,15 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+      # PAI-578: pin gosec to a fixed version. `@latest` silently bumps when
+      # a new gosec releases, and its taint/SAST analysis changes findings and
+      # line numbers — drifting the committed baseline and turning this gate
+      # red with no code change. Bump deliberately (regenerate the baseline in
+      # the same commit). govulncheck stays @latest on purpose: it is not
+      # baseline-gated and we want the freshest vulnerability database.
       - name: gosec (Go SAST baseline gate)
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.27.1
           ./scripts/check-gosec-baseline.sh
 
       - name: npm audit (frontend production deps)
