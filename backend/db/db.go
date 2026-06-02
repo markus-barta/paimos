@@ -4758,6 +4758,77 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE customers ADD COLUMN tax_id TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE customers ADD COLUMN company_register_number TEXT NOT NULL DEFAULT ''`,
 		}},
+
+		// Migration 115: PAI-577 — issue-list freshness marker.
+		// The issue-list conditional-GET ETag (handlers.computeIssueListETag)
+		// was keyed only on issues.updated_at + COUNT(*), so it was blind to
+		// data the list renders from *other* tables — most notably booked /
+		// time_total from time_entries. Booking time never bumped updated_at,
+		// so the ETag never changed and clients kept a stale BOOKED column via
+		// 304 Not Modified (survived hard reload). content_rev is a per-issue
+		// counter bumped by triggers on every table the list derives fields
+		// from; the ETag now folds in SUM(content_rev) over the matched set.
+		// Triggers are the enforcement layer: any write path (API, mite
+		// import, CLI, manual SQL) bumps the marker, so this can't be
+		// forgotten. A dedicated column (not updated_at) keeps "recently
+		// changed" sort/labels untouched.
+		{115, []string{
+			`ALTER TABLE issues ADD COLUMN content_rev INTEGER NOT NULL DEFAULT 0`,
+
+			// time_entries → booked_hours / time_logged / time_total
+			// (au bumps both OLD and NEW issue in case an entry is moved).
+			`CREATE TRIGGER IF NOT EXISTS trg_time_entries_listrev_ai
+				AFTER INSERT ON time_entries BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id = NEW.issue_id;
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_time_entries_listrev_au
+				AFTER UPDATE ON time_entries BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.issue_id, NEW.issue_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_time_entries_listrev_ad
+				AFTER DELETE ON time_entries BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id = OLD.issue_id;
+				END`,
+
+			// issue_tags → the TAGS column (tag assignment).
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_tags_listrev_ai
+				AFTER INSERT ON issue_tags BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id = NEW.issue_id;
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_tags_listrev_au
+				AFTER UPDATE ON issue_tags BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.issue_id, NEW.issue_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_tags_listrev_ad
+				AFTER DELETE ON issue_tags BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id = OLD.issue_id;
+				END`,
+
+			// issue_relations → sprint_ids (and any relation-derived field).
+			// Both endpoints are issue ids; bump both regardless of type so
+			// no direction/type edge can leave a list stale.
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ai
+				AFTER INSERT ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_au
+				AFTER UPDATE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id, NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ad
+				AFTER DELETE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id);
+				END`,
+
+			// tags → renaming/recoloring a tag changes every chip that shows
+			// it. (Insert: not yet on any issue. Delete: cascades to
+			// issue_tags, firing trg_issue_tags_listrev_ad.)
+			`CREATE TRIGGER IF NOT EXISTS trg_tags_listrev_au
+				AFTER UPDATE ON tags BEGIN
+					UPDATE issues SET content_rev = content_rev + 1
+						WHERE id IN (SELECT issue_id FROM issue_tags WHERE tag_id = NEW.id);
+				END`,
+		}},
 	}
 
 	for _, m := range migrations {

@@ -111,7 +111,7 @@ G701	HIGH	HIGH	handlers/ai_papertrail.go	401	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/ai_papertrail.go	591	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_aggregation.go	121	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_aggregation.go	69	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/issues_etag.go	17	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/issues_etag.go	25	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	102	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/issues_list.go	223	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis

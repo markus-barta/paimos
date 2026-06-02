@@ -11,10 +11,18 @@ import (
 )
 
 func computeIssueListETag(whereSQL string, args []any) (string, error) {
-	query := `SELECT COALESCE(MAX(i.updated_at), '0'), COUNT(*) FROM issues i WHERE ` + whereSQL
+	// PAI-577: contentRev = SUM(issues.content_rev) over the matched set.
+	// content_rev is bumped by triggers whenever data the list renders from
+	// other tables changes (time entries → booked, tag assignment, sprint
+	// membership, tag rename). MAX(updated_at) only reflects the issues row
+	// itself, so without this the ETag was blind to booked/time changes and
+	// kept serving stale rows via 304. SUM (not MAX) is required: a
+	// non-maximal row incrementing must still move the aggregate.
+	query := `SELECT COALESCE(MAX(i.updated_at), '0'), COUNT(*), COALESCE(SUM(i.content_rev), 0) FROM issues i WHERE ` + whereSQL
 	var maxUpdated string
 	var total int
-	if err := db.DB.QueryRow(query, args...).Scan(&maxUpdated, &total); err != nil {
+	var contentRev int64
+	if err := db.DB.QueryRow(query, args...).Scan(&maxUpdated, &total, &contentRev); err != nil {
 		// PAI-283: surface the underlying SQL error so operators can diagnose
 		// "etag computation failed" 500s instead of guessing at the cause.
 		// whereSQL + args length are diagnostic but bounded (no PII leaks
@@ -23,7 +31,7 @@ func computeIssueListETag(whereSQL string, args []any) (string, error) {
 		return "", err
 	}
 	h := sha256.New()
-	fmt.Fprintf(h, "%s|%d|%s", maxUpdated, total, whereSQL)
+	fmt.Fprintf(h, "%s|%d|%d|%s", maxUpdated, total, contentRev, whereSQL)
 	for _, arg := range args {
 		fmt.Fprintf(h, "|%v", arg)
 	}

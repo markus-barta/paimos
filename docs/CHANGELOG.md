@@ -5,7 +5,21 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.9.3] — 2026-06-01
+## [3.9.4] — 2026-06-02
+
+### Fixed
+
+- **PAI-577** — The issue-list `BOOKED` column (and other time fields) could
+  show stale values. The conditional-GET ETag was keyed only on
+  `issues.updated_at` + row count, so it was blind to data the list renders
+  from other tables: booking time, changing tags, or editing sprint membership
+  never changed the ETag, and clients kept stale rows via `304 Not Modified`
+  (this survived a hard reload, since programmatic fetches still send
+  `If-None-Match`). A new `issues.content_rev` counter — bumped by triggers on
+  `time_entries`, `issue_tags`, `issue_relations`, and `tags` — is folded into
+  the ETag via `SUM(content_rev)`, so any change to a list-rendered derived
+  field now invalidates the cache. The triggers are the enforcement layer: no
+  write path (API, mite import, CLI, manual SQL) can bypass the marker.
 
 ### Changed
 

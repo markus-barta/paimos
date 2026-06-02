@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 114
+const latestSchemaVersion = 115
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -199,6 +199,10 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 	}
 	if !columnExists(t, db, "issues", "last_referenced_at") {
 		t.Fatal("expected issues.last_referenced_at to exist (PAI-347 / M100)")
+	}
+	// PAI-577 / M115 — issue-list freshness marker for the conditional-GET ETag.
+	if !columnExists(t, db, "issues", "content_rev") {
+		t.Fatal("expected issues.content_rev to exist (PAI-577 / M115)")
 	}
 	// PAI-354 / M101 — agent attribution on mutation_log rows.
 	// session_id has lived here since M83; agent_name is the new arrival.
