@@ -1,13 +1,15 @@
 # Pickup — Time & Material reporting (PAI-579/580/581/582)
 
-_Session handoff as of 2026-06-03. Branch `main`, HEAD `45869ba`._
+_Session handoff as of 2026-06-03. Branch `main`. Latest release **v3.10.0**,
+live on ppm + PMO._
 
 ## TL;DR
 
-A multi-part billing/reporting feature set was implemented, tested, released as
-**v3.9.5**, and deployed to **both** instances. A follow-up polish commit
-(`45869ba`) is **committed + pushed but not yet released or deployed** — it
-needs a `v3.9.6` cut and a deploy if you want it live.
+A multi-part billing/reporting feature set was implemented, tested, and shipped
+in two releases — **v3.9.5** (core) and **v3.10.0** (polish) — both deployed to
+**ppm** (`pm.barta.cm`) and **PMO** (`pm.bytepoets.com`) and smoke-tested on
+real data. Nothing is pending deploy. Remaining open items are the broader
+**PAI-582** test-suite ticket and the minor caveats below.
 
 ## Shipped & live (v3.9.5)
 
@@ -37,24 +39,26 @@ each deploy log).
   net/textproto). Was blocking CI security-scan (and thus the docker image /
   deploy). Pinned in go.mod, Dockerfile, and CI + release workflows.
 
-## Committed + pushed, NOT yet released/deployed (`45869ba`)
+## Shipped & live (v3.10.0 — polish, all PAI-580)
 
-Projektbericht polish, all PAI-580. **Decision pending: cut v3.9.6 + deploy?**
+Deployed to ppm + PMO; smoke-tested on real ASC26 data (Apr-2026 159.66 h /
+€23,778.87 and May-2026 127.80 h / €19,033.01 as separate month groups;
+booked-by rendered "bra, mba" etc.; customer PDF renders).
 
 - Removed the `[keine Kundenfassung]` placeholder from the PDF (silent
   description fallback).
 - German thousands separator: `19.033,01` for AR EUR / AR h / subtotals.
 - Optional **"Booked by"** column (`cols=booked_by`) — short usernames per row.
-- **Group by month** added (flat | month | epic): splits each ticket per
-  calendar month of its bookings (one row per ticket-month, grouped `YYYY-MM`).
+- **Group by month** (flat | month | epic): splits each ticket per calendar
+  month of its bookings (one row per ticket-month, grouped `YYYY-MM`).
 
-## How to resume the deploy
+## How to deploy a future cut
 
 ```
-just release patch            # cut v3.9.6 (or pre-write CHANGELOG + tag manually)
-# wait for CI green (test + security-scan + docker), then:
-just deploy-ppm 3.9.6         # smoke: /api/health + time-report/time_booked endpoints
-just deploy-pmo 3.9.6         # only after ppm smoke is clean (customer-facing)
+just release minor            # or patch / <x.y.z>; pre-write the CHANGELOG entry
+# wait for CI green (test + security-scan + docker) on the main commit, then:
+just deploy-ppm <ver>         # smoke: /api/health + time-report/time_booked endpoints
+just deploy-pmo <ver>         # only after ppm smoke is clean (customer-facing)
 ```
 
 Functional smoke (replace KEY/host):
@@ -65,9 +69,8 @@ curl -H "Authorization: Bearer $KEY" -H "User-Agent: x" \
 
 ## Open decisions / caveats
 
-- **Release pending**: `45869ba` polish not yet in a tag/deploy (see above).
-- **Semver**: 3.9.5 was cut as a *patch* by request, though it adds features
-  (arguably minor / 3.10.0). Same call applies to the next cut.
+- **Semver**: 3.9.5 was cut as a *patch* (core features), 3.10.0 as a *minor*
+  (polish). Both live; nothing pending.
 - **Month-group title** is ISO `YYYY-MM` (not localized "Mai 2026") — simple and
   unambiguous; revisit if a localized header is wanted.
 - **Booked-by scope**: populated only for `scope=time_booked` (within the
