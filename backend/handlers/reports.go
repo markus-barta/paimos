@@ -216,13 +216,18 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			i.type, i.title, i.description, i.report_summary, i.status,
 			i.estimate_lp, i.estimate_hours,
 			i.ar_lp, i.ar_hours,
-			COALESCE(i.rate_hourly, epic.rate_hourly) AS rate_hourly,
-			COALESCE(i.rate_lp, epic.rate_lp) AS rate_lp,
+			-- Effective rate hierarchy: issue → epic → project → customer
+			-- (mirrors applyEffectiveRates in projects.go; PAI-54). Without the
+			-- project/customer fallback the AR EUR column is blank whenever the
+			-- rate is only configured at the project or customer level.
+			COALESCE(i.rate_hourly, epic.rate_hourly, p.rate_hourly, c.rate_hourly) AS rate_hourly,
+			COALESCE(i.rate_lp, epic.rate_lp, p.rate_lp, c.rate_lp) AS rate_lp,
 			COALESCE(epic.id, 0) AS epic_id,
 			COALESCE(p.key || '-' || epic.issue_number, '') AS epic_key,
 			COALESCE(epic.title, '') AS epic_title
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
+		LEFT JOIN customers c ON c.id = p.customer_id
 		LEFT JOIN issues epic ON epic.id = i.parent_id AND epic.type = 'epic'
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY epic_key, i.issue_number

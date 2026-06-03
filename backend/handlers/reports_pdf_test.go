@@ -129,6 +129,59 @@ func TestLieferberichtJSON_ColsParam(t *testing.T) {
 	}
 }
 
+// Regression: AR EUR must be computed from the effective rate hierarchy
+// (issue → epic → project → customer). When the rate is only configured on the
+// linked customer — the common case — the report query used to stop at the
+// epic and render a blank AR EUR column.
+func TestLieferberichtJSON_InheritsCustomerRate(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
+		"name": "Inherit Rate Project",
+		"key":  "INHR",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	projectID := responseID(t, resp)
+
+	// Customer carries the rate; project + issue leave it NULL (inherit).
+	res, err := db.DB.Exec(
+		"INSERT INTO customers (name, rate_hourly, rate_lp) VALUES ('AVL List GmbH', 148.93, 1200)")
+	if err != nil {
+		t.Fatalf("insert customer: %v", err)
+	}
+	customerID, _ := res.LastInsertId()
+	if _, err := db.DB.Exec("UPDATE projects SET customer_id=? WHERE id=?", customerID, projectID); err != nil {
+		t.Fatalf("link customer: %v", err)
+	}
+
+	resp = ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]interface{}{
+		"title":  "Billable, no own rate",
+		"type":   "ticket",
+		"status": "backlog",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	issueID := responseID(t, resp)
+	if _, err := db.DB.Exec("UPDATE issues SET ar_hours=10, rate_hourly=NULL, rate_lp=NULL WHERE id=?", issueID); err != nil {
+		t.Fatalf("set ar_hours: %v", err)
+	}
+
+	resp = ts.get(t, fmt.Sprintf("/api/projects/%d/reports/lieferbericht?scope=all_open", projectID), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	defer resp.Body.Close()
+	var body struct {
+		GrandTotal struct {
+			AREUR float64 `json:"ar_eur"`
+		} `json:"grand_total"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	// 10h × 148.93 €/h = 1489.30, inherited from the customer.
+	if body.GrandTotal.AREUR != 1489.3 {
+		t.Fatalf("grand_total.ar_eur=%v, want 1489.3 (inherited customer rate)", body.GrandTotal.AREUR)
+	}
+}
+
 func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	ts := newTestServer(t)
 
