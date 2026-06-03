@@ -44,6 +44,10 @@ type lbIssue struct {
 	RateLp        *float64 `json:"rate_lp"`
 	RateHourly    *float64 `json:"rate_hourly"`
 	ArEur         float64  `json:"ar_eur"`
+	// PAI-580: short usernames who booked time on this row, joined ", " (e.g.
+	// "mba, opa"). Populated for the time_booked scope (within the window);
+	// empty otherwise.
+	BookedBy string `json:"booked_by"`
 }
 
 type lbSubtotal struct {
@@ -55,11 +59,12 @@ type lbSubtotal struct {
 }
 
 type lbReportCols struct {
-	SP    bool `json:"sp"`
-	H     bool `json:"h"`
-	ARSP  bool `json:"ar_sp"`
-	ARH   bool `json:"ar_h"`
-	AREUR bool `json:"ar_eur"`
+	SP       bool `json:"sp"`
+	H        bool `json:"h"`
+	ARSP     bool `json:"ar_sp"`
+	ARH      bool `json:"ar_h"`
+	AREUR    bool `json:"ar_eur"`
+	BookedBy bool `json:"booked_by"`
 }
 
 type lbGroup struct {
@@ -121,8 +126,16 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 	// text precedes the WHERE clause.
 	arLpExpr := "i.ar_lp"
 	arHoursExpr := "i.ar_hours"
+	bookedByExpr := "''"     // PAI-580: usernames who booked (time_booked only)
+	bookingMonthExpr := "''" // PAI-580: per-row month for month grouping
+	orderBy := "epic_key, i.issue_number"
 	windowJoin := ""
 	var windowArgs []any
+
+	// PAI-580: grouping mode. "month" splits each ticket per calendar month of
+	// its bookings (one row per ticket-month) — only meaningful for the
+	// time_booked scope; ignored otherwise.
+	monthGroup := strings.EqualFold(filters.Group, "month")
 
 	switch scope {
 	case "sprint":
@@ -167,21 +180,38 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		if fromDate == "" || toDate == "" {
 			return nil, fmt.Errorf("from and to required for time_booked scope")
 		}
+		// Aggregate per issue (or per issue+month when grouping by month) over
+		// the window. The users join feeds the optional booked-by column; it is
+		// 1:1 with each time entry so it does not affect the hour/material sums.
+		ymSelect := "'' AS ym"
+		groupCols := "te.issue_id"
+		if monthGroup {
+			ymSelect = "strftime('%Y-%m', te.started_at) AS ym"
+			groupCols = "te.issue_id, strftime('%Y-%m', te.started_at)"
+		}
 		windowJoin = `
 		JOIN (
-			SELECT issue_id,
+			SELECT te.issue_id,
+				` + ymSelect + `,
 				SUM(CASE
-					WHEN override IS NOT NULL THEN override
-					WHEN stopped_at IS NOT NULL THEN (julianday(stopped_at) - julianday(started_at)) * 24
+					WHEN te.override IS NOT NULL THEN te.override
+					WHEN te.stopped_at IS NOT NULL THEN (julianday(te.stopped_at) - julianday(te.started_at)) * 24
 					ELSE 0 END) AS w_hours,
-				SUM(COALESCE(material_lp, 0)) AS w_material
-			FROM time_entries
-			WHERE date(started_at) >= date(?) AND date(started_at) <= date(?)
-			GROUP BY issue_id
+				SUM(COALESCE(te.material_lp, 0)) AS w_material,
+				GROUP_CONCAT(DISTINCT u.username) AS w_bookedby
+			FROM time_entries te
+			JOIN users u ON u.id = te.user_id
+			WHERE date(te.started_at) >= date(?) AND date(te.started_at) <= date(?)
+			GROUP BY ` + groupCols + `
 		) tew ON tew.issue_id = i.id`
 		windowArgs = []any{fromDate, toDate}
 		arHoursExpr = "COALESCE(tew.w_hours, 0)"
 		arLpExpr = "COALESCE(tew.w_material, 0)"
+		bookedByExpr = "COALESCE(tew.w_bookedby, '')"
+		bookingMonthExpr = "COALESCE(tew.ym, '')"
+		if monthGroup {
+			orderBy = "tew.ym, i.issue_number"
+		}
 
 	default: // all_open
 		where = append(where, "i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')")
@@ -267,13 +297,15 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			COALESCE(i.rate_lp, epic.rate_lp, p.rate_lp, c.rate_lp) AS rate_lp,
 			COALESCE(epic.id, 0) AS epic_id,
 			COALESCE(p.key || '-' || epic.issue_number, '') AS epic_key,
-			COALESCE(epic.title, '') AS epic_title
+			COALESCE(epic.title, '') AS epic_title,
+			` + bookedByExpr + ` AS booked_by,
+			` + bookingMonthExpr + ` AS booking_month
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN customers c ON c.id = p.customer_id
 		LEFT JOIN issues epic ON epic.id = i.parent_id AND epic.type = 'epic'` + windowJoin + `
 		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY epic_key, i.issue_number
+		ORDER BY ` + orderBy + `
 	`
 
 	// windowJoin's placeholders precede the WHERE args in statement order.
@@ -299,12 +331,14 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			epicID                                              int64
 			issueID                                             int64
 			epicKey, epicTitle                                  string
+			bookedBy, bookingMonth                              string
 		)
 		if err := rows.Scan(
 			&issueID,
 			&issueKey, &iType, &title, &desc, &reportSummary, &status,
 			&estLp, &estH, &arLp, &arH, &rateH, &rateLp,
 			&epicID, &epicKey, &epicTitle,
+			&bookedBy, &bookingMonth,
 		); err != nil {
 			continue
 		}
@@ -315,13 +349,20 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			ID: issueID, IssueKey: issueKey, Type: iType, Title: title, Description: desc, ReportSummary: reportSummary, Status: status,
 			EstimateLp: estLp, EstimateHours: estH, ArLp: arLp, ArHours: arH,
 			RateLp: rateLp, RateHourly: rateH, ArEur: arEur,
+			// GROUP_CONCAT joins with "," — render as ", " (e.g. "mba, opa").
+			BookedBy: strings.ReplaceAll(bookedBy, ",", ", "),
 		}
 
-		// PAI-580: "flat" collapses everything into one project-level group
-		// (no epic banding) — the default for time_booked exports.
+		// PAI-580: grouping. "month" → one group per calendar month of the
+		// bookings; "flat" → a single project-level group; otherwise group by
+		// epic (legacy default), falling back to the project for epic-less rows.
 		gKey := epicKey
 		gTitle := epicTitle
-		if filters.Group == "flat" || epicID == 0 {
+		switch {
+		case monthGroup && bookingMonth != "":
+			gKey = bookingMonth
+			gTitle = bookingMonth
+		case filters.Group == "flat" || epicID == 0:
 			gKey = projectKey
 			gTitle = projectKey
 		}
@@ -367,11 +408,12 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 
 func lbReportColsFromSet(set lbColSet) lbReportCols {
 	return lbReportCols{
-		SP:    set.SP,
-		H:     set.H,
-		ARSP:  set.ARSP,
-		ARH:   set.ARH,
-		AREUR: set.AREUR,
+		SP:       set.SP,
+		H:        set.H,
+		ARSP:     set.ARSP,
+		ARH:      set.ARH,
+		AREUR:    set.AREUR,
+		BookedBy: set.BookedBy,
 	}
 }
 

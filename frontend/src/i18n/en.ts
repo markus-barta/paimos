@@ -353,7 +353,9 @@ export default {
       includeStates: 'Include states',
       grouping: 'Grouping',
       groupFlat: 'Flat',
+      groupMonth: 'By month',
       groupEpic: 'By epic',
+      bookedByCol: 'Booked by',
       noStates: 'Select at least one state.',
       // PAI-418 / PAI-423 / PAI-435.
       textSource: 'Text source',

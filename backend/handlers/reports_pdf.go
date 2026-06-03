@@ -121,10 +121,47 @@ func fmtDE(v float64) string {
 	if v == 0 {
 		return ""
 	}
-	if v == float64(int(v)) {
-		return strconv.Itoa(int(v))
+	// German number format: "." thousands separator, "," decimal separator
+	// → "19.033,01". Whole values render without decimals ("2", "1.000"),
+	// matching the existing AR h convention.
+	if v == float64(int64(v)) {
+		return groupThousandsDE(strconv.FormatInt(int64(v), 10), "")
 	}
-	return strings.Replace(strconv.FormatFloat(v, 'f', 2, 64), ".", ",", 1)
+	intPart, frac, _ := strings.Cut(strconv.FormatFloat(v, 'f', 2, 64), ".")
+	return groupThousandsDE(intPart, frac)
+}
+
+// groupThousandsDE inserts "." every three digits into the integer part and
+// appends ",<frac>" when a fractional part is present. Handles a leading sign.
+func groupThousandsDE(intPart, frac string) string {
+	neg := strings.HasPrefix(intPart, "-")
+	if neg {
+		intPart = intPart[1:]
+	}
+	n := len(intPart)
+	if n > 3 {
+		var b strings.Builder
+		pre := n % 3
+		if pre > 0 {
+			b.WriteString(intPart[:pre])
+			b.WriteByte('.')
+		}
+		for i := pre; i < n; i += 3 {
+			b.WriteString(intPart[i : i+3])
+			if i+3 < n {
+				b.WriteByte('.')
+			}
+		}
+		intPart = b.String()
+	}
+	out := intPart
+	if frac != "" {
+		out += "," + frac
+	}
+	if neg {
+		out = "-" + out
+	}
+	return out
 }
 
 func fmtOptDE(v *float64) string {
@@ -209,11 +246,9 @@ func bodyTextForRow(issue lbIssue, textSource string) string {
 		if s := strings.TrimSpace(issue.ReportSummary); s != "" {
 			return s
 		}
-		fallback := descriptionText(issue.Description, issue.Title)
-		if fallback == "" {
-			return "[keine Kundenfassung]"
-		}
-		return "[keine Kundenfassung] " + fallback
+		// PAI-580: no "[keine Kundenfassung]" marker — fall back silently to the
+		// technical description (the customer should never see the placeholder).
+		return descriptionText(issue.Description, issue.Title)
 	}
 	return descriptionText(issue.Description, issue.Title)
 }
@@ -429,6 +464,7 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 		{msgs.ColARSP, 14, "R"},        // 6 — visible.ARSP
 		{msgs.ColARHours, 14, "R"},     // 7 — visible.ARH
 		{msgs.ColAREUR, 18, "R"},       // 8 — visible.AREUR
+		{msgs.ColBookedBy, 22, "L"},    // 9 — visible.BookedBy (PAI-580, opt-in)
 	}
 
 	// PAI-400: hidden numeric columns release their width to the Description
@@ -441,6 +477,12 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			cols[2].w += cols[idx].w
 			cols[idx].w = 0
 		}
+	}
+	// PAI-580: the optional booked-by column (index 9) releases its width to the
+	// description column when hidden, like the numeric columns.
+	if !visible.BookedBy {
+		cols[2].w += cols[9].w
+		cols[9].w = 0
 	}
 	totalW := 0.0
 	for _, c := range cols {
@@ -646,6 +688,14 @@ func renderLieferberichtPDF(report *lbReport, opts lbRenderOpts) *fpdf.Fpdf {
 			drawNumeric(6, fmtOptDE(issue.ArLp))
 			drawNumeric(7, fmtOptDE(issue.ArHours))
 			drawNumeric(8, fmtDE(issue.ArEur))
+
+			// Col 9: booked-by (PAI-580) — short usernames, left-aligned.
+			if cols[9].w > 0 {
+				drawCellBorder(x, rowY, cols[9].w, rh)
+				pdf.SetXY(x+0.5, rowY+0.8)
+				pdf.CellFormat(cols[9].w-1, lineH, issue.BookedBy, "", 0, "L", false, 0, "")
+				x += cols[9].w
+			}
 
 			// Advance Y
 			pdf.SetXY(marginL, rowY+rh)

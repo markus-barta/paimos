@@ -31,6 +31,7 @@ type lbLang struct {
 	ColARSP          string
 	ColARHours       string
 	ColAREUR         string
+	ColBookedBy      string
 	Subtotal         string
 	GrandTotal       string
 	PageNOfM         string // printf with one %d for current page; literal {nb} expands at PDF output time
@@ -53,6 +54,7 @@ var lbMessages = map[string]lbLang{
 		ColARSP:          "AR SP",
 		ColARHours:       "AR h",
 		ColAREUR:         "AR EUR",
+		ColBookedBy:      "By",
 		Subtotal:         "Subtotal",
 		GrandTotal:       "Grand Total",
 		PageNOfM:         "Page %d of {nb}",
@@ -73,6 +75,7 @@ var lbMessages = map[string]lbLang{
 		ColARSP:          "AR SP",
 		ColARHours:       "AR h",
 		ColAREUR:         "AR EUR",
+		ColBookedBy:      "Von",
 		Subtotal:         "Zwischensumme",
 		GrandTotal:       "Gesamtsumme",
 		PageNOfM:         "Seite %d/{nb}",
@@ -135,18 +138,20 @@ func lbIssueCountLabel(n int, lang string) string {
 // (PAI-400). The Key/Summary/Description/Status identity columns are always
 // present; this set governs only the numeric tail.
 type lbColSet struct {
-	SP    bool
-	H     bool
-	ARSP  bool
-	ARH   bool
-	AREUR bool
+	SP       bool
+	H        bool
+	ARSP     bool
+	ARH      bool
+	AREUR    bool
+	BookedBy bool // PAI-580: optional "who booked" column (short usernames)
 }
 
 // AnyVisible reports whether any numeric column is visible.
 func (s lbColSet) AnyVisible() bool { return s.SP || s.H || s.ARSP || s.ARH || s.AREUR }
 
 // defaultLBColSet returns the back-compat "show everything" set used when the
-// request has no `?cols=` query param.
+// request has no `?cols=` query param. BookedBy stays opt-in (it is only
+// meaningful for the time-booked scope) so default exports are unchanged.
 func defaultLBColSet() lbColSet {
 	return lbColSet{SP: true, H: true, ARSP: true, ARH: true, AREUR: true}
 }
@@ -169,6 +174,8 @@ func parseLBColSet(s string) lbColSet {
 			set.ARH = true
 		case "ar_eur":
 			set.AREUR = true
+		case "booked_by":
+			set.BookedBy = true
 		}
 	}
 	return set

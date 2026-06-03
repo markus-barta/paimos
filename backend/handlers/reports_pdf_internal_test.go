@@ -362,6 +362,41 @@ func TestProjektberichtCustomerPartyHelpersIncludePostalAndLegalDetails(t *testi
 	}
 }
 
+// PAI-580: German number formatting must use "." as the thousands separator
+// and "," as the decimal separator (e.g. 19033.01 → "19.033,01").
+func TestFmtDE_ThousandsSeparator(t *testing.T) {
+	cases := map[float64]string{
+		0:         "",
+		2:         "2",
+		94.03:     "94,03",
+		1000:      "1.000",
+		9418.21:   "9.418,21",
+		19033.01:  "19.033,01",
+		1234567.5: "1.234.567,50",
+		-19033.01: "-19.033,01",
+		127.8:     "127,80",
+	}
+	for in, want := range cases {
+		if got := fmtDE(in); got != want {
+			t.Errorf("fmtDE(%v) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// PAI-580: the report text must never show the "[keine Kundenfassung]"
+// placeholder — a missing summary falls back silently to the description.
+func TestBodyTextForRow_NoMissingSummaryMarker(t *testing.T) {
+	// Title is not a prefix of the description, so descriptionText keeps it.
+	issue := lbIssue{Description: "Technical body text", Title: "Unrelated"}
+	got := bodyTextForRow(issue, "report")
+	if strings.Contains(got, "keine Kundenfassung") {
+		t.Fatalf("body text leaked the placeholder marker: %q", got)
+	}
+	if got != "Technical body text" {
+		t.Fatalf("expected silent description fallback, got %q", got)
+	}
+}
+
 // PAI-557 regression: a customer whose postal address lives only in the
 // free-form Address field (no structured billing/visit address, country set)
 // must still have its full address printed. The previous fallback returned the

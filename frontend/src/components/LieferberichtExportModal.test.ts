@@ -185,6 +185,7 @@ describe('LieferberichtExportModal', () => {
       arSp: false,
       arH: false,
       arEur: false,
+      bookedBy: false,
     })
 
     mounted.unmount()

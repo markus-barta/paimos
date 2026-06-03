@@ -89,8 +89,8 @@ function initialTextSource(): TextSource {
   return stored === 'report' ? 'report' : 'tech'
 }
 
-interface ColSet { sp: boolean; h: boolean; arSp: boolean; arH: boolean; arEur: boolean }
-const defaultCols: ColSet = { sp: true, h: true, arSp: true, arH: true, arEur: true }
+interface ColSet { sp: boolean; h: boolean; arSp: boolean; arH: boolean; arEur: boolean; bookedBy: boolean }
+const defaultCols: ColSet = { sp: true, h: true, arSp: true, arH: true, arEur: true, bookedBy: false }
 function initialCols(): ColSet {
   try {
     const raw = localStorage.getItem(LS_LIEFERBERICHT_COLS)
@@ -130,7 +130,11 @@ const monthPick = ref<string>(prevMonthYM())
 const initRange = monthRange(monthPick.value)
 const dateFrom = ref<string>(initRange.from)
 const dateTo = ref<string>(initRange.to)
-const groupMode = ref<'flat' | 'epic'>(localStorage.getItem(LS_SCOPE_GROUP) === 'epic' ? 'epic' : 'flat')
+function initialGroup(): 'flat' | 'month' | 'epic' {
+  const g = localStorage.getItem(LS_SCOPE_GROUP)
+  return g === 'epic' || g === 'month' ? g : 'flat'
+}
+const groupMode = ref<'flat' | 'month' | 'epic'>(initialGroup())
 
 function initialStates(): Set<string> {
   try {
@@ -213,6 +217,7 @@ const colsParam = computed(() => {
   if (cols.value.arSp)  xs.push('ar_sp')
   if (cols.value.arH)   xs.push('ar_h')
   if (cols.value.arEur) xs.push('ar_eur')
+  if (cols.value.bookedBy) xs.push('booked_by')
   return xs.join(',')
 })
 
@@ -347,6 +352,10 @@ function download() {
               data-testid="lb-group-flat" @click="groupMode = 'flat'"
             >{{ t('lieferbericht.exportModal.groupFlat') }}</button>
             <button
+              type="button" class="lb-export-seg-btn" :class="{ active: groupMode === 'month' }"
+              data-testid="lb-group-month" @click="groupMode = 'month'"
+            >{{ t('lieferbericht.exportModal.groupMonth') }}</button>
+            <button
               type="button" class="lb-export-seg-btn" :class="{ active: groupMode === 'epic' }"
               data-testid="lb-group-epic" @click="groupMode = 'epic'"
             >{{ t('lieferbericht.exportModal.groupEpic') }}</button>
@@ -388,6 +397,7 @@ function download() {
           <label class="lb-export-check"><input data-testid="lb-col-ar-sp" type="checkbox" v-model="cols.arSp" /> {{ t('lieferbericht.table.arSp') }}</label>
           <label class="lb-export-check"><input data-testid="lb-col-ar-h" type="checkbox" v-model="cols.arH" /> {{ t('lieferbericht.table.arHours') }}</label>
           <label class="lb-export-check"><input data-testid="lb-col-ar-eur" type="checkbox" v-model="cols.arEur" /> {{ t('lieferbericht.table.arEur') }} EUR</label>
+          <label class="lb-export-check"><input data-testid="lb-col-booked-by" type="checkbox" v-model="cols.bookedBy" /> {{ t('lieferbericht.exportModal.bookedByCol') }}</label>
         </div>
       </div>
 

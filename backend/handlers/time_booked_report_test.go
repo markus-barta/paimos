@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -135,6 +136,39 @@ func TestTimeBookedReport_MoneyPaths(t *testing.T) {
 	if !approx(onlyNew.GrandTotal.ArHours, 3) || !approx(onlyNew.GrandTotal.ArEur, 300) {
 		t.Fatalf("state filter new grand = h:%v eur:%v, want 3 / 300", onlyNew.GrandTotal.ArHours, onlyNew.GrandTotal.ArEur)
 	}
+
+	// ── PAI-580: booked-by column populated (all entries by "admin") ──────────
+	foundBookedBy := false
+	for _, g := range flat.Groups {
+		for _, is := range g.Issues {
+			if strings.Contains(is.BookedBy, "admin") {
+				foundBookedBy = true
+			}
+		}
+	}
+	if !foundBookedBy {
+		t.Fatalf("expected booked_by to contain 'admin' on time_booked rows")
+	}
+
+	// ── PAI-580: month grouping splits a multi-month ticket per month ─────────
+	// Widen the window to include B's June 40h entry. Month grouping must yield
+	// two groups (2026-05 = A+B+C, 2026-06 = B's 40h).
+	monthRep := getLBReport(t, ts, projectID, fmt.Sprintf("scope=time_booked&from=2026-05-01&to=2026-06-30&group=month&statuses=%s", all))
+	if len(monthRep.Groups) != 2 {
+		t.Fatalf("month grouping: groups=%d, want 2 (2026-05, 2026-06)", len(monthRep.Groups))
+	}
+	juneHours, foundJune := 0.0, false
+	for _, g := range monthRep.Groups {
+		if g.EpicKey == "2026-06" {
+			foundJune = true
+			for _, is := range g.Issues {
+				juneHours += is.ArHours
+			}
+		}
+	}
+	if !foundJune || !approx(juneHours, 40) {
+		t.Fatalf("month grouping: 2026-06 hours=%v (found=%v), want 40 (B's June entry)", juneHours, foundJune)
+	}
 }
 
 type lbTestReport struct {
@@ -145,6 +179,7 @@ type lbTestReport struct {
 			ArHours  float64 `json:"ar_hours"`
 			ArLp     float64 `json:"ar_lp"`
 			ArEur    float64 `json:"ar_eur"`
+			BookedBy string  `json:"booked_by"`
 		} `json:"issues"`
 	} `json:"groups"`
 	GrandTotal struct {

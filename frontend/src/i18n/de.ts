@@ -344,7 +344,9 @@ export default {
       includeStates: 'Status einschließen',
       grouping: 'Gruppierung',
       groupFlat: 'Flach',
+      groupMonth: 'Nach Monat',
       groupEpic: 'Nach Epic',
+      bookedByCol: 'Gebucht von',
       noStates: 'Mindestens einen Status auswählen.',
       // PAI-418 / PAI-423 / PAI-435.
       textSource: 'Text-Quelle',
