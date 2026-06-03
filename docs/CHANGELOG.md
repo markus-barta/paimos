@@ -5,6 +5,43 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.5] — 2026-06-03
+
+### Added
+
+- **PAI-580** — Project report export "By month" scope. The export dialog gains
+  an inline scope toggle: alongside the existing current-filter export, a
+  time-booked scope auto-selects every ticket with ≥1 time booking in a window.
+  A month quick-picker fills the editable From/To fields (the SSOT — widen or
+  narrow freely), dynamic state checkboxes (all issue statuses, default = the
+  completed set), and a flat vs by-epic grouping toggle. Reported AR h / AR EUR
+  reflect the window-booked time (and material), not the ticket's lifetime AR.
+- **PAI-579** — Booked-hours report endpoint
+  `GET /api/projects/{id}/time-report?from=&to=&user=`: per-user, per-day, and
+  per-issue booked hours + material over an explicit window, attributed by the
+  work date (`date(started_at)`, user-settable via PAI-478). Hours-only — no
+  rate exposure, so project-view access suffices.
+- **PAI-581** — Per-entry material booking. Time entries can carry an optional
+  `material_lp` (Leistungspunkte / token cost) independent of hours, enabling
+  Time & Material reporting (time × hourly rate + material × LP rate). Entries
+  may be hours-only, material-only, or both.
+
+### Fixed
+
+- **PAI-557** — Projektbericht PDF now prints the customer's full postal address
+  when it lives only in the free-form `address` field. The fallback chain
+  (billing → visit → free-form) no longer short-circuits on a bare country line,
+  with the country de-duplicated.
+- **PAI-54** — Projektbericht AR EUR resolves the rate through the full
+  effective hierarchy (issue → epic → project → customer). A customer-only rate
+  no longer yields a blank AR EUR column.
+
+### Security
+
+- Bumped the Go build toolchain to **1.25.11**, patching three standard-library
+  vulnerabilities (GO-2026-5037 crypto/x509, GO-2026-5038 mime, GO-2026-5039
+  net/textproto) flagged by govulncheck.
+
 ## [3.9.4] — 2026-06-02
 
 ### Fixed
