@@ -2,6 +2,10 @@ module github.com/markus-barta/paimos/backend
 
 go 1.25.0
 
+// Pin the build toolchain to a patched stdlib: go1.25.11 fixes GO-2026-5037/
+// 5038/5039 (crypto/x509, mime, net/textproto) flagged by govulncheck.
+toolchain go1.25.11
+
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-pdf/fpdf v0.9.0
