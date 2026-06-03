@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] — 2026-06-03
+
+### Added
+
+- **PAI-580** — Projektbericht export gains two options: an optional **"Booked
+  by"** column (`cols=booked_by`) listing the short usernames who booked time on
+  each row ("mba, opa"), and a **"By month"** grouping mode (alongside flat and
+  by-epic) that splits each ticket per calendar month of its bookings — one row
+  per ticket-month under a `YYYY-MM` header, so monthly subtotals are
+  billing-correct.
+
+### Changed
+
+- **PAI-580** — Projektbericht PDF polish:
+  - The `[keine Kundenfassung]` placeholder is gone; a ticket without a
+    customer-facing summary now falls back silently to the technical
+    description.
+  - Numbers use the German thousands separator (`19.033,01`) across AR EUR,
+    AR h, and the subtotal / grand-total rows.
+
 ## [3.9.5] — 2026-06-03
 
 ### Added
