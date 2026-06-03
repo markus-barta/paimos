@@ -932,13 +932,38 @@ func projectReportCustomerAddressLines(c *models.Customer) []string {
 	if c == nil {
 		return nil
 	}
-	if lines := compactPostalAddressLines(c.BillingAddressStreet, c.BillingAddressZip, c.BillingAddressCity, c.BillingAddressCountry); len(lines) > 0 {
+	// Prefer a structured billing address, then a visit address, then the
+	// free-form Address field — the only place some customers (e.g. those
+	// imported or only lightly edited) keep their postal address. Each
+	// structured branch is only taken when it actually carries a street/zip/
+	// city; a bare country must not short-circuit the richer free-form field
+	// (PAI-557: print the postal address whenever it is available).
+	if hasPostalDetail(c.BillingAddressStreet, c.BillingAddressZip, c.BillingAddressCity) {
+		country := firstNonEmpty(c.BillingAddressCountry, c.Country)
+		return compactPostalAddressLines(c.BillingAddressStreet, c.BillingAddressZip, c.BillingAddressCity, country)
+	}
+	if hasPostalDetail(c.VisitAddressStreet, c.VisitAddressZip, "") {
+		return compactPostalAddressLines(c.VisitAddressStreet, c.VisitAddressZip, "", c.Country)
+	}
+	if addr := strings.TrimSpace(c.Address); addr != "" {
+		// Free-form addresses usually already include the city and country, so
+		// emit the text as-is and only append the country when it is missing.
+		lines := []string{addr}
+		if country := strings.TrimSpace(c.Country); country != "" && !strings.Contains(strings.ToLower(addr), strings.ToLower(country)) {
+			lines = append(lines, country)
+		}
 		return lines
 	}
-	if lines := compactPostalAddressLines(c.VisitAddressStreet, c.VisitAddressZip, "", c.Country); len(lines) > 0 {
-		return lines
-	}
-	return compactPostalAddressLines(c.Address, "", "", c.Country)
+	return compactPostalAddressLines("", "", "", c.Country)
+}
+
+// hasPostalDetail reports whether a structured address carries a real
+// street/zip/city — not just a country, which alone is not worth printing as a
+// standalone address block.
+func hasPostalDetail(street, zip, city string) bool {
+	return strings.TrimSpace(street) != "" ||
+		strings.TrimSpace(zip) != "" ||
+		strings.TrimSpace(city) != ""
 }
 
 func projectReportCustomerContact(c *models.Customer) string {

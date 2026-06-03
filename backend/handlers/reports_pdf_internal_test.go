@@ -361,3 +361,35 @@ func TestProjektberichtCustomerPartyHelpersIncludePostalAndLegalDetails(t *testi
 		t.Fatalf("paper signature top padding=%vmm, want at least 40mm", projektberichtPaperSignatureTopPaddingMM)
 	}
 }
+
+// PAI-557 regression: a customer whose postal address lives only in the
+// free-form Address field (no structured billing/visit address, country set)
+// must still have its full address printed. The previous fallback returned the
+// bare country and never reached the free-form Address.
+func TestProjektberichtCustomerAddressLines_FreeFormFallback(t *testing.T) {
+	customer := &models.Customer{
+		Name:    "AVL List GmbH",
+		Address: "Hans-List-Platz 1, 8020 Graz, Austria",
+		Country: "Austria",
+	}
+
+	lines := projectReportCustomerAddressLines(customer)
+	got := strings.Join(lines, "\n")
+
+	if !strings.Contains(got, "Hans-List-Platz 1, 8020 Graz, Austria") {
+		t.Fatalf("free-form address not printed; got lines:\n%s", got)
+	}
+	// Country is already part of the free-form text — it must not be duplicated.
+	if strings.Count(got, "Austria") != 1 {
+		t.Fatalf("country duplicated; got lines:\n%s", got)
+	}
+}
+
+// A bare country with no street/zip/city anywhere must not masquerade as a
+// usable address block.
+func TestProjektberichtCustomerAddressLines_CountryOnly(t *testing.T) {
+	lines := projectReportCustomerAddressLines(&models.Customer{Name: "X", Country: "Austria"})
+	if want := []string{"Austria"}; len(lines) != 1 || lines[0] != want[0] {
+		t.Fatalf("country-only fallback = %v, want %v", lines, want)
+	}
+}
