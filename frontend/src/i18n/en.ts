@@ -344,6 +344,17 @@ export default {
       cancel: 'Cancel',
       ignoredFiltersPrefix: 'These IssueList filters are not (yet) supported by the project-report endpoint and will be ignored:',
       issueListAction: 'Export → Project report PDF',
+      // PAI-580: export scope selector.
+      scope: 'Scope',
+      scopeCurrent: 'Current filter',
+      scopeMonth: 'By month',
+      month: 'Month',
+      monthHint: 'Selects all tickets with time booked in the range. The month picker only fills From/To — edit them freely.',
+      includeStates: 'Include states',
+      grouping: 'Grouping',
+      groupFlat: 'Flat',
+      groupEpic: 'By epic',
+      noStates: 'Select at least one state.',
       // PAI-418 / PAI-423 / PAI-435.
       textSource: 'Text source',
       textSourceTech: 'Technical (description)',

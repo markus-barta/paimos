@@ -606,6 +606,7 @@ export interface TimeEntry {
   started_at: string
   stopped_at: string | null
   override: number | null
+  material_lp: number | null // PAI-581: material booked (LP / token cost)
   comment: string
   created_at: string
   internal_rate_hourly: number | null

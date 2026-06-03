@@ -135,6 +135,7 @@ type timeEntryMutationSnapshot struct {
 	StartedAt          string   `json:"started_at,omitempty"`
 	StoppedAt          *string  `json:"stopped_at"`
 	Override           *float64 `json:"override"`
+	MaterialLp         *float64 `json:"material_lp"` // PAI-581
 	Comment            string   `json:"comment,omitempty"`
 	CreatedAt          string   `json:"created_at,omitempty"`
 	InternalRateHourly *float64 `json:"internal_rate_hourly"`
@@ -556,15 +557,16 @@ func fetchTimeEntryMutationSnapshotTx(tx *sql.Tx, entryID int64) (timeEntryMutat
 	snap := timeEntryMutationSnapshot{ID: entryID}
 	var stoppedAt sql.NullString
 	var override sql.NullFloat64
+	var materialLp sql.NullFloat64
 	var internalRate sql.NullFloat64
 	var miteID sql.NullInt64
 	err := tx.QueryRow(`
-		SELECT id, issue_id, user_id, started_at, stopped_at, override, comment, created_at, internal_rate_hourly, mite_id
+		SELECT id, issue_id, user_id, started_at, stopped_at, override, material_lp, comment, created_at, internal_rate_hourly, mite_id
 		FROM time_entries
 		WHERE id = ?
 	`, entryID).Scan(
 		&snap.ID, &snap.IssueID, &snap.UserID, &snap.StartedAt, &stoppedAt,
-		&override, &snap.Comment, &snap.CreatedAt, &internalRate, &miteID,
+		&override, &materialLp, &snap.Comment, &snap.CreatedAt, &internalRate, &miteID,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -574,6 +576,7 @@ func fetchTimeEntryMutationSnapshotTx(tx *sql.Tx, entryID int64) (timeEntryMutat
 	}
 	snap.StoppedAt = nullStringPtr(stoppedAt)
 	snap.Override = nullFloat64Ptr(override)
+	snap.MaterialLp = nullFloat64Ptr(materialLp)
 	snap.InternalRateHourly = nullFloat64Ptr(internalRate)
 	snap.MiteID = nullInt64Ptr(miteID)
 	snap.Exists = true
@@ -671,19 +674,20 @@ func applyTimeEntrySnapshotTx(ctx context.Context, tx *sql.Tx, entryID int64, sn
 		return &undoConflictError{Message: fmt.Sprintf("time entry user %d no longer exists", snap.UserID)}
 	}
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO time_entries(id, issue_id, user_id, started_at, stopped_at, override, comment, created_at, internal_rate_hourly, mite_id)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO time_entries(id, issue_id, user_id, started_at, stopped_at, override, material_lp, comment, created_at, internal_rate_hourly, mite_id)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			issue_id = excluded.issue_id,
 			user_id = excluded.user_id,
 			started_at = excluded.started_at,
 			stopped_at = excluded.stopped_at,
 			override = excluded.override,
+			material_lp = excluded.material_lp,
 			comment = excluded.comment,
 			created_at = excluded.created_at,
 			internal_rate_hourly = excluded.internal_rate_hourly,
 			mite_id = excluded.mite_id
-	`, snap.ID, snap.IssueID, snap.UserID, snap.StartedAt, snap.StoppedAt, snap.Override, snap.Comment, snap.CreatedAt, snap.InternalRateHourly, snap.MiteID)
+	`, snap.ID, snap.IssueID, snap.UserID, snap.StartedAt, snap.StoppedAt, snap.Override, snap.MaterialLp, snap.Comment, snap.CreatedAt, snap.InternalRateHourly, snap.MiteID)
 	return err
 }
 

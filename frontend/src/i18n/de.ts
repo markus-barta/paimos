@@ -335,6 +335,17 @@ export default {
       cancel: 'Abbrechen',
       ignoredFiltersPrefix: 'Folgende IssueList-Filter werden vom Projektbericht-Endpoint (noch) nicht unterstützt und ignoriert:',
       issueListAction: 'Export → Projektbericht-PDF',
+      // PAI-580: export scope selector.
+      scope: 'Umfang',
+      scopeCurrent: 'Aktueller Filter',
+      scopeMonth: 'Nach Monat',
+      month: 'Monat',
+      monthHint: 'Wählt alle Tickets mit Zeitbuchungen im Zeitraum. Die Monatsauswahl füllt nur Von/Bis — diese sind frei änderbar.',
+      includeStates: 'Status einschließen',
+      grouping: 'Gruppierung',
+      groupFlat: 'Flach',
+      groupEpic: 'Nach Epic',
+      noStates: 'Mindestens einen Status auswählen.',
       // PAI-418 / PAI-423 / PAI-435.
       textSource: 'Text-Quelle',
       textSourceTech: 'Technisch (Beschreibung)',

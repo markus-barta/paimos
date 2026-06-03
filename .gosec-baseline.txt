@@ -39,9 +39,9 @@ G202	MEDIUM	HIGH	handlers/issues_list.go	462	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_list.go	528	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/issues_write.go	799	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/memory_references.go	132-138	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	395	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	816-822	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/mutation_log.go	825-832	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	396	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	820-826	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/mutation_log.go	829-836	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/portal.go	1038-1043	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/portal.go	1219-1225	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/portal.go	1269-1280	SQL string concatenation
@@ -50,7 +50,7 @@ G202	MEDIUM	HIGH	handlers/portal.go	1367-1374	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/project_context.go	840	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/projects.go	48-67	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/recent_projects.go	69-79	SQL string concatenation
-G202	MEDIUM	HIGH	handlers/reports.go	212-229	SQL string concatenation
+G202	MEDIUM	HIGH	handlers/reports.go	255-277	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/super_admin_audit.go	143-153	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	490-496	SQL string concatenation
 G202	MEDIUM	HIGH	handlers/tags.go	528-534	SQL string concatenation
@@ -124,7 +124,7 @@ G701	HIGH	HIGH	handlers/portal.go	451	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/portal.go	479	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/projects.go	48	SQL injection via taint analysis
 G701	HIGH	HIGH	handlers/recent_projects.go	69	SQL injection via taint analysis
-G701	HIGH	HIGH	handlers/reports.go	231	SQL injection via taint analysis
+G701	HIGH	HIGH	handlers/reports.go	284	SQL injection via taint analysis
 G703	HIGH	HIGH	db/db.go	70	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	238	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/branding.go	242	Path traversal via taint analysis
@@ -137,9 +137,9 @@ G703	HIGH	HIGH	handlers/dev.go	159	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/profile.go	188	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	68	Path traversal via taint analysis
 G703	HIGH	HIGH	handlers/reports_logo.go	89	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	724	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	824	Path traversal via taint analysis
-G703	HIGH	HIGH	main.go	835	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	726	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	826	Path traversal via taint analysis
+G703	HIGH	HIGH	main.go	837	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	142	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	153	Path traversal via taint analysis
 G703	HIGH	HIGH	secretvault/vault.go	157	Path traversal via taint analysis

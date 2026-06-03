@@ -40,7 +40,7 @@ func ListTimeEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := db.DB.Query(`
 		SELECT te.id, te.issue_id, te.user_id, COALESCE(NULLIF(u.nickname,''), u.username, ''),
-		       te.started_at, te.stopped_at, te.override, te.comment, te.created_at,
+		       te.started_at, te.stopped_at, te.override, te.material_lp, te.comment, te.created_at,
 		       te.internal_rate_hourly
 		FROM time_entries te
 		LEFT JOIN users u ON u.id = te.user_id
@@ -94,11 +94,12 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		StartedAt string   `json:"started_at"`
-		StoppedAt *string  `json:"stopped_at"`
-		Override  *float64 `json:"override"`
-		Comment   string   `json:"comment"`
-		UserID    *int64   `json:"user_id"` // PAI-335
+		StartedAt  string   `json:"started_at"`
+		StoppedAt  *string  `json:"stopped_at"`
+		Override   *float64 `json:"override"`
+		MaterialLp *float64 `json:"material_lp"` // PAI-581
+		Comment    string   `json:"comment"`
+		UserID     *int64   `json:"user_id"` // PAI-335
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -106,6 +107,10 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.StartedAt == "" {
 		body.StartedAt = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	}
+	if body.MaterialLp != nil && *body.MaterialLp < 0 {
+		jsonError(w, "material_lp must be >= 0", http.StatusBadRequest)
+		return
 	}
 
 	caller := auth.GetUser(r)
@@ -147,9 +152,9 @@ func CreateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := tx.ExecContext(r.Context(), `
-		INSERT INTO time_entries(issue_id, user_id, started_at, stopped_at, override, comment, internal_rate_hourly)
-		VALUES(?,?,?,?,?,?,?)
-	`, ticketID, targetUserID, body.StartedAt, body.StoppedAt, body.Override, body.Comment, userRate)
+		INSERT INTO time_entries(issue_id, user_id, started_at, stopped_at, override, material_lp, comment, internal_rate_hourly)
+		VALUES(?,?,?,?,?,?,?,?)
+	`, ticketID, targetUserID, body.StartedAt, body.StoppedAt, body.Override, body.MaterialLp, body.Comment, userRate)
 	if handleDBError(w, err, "time entry") {
 		return
 	}
@@ -233,14 +238,20 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		StartedAt     *string  `json:"started_at"`
-		StoppedAt     *string  `json:"stopped_at"`
-		Override      *float64 `json:"override"`
-		Comment       *string  `json:"comment"`
-		ClearOverride bool     `json:"clear_override"`
+		StartedAt       *string  `json:"started_at"`
+		StoppedAt       *string  `json:"stopped_at"`
+		Override        *float64 `json:"override"`
+		MaterialLp      *float64 `json:"material_lp"`       // PAI-581
+		ClearMaterialLp bool     `json:"clear_material_lp"` // PAI-581
+		Comment         *string  `json:"comment"`
+		ClearOverride   bool     `json:"clear_override"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if body.MaterialLp != nil && *body.MaterialLp < 0 {
+		jsonError(w, "material_lp must be >= 0", http.StatusBadRequest)
 		return
 	}
 
@@ -275,18 +286,20 @@ func UpdateTimeEntry(w http.ResponseWriter, r *http.Request) {
 				started_at  = CASE WHEN ? IS NOT NULL THEN ? ELSE started_at END,
 				stopped_at = CASE WHEN ? IS NOT NULL THEN ? ELSE stopped_at END,
 				override   = NULL,
+				material_lp = CASE WHEN ? THEN NULL ELSE COALESCE(?, material_lp) END,
 				comment    = COALESCE(?, comment)
 			WHERE id = ?
-		`, body.StartedAt, body.StartedAt, body.StoppedAt, body.StoppedAt, body.Comment, id)
+		`, body.StartedAt, body.StartedAt, body.StoppedAt, body.StoppedAt, body.ClearMaterialLp, body.MaterialLp, body.Comment, id)
 	} else {
 		_, err = tx.ExecContext(r.Context(), `
 			UPDATE time_entries SET
 				started_at  = CASE WHEN ? IS NOT NULL THEN ? ELSE started_at END,
 				stopped_at = CASE WHEN ? IS NOT NULL THEN ? ELSE stopped_at END,
 				override   = COALESCE(?, override),
+				material_lp = CASE WHEN ? THEN NULL ELSE COALESCE(?, material_lp) END,
 				comment    = COALESCE(?, comment)
 			WHERE id = ?
-		`, body.StartedAt, body.StartedAt, body.StoppedAt, body.StoppedAt, body.Override, body.Comment, id)
+		`, body.StartedAt, body.StartedAt, body.StoppedAt, body.StoppedAt, body.Override, body.ClearMaterialLp, body.MaterialLp, body.Comment, id)
 	}
 	if handleDBError(w, err, "time entry") {
 		return
@@ -637,7 +650,7 @@ func GetRecentTimers(w http.ResponseWriter, r *http.Request) {
 func getTimeEntryByID(id int64) *models.TimeEntry {
 	row := db.DB.QueryRow(`
 		SELECT te.id, te.issue_id, te.user_id, COALESCE(NULLIF(u.nickname,''), u.username, ''),
-		       te.started_at, te.stopped_at, te.override, te.comment, te.created_at,
+		       te.started_at, te.stopped_at, te.override, te.material_lp, te.comment, te.created_at,
 		       te.internal_rate_hourly
 		FROM time_entries te
 		LEFT JOIN users u ON u.id = te.user_id
@@ -654,7 +667,7 @@ func scanTimeEntry(row teScanner) *models.TimeEntry {
 	var e models.TimeEntry
 	if err := row.Scan(
 		&e.ID, &e.IssueID, &e.UserID, &e.Username,
-		&e.StartedAt, &e.StoppedAt, &e.Override, &e.Comment, &e.CreatedAt,
+		&e.StartedAt, &e.StoppedAt, &e.Override, &e.MaterialLp, &e.Comment, &e.CreatedAt,
 		&e.InternalRateHourly,
 	); err != nil {
 		return nil

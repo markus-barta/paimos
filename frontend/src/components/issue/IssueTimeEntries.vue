@@ -25,7 +25,7 @@ const teLoading      = ref(false)
 const showTeForm     = ref(false)
 const teSaving       = ref(false)
 const teError        = ref('')
-const teForm         = ref({ duration: '', comment: '', userId: 0 as number, date: '' })
+const teForm         = ref({ duration: '', material: '', comment: '', userId: 0 as number, date: '' })
 const teDurationRef  = ref<HTMLInputElement | null>(null)
 
 // PAI-478: localISODate / localDateFromISO / shiftDateInISO are used by
@@ -128,6 +128,7 @@ watch(() => props.issueId, () => load())
 function openTeForm() {
   teForm.value = {
     duration: '',
+    material: '',
     comment: '',
     // PAI-335: default to caller; super-admin can change via picker.
     userId: authStore.user?.id ?? 0,
@@ -148,8 +149,19 @@ async function submitTimeEntry() {
   teSaving.value = true
   try {
     const hours = parseDuration(teForm.value.duration)
-    if (hours == null || hours <= 0) {
-      teError.value = 'Enter a valid duration (e.g. 1h, 30m, 1h30m)'
+    // PAI-581: material (LP / token cost) is optional and may be logged with or
+    // without hours (e.g. an AI-dev cost with no human time).
+    const rawMat = teForm.value.material.trim()
+    const material = rawMat === '' ? null : Number(rawMat)
+    if (material != null && (!Number.isFinite(material) || material < 0)) {
+      teError.value = 'Enter a valid material value (>= 0)'
+      teSaving.value = false
+      return
+    }
+    const hasHours = hours != null && hours > 0
+    const hasMaterial = material != null && material > 0
+    if (!hasHours && !hasMaterial) {
+      teError.value = 'Enter a valid duration (e.g. 1h, 30m, 1h30m) or a material value'
       teSaving.value = false
       return
     }
@@ -161,10 +173,11 @@ async function submitTimeEntry() {
       : new Date().toISOString()
     const body: CreateTimeEntryPayload = {
       comment: teForm.value.comment,
-      override: hours,
+      override: hasHours ? (hours as number) : 0,
       started_at: stamp,
       stopped_at: stamp,
     }
+    if (hasMaterial) body.material_lp = material as number
     // PAI-335: only attach user_id when the super-admin picked
     // someone OTHER than themselves. Sending the caller's own id is
     // harmless server-side, but omitting it keeps the wire shape
@@ -344,6 +357,10 @@ async function deleteTimeEntry(entry: TimeEntry) {
             <div class="field" style="flex:1">
               <label>Duration</label>
               <input ref="teDurationRef" v-model="teForm.duration" type="text" placeholder="e.g. 1h30m, 45m, +10m" />
+            </div>
+            <div class="field" style="flex:1">
+              <label>Material (LP)</label>
+              <input v-model="teForm.material" type="number" min="0" step="any" placeholder="e.g. 2.5" />
             </div>
             <div class="field" style="flex:2">
               <label>Comment</label>

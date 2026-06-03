@@ -216,4 +216,67 @@ describe('LieferberichtExportModal', () => {
 
     remounted.unmount()
   })
+
+  // PAI-580: the "By month" scope ignores the inherited IssueList filters and
+  // emits scope=time_booked with the window (from/to), grouping, and the
+  // selected states (default = the completed set).
+  it('builds a time_booked request from the month scope, ignoring IssueList filters', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const mounted = mountModal({
+      open: true,
+      projectId: 9,
+      filterStatus: ['qa'], // must be ignored in month scope
+      filterTags: ['12'],
+      filterSprints: ['5'], // must NOT become scope=sprint
+      unsupportedActive: ['priority'],
+    })
+    await settle()
+
+    mounted.el.querySelector<HTMLButtonElement>('[data-testid="lb-scope-month"]')?.click()
+    await settle()
+
+    mounted.el.querySelector<HTMLButtonElement>('[data-testid="lb-download"]')?.click()
+    await settle()
+
+    expect(open).toHaveBeenCalledTimes(1)
+    const url = new URL(String(open.mock.calls[0][0]), 'http://paimos.test')
+    expect(url.pathname).toBe('/api/projects/9/reports/projektbericht/pdf')
+    expect(url.searchParams.get('scope')).toBe('time_booked')
+    expect(url.searchParams.get('group')).toBe('flat')
+    expect(url.searchParams.get('sprint_ids')).toBeNull()
+    // Window: from/to present, ISO dates, from <= to.
+    const from = url.searchParams.get('from') ?? ''
+    const to = url.searchParams.get('to') ?? ''
+    expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(to).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(from <= to).toBe(true)
+    // Default states = completed set; the IssueList 'qa' filter is ignored.
+    const states = (url.searchParams.get('statuses') ?? '').split(',')
+    expect(states).toEqual(expect.arrayContaining(['done', 'delivered', 'accepted', 'invoiced']))
+    expect(states).not.toContain('qa')
+
+    mounted.unmount()
+  })
+
+  it('disables download in month scope when no states are selected', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const mounted = mountModal({
+      open: true, projectId: 9, filterStatus: [], filterTags: [], filterSprints: [], unsupportedActive: [],
+    })
+    await settle()
+    mounted.el.querySelector<HTMLButtonElement>('[data-testid="lb-scope-month"]')?.click()
+    await settle()
+    // Uncheck all default states.
+    for (const s of ['done', 'delivered', 'accepted', 'invoiced']) {
+      const cb = mounted.el.querySelector<HTMLInputElement>(`[data-testid="lb-state-${s}"]`)
+      if (cb?.checked) { cb.click() }
+    }
+    await settle()
+    const btn = mounted.el.querySelector<HTMLButtonElement>('[data-testid="lb-download"]')
+    expect(btn?.disabled).toBe(true)
+    btn?.click()
+    await settle()
+    expect(open).not.toHaveBeenCalled()
+    mounted.unmount()
+  })
 })

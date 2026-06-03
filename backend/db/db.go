@@ -4829,6 +4829,16 @@ func migrate(db *sql.DB) error {
 						WHERE id IN (SELECT issue_id FROM issue_tags WHERE tag_id = NEW.id);
 				END`,
 		}},
+
+		// PAI-581: per-entry material booking (e.g. AI token cost expressed in
+		// Leistungspunkte). Nullable; NULL = no material logged on that entry.
+		// Aggregated per window alongside booked hours so Time & Material
+		// reports (PAI-580) can show real per-window AR SP. No work_date column
+		// is added — the de-facto work date is date(started_at), user-settable
+		// via PAI-478 retroactive bookings.
+		{116, []string{
+			`ALTER TABLE time_entries ADD COLUMN material_lp REAL`,
+		}},
 	}
 
 	for _, m := range migrations {

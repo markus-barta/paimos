@@ -23,13 +23,16 @@ type TimeEntry struct {
 	Username  string   `json:"username,omitempty"`
 	StartedAt string   `json:"started_at"`
 	StoppedAt *string  `json:"stopped_at"` // nil = timer still running
-	Override  *float64 `json:"override"`    // manual hours override
-	Comment   string   `json:"comment"`
-	CreatedAt string   `json:"created_at"`
+	Override  *float64 `json:"override"`   // manual hours override
+	// PAI-581: material booked on this entry (Leistungspunkte / token cost),
+	// independent of hours. nil = no material logged.
+	MaterialLp *float64 `json:"material_lp"`
+	Comment    string   `json:"comment"`
+	CreatedAt  string   `json:"created_at"`
 	// Internal rate snapshot (stamped at creation from user's current rate)
 	InternalRateHourly *float64 `json:"internal_rate_hourly"`
 	// computed
-	Hours      *float64 `json:"hours,omitempty"`        // override if set, else (stopped_at - started_at)
+	Hours      *float64 `json:"hours,omitempty"`       // override if set, else (stopped_at - started_at)
 	IssueKey   string   `json:"issue_key,omitempty"`   // populated by running/recent endpoints
 	IssueTitle string   `json:"issue_title,omitempty"` // populated by running/recent endpoints
 	ProjectID  int64    `json:"project_id,omitempty"`  // populated by running/recent endpoints

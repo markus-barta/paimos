@@ -16,6 +16,8 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { LS_LIEFERBERICHT_COLS, LS_LIEFERBERICHT_LANG, LS_LIEFERBERICHT_TEXT_SOURCE } from '@/constants/storage'
 import { isNeg, posOf, OTHER_STATUS_SENTINEL } from '@/composables/useIssueFilter'
+import { STATUSES, ACCRUALS_DEFAULT_STATUSES } from '@/constants/status'
+import { STATUS_LABEL } from '@/composables/useIssueDisplay'
 import type { Issue } from '@/types'
 import AppModal from '@/components/AppModal.vue'
 import BulkGenerateSummaryModal from '@/components/BulkGenerateSummaryModal.vue'
@@ -101,6 +103,71 @@ const lang = ref<Lang>(initialLang())
 const cols = ref<ColSet>(initialCols())
 const textSource = ref<TextSource>(initialTextSource())
 
+// PAI-580: export scope. "current" = the caller's IssueList filter (legacy).
+// "month" = tickets with ≥1 time booking in a [from,to] window (time_booked),
+// shown as window-booked hours/material. The month picker is a convenience that
+// fills the from/to fields, which are the SSOT the user can freely edit.
+type ScopeMode = 'current' | 'month'
+const LS_SCOPE_MODE = 'lieferbericht.scopeMode'
+const LS_SCOPE_GROUP = 'lieferbericht.scopeGroup'
+const LS_SCOPE_STATES = 'lieferbericht.scopeStates'
+
+function pad2(n: number): string { return String(n).padStart(2, '0') }
+function ymOf(d: Date): string { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}` }
+function isoDate(d: Date): string { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+function prevMonthYM(): string {
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1)
+  return ymOf(d)
+}
+function monthRange(ym: string): { from: string; to: string } {
+  const [y, m] = ym.split('-').map(Number)
+  if (!y || !m) { const r = monthRange(prevMonthYM()); return r }
+  return { from: isoDate(new Date(y, m - 1, 1)), to: isoDate(new Date(y, m, 0)) }
+}
+
+const scopeMode = ref<ScopeMode>(localStorage.getItem(LS_SCOPE_MODE) === 'month' ? 'month' : 'current')
+const monthPick = ref<string>(prevMonthYM())
+const initRange = monthRange(monthPick.value)
+const dateFrom = ref<string>(initRange.from)
+const dateTo = ref<string>(initRange.to)
+const groupMode = ref<'flat' | 'epic'>(localStorage.getItem(LS_SCOPE_GROUP) === 'epic' ? 'epic' : 'flat')
+
+function initialStates(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_SCOPE_STATES)
+    if (raw) {
+      const arr = JSON.parse(raw) as string[]
+      const valid = arr.filter((s) => (STATUSES as readonly string[]).includes(s))
+      if (valid.length) return new Set(valid)
+    }
+  } catch { /* fall through to default */ }
+  return new Set(ACCRUALS_DEFAULT_STATUSES)
+}
+const selectedStates = ref<Set<string>>(initialStates())
+const stateOptions = STATUSES.map((s) => ({ value: s as string, label: STATUS_LABEL[s] ?? s }))
+
+// Month quick-picker is sugar: changing it rewrites the from/to SSOT. Editing
+// from/to directly is allowed and is NOT reflected back into the picker.
+function onMonthPick() {
+  const r = monthRange(monthPick.value)
+  dateFrom.value = r.from
+  dateTo.value = r.to
+}
+function toggleState(value: string, on: boolean) {
+  const next = new Set(selectedStates.value)
+  if (on) next.add(value); else next.delete(value)
+  selectedStates.value = next
+}
+
+const monthScopeValid = computed(() =>
+  scopeMode.value !== 'month' ||
+  (!!dateFrom.value && !!dateTo.value && dateFrom.value <= dateTo.value && selectedStates.value.size > 0),
+)
+
+watch(scopeMode, (v) => localStorage.setItem(LS_SCOPE_MODE, v))
+watch(groupMode, (v) => localStorage.setItem(LS_SCOPE_GROUP, v))
+watch(selectedStates, (v) => localStorage.setItem(LS_SCOPE_STATES, JSON.stringify([...v])), { deep: true })
+
 // PAI-418 / PAI-423. Coverage: how many in-scope tickets still lack a
 // customer-facing report_summary? Only meaningful when the user
 // picked the "report" text source; otherwise the coverage line hides.
@@ -118,7 +185,9 @@ const inScopeReportableTotal = computed(() => {
   const list = props.inScopeIssues ?? []
   return list.filter((i) => ['epic', 'cost_unit', 'ticket'].includes(i.type)).length
 })
-const showCoverageLine = computed(() => textSource.value === 'report' && (props.inScopeIssues?.length ?? 0) > 0)
+// Coverage is computed from the IssueList-filtered set, which is only the
+// export scope in "current" mode; hide it for the month scope.
+const showCoverageLine = computed(() => scopeMode.value === 'current' && textSource.value === 'report' && (props.inScopeIssues?.length ?? 0) > 0)
 
 // State for the bulk Generate Missing flow (opens BulkGenerateSummaryModal
 // over this one with the missing-summary IDs).
@@ -163,6 +232,24 @@ function encodeSignedList(values: string[], opts: { numeric: boolean; dropOtherS
 }
 
 function download() {
+  // PAI-580: time-booked scope ignores the inherited IssueList filters
+  // entirely — the month/window + state checkboxes are authoritative.
+  if (scopeMode.value === 'month') {
+    if (!monthScopeValid.value) return
+    const p = new URLSearchParams()
+    p.set('scope', 'time_booked')
+    p.set('from', dateFrom.value)
+    p.set('to', dateTo.value)
+    p.set('group', groupMode.value)
+    p.set('lang', lang.value)
+    p.set('cols', colsParam.value)
+    p.set('snapshot', '1')
+    p.set('text_source', textSource.value)
+    p.set('statuses', [...selectedStates.value].join(','))
+    window.open(`/api/projects/${props.projectId}/reports/projektbericht/pdf?${p.toString()}`, '_blank')
+    emit('close')
+    return
+  }
   const params = new URLSearchParams()
   // Sprint mapping: if exactly one or more sprints are filtered in the
   // IssueList, use scope=sprint with those IDs. Otherwise scope=date_range
@@ -206,6 +293,67 @@ function download() {
 <template>
   <AppModal :open="open" :title="t('lieferbericht.exportModal.title')" max-width="480px" @close="emit('close')">
     <div class="lb-export">
+      <!-- PAI-580: export scope. Inline segmented toggle; "By month" reveals
+           the time-booked controls (month convenience + from/to SSOT + states
+           + grouping). -->
+      <div class="lb-export-row">
+        <label class="lb-export-label">{{ t('lieferbericht.exportModal.scope') }}</label>
+        <div class="lb-export-seg" role="radiogroup">
+          <button
+            type="button" class="lb-export-seg-btn" :class="{ active: scopeMode === 'current' }"
+            data-testid="lb-scope-current" role="radio" :aria-checked="scopeMode === 'current'"
+            @click="scopeMode = 'current'"
+          >{{ t('lieferbericht.exportModal.scopeCurrent') }}</button>
+          <button
+            type="button" class="lb-export-seg-btn" :class="{ active: scopeMode === 'month' }"
+            data-testid="lb-scope-month" role="radio" :aria-checked="scopeMode === 'month'"
+            @click="scopeMode = 'month'"
+          >{{ t('lieferbericht.exportModal.scopeMonth') }}</button>
+        </div>
+      </div>
+
+      <template v-if="scopeMode === 'month'">
+        <div class="lb-export-row">
+          <label class="lb-export-label">{{ t('lieferbericht.exportModal.month') }}</label>
+          <div class="lb-export-monthrow">
+            <input type="month" v-model="monthPick" data-testid="lb-month-pick" class="lb-export-input" @change="onMonthPick" />
+            <span class="lb-export-daterange">
+              <input type="date" v-model="dateFrom" data-testid="lb-date-from" class="lb-export-input" :aria-label="t('lieferbericht.filters.from')" />
+              <span class="lb-export-dash">–</span>
+              <input type="date" v-model="dateTo" data-testid="lb-date-to" class="lb-export-input" :aria-label="t('lieferbericht.filters.to')" />
+            </span>
+          </div>
+          <p class="lb-export-hint">{{ t('lieferbericht.exportModal.monthHint') }}</p>
+        </div>
+
+        <div class="lb-export-row">
+          <label class="lb-export-label">{{ t('lieferbericht.exportModal.includeStates') }}</label>
+          <div class="lb-export-cols">
+            <label v-for="o in stateOptions" :key="o.value" class="lb-export-check">
+              <input
+                type="checkbox" :data-testid="`lb-state-${o.value}`"
+                :checked="selectedStates.has(o.value)"
+                @change="toggleState(o.value, ($event.target as HTMLInputElement).checked)"
+              /> {{ o.label }}
+            </label>
+          </div>
+        </div>
+
+        <div class="lb-export-row">
+          <label class="lb-export-label">{{ t('lieferbericht.exportModal.grouping') }}</label>
+          <div class="lb-export-seg">
+            <button
+              type="button" class="lb-export-seg-btn" :class="{ active: groupMode === 'flat' }"
+              data-testid="lb-group-flat" @click="groupMode = 'flat'"
+            >{{ t('lieferbericht.exportModal.groupFlat') }}</button>
+            <button
+              type="button" class="lb-export-seg-btn" :class="{ active: groupMode === 'epic' }"
+              data-testid="lb-group-epic" @click="groupMode = 'epic'"
+            >{{ t('lieferbericht.exportModal.groupEpic') }}</button>
+          </div>
+        </div>
+      </template>
+
       <div class="lb-export-row">
         <label class="lb-export-label">{{ t('lieferbericht.exportModal.textSource') }}</label>
         <MetaSelect v-model="textSource" :options="textSourceOptions" />
@@ -243,13 +391,16 @@ function download() {
         </div>
       </div>
 
-      <div v-if="unsupportedActive.length > 0" class="lb-export-warn">
+      <div v-if="scopeMode === 'current' && unsupportedActive.length > 0" class="lb-export-warn">
         {{ t('lieferbericht.exportModal.ignoredFiltersPrefix') }} {{ unsupportedActive.join(', ') }}.
+      </div>
+      <div v-if="scopeMode === 'month' && selectedStates.size === 0" class="lb-export-warn">
+        {{ t('lieferbericht.exportModal.noStates') }}
       </div>
 
       <div class="lb-export-actions">
         <button class="btn btn-ghost" @click="emit('close')">{{ t('lieferbericht.exportModal.cancel') }}</button>
-        <button class="btn btn-primary" @click="download">
+        <button class="btn btn-primary" data-testid="lb-download" :disabled="!monthScopeValid" @click="download">
           {{ t('lieferbericht.actions.downloadPdf') }}
         </button>
       </div>
@@ -281,6 +432,21 @@ function download() {
 .lb-export-coverage { display: flex; align-items: center; justify-content: space-between; gap: .65rem; margin-top: .35rem; font-size: 12px; color: var(--text); }
 .lb-export-coverage--ok { color: var(--text-muted); }
 .lb-export-cols { display: flex; gap: .75rem; flex-wrap: wrap; }
+.lb-export-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
+.lb-export-seg-btn {
+  appearance: none; border: 0; background: var(--bg-card); color: var(--text);
+  padding: .4rem .8rem; font-size: 13px; cursor: pointer; border-right: 1px solid var(--border);
+}
+.lb-export-seg-btn:last-child { border-right: 0; }
+.lb-export-seg-btn.active { background: var(--bp-blue); color: #fff; }
+.lb-export-monthrow { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.lb-export-daterange { display: inline-flex; align-items: center; gap: .35rem; }
+.lb-export-dash { color: var(--text-muted); }
+.lb-export-input {
+  font-size: 13px; padding: .35rem .5rem; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg-card); color: var(--text);
+}
+.lb-export-actions .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .lb-export-check { display: inline-flex; align-items: center; gap: .3rem; font-size: 12px; color: var(--text); cursor: pointer; }
 .lb-export-warn {
   font-size: 12px; color: #7a5b1f;

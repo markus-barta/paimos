@@ -97,6 +97,10 @@ type lbFilters struct {
 	Release         string
 	AssigneeID      string
 	IssueIDs        []int64
+	// PAI-580: grouping for the report body. "flat" = single group (no epic
+	// banding); "epic" / "" = group by epic (legacy default). Honoured by all
+	// scopes; time_booked defaults to flat when unset is decided by the caller.
+	Group string
 }
 
 func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate string, filters lbFilters) (*lbReport, error) {
@@ -109,6 +113,16 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 	// Build query
 	args := []any{projectID}
 	where := []string{"i.project_id = ?", "i.type IN ('ticket','task')", "i.deleted_at IS NULL"}
+
+	// AR columns normally come from the ticket-level ar_lp / ar_hours fields.
+	// For scope=time_booked they are replaced by per-issue sums of the time
+	// entries that fall inside the [from,to] window (PAI-580 + PAI-581), joined
+	// via windowJoin. windowArgs bind ahead of the WHERE args because the join
+	// text precedes the WHERE clause.
+	arLpExpr := "i.ar_lp"
+	arHoursExpr := "i.ar_hours"
+	windowJoin := ""
+	var windowArgs []any
 
 	switch scope {
 	case "sprint":
@@ -139,6 +153,35 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			where = append(where, "i.updated_at <= ?")
 			args = append(args, toDate+" 23:59:59")
 		}
+
+	case "time_booked":
+		// PAI-580: select tickets that have ≥1 time booking in the window and
+		// report the window-booked hours + material instead of ticket-level AR.
+		// Attribution is by the calendar date of started_at — the de-facto work
+		// date, user-settable via PAI-478. Hours use the canonical booked
+		// formula (override / (stopped−started)×24 / running=0). No default
+		// status exclusion: the explicit status filter (state checkboxes) is
+		// authoritative. NOTE: date(started_at) is the UTC date; an entry logged
+		// 00:00–02:00 local near a month boundary may attribute to the adjacent
+		// day. Acceptable for work-logging patterns; revisit if it bites.
+		if fromDate == "" || toDate == "" {
+			return nil, fmt.Errorf("from and to required for time_booked scope")
+		}
+		windowJoin = `
+		JOIN (
+			SELECT issue_id,
+				SUM(CASE
+					WHEN override IS NOT NULL THEN override
+					WHEN stopped_at IS NOT NULL THEN (julianday(stopped_at) - julianday(started_at)) * 24
+					ELSE 0 END) AS w_hours,
+				SUM(COALESCE(material_lp, 0)) AS w_material
+			FROM time_entries
+			WHERE date(started_at) >= date(?) AND date(started_at) <= date(?)
+			GROUP BY issue_id
+		) tew ON tew.issue_id = i.id`
+		windowArgs = []any{fromDate, toDate}
+		arHoursExpr = "COALESCE(tew.w_hours, 0)"
+		arLpExpr = "COALESCE(tew.w_material, 0)"
 
 	default: // all_open
 		where = append(where, "i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')")
@@ -215,7 +258,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			p.key || '-' || i.issue_number AS issue_key,
 			i.type, i.title, i.description, i.report_summary, i.status,
 			i.estimate_lp, i.estimate_hours,
-			i.ar_lp, i.ar_hours,
+			` + arLpExpr + ` AS ar_lp, ` + arHoursExpr + ` AS ar_hours,
 			-- Effective rate hierarchy: issue → epic → project → customer
 			-- (mirrors applyEffectiveRates in projects.go; PAI-54). Without the
 			-- project/customer fallback the AR EUR column is blank whenever the
@@ -228,10 +271,15 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN customers c ON c.id = p.customer_id
-		LEFT JOIN issues epic ON epic.id = i.parent_id AND epic.type = 'epic'
+		LEFT JOIN issues epic ON epic.id = i.parent_id AND epic.type = 'epic'` + windowJoin + `
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY epic_key, i.issue_number
 	`
+
+	// windowJoin's placeholders precede the WHERE args in statement order.
+	if len(windowArgs) > 0 {
+		args = append(append([]any{}, windowArgs...), args...)
+	}
 
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
@@ -269,9 +317,11 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 			RateLp: rateLp, RateHourly: rateH, ArEur: arEur,
 		}
 
+		// PAI-580: "flat" collapses everything into one project-level group
+		// (no epic banding) — the default for time_booked exports.
 		gKey := epicKey
 		gTitle := epicTitle
-		if epicID == 0 {
+		if filters.Group == "flat" || epicID == 0 {
 			gKey = projectKey
 			gTitle = projectKey
 		}
@@ -400,6 +450,7 @@ func parseLBFilters(r *http.Request) lbFilters {
 	f.CostUnit = strings.TrimSpace(r.URL.Query().Get("cost_unit"))
 	f.Release = strings.TrimSpace(r.URL.Query().Get("release"))
 	f.AssigneeID = strings.TrimSpace(r.URL.Query().Get("assignee_id"))
+	f.Group = strings.TrimSpace(r.URL.Query().Get("group")) // PAI-580: flat|epic
 	return f
 }
 
