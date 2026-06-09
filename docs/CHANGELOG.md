@@ -5,6 +5,24 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.2] — 2026-06-09
+
+### Added
+
+- **PAI-221** — Added shared frontend display-locale helpers for dates, times,
+  counts, file sizes, durations, fixed decimals, percentages, and compact
+  currency formatting, plus a raw-format guard to keep new Vue surfaces on the
+  same path.
+
+### Changed
+
+- **PAI-221** — Rolled locale-aware display formatting across the PAIMOS UI,
+  including routed pages, portal pages, issue tables/details, dashboard and
+  reporting screens, project/settings panels, AI activity surfaces, attachment
+  metadata, and sync/history states.
+- **PAI-109** — Refreshed the published claim matrix so shipped security and
+  air-gap claims carry current evidence references.
+
 ## [3.10.1] — 2026-06-09
 
 ### Fixed
