@@ -4853,6 +4853,12 @@ func migrate(db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("migration %d: get conn: %w", m.version, err)
 		}
+		if check := migrationPreconditions[m.version]; check != nil {
+			if err := check(context.Background(), conn); err != nil {
+				conn.Close()
+				return fmt.Errorf("migration %d precondition failed: %w", m.version, err)
+			}
+		}
 		migErr := applyMigration(context.Background(), conn, m)
 		conn.Close()
 		if migErr != nil {
@@ -4913,6 +4919,59 @@ func migrationUsesForeignKeyPragma(m migration) bool {
 		}
 	}
 	return false
+}
+
+// migrationPreconditions maps a migration version to a data-shape check that
+// must pass before that migration is applied. Constraint-adding migrations
+// (unique indexes, NOT NULL columns) can brick an upgrade if pre-existing data
+// already violates the new constraint: the step fails mid-transaction with an
+// opaque SQLite error, Open() returns it, the process exits, and the container
+// restart policy replays the same doomed migration forever. A precondition
+// turns that into a fail-fast error that names the offending rows so an
+// operator can repair the data. Checks run only when the migration is pending
+// (zero cost for already-upgraded instances) on the same pinned connection.
+var migrationPreconditions = map[int]func(context.Context, *sql.Conn) error{
+	// PAI-576: migration 113 adds a UNIQUE index on (project_id, issue_number).
+	113: checkNoDuplicateIssueNumbers,
+}
+
+// checkNoDuplicateIssueNumbers refuses migration 113 if the issues table holds
+// any duplicate non-NULL (project_id, issue_number) pair, which would violate
+// the unique index the migration creates. NULL project_id rows are excluded:
+// the partial index is WHERE project_id IS NOT NULL, and SQLite treats NULLs as
+// distinct, so sprint-marker rows (project_id NULL, issue_number 0) are not
+// collisions even though a naive GROUP BY would flag them.
+func checkNoDuplicateIssueNumbers(ctx context.Context, conn *sql.Conn) error {
+	rows, err := conn.QueryContext(ctx, `
+		SELECT project_id, issue_number, GROUP_CONCAT(id) AS ids
+		FROM issues
+		WHERE project_id IS NOT NULL
+		GROUP BY project_id, issue_number
+		HAVING COUNT(*) > 1
+		ORDER BY project_id, issue_number`)
+	if err != nil {
+		return fmt.Errorf("scan for duplicate issue numbers: %w", err)
+	}
+	defer rows.Close()
+
+	var dups []string
+	for rows.Next() {
+		var projectID, issueNumber int
+		var ids string
+		if err := rows.Scan(&projectID, &issueNumber, &ids); err != nil {
+			return fmt.Errorf("scan duplicate row: %w", err)
+		}
+		dups = append(dups, fmt.Sprintf("project_id=%d issue_number=%d ids=[%s]", projectID, issueNumber, ids))
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate duplicate rows: %w", err)
+	}
+	if len(dups) > 0 {
+		return fmt.Errorf("found %d duplicate (project_id, issue_number) group(s) that violate the unique index; "+
+			"renumber the offending issues before upgrading:\n  %s",
+			len(dups), strings.Join(dups, "\n  "))
+	}
+	return nil
 }
 
 func migrationStepError(version int, step string, err error) error {

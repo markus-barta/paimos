@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.1] — 2026-06-09
+
+### Fixed
+
+- **PAI-576** — A pending migration that adds a constraint no longer bricks an
+  upgrade with an opaque mid-transaction error. Migration 113's unique index on
+  `(project_id, issue_number)` now runs behind a data precondition: if the
+  issues table already holds a duplicate non-NULL pair, startup fails fast with
+  an error naming each offending `project_id / issue_number / ids=[…]` so an
+  operator can renumber, instead of the container looping forever on
+  `UNIQUE constraint failed`. NULL-`project_id` sprint markers are excluded
+  (they are distinct under the partial index). The precondition hook is
+  generic, so future constraint-adding migrations can register their own check.
+
 ## [3.10.0] — 2026-06-03
 
 ### Added
