@@ -5,6 +5,31 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.3] — 2026-06-09
+
+### Added
+
+- **PAI-590 / PAI-591** — `paimos serve` adds a local read-only context
+  broker for coding agents. HTTP mode is loopback-only by default and exposes
+  bounded repo state, search, file-read, symbol fallback, remote+local retrieve,
+  and context-pack endpoints; MCP stdio mode exposes the same small read/search
+  surface. The broker blocks traversal and symlink escape, redacts common secret
+  shapes, caps returned data, labels repo-derived content as `untrusted_data`,
+  and has threat-model invariants plus focused hardening tests.
+- **PAI-222** — Server-side project retrieval now defaults to
+  `local-semantic-v2`, stores/ranks vectors through SQLite via
+  `paimos_cosine()` (`vector_index: sqlite-scalar-cosine`), reports embedding
+  provider/freshness metadata, and carries a fixed MRR eval guard against the
+  previous `local-hash-v1` baseline.
+
+### Changed
+
+- Agent integration docs now distinguish central `/retrieve` from the local
+  `paimos serve` broker, document the current pure-Go SQLite vector path, and
+  call out the remaining ONNX/sqlite-vec ANN follow-up honestly.
+- The threat model now includes the local broker trust boundary and
+  `INV-BROKER-*` security invariants.
+
 ## [3.10.2] — 2026-06-09
 
 ### Added
