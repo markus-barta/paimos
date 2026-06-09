@@ -80,8 +80,11 @@ func retrieveProjectContextHits(projectID int64, q string, k int) ([]map[string]
 		"fusion":             "rrf",
 		"k":                  k,
 		"embedding_model":    projectContextEmbeddingModel,
+		"embedding_provider": projectContextEmbeddingProvider,
 		"embedding_indexing": "async",
-		"vector_index":       "bruteforce-fallback",
+		"vector_index":       projectContextVectorIndex,
+		"degraded":           false,
+		"freshness":          projectContextEmbeddingFreshness(projectID),
 		"stages": map[string]int{
 			"issue_lexical":   len(issueHits),
 			"context_lexical": len(contextHits),
@@ -348,6 +351,13 @@ func anyToStringSlice(v any) []string {
 
 func minInt(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b

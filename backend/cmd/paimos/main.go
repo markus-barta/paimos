@@ -139,6 +139,8 @@ Get started:
 	cmd.AddCommand(skillCmd())
 	// PAI-352: paimos onboard — human-readable briefing renderer.
 	cmd.AddCommand(onboardCmd())
+	// PAI-590 / PAI-591: local read-only context broker for coding agents.
+	cmd.AddCommand(serveCmd())
 	// PAI-331: generic sync verbs (init/pull/watch/check) over the
 	// resource registry. PAI-341 will register additional kinds.
 	cmd.AddCommand(syncCmd())

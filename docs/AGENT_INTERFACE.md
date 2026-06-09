@@ -645,6 +645,36 @@ Tools available in the current allowlist:
 
 **Deliberately not exposed**: `batch-update`, `apply`. MCP context grows fast; agents that need bulk should shell out to the `paimos` CLI instead.
 
+### Local repo broker
+
+For coding agents inside a checkout, `paimos serve` can expose local repo
+context alongside authenticated PAIMOS retrieval:
+
+```bash
+paimos serve --project PAI --repo-root . --mcp-stdio
+```
+
+MCP tools exposed by this stdio server:
+
+| Tool | Notes |
+|------|-------|
+| `paimos_repo_state` | branch, HEAD, dirty counts, `AGENTS.md`, anchor index |
+| `paimos_local_search` | bounded fixed-string repo search |
+| `paimos_local_read` | bounded line-range file read; blocks traversal/symlink escape and secret-prone files |
+| `paimos_symbol_search` | regex fallback declaration search; does not claim LSP |
+| `paimos_local_retrieve` | remote `/retrieve` plus local search/symbol hits |
+| `paimos_pack_context` | bounded issue/query context bundle for an agent prompt |
+
+HTTP mode is also available for custom clients:
+
+```bash
+paimos serve --project PAI --repo-root . --addr 127.0.0.1:8765
+```
+
+The broker is read-only and loopback-only by default. Repo-derived
+content is marked `untrusted_data` because an agent must treat local code
+and docs as prompt input, not instructions.
+
 ---
 
 ## 7. Failure modes (explicit)

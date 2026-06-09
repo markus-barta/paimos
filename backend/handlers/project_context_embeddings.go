@@ -18,8 +18,10 @@ import (
 )
 
 const (
-	projectContextEmbeddingModel      = "local-hash-v1"
-	projectContextEmbeddingDim        = 256
+	projectContextEmbeddingModel      = "local-semantic-v2"
+	projectContextEmbeddingProvider   = "builtin-local"
+	projectContextVectorIndex         = "sqlite-scalar-cosine"
+	projectContextEmbeddingDim        = 384
 	projectContextEmbeddingDebounce   = 150 * time.Millisecond
 	projectContextEmbeddingRetryDelay = 100 * time.Millisecond
 )
@@ -61,12 +63,18 @@ func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[s
 	for _, doc := range docs {
 		docByKey[retrievalDocKey(doc.EntityType, doc.EntityID)] = doc
 	}
-	queryVec := embedTextDeterministic(q)
+	queryVec := embedTextLocalSemantic(q)
+	queryRaw, err := encodeEmbedding(queryVec)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := db.DB.Query(`
-		SELECT entity_type, entity_id, vector
+		SELECT entity_type, entity_id, vector, paimos_cosine(vector, ?) AS score
 		FROM entity_embeddings
-		WHERE project_id = ? AND model = ?
-	`, projectID, projectContextEmbeddingModel)
+		WHERE project_id = ? AND model = ? AND dim = ? AND status = 'ready'
+		ORDER BY score DESC, entity_type ASC, entity_id ASC
+		LIMIT ?
+	`, queryRaw, projectID, projectContextEmbeddingModel, len(queryVec), maxInt(k*4, k))
 	if err != nil {
 		return nil, err
 	}
@@ -80,18 +88,15 @@ func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[s
 		var entityType string
 		var entityID int64
 		var raw []byte
-		if err := rows.Scan(&entityType, &entityID, &raw); err != nil {
+		var score float64
+		if err := rows.Scan(&entityType, &entityID, &raw, &score); err != nil {
 			return nil, err
 		}
 		doc, ok := docByKey[retrievalDocKey(entityType, entityID)]
 		if !ok {
 			continue
 		}
-		vec, err := decodeEmbedding(raw)
-		if err != nil {
-			return nil, err
-		}
-		score := cosineSimilarity(queryVec, vec)
+		_ = raw // selected so older query-plan/debugging tools can see vector provenance.
 		if score <= 0.05 {
 			continue
 		}
@@ -219,6 +224,40 @@ func indexProjectContextEmbeddings(projectID int64) error {
 	return syncProjectContextEmbeddings(projectID, docs)
 }
 
+func projectContextEmbeddingFreshness(projectID int64) map[string]any {
+	out := map[string]any{
+		"model": projectContextEmbeddingModel,
+	}
+	projectContextEmbeddingState.mu.Lock()
+	out["queued"] = projectContextEmbeddingState.queued[projectID]
+	out["running"] = projectContextEmbeddingState.running[projectID]
+	projectContextEmbeddingState.mu.Unlock()
+	if db.DB == nil {
+		out["status"] = "degraded"
+		out["error"] = "database not open"
+		return out
+	}
+	var count int
+	var lastIndexed string
+	if err := db.DB.QueryRow(`
+		SELECT COUNT(*), COALESCE(MAX(last_indexed_at), '')
+		FROM entity_embeddings
+		WHERE project_id = ? AND model = ?
+	`, projectID, projectContextEmbeddingModel).Scan(&count, &lastIndexed); err != nil {
+		out["status"] = "degraded"
+		out["error"] = err.Error()
+		return out
+	}
+	out["count"] = count
+	out["last_indexed_at"] = lastIndexed
+	if count == 0 {
+		out["status"] = "cold"
+	} else {
+		out["status"] = "ready"
+	}
+	return out
+}
+
 func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
 	type embeddingRow struct {
 		entityType string
@@ -236,7 +275,7 @@ func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
 			continue
 		}
 		seen[retrievalDocKey(doc.EntityType, doc.EntityID)] = struct{}{}
-		vec := embedTextDeterministic(text)
+		vec := embedTextLocalSemantic(text)
 		raw, err := encodeEmbedding(vec)
 		if err != nil {
 			return err
@@ -283,15 +322,18 @@ func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
 
 	for _, row := range embeddingRows {
 		if _, err := tx.Exec(`
-			INSERT INTO entity_embeddings(project_id, entity_type, entity_id, model, dim, vector, source_hash, last_indexed_at)
-			VALUES(?,?,?,?,?,?,?,?)
+			INSERT INTO entity_embeddings(project_id, entity_type, entity_id, model, dim, vector, source_hash, last_indexed_at, provider, status, error)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(entity_type, entity_id, model) DO UPDATE SET
 				project_id = excluded.project_id,
 				dim = excluded.dim,
 				vector = excluded.vector,
 				source_hash = excluded.source_hash,
-				last_indexed_at = excluded.last_indexed_at
-		`, projectID, row.entityType, row.entityID, projectContextEmbeddingModel, row.dim, row.vector, row.hash, now); err != nil {
+				last_indexed_at = excluded.last_indexed_at,
+				provider = excluded.provider,
+				status = excluded.status,
+				error = excluded.error
+		`, projectID, row.entityType, row.entityID, projectContextEmbeddingModel, row.dim, row.vector, row.hash, now, projectContextEmbeddingProvider, "ready", ""); err != nil {
 			return err
 		}
 	}
@@ -480,11 +522,11 @@ func collectProjectSymbolDocs(projectID int64) ([]retrievalDoc, error) {
 }
 
 func embedTextDeterministic(text string) []float32 {
-	vec := make([]float32, projectContextEmbeddingDim)
+	vec := make([]float32, 256)
 	tokens := embeddingTokenPattern.FindAllString(strings.ToLower(text), -1)
 	for _, token := range tokens {
 		sum := fnvHash(token)
-		idx := int(sum % uint64(projectContextEmbeddingDim))
+		idx := int(sum % uint64(len(vec)))
 		sign := float32(1)
 		if sum&(1<<63) != 0 {
 			sign = -1
@@ -504,6 +546,165 @@ func embedTextDeterministic(text string) []float32 {
 		vec[i] *= scale
 	}
 	return vec
+}
+
+func embedTextLocalSemantic(text string) []float32 {
+	vec := make([]float32, projectContextEmbeddingDim)
+	features := semanticEmbeddingFeatures(text)
+	for feature, weight := range features {
+		addEmbeddingFeature(vec, "f:"+feature, float32(weight))
+	}
+	normalizeEmbedding(vec)
+	return vec
+}
+
+func semanticEmbeddingFeatures(text string) map[string]float64 {
+	features := map[string]float64{}
+	tokens := embeddingTokenPattern.FindAllString(strings.ToLower(text), -1)
+	for _, token := range tokens {
+		for _, part := range splitEmbeddingToken(token) {
+			if part == "" {
+				continue
+			}
+			features[part] += 1
+			if stem := simpleEmbeddingStem(part); stem != "" && stem != part {
+				features[stem] += 0.7
+			}
+			for _, alias := range embeddingAliases[part] {
+				features[alias] += 0.8
+			}
+			for _, gram := range charNgrams(part, 3, 5) {
+				features["ng:"+gram] += 0.25
+			}
+		}
+	}
+	return features
+}
+
+func splitEmbeddingToken(token string) []string {
+	token = strings.Trim(token, " \t\r\n_-./:")
+	if token == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(token, func(r rune) bool {
+		return r == '_' || r == '-' || r == '.' || r == '/' || r == ':'
+	})
+	if len(parts) == 0 {
+		return []string{token}
+	}
+	out := make([]string, 0, len(parts)+1)
+	out = append(out, token)
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if len(part) >= 2 {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func simpleEmbeddingStem(token string) string {
+	for _, suffix := range []string{"ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ers", "ies", "ed", "es", "s"} {
+		if len(token) > len(suffix)+3 && strings.HasSuffix(token, suffix) {
+			if suffix == "ies" {
+				return strings.TrimSuffix(token, suffix) + "y"
+			}
+			return strings.TrimSuffix(token, suffix)
+		}
+	}
+	return token
+}
+
+func charNgrams(token string, minN, maxN int) []string {
+	runes := []rune(token)
+	if len(runes) < minN {
+		return nil
+	}
+	var out []string
+	for n := minN; n <= maxN; n++ {
+		if len(runes) < n {
+			continue
+		}
+		for i := 0; i <= len(runes)-n; i++ {
+			out = append(out, string(runes[i:i+n]))
+		}
+	}
+	return out
+}
+
+func addEmbeddingFeature(vec []float32, feature string, weight float32) {
+	sum := fnvHash(feature)
+	idx := int(sum % uint64(len(vec)))
+	sign := float32(1)
+	if sum&(1<<63) != 0 {
+		sign = -1
+	}
+	vec[idx] += sign * weight
+}
+
+func normalizeEmbedding(vec []float32) {
+	var norm float64
+	for _, v := range vec {
+		norm += float64(v * v)
+	}
+	if norm == 0 {
+		return
+	}
+	scale := float32(1 / math.Sqrt(norm))
+	for i := range vec {
+		vec[i] *= scale
+	}
+}
+
+var embeddingAliases = map[string][]string{
+	"auth":           {"authentication", "authorize", "authorization", "login", "session", "credential", "token", "api-key"},
+	"authentication": {"auth", "login", "session", "credential", "token"},
+	"authorize":      {"auth", "authorization", "permission", "access"},
+	"authorization":  {"auth", "authorize", "permission", "access"},
+	"credential":     {"secret", "token", "api-key", "auth", "login"},
+	"credentials":    {"secret", "token", "api-key", "auth", "login"},
+	"login":          {"auth", "session", "credential", "signin", "sign-in"},
+	"signin":         {"login", "auth", "session"},
+	"session":        {"auth", "login", "cookie", "token"},
+	"token":          {"credential", "secret", "api-key", "auth"},
+	"apikey":         {"api-key", "token", "credential", "secret"},
+	"key":            {"token", "credential", "secret"},
+	"secret":         {"credential", "token", "api-key"},
+
+	"embed":      {"embedding", "vector", "semantic", "similarity", "retrieval"},
+	"embedding":  {"embed", "vector", "semantic", "similarity", "retrieval"},
+	"embeddings": {"embed", "embedding", "vector", "semantic", "similarity", "retrieval"},
+	"semantic":   {"meaning", "paraphrase", "synonym", "embedding", "vector", "retrieval"},
+	"similarity": {"semantic", "embedding", "vector", "nearest"},
+	"synonym":    {"semantic", "paraphrase", "meaning"},
+	"paraphrase": {"semantic", "synonym", "meaning"},
+	"retrieve":   {"retrieval", "search", "context", "semantic", "vector"},
+	"retrieval":  {"retrieve", "search", "context", "semantic", "vector"},
+	"search":     {"retrieve", "retrieval", "query", "find"},
+	"query":      {"search", "retrieve"},
+	"vector":     {"embedding", "semantic", "similarity"},
+
+	"deploy":     {"deployment", "release", "ship", "docker", "container", "ghcr"},
+	"deployment": {"deploy", "release", "ship", "docker", "container", "ghcr"},
+	"release":    {"deploy", "version", "tag", "ship"},
+	"ship":       {"deploy", "release"},
+	"docker":     {"container", "image", "deploy"},
+	"image":      {"container", "docker", "ghcr"},
+
+	"file":       {"attachment", "document", "path"},
+	"attachment": {"file", "upload", "document"},
+	"document":   {"file", "attachment", "knowledge"},
+	"knowledge":  {"memory", "runbook", "guideline", "context"},
+	"memory":     {"knowledge", "context", "lesson"},
+	"runbook":    {"knowledge", "procedure", "guide"},
+	"guideline":  {"knowledge", "rule", "convention"},
+
+	"money":    {"currency", "cost", "price", "billing", "eur", "usd"},
+	"cost":     {"money", "price", "billing", "currency"},
+	"billing":  {"money", "invoice", "cost", "rate"},
+	"invoice":  {"billing", "money", "cost"},
+	"duration": {"time", "hours", "elapsed"},
+	"latency":  {"duration", "time", "performance"},
 }
 
 func fnvHash(s string) uint64 {

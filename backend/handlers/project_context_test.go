@@ -156,6 +156,12 @@ func Test_ProjectContextEndpoints(t *testing.T) {
 	if retrieve.Meta["embedding_indexing"] != "async" {
 		t.Fatalf("retrieve meta missing async embedding indexing: %#v", retrieve.Meta)
 	}
+	if retrieve.Meta["embedding_model"] != "local-semantic-v2" {
+		t.Fatalf("retrieve meta embedding model = %#v", retrieve.Meta["embedding_model"])
+	}
+	if retrieve.Meta["vector_index"] != "sqlite-scalar-cosine" {
+		t.Fatalf("retrieve meta vector index = %#v", retrieve.Meta["vector_index"])
+	}
 	foundExpanded := false
 	for _, hit := range retrieve.Hits {
 		if hit["expanded_from"] != nil {
@@ -254,7 +260,7 @@ func waitForProjectEmbeddings(t *testing.T, projectID int64, wantAtLeast int) {
 		if err := db.DB.QueryRow(`
 			SELECT COUNT(*)
 			FROM entity_embeddings
-			WHERE project_id = ? AND model = 'local-hash-v1'
+			WHERE project_id = ? AND model = 'local-semantic-v2'
 		`, projectID).Scan(&count); err != nil {
 			t.Fatalf("count embeddings: %v", err)
 		}

@@ -162,12 +162,41 @@ revision and schema metadata so deep links and provenance stay explicit.
 
 `/api/projects/:id/retrieve` now fuses project-scoped lexical hits from
 issue text plus a dedicated context index for anchors and derived
-symbols, then blends in deterministic local vector matches and appends
+symbols, then blends in local semantic vector matches and appends
 graph-neighbor expansion. Vector indexing is asynchronous: retrieve
 queues a project refresh and uses already-indexed vectors, so cold
 projects can return lexical-only on the first call. The response includes
 retrieval metadata so clients can see the fusion strategy, stage counts,
-`embedding_indexing`, `embedding_model`, and `vector_index`.
+`embedding_indexing`, `embedding_model`, `embedding_provider`,
+`vector_index`, and `freshness`. In v3.10.3 the local embedding model is
+`local-semantic-v2`; vectors are ranked through SQLite via
+`sqlite-scalar-cosine`.
+
+For agents running inside a checked-out repo, `paimos serve` adds a local
+read-only context broker:
+
+```bash
+paimos serve --project PAI --repo-root . --addr 127.0.0.1:8765
+```
+
+It combines the authenticated project context surface with bounded local
+repo search/read/symbol tools:
+
+- `GET /context/repo` — branch, HEAD, dirty counts, `AGENTS.md`, anchor index
+- `POST /context/search` — fixed-string ripgrep search with bounded hits
+- `POST /context/read` — bounded line-range file read with path escape checks and redaction
+- `POST /context/symbols` — regex fallback for common declarations (`lsp_available: false`)
+- `POST /context/retrieve` — remote `/retrieve` plus local search/symbol hits
+- `POST /context/pack` — issue/query context bundle with an approximate token budget
+
+MCP clients can launch the same broker over stdio:
+
+```bash
+paimos serve --project PAI --repo-root . --mcp-stdio
+```
+
+The broker does not accept writes. HTTP mode is loopback-only unless the
+operator explicitly passes `--unsafe-allow-remote`.
 
 Blast-radius queries are available at
 `GET /api/projects/:id/graph/blast-radius?issue=PAI-79&depth=3` for the

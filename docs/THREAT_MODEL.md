@@ -129,6 +129,32 @@ Diagrammatically:
                                         └────────────┘
 ```
 
+### 2.6 · Local agent broker boundary — `paimos serve`
+
+`paimos serve` is a CLI-side helper, not a public server feature. It
+runs on a developer workstation or agent host and bridges three trust
+zones: the local repository checkout, the local PAIMOS CLI config, and
+the agent runtime consuming loopback HTTP or MCP stdio.
+
+Defences:
+
+- HTTP mode binds to loopback-only by default and rejects non-loopback
+  clients in middleware. Non-loopback bind requires the explicit
+  `--unsafe-allow-remote` operator flag.
+- The broker exposes read-only tools only. It never writes files, runs
+  package managers, executes arbitrary commands, or forwards mutation
+  endpoints.
+- Local file reads resolve symlinks and reject traversal or symlink
+  escape outside the bound repo root.
+- Generated and secret-prone paths (`.git`, `node_modules`, `dist`,
+  `.env`, private keys, credential files) are blocked; returned text is
+  passed through coarse secret redaction.
+- Search and read operations use fixed command shapes (`git`, `rg`) with
+  bounded output, timeouts, and no shell interpolation.
+- Repo-derived payloads are labelled `untrusted_data` so clients can
+  separate retrieved facts from instructions.
+- Audit lines go to stderr and redact/truncate parameters before logging.
+
 ---
 
 ## 3 · Threat actors
@@ -224,6 +250,15 @@ PAI-110 shipped the **INV-FILES-03** application-layer fix end-to-end. Uploads n
 | **INV-PROV-02** | OIDC client secret is env-var only; never written to logs. | `auth/oidc.go` | manual verification |
 | **INV-PROV-03** | SMTP password is env-var only; never written to logs. | `mail/smtp.go` | manual verification |
 | **INV-PROV-04** | Provider-rejection responses (e.g., "model not found") are surfaced to the SPA but the underlying provider error class is captured in the audit line, not the body. | `handlers/ai_action.go` | `ai_optimize_audit_test.go` |
+
+### 4.7 · Local broker
+
+| ID | Statement | Code path | Verification |
+|---|---|---|---|
+| **INV-BROKER-01** | `paimos serve` HTTP mode is loopback-only by default and rejects non-loopback remote clients. | `cmd/paimos/cmd_serve.go:isLoopbackListenAddr`, `localOnly` | `cmd_serve_test.go` |
+| **INV-BROKER-02** | Local broker file reads cannot traverse outside the repo root or follow symlinks outside it. | `cmd/paimos/cmd_serve.go:resolveRepoPath` | `cmd_serve_test.go` |
+| **INV-BROKER-03** | Local broker reads block obvious secret files and redact common token/password shapes in returned content. | `cmd/paimos/cmd_serve.go:denyUnsafeRepoRel`, `redactSensitiveTextWithFlag` | `cmd_serve_test.go` |
+| **INV-BROKER-04** | MCP stdio exposes the same read-only broker methods as HTTP mode; stdout carries JSON-RPC only. | `cmd/paimos/cmd_serve.go:serveMCP` | `cmd_serve_test.go` |
 
 ---
 

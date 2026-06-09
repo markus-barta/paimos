@@ -18,7 +18,10 @@ package db
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +37,8 @@ var perConnectionPragmas = []string{
 }
 
 func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("paimos_cosine", 2, paimosCosineSQL)
+
 	// RegisterConnectionHook fires on every new connection in the pool —
 	// the right place for genuinely per-connection pragmas. NOT the right
 	// place for `journal_mode=WAL`, even though it's effectively idempotent
@@ -52,6 +57,46 @@ func init() {
 		}
 		return nil
 	})
+}
+
+func paimosCosineSQL(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+	if len(args) != 2 {
+		return float64(0), nil
+	}
+	left, ok := sqliteBlobArg(args[0])
+	if !ok {
+		return float64(0), nil
+	}
+	right, ok := sqliteBlobArg(args[1])
+	if !ok {
+		return float64(0), nil
+	}
+	if len(left) == 0 || len(left) != len(right) || len(left)%4 != 0 {
+		return float64(0), nil
+	}
+	var dot, leftNorm, rightNorm float64
+	for i := 0; i < len(left); i += 4 {
+		l := float64(math.Float32frombits(binary.LittleEndian.Uint32(left[i : i+4])))
+		r := float64(math.Float32frombits(binary.LittleEndian.Uint32(right[i : i+4])))
+		dot += l * r
+		leftNorm += l * l
+		rightNorm += r * r
+	}
+	if leftNorm == 0 || rightNorm == 0 {
+		return float64(0), nil
+	}
+	return dot / (math.Sqrt(leftNorm) * math.Sqrt(rightNorm)), nil
+}
+
+func sqliteBlobArg(v driver.Value) ([]byte, bool) {
+	switch t := v.(type) {
+	case []byte:
+		return t, true
+	case string:
+		return []byte(t), true
+	default:
+		return nil, false
+	}
 }
 
 var DB *sql.DB
@@ -4838,6 +4883,17 @@ func migrate(db *sql.DB) error {
 		// via PAI-478 retroactive bookings.
 		{116, []string{
 			`ALTER TABLE time_entries ADD COLUMN material_lp REAL`,
+		}},
+
+		// PAI-222: additive retrieval metadata. The original PAI-30
+		// contract already had model, dim, source_hash, vector, and
+		// last_indexed_at; these columns make provider/degraded-mode
+		// behavior explicit without invalidating existing rows.
+		{117, []string{
+			`ALTER TABLE entity_embeddings ADD COLUMN provider TEXT NOT NULL DEFAULT 'builtin'`,
+			`ALTER TABLE entity_embeddings ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'`,
+			`ALTER TABLE entity_embeddings ADD COLUMN error TEXT NOT NULL DEFAULT ''`,
+			`CREATE INDEX IF NOT EXISTS idx_entity_embeddings_model_status ON entity_embeddings(project_id, model, status)`,
 		}},
 	}
 
