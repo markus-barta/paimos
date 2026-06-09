@@ -3,6 +3,7 @@ import LoadingText from "@/components/LoadingText.vue";
 import { computed, onMounted, ref } from 'vue'
 import { errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 import type { IssueAnchor } from '@/types'
 import { loadIssueAnchors } from '@/services/issueAnchors'
 
@@ -46,7 +47,7 @@ onMounted(load)
     <div class="section-title-row">
       <h3 class="section-title">
         Anchors
-        <span v-if="anchors.length" class="section-count">{{ anchors.length }}</span>
+        <span v-if="anchors.length" class="section-count">{{ formatInteger(anchors.length) }}</span>
       </h3>
       <button class="btn btn-ghost btn-sm" @click="load" :disabled="loading">Refresh</button>
     </div>
@@ -64,7 +65,7 @@ onMounted(load)
             <div class="repo-label">{{ group.repoLabel }}</div>
             <a v-if="group.repoUrl" :href="group.repoUrl" target="_blank" rel="noopener" class="repo-url">{{ group.repoUrl }}</a>
           </div>
-          <span class="repo-count">{{ group.anchors.length }} anchor{{ group.anchors.length === 1 ? '' : 's' }}</span>
+          <span class="repo-count">{{ formatInteger(group.anchors.length) }} anchor{{ group.anchors.length === 1 ? '' : 's' }}</span>
         </div>
 
         <div class="anchor-list">

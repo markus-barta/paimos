@@ -32,6 +32,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import { useAiAction } from '@/composables/useAiAction'
 import type { ActionEnvelope } from '@/composables/useAiAction'
+import { formatDecimal, formatInteger } from '@/composables/useNumberFormat'
 
 const aiAction = useAiAction()
 
@@ -243,7 +244,7 @@ watch(
       </p>
       <template v-else>
         <p class="ar-hint">
-          Top {{ body?.candidates?.length ?? 0 }} parent candidate{{ body?.candidates?.length === 1 ? '' : 's' }}
+          Top {{ formatInteger(body?.candidates?.length ?? 0) }} parent candidate{{ body?.candidates?.length === 1 ? '' : 's' }}
           for this issue<span v-if="body?.truncated"> (project truncated to a partial view)</span>.
         </p>
         <div v-for="(c, i) in body?.candidates ?? []" :key="i" class="ar-card">
@@ -290,7 +291,7 @@ watch(
           type="button" class="btn btn-primary" :disabled="!selected.size"
           @click="emitApply('create-subtasks', { titleOverrides: { ...subtaskOverrides } })"
         >
-          Create {{ selected.size }} sub-task{{ selected.size === 1 ? '' : 's' }}
+          Create {{ formatInteger(selected.size) }} sub-task{{ selected.size === 1 ? '' : 's' }}
         </button>
       </div>
     </div>
@@ -300,10 +301,10 @@ watch(
       <div class="ar-estimate">
         <div class="ar-estimate-row">
           <div>
-            <strong class="ar-estimate-num">{{ Number(body?.hours ?? 0).toFixed(1) }} h</strong>
+            <strong class="ar-estimate-num">{{ formatDecimal(Number(body?.hours ?? 0), 1) }} h</strong>
           </div>
           <div>
-            <strong class="ar-estimate-num">{{ Number(body?.lp ?? 0).toFixed(1) }} LP</strong>
+            <strong class="ar-estimate-num">{{ formatDecimal(Number(body?.lp ?? 0), 1) }} LP</strong>
           </div>
         </div>
         <p class="ar-card-text" v-if="body?.reasoning">{{ body.reasoning }}</p>
@@ -326,7 +327,7 @@ watch(
       </p>
       <template v-else>
         <p class="ar-hint">
-          Top {{ body?.matches?.length ?? 0 }} candidate{{ body?.matches?.length === 1 ? '' : 's' }}
+          Top {{ formatInteger(body?.matches?.length ?? 0) }} candidate{{ body?.matches?.length === 1 ? '' : 's' }}
           in the same project<span v-if="body?.truncated"> (project truncated to a partial view)</span>.
         </p>
         <div v-for="(m, i) in body?.matches ?? []" :key="i" class="ar-card">

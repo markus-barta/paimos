@@ -20,6 +20,7 @@ import AppModal from '@/components/AppModal.vue'
 import AiActivityStrip from '@/components/ai/AiActivityStrip.vue'
 import AiResultStrip from '@/components/ai/AiResultStrip.vue'
 import IssueSearchInput from '@/components/ai/IssueSearchInput.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 interface PromptRow {
   id: number
@@ -304,7 +305,7 @@ function clearDryRun() {
     <section class="ap-section" v-if="!loading">
       <header class="ap-section-headrow">
         <h3 class="ap-section-title">Built-in actions</h3>
-        <span class="ap-section-meta">{{ groupedBuiltin.length }}</span>
+        <span class="ap-section-meta">{{ formatInteger(groupedBuiltin.length) }}</span>
       </header>
       <p v-if="!groupedBuiltin.length" class="ap-empty">
         No built-in actions yet — once an action ships its handler, it
@@ -333,7 +334,7 @@ function clearDryRun() {
     <section class="ap-section" v-if="!loading">
       <header class="ap-section-headrow">
         <h3 class="ap-section-title">Custom actions</h3>
-        <span class="ap-section-meta">{{ groupedCustom.length }}</span>
+        <span class="ap-section-meta">{{ formatInteger(groupedCustom.length) }}</span>
         <button class="btn btn-primary btn-sm ap-add" @click="openCreate">
           <AppIcon name="plus" :size="13" /> New custom action
         </button>
@@ -570,10 +571,10 @@ function clearDryRun() {
                 <AppIcon name="cpu" :size="11" /> {{ dryRunResult.model }}
               </span>
               <span v-if="dryRunResult.latency_ms" class="ape-result-pill">
-                <AppIcon name="zap" :size="11" /> {{ dryRunResult.latency_ms }} ms
+                <AppIcon name="zap" :size="11" /> {{ formatInteger(dryRunResult.latency_ms) }} ms
               </span>
               <span v-if="(dryRunResult.prompt_tokens ?? 0) + (dryRunResult.completion_tokens ?? 0) > 0" class="ape-result-pill">
-                {{ dryRunResult.prompt_tokens }}p + {{ dryRunResult.completion_tokens }}c tokens
+                {{ formatInteger(dryRunResult.prompt_tokens ?? 0) }}p + {{ formatInteger(dryRunResult.completion_tokens ?? 0) }}c tokens
               </span>
               <span v-if="dryRunResult.used_default" class="ape-result-pill ape-result-pill--default">
                 code default (no override)

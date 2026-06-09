@@ -31,6 +31,8 @@ import type { Customer, Contact, Project } from '@/types'
 // PAI-146 expansion: AI optimize on customer notes (CRM context).
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
+import { formatCompactCurrency, formatCurrency, formatInteger } from '@/composables/useNumberFormat'
+import { fmtRelative } from '@/utils/formatTime'
 
 const route = useRoute()
 const router = useRouter()
@@ -113,10 +115,7 @@ const customerLocation = computed(() => {
 // for the About card. Locked to EUR (multi-currency is out of scope).
 function fmtRevenue(cents: number | null | undefined): string {
   if (cents == null) return ''
-  const v = cents / 100
-  if (v >= 1_000_000) return `€${(v / 1_000_000).toFixed(1)}M`
-  if (v >= 1_000)     return `€${(v / 1_000).toFixed(0)}k`
-  return `€${v.toFixed(0)}`
+  return formatCompactCurrency(cents / 100, 'EUR')
 }
 
 // ── Sync state machine ──────────────────────────────────────────────
@@ -137,7 +136,7 @@ const syncRelative = computed(() => {
   if (hr < 24) return `Synced ${hr}h ago`
   const d = Math.floor(hr / 24)
   if (d < 30) return `Synced ${d}d ago`
-  return `Synced ${new Date(at).toLocaleDateString()}`
+  return `Synced ${fmtRelative(at)}`
 })
 
 const syncIcon = computed<'refresh-cw' | 'check' | 'triangle-alert'>(() => {
@@ -363,7 +362,7 @@ async function promoteContact(c: Contact) {
 // ── Helpers ────────────────────────────────────────────────────────
 function fmtRate(v: number | null | undefined): string {
   if (v == null) return '—'
-  return `€${v.toFixed(2)}`
+  return formatCurrency(v, 'EUR')
 }
 function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | null; inherited: boolean } {
   if (kind === 'hourly') {
@@ -514,7 +513,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
           <header class="cd-card-header">
             <h3 class="cd-card-title">
               Contacts
-              <span class="cd-card-count">{{ contacts.length }}</span>
+              <span class="cd-card-count">{{ formatInteger(contacts.length) }}</span>
             </h3>
             <button
               v-if="isAdmin"
@@ -588,7 +587,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
           <header class="cd-card-header">
             <h3 class="cd-card-title">
               Projects
-              <span class="cd-card-count">{{ projects.length }}</span>
+              <span class="cd-card-count">{{ formatInteger(projects.length) }}</span>
             </h3>
             <span class="cd-card-hint">Rates inherit unless overridden</span>
           </header>
@@ -610,7 +609,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
                 <div class="cd-project-sub">
                   <span class="cd-project-meta">
                     <AppIcon name="briefcase" :size="12" />
-                    {{ p.open_issue_count }} open · {{ p.issue_count }} total
+                    {{ formatInteger(p.open_issue_count) }} open · {{ formatInteger(p.issue_count) }} total
                   </span>
                   <span class="cd-project-meta">
                     <AppIcon name="euro" :size="12" />
@@ -678,7 +677,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
             </template>
             <template v-if="customer.employee_count != null">
               <dt><AppIcon name="users" :size="13" /> Employees</dt>
-              <dd>{{ customer.employee_count.toLocaleString() }}</dd>
+              <dd>{{ formatInteger(customer.employee_count) }}</dd>
             </template>
             <template v-if="customer.annual_revenue_cents != null">
               <dt><AppIcon name="trending-up" :size="13" /> Revenue</dt>

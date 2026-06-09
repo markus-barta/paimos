@@ -45,6 +45,7 @@ import {
   setSidePanelPinned,
   setSidePanelVisible,
 } from '@/composables/useSidePanelPinned'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 interface PortalProject {
   id: number
@@ -626,23 +627,23 @@ async function submitRequest() {
     <!-- KPI stat bar -->
     <div class="pv__stats" v-if="project">
       <div class="pv__stat">
-        <span class="pv__stat-value">{{ kpis.total }}</span>
+        <span class="pv__stat-value">{{ formatInteger(kpis.total) }}</span>
         <span class="pv__stat-label">{{ $t('portal.summary.total') }}</span>
       </div>
       <div class="pv__stat">
-        <span class="pv__stat-value">{{ kpis.backlog }}</span>
+        <span class="pv__stat-value">{{ formatInteger(kpis.backlog) }}</span>
         <span class="pv__stat-label">{{ $t('status.backlog') }}</span>
       </div>
       <div class="pv__stat">
-        <span class="pv__stat-value">{{ kpis.inProgress }}</span>
+        <span class="pv__stat-value">{{ formatInteger(kpis.inProgress) }}</span>
         <span class="pv__stat-label">{{ $t('status.in-progress') }}</span>
       </div>
       <div class="pv__stat">
-        <span class="pv__stat-value">{{ kpis.done }}</span>
+        <span class="pv__stat-value">{{ formatInteger(kpis.done) }}</span>
         <span class="pv__stat-label">{{ $t('status.done') }}</span>
       </div>
       <div class="pv__stat pv__stat--awaiting">
-        <span class="pv__stat-value">{{ kpis.awaiting }}</span>
+        <span class="pv__stat-value">{{ formatInteger(kpis.awaiting) }}</span>
         <span class="pv__stat-label">{{ $t('portal.tabs.review') }}</span>
       </div>
     </div>
@@ -690,7 +691,7 @@ async function submitRequest() {
         :data-query-fingerprint="portalIssueFingerprint || undefined"
         :data-selection-fingerprint="portalIssueSelectionFingerprint || undefined"
       >
-        <span>{{ issues.length.toLocaleString() }} / {{ totalIssues.toLocaleString() }}</span>
+        <span>{{ formatInteger(issues.length) }} / {{ formatInteger(totalIssues) }}</span>
         <button type="button" class="pv__load-more-btn" :disabled="loadingMore" @click="loadMoreIssues">
           {{ loadingMore ? 'Loading...' : 'Load all' }}
         </button>

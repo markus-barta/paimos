@@ -31,6 +31,7 @@
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { LS_TIME_UNIT as LS_KEY } from '@/constants/storage'
+import { formatDecimalFlex } from '@/composables/useNumberFormat'
 
 export type TimeUnit = 'h' | 'pt'
 export type FormatContext = 'table' | 'detail'
@@ -91,8 +92,6 @@ export function useTimeUnit() {
   return { unit, toggle, toDisplay, toHours, formatHours, label }
 }
 
-const localeFmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 })
-
 function fmtNum(n: number): string {
-  return localeFmt.format(n)
+  return formatDecimalFlex(n, 2)
 }

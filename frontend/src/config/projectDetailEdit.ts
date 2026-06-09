@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/composables/useNumberFormat'
 import type { Customer, Project } from '@/types'
 
 export interface ProjectEditForm {
@@ -61,5 +62,5 @@ export function inheritedProjectRateHint(
   if (value == null) return ''
   const projectRate = kind === 'hourly' ? form.rate_hourly : form.rate_lp
   if (projectRate != null) return ''
-  return `Inherits EUR ${value.toFixed(2)} from ${customer.name}`
+  return `Inherits ${formatCurrency(value, 'EUR')} from ${customer.name}`
 }

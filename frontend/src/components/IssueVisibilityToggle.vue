@@ -12,6 +12,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/AppIcon.vue'
+import { formatRelativeTimeWithLocale } from '@/composables/useDateFormat'
 import {
   loadIssuePortalVisibility,
   type PortalVisibilityEvent,
@@ -81,32 +82,9 @@ const hintText = computed(() =>
   props.visible ? t('visibility.hint') : t('visibility.hintOff'),
 )
 
-/**
- * relativeTime — minimal "N <unit> ago" formatter using
- * Intl.RelativeTimeFormat. Picks the largest unit that yields ≥ 1.
- * Empty input returns "" so the audit line collapses gracefully.
- */
 function relativeTime(iso: string, lang: string): string {
   if (!iso) return ''
-  const then = Date.parse(iso.replace(' ', 'T') + (iso.endsWith('Z') ? '' : 'Z'))
-  if (Number.isNaN(then)) return iso
-  const diffSec = Math.round((then - Date.now()) / 1000)
-  const fmt = new Intl.RelativeTimeFormat(lang || 'en', { numeric: 'auto' })
-  const steps: [number, Intl.RelativeTimeFormatUnit][] = [
-    [60, 'second'],
-    [60, 'minute'],
-    [24, 'hour'],
-    [7, 'day'],
-    [4.345, 'week'],
-    [12, 'month'],
-    [Number.POSITIVE_INFINITY, 'year'],
-  ]
-  let value = diffSec
-  for (const [factor, unit] of steps) {
-    if (Math.abs(value) < factor) return fmt.format(value, unit)
-    value = Math.round(value / factor)
-  }
-  return fmt.format(value, 'year')
+  return formatRelativeTimeWithLocale(iso, lang)
 }
 </script>
 

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { formatDurationHours, formatInteger } from '@/composables/useNumberFormat'
 import AppModal from '@/components/AppModal.vue'
 import SettingsAITab from '@/components/settings/SettingsAITab.vue'
 import SettingsCRMTab from '@/components/settings/SettingsCRMTab.vue'
@@ -511,7 +512,7 @@ async function cancelMiteImport() {
               <label>Jira project</label>
               <button class="project-picker-btn" @click="openProjectBrowser">
                 <span v-if="selectedJiraLabel" class="picker-selected">{{ selectedJiraLabel }}</span>
-                <span v-else class="picker-placeholder">Browse {{ jiraProjects.length }} projects…</span>
+                <span v-else class="picker-placeholder">Browse {{ formatInteger(jiraProjects.length) }} projects…</span>
                 <AppIcon name="chevron-down" :size="14" class="picker-chevron" />
               </button>
             </div>
@@ -616,10 +617,10 @@ async function cancelMiteImport() {
 
         <div v-if="importResult" class="import-result">
           <div class="res-summary">
-            <span class="res-ok"><AppIcon name="check" :size="13" /> {{ importResult.imported }} imported</span>
-            <span v-if="importResult.skipped" class="res-skip"> · {{ importResult.skipped }} skipped</span>
+            <span class="res-ok"><AppIcon name="check" :size="13" /> {{ formatInteger(importResult.imported) }} imported</span>
+            <span v-if="importResult.skipped" class="res-skip"> · {{ formatInteger(importResult.skipped) }} skipped</span>
             <template v-if="importResult.errors?.length">
-              <span class="res-err"> · {{ importResult.errors.length }} error(s)</span>
+              <span class="res-err"> · {{ formatInteger(importResult.errors.length) }} error(s)</span>
             </template>
             <span class="res-tag"> · tagged <code class="res-tag-code">{{ importResult.import_tag }}</code></span>
             <RouterLink
@@ -658,7 +659,7 @@ async function cancelMiteImport() {
           autofocus
         />
       </div>
-      <div class="browser-count">{{ filteredJiraProjects.length }} of {{ jiraProjects.length }} projects</div>
+      <div class="browser-count">{{ formatInteger(filteredJiraProjects.length) }} of {{ formatInteger(jiraProjects.length) }} projects</div>
       <div class="browser-list">
         <button
           v-for="p in filteredJiraProjects"
@@ -738,9 +739,9 @@ async function cancelMiteImport() {
         <div v-if="miteImporting" class="mite-progress">
           <div class="mite-progress-row">
             <AppIcon name="loader" :size="14" class="spin" />
-            <span v-if="miteImportPhase === 'fetching'">Fetching page {{ mitePagesFetched || 1 }}… ({{ miteImportTotal }} entries so far)</span>
-            <span v-else-if="miteImportPhase === 'matching'">Matching {{ miteImportTotal }} entries…</span>
-            <span v-else>Processing {{ miteImportProcessed }} / {{ miteImportTotal }} — {{ miteMatchedCount }} matched, {{ miteSkippedCount }} skipped</span>
+            <span v-if="miteImportPhase === 'fetching'">Fetching page {{ formatInteger(mitePagesFetched || 1) }}… ({{ formatInteger(miteImportTotal) }} entries so far)</span>
+            <span v-else-if="miteImportPhase === 'matching'">Matching {{ formatInteger(miteImportTotal) }} entries…</span>
+            <span v-else>Processing {{ formatInteger(miteImportProcessed) }} / {{ formatInteger(miteImportTotal) }} — {{ formatInteger(miteMatchedCount) }} matched, {{ formatInteger(miteSkippedCount) }} skipped</span>
           </div>
           <button class="btn btn-ghost btn-sm" @click="cancelMiteImport">Cancel</button>
         </div>
@@ -749,10 +750,10 @@ async function cancelMiteImport() {
         <div v-if="miteImportResult" class="mite-results">
           <div class="mite-summary" :class="{ 'mite-summary--preview': miteImportResult.dry_run }">
             <span v-if="miteImportResult.dry_run" class="res-preview">Preview — </span>
-            <span class="res-ok"><AppIcon name="check" :size="13" /> {{ miteImportResult.imported }} {{ miteImportResult.dry_run ? 'would be imported' : 'imported' }} ({{ (miteImportResult.total_minutes / 60).toFixed(1) }}h)</span>
-            <span v-if="miteImportResult.skipped_duplicates.length" class="res-skip"> · {{ miteImportResult.skipped_duplicates.length }} duplicates skipped</span>
-            <span v-if="miteImportResult.unmatched_issues.length" class="res-warn"> · {{ miteImportResult.unmatched_issues.length }} unmatched</span>
-            <span v-if="miteImportResult.errors.length" class="res-err"> · {{ miteImportResult.errors.length }} error(s)</span>
+            <span class="res-ok"><AppIcon name="check" :size="13" /> {{ formatInteger(miteImportResult.imported) }} {{ miteImportResult.dry_run ? 'would be imported' : 'imported' }} ({{ formatDurationHours(miteImportResult.total_minutes / 60) }})</span>
+            <span v-if="miteImportResult.skipped_duplicates.length" class="res-skip"> · {{ formatInteger(miteImportResult.skipped_duplicates.length) }} duplicates skipped</span>
+            <span v-if="miteImportResult.unmatched_issues.length" class="res-warn"> · {{ formatInteger(miteImportResult.unmatched_issues.length) }} unmatched</span>
+            <span v-if="miteImportResult.errors.length" class="res-err"> · {{ formatInteger(miteImportResult.errors.length) }} error(s)</span>
             <button v-if="miteImportResult.dry_run && miteImportResult.imported > 0" class="btn btn-primary btn-sm" style="margin-left:auto" @click="startMiteImport">
               <AppIcon name="upload" :size="13" /> Confirm Import
             </button>
@@ -762,15 +763,15 @@ async function cancelMiteImport() {
           <div v-if="miteImportResult.by_project?.length" class="mite-section">
             <button class="mite-section-toggle" @click="miteShowByProject = !miteShowByProject">
               <AppIcon :name="miteShowByProject ? 'chevron-down' : 'chevron-right'" :size="14" />
-              By Project ({{ miteImportResult.by_project.length }})
+              By Project ({{ formatInteger(miteImportResult.by_project.length) }})
             </button>
             <table v-if="miteShowByProject" class="mite-table">
               <thead><tr><th>Project</th><th>Entries</th><th>Hours</th></tr></thead>
               <tbody>
                 <tr v-for="p in miteImportResult.by_project" :key="p.project_key">
                   <td><strong>{{ p.project_key }}</strong></td>
-                  <td>{{ p.imported }}</td>
-                  <td>{{ (p.minutes / 60).toFixed(1) }}h</td>
+                  <td>{{ formatInteger(p.imported) }}</td>
+                  <td>{{ formatDurationHours(p.minutes / 60) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -780,7 +781,7 @@ async function cancelMiteImport() {
           <div v-if="miteImportResult.unmatched_issues.length" class="mite-section">
             <button class="mite-section-toggle" @click="miteShowUnmatched = !miteShowUnmatched">
               <AppIcon :name="miteShowUnmatched ? 'chevron-down' : 'chevron-right'" :size="14" />
-              Unmatched Issues ({{ miteImportResult.unmatched_issues.length }})
+              Unmatched Issues ({{ formatInteger(miteImportResult.unmatched_issues.length) }})
             </button>
             <table v-if="miteShowUnmatched" class="mite-table">
               <thead><tr><th>Mite Note</th><th>Extracted Key</th><th>Reason</th></tr></thead>
@@ -798,7 +799,7 @@ async function cancelMiteImport() {
           <div v-if="miteImportResult.unmatched_users.length" class="mite-section">
             <button class="mite-section-toggle" @click="miteShowUsers = !miteShowUsers">
               <AppIcon :name="miteShowUsers ? 'chevron-down' : 'chevron-right'" :size="14" />
-              Unmatched Users ({{ miteImportResult.unmatched_users.length }})
+              Unmatched Users ({{ formatInteger(miteImportResult.unmatched_users.length) }})
             </button>
             <table v-if="miteShowUsers" class="mite-table">
               <thead><tr><th>Mite User</th><th>Mite User ID</th><th>Entries Affected</th></tr></thead>
@@ -806,7 +807,7 @@ async function cancelMiteImport() {
                 <tr v-for="u in miteImportResult.unmatched_users" :key="u.mite_user_id">
                   <td>{{ u.mite_user_name }}</td>
                   <td>{{ u.mite_user_id }}</td>
-                  <td>{{ u.count }}</td>
+                  <td>{{ formatInteger(u.count) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -816,7 +817,7 @@ async function cancelMiteImport() {
           <div v-if="miteImportResult.skipped_duplicates.length" class="mite-section">
             <button class="mite-section-toggle" @click="miteShowDups = !miteShowDups">
               <AppIcon :name="miteShowDups ? 'chevron-down' : 'chevron-right'" :size="14" />
-              Skipped Duplicates ({{ miteImportResult.skipped_duplicates.length }})
+              Skipped Duplicates ({{ formatInteger(miteImportResult.skipped_duplicates.length) }})
             </button>
             <table v-if="miteShowDups" class="mite-table">
               <thead><tr><th>Mite ID</th><th>Jira Key</th></tr></thead>
@@ -833,7 +834,7 @@ async function cancelMiteImport() {
           <div v-if="miteImportResult.errors.length" class="mite-section">
             <button class="mite-section-toggle" @click="miteShowErrors = !miteShowErrors">
               <AppIcon :name="miteShowErrors ? 'chevron-down' : 'chevron-right'" :size="14" />
-              Errors ({{ miteImportResult.errors.length }})
+              Errors ({{ formatInteger(miteImportResult.errors.length) }})
             </button>
             <table v-if="miteShowErrors" class="mite-table">
               <thead><tr><th>Mite ID</th><th>Error</th></tr></thead>

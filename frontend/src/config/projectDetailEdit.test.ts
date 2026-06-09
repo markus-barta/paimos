@@ -92,7 +92,7 @@ describe('projectDetailEdit helpers', () => {
   it('builds inherited rate hints only when project rate is empty', () => {
     const customers = [makeCustomer({ id: 7, name: 'Umbrella', rate_hourly: 135 })]
     const form = { ...emptyProjectEditForm(), customer_id: 7, rate_hourly: null }
-    expect(inheritedProjectRateHint(form, customers, 'hourly')).toBe('Inherits EUR 135.00 from Umbrella')
+    expect(inheritedProjectRateHint(form, customers, 'hourly')).toBe('Inherits €135.00 from Umbrella')
     expect(inheritedProjectRateHint({ ...form, rate_hourly: 120 }, customers, 'hourly')).toBe('')
   })
 })

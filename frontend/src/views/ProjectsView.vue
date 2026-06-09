@@ -18,6 +18,8 @@ import {
   ACCRUALS_DEFAULT_STATUSES as ACCRUALS_DEFAULTS,
   ACCRUALS_EXTRA_STATUSES   as ACCRUALS_EXTRAS,
 } from '@/constants/status'
+import { formatDecimal, formatInteger } from '@/composables/useNumberFormat'
+import { fmtRelative } from '@/utils/formatTime'
 
 const router = useRouter()
 
@@ -164,16 +166,7 @@ async function createProject() {
 }
 
 function relativeTime(ts: string): string {
-  if (!ts) return ''
-  const diff = Date.now() - new Date(ts.replace(' ', 'T') + 'Z').getTime()
-  const mins = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 30) return `${days}d ago`
-  return new Date(ts).toLocaleDateString()
+  return ts ? fmtRelative(ts) : ''
 }
 
 async function archiveProject(p: Project) {
@@ -367,7 +360,7 @@ async function toggleAccrualsExtra(status: string) {
 
 function fmtHours(n: number | undefined): string {
   if (n == null || n === 0) return '—'
-  return n.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return formatDecimal(n, 1)
 }
 
 function statusLabel(s: string): string {
@@ -385,20 +378,21 @@ async function copyAsTsv() {
     header,
   ]
   let grand = 0
+  const tsvDecimal = (value: number) => formatDecimal(value, 1, 'en-US').replace(/,/g, '')
   for (const p of projects.value) {
     const totals = accrualsRows.value[p.id] ?? {}
     let row = `${p.key}\t${p.name}`
     let rowTotal = 0
     for (const c of cols) {
       const v = totals[c] ?? 0
-      row += `\t${v.toFixed(1)}`
+      row += `\t${tsvDecimal(v)}`
       if (c !== 'cancelled') rowTotal += v
     }
-    row += `\t${rowTotal.toFixed(1)}`
+    row += `\t${tsvDecimal(rowTotal)}`
     grand += rowTotal
     lines.push(row)
   }
-  lines.push(`\tGESAMT${'\t'.repeat(cols.length)}\t${grand.toFixed(1)}`)
+  lines.push(`\tGESAMT${'\t'.repeat(cols.length)}\t${tsvDecimal(grand)}`)
   try {
     await navigator.clipboard.writeText(lines.join('\n'))
     accrualsCopied.value = true
@@ -569,10 +563,10 @@ onMounted(() => {
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: `${Math.round((p.done_issue_count / p.active_issue_count) * 100)}%` }"></div>
           </div>
-          <span class="progress-label">{{ p.done_issue_count }}/{{ p.active_issue_count }}</span>
+          <span class="progress-label">{{ formatInteger(p.done_issue_count) }}/{{ formatInteger(p.active_issue_count) }}</span>
         </div>
         <div class="project-card-footer">
-          <span class="project-issues">{{ p.open_issue_count }} open</span>
+          <span class="project-issues">{{ formatInteger(p.open_issue_count) }} open</span>
           <span v-if="p.last_activity" class="project-activity">{{ relativeTime(p.last_activity) }}</span>
         </div>
       </div>

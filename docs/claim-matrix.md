@@ -20,10 +20,10 @@ without an open follow-on ticket.
 
 | Claim (paimos.com / 03-specs) | Status | Evidence | Open tickets |
 |---|---|---|---|
-| NIS2 ready audit trails, access control, incident logging | partial → shipped | session audit default-on (PAI-116), access control via `project_members`, incident_log table + admin CRUD + JSON/CSV export | PAI-124 (full SIEM-export pipeline) |
+| NIS2 ready audit trails, access control, incident logging | shipped | session audit default-on (PAI-116), access control via `project_members`, incident_log table + admin CRUD + JSON/CSV export | — |
 | GDPR-compliant data minimization, export + deletion primitives, EU-hostable | shipped | retention sweeper + `/api/users/{id}/gdpr-export` + `/api/users/{id}/gdpr-erase` (PAI-117); EU hosting is operator-controlled | — |
 | Self-hostable single docker compose; run on your own tin; no SaaS dependency | shipped | `docker-compose.yml`, `Dockerfile`, no SaaS calls in app code; runtime fonts removed (PAI-118) | — |
-| Enterprise grade SSO, RBAC, audit logs, air-gap deployment | partial | OIDC SSO end-to-end (PAI-120), RBAC via project_members + roles, audit (PAI-116), runtime third-party requests removed (PAI-118). SAML is not shipped. | PAI-124 (SAML, optional) |
+| Enterprise grade SSO, RBAC, audit logs, air-gap deployment | shipped | OIDC SSO end-to-end (PAI-120; SAML is not part of the current public claim), RBAC via `project_members`, canonical roles, super-admin capabilities + audit/impersonation framing (PAI-336/PAI-389), audit (PAI-116), runtime third-party requests removed (PAI-118) | — |
 | Zero tracking: no analytics, no 3rd-party JS, no telemetry | shipped | no analytics/telemetry libs; fonts bundled via `@fontsource` (PAI-118); CSP-Report-Only is fully self-only (PAI-114) | — |
 | Open API: REST + OpenAPI spec; scriptable from day one | shipped | `/api/openapi.json` (PAI-119), `/api/schema` (PAI-87), `paimos` CLI | — |
 | SBOM · CycloneDX manifest of every dependency, published with each release | shipped | CI tag-push generates `backend.sbom.json` + `frontend.sbom.json`, signs the image keylessly via cosign + GitHub OIDC, attaches each SBOM as a cosign attestation (PAI-121); `just sbom` for local generation | — |
@@ -37,8 +37,10 @@ Cross-reference for the audit's findings. None of these are website
 claims; they are the shipped-defect side of the same epic and need to
 stay closed for the matrix above to remain credible.
 
-- PAI-110 (Critical, postponed) — active-content upload hardening.
-  Carry into the next phase; postponed for compatibility.
+- PAI-110 (Critical) — active-content upload hardening shipped.
+  Uploads reject browser-executable content; serving re-sniffs stored
+  bytes and forces non-inline-safe content to download with restrictive
+  CSP.
 - PAI-111 — scope-aware authz on `/api/documents/{id}/download`.
 - PAI-112 — uploader ownership on pending attachment link.
 - PAI-113 — per-session CSRF token + middleware + frontend wire-up.
@@ -47,6 +49,8 @@ stay closed for the matrix above to remain credible.
 - PAI-115 — password-reset link logging gated on `PAIMOS_DEV_MODE=true`.
 - PAI-116 — session audit default-on + incident_log table.
 - PAI-117 — retention sweeper + per-subject export/erase.
+- PAI-118 — runtime third-party requests removed for zero-tracking /
+  air-gap readiness.
 
 ## Updating this file
 

@@ -11,6 +11,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import { STATUSES } from '@/constants/status'
 import { ISSUE_PRIORITIES, ISSUE_TYPES } from '@/types'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 const auth   = useAuthStore()
 const router = useRouter()
@@ -267,7 +268,7 @@ async function startImport() {
             <label>Jira project</label>
             <button class="project-picker-btn" @click="openProjectBrowser">
               <span v-if="selectedJiraLabel" class="picker-selected">{{ selectedJiraLabel }}</span>
-              <span v-else class="picker-placeholder">Browse {{ jiraProjects.length }} projects…</span>
+              <span v-else class="picker-placeholder">Browse {{ formatInteger(jiraProjects.length) }} projects…</span>
               <AppIcon name="chevron-down" :size="14" class="picker-chevron" />
             </button>
           </div>
@@ -382,11 +383,11 @@ async function startImport() {
       <!-- Result -->
       <div v-if="importResult" class="import-result">
         <div class="res-summary">
-          <span class="res-ok"><AppIcon name="check" :size="13" /> {{ importResult.imported }} imported</span>
-          <span v-if="importResult.updated" class="res-updated"> · {{ importResult.updated }} updated</span>
-          <span v-if="importResult.skipped" class="res-skip"> · {{ importResult.skipped }} skipped</span>
+          <span class="res-ok"><AppIcon name="check" :size="13" /> {{ formatInteger(importResult.imported) }} imported</span>
+          <span v-if="importResult.updated" class="res-updated"> · {{ formatInteger(importResult.updated) }} updated</span>
+          <span v-if="importResult.skipped" class="res-skip"> · {{ formatInteger(importResult.skipped) }} skipped</span>
           <template v-if="importResult.errors?.length">
-            <span class="res-err"> · {{ importResult.errors.length }} error(s)</span>
+            <span class="res-err"> · {{ formatInteger(importResult.errors.length) }} error(s)</span>
           </template>
           <span v-if="importResult.import_tag" class="res-tag"> · tagged <code class="res-tag-code">{{ importResult.import_tag }}</code></span>
           <RouterLink
@@ -396,7 +397,7 @@ async function startImport() {
           ><AppIcon name="arrow-right" :size="13" /> View project</RouterLink>
         </div>
         <details v-if="importResult.skipped_details?.length" class="skip-details">
-          <summary class="skip-details-toggle">{{ importResult.skipped_details.length }} skipped — show details</summary>
+          <summary class="skip-details-toggle">{{ formatInteger(importResult.skipped_details.length) }} skipped — show details</summary>
           <ul class="skip-list">
             <li v-for="s in importResult.skipped_details" :key="s.key"><code>{{ s.key }}</code>: {{ s.reason }}</li>
           </ul>
@@ -424,7 +425,7 @@ async function startImport() {
           </div>
           <span class="progress-text">
             <template v-if="importProgress.phase === 'fetching'">Fetching issues from Jira…</template>
-            <template v-else>{{ importProgress.processed }} / {{ importProgress.total }} issues · {{ importProgress.currentKey }}</template>
+            <template v-else>{{ formatInteger(importProgress.processed) }} / {{ formatInteger(importProgress.total) }} issues · {{ importProgress.currentKey }}</template>
           </span>
         </div>
       </div>
@@ -443,7 +444,7 @@ async function startImport() {
         placeholder="Search by key or name…"
       />
     </div>
-    <div class="browser-count">{{ filteredJiraProjects.length }} of {{ jiraProjects.length }} projects</div>
+    <div class="browser-count">{{ formatInteger(filteredJiraProjects.length) }} of {{ formatInteger(jiraProjects.length) }} projects</div>
     <div class="browser-list">
       <button
         v-for="p in filteredJiraProjects"

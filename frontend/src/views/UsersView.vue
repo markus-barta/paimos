@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSort } from '@/composables/useSort'
 import AppIcon from '@/components/AppIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 import type { User } from '@/types'
 
 const ROLE_OPTIONS: MetaOption[] = [
@@ -99,7 +100,7 @@ async function updateUser() {
 <template>
     <Teleport defer to="#app-header-left">
       <span class="ah-title">Users</span>
-      <span class="ah-subtitle">{{ users.length }} user{{ users.length !== 1 ? 's' : '' }}</span>
+      <span class="ah-subtitle">{{ formatInteger(users.length) }} user{{ users.length !== 1 ? 's' : '' }}</span>
     </Teleport>
     <Teleport defer to="#app-header-right">
       <button class="btn btn-primary btn-sm" @click="showCreate=true">+ New user</button>

@@ -1,7 +1,9 @@
+import { formatInteger } from '@/composables/useNumberFormat'
+
 const SEARCH_ORDER_LABEL = 'best matches first'
 
 function fmt(n: number): string {
-  return Math.max(0, n).toLocaleString()
+  return formatInteger(Math.max(0, n))
 }
 
 export function issueSearchSummary(

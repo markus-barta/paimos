@@ -2,6 +2,8 @@
 import LoadingText from "@/components/LoadingText.vue";
 import { computed, onMounted, ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { formatCurrency, formatInteger } from '@/composables/useNumberFormat'
+import { fmtShortDateTime } from '@/utils/formatTime'
 import {
   buildAICallsExportUrl,
   loadAICalls,
@@ -23,7 +25,7 @@ const selected = ref<AICallRow | null>(null)
 const draft = ref<AICallQuery>({ limit: 25 })
 
 const rows = computed(() => payload.value?.rows ?? [])
-const totalCost = computed(() => ((payload.value?.total_cost_micro_usd ?? 0) / 1_000_000).toFixed(4))
+const totalCost = computed(() => formatCurrency((payload.value?.total_cost_micro_usd ?? 0) / 1_000_000, 'USD', undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }))
 const exportHref = computed(() => buildAICallsExportUrl(props.mode, query.value))
 
 async function load() {
@@ -84,8 +86,8 @@ function nextPage() {
     </div>
 
     <div class="aipt-totals">
-      <span>{{ payload?.total_count ?? 0 }} calls</span>
-      <span>${{ totalCost }}</span>
+      <span>{{ formatInteger(payload?.total_count ?? 0) }} calls</span>
+      <span>{{ totalCost }}</span>
     </div>
 
     <div class="aipt-filters">
@@ -125,7 +127,7 @@ function nextPage() {
         </thead>
         <tbody>
           <tr v-for="row in rows" :key="row.id" class="aipt-row" @click="selected = row">
-            <td>{{ row.created_at }}</td>
+            <td>{{ fmtShortDateTime(row.created_at) }}</td>
             <td v-if="mode === 'admin'">{{ row.username }}</td>
             <td>
               <div class="aipt-action">{{ row.action_key }}</div>
@@ -133,8 +135,8 @@ function nextPage() {
             </td>
             <td>{{ row.subject_label || row.surface }}</td>
             <td class="aipt-mono">{{ row.model || '—' }}</td>
-            <td class="aipt-mono">{{ row.total_tokens }}</td>
-            <td class="aipt-mono">${{ (row.cost_micro_usd / 1_000_000).toFixed(4) }}</td>
+            <td class="aipt-mono">{{ formatInteger(row.total_tokens) }}</td>
+            <td class="aipt-mono">{{ formatCurrency(row.cost_micro_usd / 1_000_000, 'USD', undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) }}</td>
             <td>{{ row.outcome }}</td>
           </tr>
         </tbody>
@@ -150,15 +152,15 @@ function nextPage() {
         <button type="button" class="btn btn-ghost btn-sm" @click="selected = null">Close</button>
       </div>
       <dl class="aipt-detail__grid">
-        <div><dt>Time</dt><dd>{{ selected.created_at }}</dd></div>
+        <div><dt>Time</dt><dd>{{ fmtShortDateTime(selected.created_at) }}</dd></div>
         <div v-if="mode === 'admin'"><dt>User</dt><dd>{{ selected.username }}</dd></div>
         <div><dt>Request</dt><dd class="aipt-mono">{{ selected.request_id }}</dd></div>
         <div><dt>Model</dt><dd class="aipt-mono">{{ selected.model || '—' }}</dd></div>
         <div><dt>Provider</dt><dd class="aipt-mono">{{ selected.provider || '—' }}</dd></div>
         <div><dt>Outcome</dt><dd>{{ selected.outcome }}</dd></div>
-        <div><dt>Tokens</dt><dd class="aipt-mono">{{ selected.prompt_tokens }} / {{ selected.completion_tokens }} / {{ selected.total_tokens }}</dd></div>
-        <div><dt>Cost</dt><dd class="aipt-mono">${{ (selected.cost_micro_usd / 1_000_000).toFixed(4) }}</dd></div>
-        <div><dt>Latency</dt><dd class="aipt-mono">{{ selected.latency_ms }} ms</dd></div>
+        <div><dt>Tokens</dt><dd class="aipt-mono">{{ formatInteger(selected.prompt_tokens) }} / {{ formatInteger(selected.completion_tokens) }} / {{ formatInteger(selected.total_tokens) }}</dd></div>
+        <div><dt>Cost</dt><dd class="aipt-mono">{{ formatCurrency(selected.cost_micro_usd / 1_000_000, 'USD', undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) }}</dd></div>
+        <div><dt>Latency</dt><dd class="aipt-mono">{{ formatInteger(selected.latency_ms) }} ms</dd></div>
         <div><dt>Error class</dt><dd class="aipt-mono">{{ selected.error_class || '—' }}</dd></div>
       </dl>
     </aside>

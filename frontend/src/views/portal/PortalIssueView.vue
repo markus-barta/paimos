@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import StatusDot from '@/components/StatusDot.vue'
 import { useConfirm } from '@/composables/useConfirm'
+import { formatCurrency, formatDecimalFlex } from '@/composables/useNumberFormat'
+import { formatDateWithLocale } from '@/composables/useDateFormat'
 
 interface PortalIssue {
   id: number; issue_key: string; title: string; description: string
@@ -62,16 +64,16 @@ async function rejectIssue() {
 
 function fmtEur(v: number | null | undefined): string {
   if (v == null) return '-'
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v)
+  return formatCurrency(v, 'EUR')
 }
 
 function fmtNum(v: number | null | undefined): string {
-  return v != null ? String(v) : '-'
+  return v != null ? formatDecimalFlex(v, 2) : '-'
 }
 
 function fmtDate(v: string): string {
   if (!v) return '-'
-  return new Date(v).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return formatDateWithLocale(v, undefined, { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 const STATUS_COLORS: Record<string, string> = {

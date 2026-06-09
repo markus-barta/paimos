@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { portalGreeting, type PortalLocale } from '@/composables/portalGreetings'
 import { STATUS_DOT_STYLE, STATUS_LABEL } from '@/composables/useIssueDisplay'
 import { fmtRelative } from '@/utils/formatTime'
+import { formatInteger } from '@/composables/useNumberFormat'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -208,11 +209,11 @@ function reportItemCount(n: number): string {
       <!-- KPI strip -->
       <section class="kpi-strip" :aria-label="$t('portal.welcome.kpi.activeProjects')">
         <article class="kpi-card">
-          <div class="kpi-value">{{ overview.kpis.active_projects }}</div>
+          <div class="kpi-value">{{ formatInteger(overview.kpis.active_projects) }}</div>
           <div class="kpi-label">{{ $t('portal.welcome.kpi.activeProjects') }}</div>
         </article>
         <article class="kpi-card">
-          <div class="kpi-value">{{ overview.kpis.open_issues }}</div>
+          <div class="kpi-value">{{ formatInteger(overview.kpis.open_issues) }}</div>
           <div class="kpi-label">{{ $t('portal.welcome.kpi.openIssues') }}</div>
         </article>
         <button
@@ -222,11 +223,11 @@ function reportItemCount(n: number): string {
           :disabled="overview.kpis.awaiting_acceptance === 0"
           @click="scrollToAwaiting"
         >
-          <div class="kpi-value">{{ overview.kpis.awaiting_acceptance }}</div>
+          <div class="kpi-value">{{ formatInteger(overview.kpis.awaiting_acceptance) }}</div>
           <div class="kpi-label">{{ $t('portal.welcome.kpi.awaiting') }}</div>
         </button>
         <article class="kpi-card">
-          <div class="kpi-value">{{ overview.kpis.accepted_this_month }}</div>
+          <div class="kpi-value">{{ formatInteger(overview.kpis.accepted_this_month) }}</div>
           <div class="kpi-label">{{ $t('portal.welcome.kpi.acceptedThisMonth') }}</div>
         </article>
       </section>
@@ -310,15 +311,15 @@ function reportItemCount(n: number): string {
 
             <div class="card-stats">
               <div class="stat">
-                <span class="stat-value">{{ p.issue_count }}</span>
+                <span class="stat-value">{{ formatInteger(p.issue_count) }}</span>
                 <span class="stat-label">{{ $t('portal.issues') }}</span>
               </div>
               <div class="stat">
-                <span class="stat-value">{{ p.done_count }}</span>
+                <span class="stat-value">{{ formatInteger(p.done_count) }}</span>
                 <span class="stat-label">{{ $t('portal.done') }}</span>
               </div>
               <div class="stat stat-progress">
-                <span class="stat-value">{{ projectProgress(p) }}%</span>
+                <span class="stat-value">{{ formatInteger(projectProgress(p)) }}%</span>
                 <span class="stat-label">{{ $t('status.done') }}</span>
               </div>
             </div>

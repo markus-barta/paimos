@@ -50,7 +50,8 @@ import { useI18n } from 'vue-i18n'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import AiPaperTrailPanel from '@/components/ai/AiPaperTrailPanel.vue'
-import { useNumberFormat } from '@/composables/useNumberFormat'
+import { formatCurrency, formatDecimalFlex, formatInteger, useNumberFormat } from '@/composables/useNumberFormat'
+import { fmtRelative } from '@/utils/formatTime'
 
 const { t } = useI18n()
 
@@ -411,26 +412,16 @@ function applyPreset(slug: string) {
 // rounding 200 to "0k".
 function formatContext(ctx: number): string {
   if (ctx <= 0) return '?'
-  if (ctx >= 1_000_000) return (ctx / 1_000_000).toFixed(ctx % 1_000_000 === 0 ? 0 : 1) + 'M'
-  if (ctx >= 1_000) return Math.round(ctx / 1_000) + 'k'
-  return String(ctx)
+  if (ctx >= 1_000_000) return `${formatDecimalFlex(ctx / 1_000_000, ctx % 1_000_000 === 0 ? 0 : 1)}M`
+  if (ctx >= 1_000) return `${formatInteger(Math.round(ctx / 1_000))}k`
+  return formatInteger(ctx)
 }
 
 // Light relative-time formatter for the "last saved" stamp. Scope
 // stays small: PAIMOS doesn't have a shared util for this and adding
 // a date library for one timestamp is overkill.
 function relTime(iso: string): string {
-  if (!iso) return ''
-  // SQLite returns "YYYY-MM-DD HH:MM:SS" UTC; new Date parses ISO with T.
-  const norm = iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z'
-  const d = new Date(norm)
-  if (Number.isNaN(d.getTime())) return ''
-  const diff = Date.now() - d.getTime()
-  if (diff < 60_000)         return 'just now'
-  if (diff < 3_600_000)      return Math.round(diff / 60_000) + ' min ago'
-  if (diff < 86_400_000)     return Math.round(diff / 3_600_000) + ' h ago'
-  if (diff < 7 * 86_400_000) return Math.round(diff / 86_400_000) + ' d ago'
-  return d.toLocaleDateString()
+  return iso ? fmtRelative(iso) : ''
 }
 </script>
 
@@ -538,7 +529,7 @@ function relTime(iso: string): string {
             <AppIcon name="cpu" :size="11" /> {{ testResult.model }}
           </span>
           <span v-if="testResult.latency_ms" class="ai-test-result-pill">
-            <AppIcon name="zap" :size="11" /> {{ testResult.latency_ms }} ms
+            <AppIcon name="zap" :size="11" /> {{ formatInteger(testResult.latency_ms) }} ms
           </span>
           <span v-if="testResult.prompt_tokens != null && testResult.completion_tokens != null && (testResult.prompt_tokens + testResult.completion_tokens) > 0" class="ai-test-result-pill">
             {{ formatTokenBreakdown(testResult.prompt_tokens, testResult.completion_tokens) }}
@@ -731,7 +722,7 @@ function relTime(iso: string): string {
                     class="ai-preset-meta-bit"
                     title="USD per million tokens — prompt / completion"
                   >
-                    ${{ m.pricing_prompt_per_mtok.toFixed(2) }} / ${{ m.pricing_completion_per_mtok.toFixed(2) }}
+                    {{ formatCurrency(m.pricing_prompt_per_mtok, 'USD') }} / {{ formatCurrency(m.pricing_completion_per_mtok, 'USD') }}
                   </span>
                   <span v-else class="ai-preset-meta-bit ai-preset-meta-bit--free" title="No per-token cost.">free</span>
                 </div>

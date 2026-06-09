@@ -17,6 +17,7 @@ import {
   type LightboxAlignment,
   type LightboxSize,
 } from '@/composables/useAttachmentLightbox'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 const lb = useAttachmentLightbox()
 
@@ -24,6 +25,7 @@ const lb = useAttachmentLightbox()
 const zoom = ref(1)
 const MIN_ZOOM = 1
 const MAX_ZOOM = 4
+// Internal zoom state clamp; not user-facing locale display.
 function zoomIn()    { zoom.value = Math.min(MAX_ZOOM, +(zoom.value + 0.25).toFixed(2)) }
 function zoomOut()   { zoom.value = Math.max(MIN_ZOOM, +(zoom.value - 0.25).toFixed(2)) }
 function zoomReset() { zoom.value = 1 }
@@ -129,7 +131,7 @@ const imageUrl = computed(() =>
             <AppIcon name="image" :size="14" />
             <span class="lb-filename" :title="lb.current.value.filename">{{ lb.current.value.filename }}</span>
             <span v-if="lb.canStep.value" class="lb-index">
-              {{ lb.currentIndex.value + 1 }} / {{ lb.attachments.value.length }}
+              {{ formatInteger(lb.currentIndex.value + 1) }} / {{ formatInteger(lb.attachments.value.length) }}
             </span>
           </div>
           <div class="lb-actions">
@@ -137,7 +139,7 @@ const imageUrl = computed(() =>
               <button type="button" class="lb-btn" title="Zoom out (−)" @click="zoomOut" :disabled="zoom <= MIN_ZOOM">
                 <AppIcon name="minus" :size="14" />
               </button>
-              <span class="lb-zoom-value">{{ Math.round(zoom * 100) }}%</span>
+              <span class="lb-zoom-value">{{ formatInteger(Math.round(zoom * 100)) }}%</span>
               <button type="button" class="lb-btn" title="Zoom in (+)" @click="zoomIn" :disabled="zoom >= MAX_ZOOM">
                 <AppIcon name="plus" :size="14" />
               </button>

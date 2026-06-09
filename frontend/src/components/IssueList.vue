@@ -24,6 +24,7 @@ import { useTimeUnit } from '@/composables/useTimeUnit'
 import { useSearchStore } from '@/stores/search'
 import { useTableAppearance } from '@/composables/useTableAppearance'
 import { useIssueContext } from '@/composables/useIssueContext'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
@@ -354,7 +355,7 @@ async function selectAllMatching() {
     for (const id of resp.ids ?? []) next.add(id)
     selectedIds.value = next
     if (resp.truncated) {
-      expandSelectionError.value = `Selected first ${resp.cap.toLocaleString()} matching issues — narrow the filter to reach the rest.`
+      expandSelectionError.value = `Selected first ${formatInteger(resp.cap)} matching issues — narrow the filter to reach the rest.`
     }
   } catch (e: unknown) {
     expandSelectionError.value = errMsg(e, 'Could not expand selection.')
@@ -1063,8 +1064,8 @@ const primaryIssueCount = computed(() => {
   return filteredIssues.value.length
 })
 const loadedCountLabel = computed(() => {
-  if (props.resultTotal === undefined) return `${props.issues.length.toLocaleString()} loaded`
-  return `${props.issues.length.toLocaleString()} loaded of ${props.resultTotal.toLocaleString()} total`
+  if (props.resultTotal === undefined) return `${formatInteger(props.issues.length)} loaded`
+  return `${formatInteger(props.issues.length)} loaded of ${formatInteger(props.resultTotal)} total`
 })
 
 function showAllRenderedIssues() {
@@ -1282,12 +1283,12 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
       <div class="filter-right">
         <span class="issue-count">
-          {{ primaryIssueCount.toLocaleString() }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}<template v-if="hasMore">
-            · showing {{ renderedIssues.length.toLocaleString() }}
+          {{ formatInteger(primaryIssueCount) }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}<template v-if="hasMore">
+            · showing {{ formatInteger(renderedIssues.length) }}
             · <button
               type="button"
               class="issue-count-link"
-              :aria-label="`Show all ${filteredIssues.length.toLocaleString()} issues`"
+              :aria-label="`Show all ${formatInteger(filteredIssues.length)} issues`"
               @click="showAllRenderedIssues"
             >show all</button>
           </template><template v-if="serverHasMore">
@@ -1296,7 +1297,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
               type="button"
               class="issue-count-link"
               :disabled="loadingMore"
-              :aria-label="`Load all ${props.resultTotal?.toLocaleString() ?? ''} issues`"
+              :aria-label="`Load all ${props.resultTotal != null ? formatInteger(props.resultTotal) : ''} issues`"
               @click="emit('load-all')"
             >load all</button>
           </template>
@@ -1306,7 +1307,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
           class="btn btn-ghost btn-sm"
           @click="openBulkChange"
         >
-          Change {{ selectedIds.size }} issue{{ selectedIds.size !== 1 ? 's' : '' }}...
+          Change {{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}...
         </button>
         <button
           v-if="selectionMode && selectedIds.size > 0"
@@ -1340,20 +1341,20 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
           class="btn btn-danger btn-sm"
           @click="showBulkDelete = true"
         >
-          Delete {{ selectedIds.size }}
+          Delete {{ formatInteger(selectedIds.size) }}
         </button>
         <button :class="['btn btn-ghost btn-sm', { active: selectionMode }]" @click="toggleSelectionMode" title="Toggle selection mode">
-          {{ selectionMode ? `✓ ${selectedIds.size} selected` : 'Select' }}
+          {{ selectionMode ? `✓ ${formatInteger(selectedIds.size)} selected` : 'Select' }}
         </button>
         <button
           v-if="canExpandSelectionToAllMatching"
           class="btn btn-ghost btn-sm select-all-matching"
           :disabled="expandingSelection"
-          :title="`Select all ${props.resultTotal?.toLocaleString() ?? ''} issues matching the current filter`"
+          :title="`Select all ${props.resultTotal != null ? formatInteger(props.resultTotal) : ''} issues matching the current filter`"
           @click="selectAllMatching"
         >
           <template v-if="expandingSelection">Selecting…</template>
-          <template v-else>+ Select all {{ props.resultTotal?.toLocaleString() ?? '' }} matching</template>
+          <template v-else>+ Select all {{ props.resultTotal != null ? formatInteger(props.resultTotal) : '' }} matching</template>
         </button>
         <span v-if="expandSelectionError" class="select-all-matching-warn" :title="expandSelectionError">
           {{ expandSelectionError }}
@@ -1612,13 +1613,13 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     <!-- Bulk delete confirm -->
     <AppModal title="Delete Issues" :open="showBulkDelete" @close="showBulkDelete=false" confirm-key="d" @confirm="confirmBulkDelete">
       <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
-        Permanently delete <strong>{{ selectedIds.size }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</strong>? This cannot be undone.
+        Permanently delete <strong>{{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</strong>? This cannot be undone.
       </p>
       <div class="form-actions">
         <button class="btn btn-ghost" @click="showBulkDelete=false" :disabled="bulkDeleting"><u>C</u>ancel</button>
         <button class="btn btn-danger" @click="confirmBulkDelete" :disabled="bulkDeleting">
           <template v-if="bulkDeleting">Deleting...</template>
-          <template v-else><u>D</u>elete {{ selectedIds.size }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</template>
+          <template v-else><u>D</u>elete {{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</template>
         </button>
       </div>
     </AppModal>

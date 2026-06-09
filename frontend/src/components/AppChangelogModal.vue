@@ -24,6 +24,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import AppModal from '@/components/AppModal.vue'
 import changelogRaw from '@docs/CHANGELOG.md?raw'
+import { formatDateWithLocale } from '@/composables/useDateFormat'
 
 const props = defineProps<{ open: boolean }>()
 defineEmits<{ close: [] }>()
@@ -92,14 +93,13 @@ const renderedHtml = computed(() => {
 function fmtSidebarDate(iso: string): string {
   const d = new Date(iso + 'T00:00:00Z')
   const sameYear = d.getUTCFullYear() === new Date().getUTCFullYear()
-  return d.toLocaleDateString(undefined, sameYear
-    ? { day: '2-digit', month: 'short' }
-    : { day: '2-digit', month: 'short', year: '2-digit' })
+  return formatDateWithLocale(iso, undefined, sameYear
+    ? { day: '2-digit', month: 'short', timeZone: 'UTC' }
+    : { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' })
 }
 function fmtFullDate(iso: string): string {
-  const d = new Date(iso + 'T00:00:00Z')
-  return d.toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
+  return formatDateWithLocale(iso, undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC',
   })
 }
 

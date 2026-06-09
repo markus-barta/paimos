@@ -2,6 +2,7 @@
 import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed } from 'vue'
 import { api } from '@/api/client'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 interface DevReportMeta { filename: string; version: string; generated_at: string; size_bytes: number; passed?: number; failed?: number; total?: number }
 interface DevSummary { version: string; failures?: number; quick_failures?: number; complete_failures?: number; generated_at: string; passed?: number; failed?: number; total?: number; available?: boolean; status?: string; report_count?: number }
@@ -216,7 +217,7 @@ loadDev()
           </div>
           <div v-if="!devShowAll && devHasMore" class="dev-show-more">
             <button class="btn btn-ghost btn-sm" @click="devShowAll = true">
-              Show all {{ devReports.length }} reports
+              Show all {{ formatInteger(devReports.length) }} reports
             </button>
           </div>
         </div>

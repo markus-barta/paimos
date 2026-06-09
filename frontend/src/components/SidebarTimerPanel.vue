@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useTimerPanel } from '@/composables/useTimerPanel'
 import { useIssuePreview } from '@/composables/useIssuePreview'
 import { formatDuration } from '@/composables/useDurationInput'
+import { formatInteger } from '@/composables/useNumberFormat'
 import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
@@ -77,7 +78,7 @@ const canGoNext = computed(() => !isToday.value)
 
 <template>
   <!-- Collapsed indicator -->
-  <div v-if="!isExpanded && timer.hasRunning" class="timer-collapsed-indicator" :title="`${runningEntries.length} timer${runningEntries.length > 1 ? 's' : ''} running`">
+  <div v-if="!isExpanded && timer.hasRunning" class="timer-collapsed-indicator" :title="`${formatInteger(runningEntries.length)} timer${runningEntries.length > 1 ? 's' : ''} running`">
     <span class="timer-dot"></span>
   </div>
   <!-- Expanded panel -->
@@ -86,7 +87,7 @@ const canGoNext = computed(() => !isToday.value)
       <template v-if="timer.hasRunning">
         <span class="timer-dot"></span>
         <span class="sl timer-label" v-if="runningEntries.length === 1">{{ runningEntries[0].issue_key }} · {{ timer.formattedElapsed(runningEntries[0].id) }}</span>
-        <span class="sl timer-label" v-else>{{ runningEntries.length }} timers</span>
+        <span class="sl timer-label" v-else>{{ formatInteger(runningEntries.length) }} timers</span>
       </template>
       <template v-else>
         <AppIcon name="clock" :size="13" class="timer-clock-icon" />
@@ -159,10 +160,10 @@ const canGoNext = computed(() => !isToday.value)
           <strong>{{ runningEntries[0].issue_key }}</strong> is currently running
           <span class="timer-dialog-elapsed">({{ timer.formattedElapsed(runningEntries[0].id) }})</span>
         </p>
-        <p class="timer-dialog-msg" v-else>{{ runningEntries.length }} timers are currently running</p>
+        <p class="timer-dialog-msg" v-else>{{ formatInteger(runningEntries.length) }} timers are currently running</p>
         <div class="timer-dialog-actions">
           <button class="btn btn-primary btn-sm" @click="timer.confirmSwitch()"><u>S</u>witch</button>
-          <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" @click="timer.confirmBoth()"><template v-if="runningEntries.length === 1"><u>B</u>oth</template><template v-else><u>A</u>ll ({{ runningEntries.length + 1 }})</template></button>
+          <button class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" @click="timer.confirmBoth()"><template v-if="runningEntries.length === 1"><u>B</u>oth</template><template v-else><u>A</u>ll ({{ formatInteger(runningEntries.length + 1) }})</template></button>
           <button class="btn btn-ghost btn-sm" @click="timer.confirmCancel()"><u>C</u>ancel</button>
         </div>
       </div>

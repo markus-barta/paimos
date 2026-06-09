@@ -24,6 +24,7 @@ import { useTimeUnit } from '@/composables/useTimeUnit'
 import type { FormatContext } from '@/composables/useTimeUnit'
 import { useIssueContext } from '@/composables/useIssueContext'
 import { clampColumnWidth, defaultColumnWidth, type ColumnWidths } from '@/composables/useColumnWidths'
+import { formatDecimalFlex } from '@/composables/useNumberFormat'
 
 const { users, sprints, costUnits, releases } = useIssueContext()
 
@@ -584,7 +585,7 @@ onUnmounted(stopColumnResize)
           </span>
         </td>
         <td v-if="!compact && isVisible('billing_type')" class="meta-cell">{{ i.billing_type ? BILLING_LABEL[i.billing_type] ?? i.billing_type : '—' }}</td>
-        <td v-if="!compact && isVisible('total_budget')" class="meta-cell">{{ i.total_budget != null ? i.total_budget.toLocaleString() : '—' }}</td>
+        <td v-if="!compact && isVisible('total_budget')" class="meta-cell">{{ i.total_budget != null ? formatDecimalFlex(i.total_budget, 2) : '—' }}</td>
         <td v-if="!compact && isVisible('rate_hourly')" class="meta-cell">{{ i.rate_hourly != null ? i.rate_hourly : '—' }}</td>
         <td v-if="!compact && isVisible('rate_lp')" class="meta-cell">{{ i.rate_lp != null ? i.rate_lp : '—' }}</td>
         <td v-if="!compact && isVisible('estimate_hours')" class="meta-cell inline-edit-cell">

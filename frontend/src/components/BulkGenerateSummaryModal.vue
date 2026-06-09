@@ -70,6 +70,8 @@ import AppModal from '@/components/AppModal.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import MetaSelect from '@/components/MetaSelect.vue'
 import type { MetaOption } from '@/components/MetaSelect.vue'
+import { formatCurrency, formatDecimal, formatInteger } from '@/composables/useNumberFormat'
+import { fmtDateTime } from '@/utils/formatTime'
 
 const { t } = useI18n()
 
@@ -255,7 +257,7 @@ const itemsPerMinute = computed<number | null>(() => {
 const throughputLabel = computed<string>(() => {
   if (itemsPerMinute.value == null) return ''
   const v = itemsPerMinute.value
-  const rate = v < 10 ? v.toFixed(1) : String(Math.round(v))
+  const rate = v < 10 ? formatDecimal(v, 1) : formatInteger(Math.round(v))
   return t('reportSummary.bulk.throughput', { rate })
 })
 
@@ -402,9 +404,9 @@ watch(
 
 function formatUSD(microUSD: number): string {
   const usd = microUSD / 1_000_000
-  if (usd < 0.01) return `$${usd.toFixed(4)}`
-  if (usd < 1) return `$${usd.toFixed(3)}`
-  return `$${usd.toFixed(2)}`
+  if (usd < 0.01) return formatCurrency(usd, 'USD', undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })
+  if (usd < 1) return formatCurrency(usd, 'USD', undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+  return formatCurrency(usd, 'USD')
 }
 
 // ── Per-row runner + retry (PAI-440) ─────────────────────────────
@@ -605,9 +607,9 @@ function finishAndClose() {
           <strong>{{ t('reportSummary.bulk.resumeQuestion') }}</strong>
           <span>
             {{ t('reportSummary.bulk.resumeDetail', {
-              remaining: resumeOffer.remainingIds.length,
-              total: resumeOffer.totalInitial,
-              started: new Date(resumeOffer.startedAt).toLocaleString(),
+              remaining: formatInteger(resumeOffer.remainingIds.length),
+              total: formatInteger(resumeOffer.totalInitial),
+              started: fmtDateTime(new Date(resumeOffer.startedAt).toISOString()),
               style: resumeOffer.style === 'exec' ? t('reportSummary.bulk.styleExec') : t('reportSummary.bulk.styleCustomer'),
             }) }}
           </span>
@@ -716,9 +718,9 @@ function finishAndClose() {
 
       <template v-else>
         <div class="bgs-progress-line">
-          <span><strong>{{ updatedIds.length }}</strong> {{ t('reportSummary.bulk.doneUpdatedWord') }}</span>
-          <span v-if="failed.length"> · <strong>{{ failed.length }}</strong> {{ t('reportSummary.bulk.doneFailedWord') }}</span>
-          <span v-if="completed < total"> · {{ total - completed }} {{ t('reportSummary.bulk.doneSkippedSuffix') }}</span>
+          <span><strong>{{ formatInteger(updatedIds.length) }}</strong> {{ t('reportSummary.bulk.doneUpdatedWord') }}</span>
+          <span v-if="failed.length"> · <strong>{{ formatInteger(failed.length) }}</strong> {{ t('reportSummary.bulk.doneFailedWord') }}</span>
+          <span v-if="completed < total"> · {{ formatInteger(total - completed) }} {{ t('reportSummary.bulk.doneSkippedSuffix') }}</span>
         </div>
         <div v-if="failed.length" class="bgs-fail-list">
           <p class="bgs-fail-title">{{ t('reportSummary.bulk.doneFailuresTitle') }}</p>

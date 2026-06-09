@@ -10,6 +10,7 @@ import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { greeting } from '@/composables/greetings'
 import { fmtRelative } from '@/utils/formatTime'
+import { formatInteger } from '@/composables/useNumberFormat'
 import { TYPE_SVGS, STATUS_DOT_STYLE, STATUS_LABEL, PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL } from '@/composables/useIssueDisplay'
 import type { Project } from './ProjectsView.vue'
 import type { Issue } from '@/types'
@@ -32,16 +33,7 @@ onMounted(async () => {
 })
 
 function relativeTime(ts: string): string {
-  if (!ts) return ''
-  const diff = Date.now() - new Date(ts.replace(' ', 'T') + 'Z').getTime()
-  const mins = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 30) return `${days}d ago`
-  return new Date(ts).toLocaleDateString()
+  return ts ? fmtRelative(ts) : ''
 }
 
 function statusDot(status: string) { return STATUS_DOT_STYLE[status] ?? STATUS_DOT_STYLE.backlog }
@@ -54,7 +46,7 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
 <template>
     <Teleport defer to="#app-header-left">
       <span class="ah-title">Dashboard</span>
-      <span v-if="!loading" class="ah-subtitle">{{ projects.length }} active project{{ projects.length !== 1 ? 's' : '' }}</span>
+      <span v-if="!loading" class="ah-subtitle">{{ formatInteger(projects.length) }} active project{{ projects.length !== 1 ? 's' : '' }}</span>
     </Teleport>
 
     <LoadingText v-if="loading" class="loading" label="Loading…" />
@@ -89,13 +81,13 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
                 </div>
                 <div class="project-info">
                   <span class="project-name">{{ p.name }}</span>
-                  <span class="project-meta">{{ p.open_issue_count }} open · {{ p.issue_count }} total</span>
+                  <span class="project-meta">{{ formatInteger(p.open_issue_count) }} open · {{ formatInteger(p.issue_count) }} total</span>
                 </div>
               </RouterLink>
               <div class="project-right">
                 <div v-if="p.active_issue_count > 0" class="dash-progress">
                   <div class="dash-progress-bar"><div class="dash-progress-fill" :style="{ width: `${Math.round((p.done_issue_count / p.active_issue_count) * 100)}%` }"></div></div>
-                  <span class="dash-progress-label">{{ p.done_issue_count }}/{{ p.active_issue_count }}</span>
+                  <span class="dash-progress-label">{{ formatInteger(p.done_issue_count) }}/{{ formatInteger(p.active_issue_count) }}</span>
                 </div>
                 <span v-if="p.last_activity" class="project-activity">{{ relativeTime(p.last_activity) }}</span>
               </div>

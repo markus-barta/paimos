@@ -31,6 +31,7 @@ const emit = defineEmits<{
 
 import { ref, watch, onUnmounted } from 'vue'
 import AppModal from '@/components/AppModal.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 const strategy    = ref<CollisionStrategy>('skip')
 const projectName = ref('')
@@ -75,7 +76,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
       <!-- New project: show editable name field -->
       <template v-if="!preflight.project_exists">
         <p class="icm-summary">
-          <strong>{{ preflight.total }}</strong> issue{{ preflight.total !== 1 ? 's' : '' }} found in CSV.
+          <strong>{{ formatInteger(preflight.total) }}</strong> issue{{ preflight.total !== 1 ? 's' : '' }} found in CSV.
           This project does not exist yet and will be created.
         </p>
         <div class="icm-field">
@@ -88,9 +89,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
       <!-- Existing project: show collision options -->
       <template v-else>
         <p class="icm-summary">
-          <strong>{{ preflight.total }}</strong> issue{{ preflight.total !== 1 ? 's' : '' }} found in CSV
+          <strong>{{ formatInteger(preflight.total) }}</strong> issue{{ preflight.total !== 1 ? 's' : '' }} found in CSV
           <template v-if="preflight.collision_count > 0">
-            · <span class="icm-collision-count">{{ preflight.collision_count }} already exist</span>
+            · <span class="icm-collision-count">{{ formatInteger(preflight.collision_count) }} already exist</span>
           </template>
         </p>
 
@@ -102,8 +103,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             <div class="icm-option-body">
               <span class="icm-option-title">Skip existing</span>
               <span class="icm-option-desc">
-                Import {{ preflight.new_count }} new issue{{ preflight.new_count !== 1 ? 's' : '' }},
-                skip {{ preflight.collision_count }} existing
+                Import {{ formatInteger(preflight.new_count) }} new issue{{ preflight.new_count !== 1 ? 's' : '' }},
+                skip {{ formatInteger(preflight.collision_count) }} existing
               </span>
             </div>
           </label>
@@ -113,8 +114,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             <div class="icm-option-body">
               <span class="icm-option-title">Overwrite existing</span>
               <span class="icm-option-desc">
-                Update {{ preflight.collision_count }} existing,
-                import {{ preflight.new_count }} new
+                Update {{ formatInteger(preflight.collision_count) }} existing,
+                import {{ formatInteger(preflight.new_count) }} new
               </span>
             </div>
           </label>
@@ -131,7 +132,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
           <!-- Collision key list (collapsed if many) -->
           <details v-if="preflight.collision_keys?.length" class="icm-collisions">
-            <summary>{{ preflight.collision_count }} conflicting key{{ preflight.collision_count !== 1 ? 's' : '' }}</summary>
+            <summary>{{ formatInteger(preflight.collision_count) }} conflicting key{{ preflight.collision_count !== 1 ? 's' : '' }}</summary>
             <div class="icm-keys">
               <code v-for="k in preflight.collision_keys" :key="k">{{ k }}</code>
             </div>
@@ -139,7 +140,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         </div>
 
         <p v-else class="icm-no-collision">
-          No conflicts — all {{ preflight.total }} issues will be imported.
+          No conflicts — all {{ formatInteger(preflight.total) }} issues will be imported.
         </p>
       </template>
 

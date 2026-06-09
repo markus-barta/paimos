@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 import type { ProjectReportSnapshot } from '@/types'
 
 const route = useRoute()
@@ -63,10 +64,10 @@ onMounted(load)
       </header>
 
       <div class="pra-stats">
-        <div><strong>{{ report.total_issues }}</strong><span>Tickets im Bericht</span></div>
-        <div><strong>{{ eligible }}</strong><span>können abgenommen werden</span></div>
-        <div><strong>{{ alreadyFinal }}</strong><span>bereits final</span></div>
-        <div><strong>{{ skipped }}</strong><span>übersprungen</span></div>
+        <div><strong>{{ formatInteger(report.total_issues) }}</strong><span>Tickets im Bericht</span></div>
+        <div><strong>{{ formatInteger(eligible) }}</strong><span>können abgenommen werden</span></div>
+        <div><strong>{{ formatInteger(alreadyFinal) }}</strong><span>bereits final</span></div>
+        <div><strong>{{ formatInteger(skipped) }}</strong><span>übersprungen</span></div>
       </div>
 
       <p class="pra-copy">

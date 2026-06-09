@@ -10,6 +10,7 @@ import {
   STATUS_LABEL,
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
+import { formatDecimalFlex } from '@/composables/useNumberFormat'
 
 type TreeIssue = Issue & { children: (Issue & { children: Issue[] })[] }
 
@@ -60,7 +61,7 @@ function typeLabel(type: string): string {
         <template v-if="epic.tags?.length"><TagChip v-for="t in epic.tags.slice(0,3)" :key="t.id" :tag="t" /></template>
         <span v-if="epic.cost_unit" class="meta-pill">{{ epic.cost_unit }}</span>
         <span v-if="epic.release" class="meta-pill release-pill">{{ epic.release }}</span>
-        <span v-if="(epic.type === 'epic' || epic.type === 'cost_unit') && epic.total_budget != null" class="meta-pill budget-pill">{{ epic.total_budget.toLocaleString() }}</span>
+        <span v-if="(epic.type === 'epic' || epic.type === 'cost_unit') && epic.total_budget != null" class="meta-pill budget-pill">{{ formatDecimalFlex(epic.total_budget, 2) }}</span>
         <span v-if="epic.type === 'release' && epic.group_state" :class="['v2-tree-badge', `v2-tree--${epic.group_state}`]">{{ epic.group_state }}</span>
         <span v-if="epic.type === 'sprint' && epic.sprint_state" :class="['v2-tree-badge', `v2-tree--${epic.sprint_state}`]">{{ epic.sprint_state }}</span>
         <div class="tree-actions" @click.stop>

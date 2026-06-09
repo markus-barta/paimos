@@ -219,6 +219,19 @@ opt in to per-project guarding by setting
   context preserved. Plumbing lives in `useSidebarSelectionUrl`;
   internal `IssueList` opts in via `:url-sync-selection="true"`.
 - **i18n**: `vue-i18n`; English and German catalogs in `src/i18n/`.
+- **Locale-aware display formatting**: user-facing numbers, dates,
+  times, file sizes, durations, and fixed-currency values must go
+  through `src/composables/useNumberFormat.ts` or
+  `src/composables/useDateFormat.ts` (the legacy
+  `src/utils/formatTime.ts` functions delegate there). The display
+  locale resolves from the authenticated user's locale / vue-i18n
+  locale first, then the browser locale, then `en-US`. Do not add raw
+  `.toLocaleString()`, `.toLocaleDateString()`, `.toLocaleTimeString()`,
+  `.toFixed(...)`, or direct `new Intl.*Format(...)` calls in views or
+  shared UI. Allowed exemptions are internal numeric state, machine
+  output with a documented fixed format, and the formatting helpers
+  themselves. Run `scripts/check-frontend-formatting.sh` before review
+  when touching UI display formatting.
 - **Styling**: scoped `<style>` blocks + a small set of CSS custom
   properties fed from the branding API.
 - **localStorage**: every key lives in `src/constants/storage.ts` —

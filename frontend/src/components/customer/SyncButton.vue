@@ -21,6 +21,7 @@
 import { ref, computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useExternalProvider } from '@/composables/useExternalProvider'
+import { fmtRelative } from '@/utils/formatTime'
 
 const props = defineProps<{
   providerId: string | null
@@ -58,7 +59,7 @@ const relativeSync = computed(() => {
   if (hr < 24) return `synced ${hr}h ago`
   const d = Math.floor(hr / 24)
   if (d < 30) return `synced ${d}d ago`
-  return `synced ${new Date(props.syncedAt).toLocaleDateString()}`
+  return `synced ${fmtRelative(props.syncedAt)}`
 })
 
 async function trigger() {

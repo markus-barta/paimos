@@ -11,6 +11,8 @@ import {
   PRIORITY_ICON, PRIORITY_COLOR, PRIORITY_LABEL,
 } from '@/composables/useIssueDisplay'
 import { formatDuration } from '@/composables/useDurationInput'
+import { formatCurrency, formatDecimalFlex } from '@/composables/useNumberFormat'
+import { fmtDate as formatDisplayDate, fmtDateTime as formatDisplayDateTime } from '@/utils/formatTime'
 import type { Issue, Sprint } from '@/types'
 
 const props = defineProps<{
@@ -56,14 +58,10 @@ defineEmits<{
 }>()
 
 function fmtDate(s: string): string {
-  if (!s) return '—'
-  const d = new Date(s.endsWith('Z') ? s : s + 'Z')
-  return isNaN(d.getTime()) ? s.slice(0, 10) : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return s ? formatDisplayDate(s) : '—'
 }
 function fmtDateTime(s: string): string {
-  if (!s) return '—'
-  const d = new Date(s.endsWith('Z') ? s : s + 'Z')
-  return isNaN(d.getTime()) ? s : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return s ? formatDisplayDateTime(s) : '—'
 }
 function issueRoute(issueId: number): string {
   return props.projectId ? `/projects/${props.projectId}/issues/${issueId}` : `/issues/${issueId}`
@@ -106,15 +104,15 @@ function issueRoute(issueId: number): string {
         </div>
         <div class="meta-item">
           <span class="meta-label">Budget</span>
-          <span class="meta-value">{{ issue.total_budget != null ? issue.total_budget.toLocaleString() : '—' }}</span>
+          <span class="meta-value">{{ issue.total_budget != null ? formatDecimalFlex(issue.total_budget, 2) : '—' }}</span>
         </div>
         <div class="meta-item">
           <span class="meta-label">Rate / hr</span>
-          <span class="meta-value">{{ issue.rate_hourly != null ? issue.rate_hourly : '—' }}</span>
+          <span class="meta-value">{{ issue.rate_hourly != null ? formatCurrency(issue.rate_hourly, 'EUR') : '—' }}</span>
         </div>
         <div class="meta-item">
           <span class="meta-label">Rate LP</span>
-          <span class="meta-value">{{ issue.rate_lp != null ? issue.rate_lp : '—' }}</span>
+          <span class="meta-value">{{ issue.rate_lp != null ? formatCurrency(issue.rate_lp, 'EUR') : '—' }}</span>
         </div>
         <div class="meta-item">
           <span class="meta-label">Jira ID</span>
@@ -130,11 +128,11 @@ function issueRoute(issueId: number): string {
         </div>
         <div class="meta-item" v-if="showEstimateLp">
           <span class="meta-label">Est. LP</span>
-          <span class="meta-value">{{ issue.estimate_lp != null ? issue.estimate_lp : '—' }}</span>
+          <span class="meta-value">{{ issue.estimate_lp != null ? formatDecimalFlex(issue.estimate_lp, 2) : '—' }}</span>
         </div>
         <div class="meta-item" v-if="estimateEur != null">
           <span class="meta-label">Est. EUR</span>
-          <span class="meta-value meta-value--computed">{{ estimateEur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+          <span class="meta-value meta-value--computed">{{ formatCurrency(estimateEur, 'EUR') }}</span>
         </div>
         <div class="meta-item" v-if="showArHours">
           <span class="meta-label meta-label--toggle" @click="toggleTimeUnit" title="Toggle h / PT">AR <span class="unit-toggle">{{ timeLabel() }}</span></span>
@@ -142,11 +140,11 @@ function issueRoute(issueId: number): string {
         </div>
         <div class="meta-item" v-if="showArLp">
           <span class="meta-label">AR LP</span>
-          <span class="meta-value">{{ issue.ar_lp != null ? issue.ar_lp : '—' }}</span>
+          <span class="meta-value">{{ issue.ar_lp != null ? formatDecimalFlex(issue.ar_lp, 2) : '—' }}</span>
         </div>
         <div class="meta-item" v-if="arEur != null">
           <span class="meta-label">AR EUR</span>
-          <span class="meta-value meta-value--computed">{{ arEur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+          <span class="meta-value meta-value--computed">{{ formatCurrency(arEur, 'EUR') }}</span>
         </div>
         <div class="meta-item" v-if="issue.time_override != null && (issue.type === 'ticket' || issue.type === 'task')">
           <span class="meta-label">Time Override</span>

@@ -4,6 +4,8 @@ import { ref, onMounted, computed } from 'vue'
 import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import { formatInteger } from '@/composables/useNumberFormat'
+import { fmtDateTime } from '@/utils/formatTime'
 
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -74,10 +76,7 @@ async function openReport(filename: string) {
 function formatDate(iso: string): string {
   if (!iso) return ''
   try {
-    return new Date(iso).toLocaleString('en-GB', {
-      year: 'numeric', month: 'short', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    })
+    return fmtDateTime(iso)
   } catch { return iso }
 }
 
@@ -104,7 +103,7 @@ const missingReports = computed(() =>
       <AppIcon :name="hasFailures ? 'triangle-alert' : 'circle-check'" :size="15" />
       <template v-if="hasFailures">
         Last run v{{ summary.version }}:
-        <strong>{{ totalFailures(summary!) }} failure{{ totalFailures(summary!) > 1 ? 's' : '' }}</strong>
+        <strong>{{ formatInteger(totalFailures(summary!)) }} failure{{ totalFailures(summary!) > 1 ? 's' : '' }}</strong>
       </template>
       <template v-else>
         All tests passed — v{{ summary.version }}

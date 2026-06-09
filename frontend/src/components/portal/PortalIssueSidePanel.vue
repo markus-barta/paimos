@@ -26,6 +26,8 @@ import StatusDot from '@/components/StatusDot.vue'
 import { api, errMsg } from '@/api/client'
 import { useMarkdown } from '@/composables/useMarkdown'
 import { useSidePanelWidth } from '@/composables/useSidePanelWidth'
+import { fmtDateTime } from '@/utils/formatTime'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 interface PortalIssueDetail {
   id: number
@@ -247,9 +249,7 @@ async function onReject() {
 }
 
 function fmtDate(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString()
+  return iso ? fmtDateTime(iso) : '—'
 }
 </script>
 
@@ -347,7 +347,7 @@ function fmtDate(iso: string): string {
         <section class="psp__section">
           <h3 class="psp__section-title">
             {{ t('portal.comments') }}
-            <span v-if="comments.length" class="psp__count">{{ comments.length }}</span>
+            <span v-if="comments.length" class="psp__count">{{ formatInteger(comments.length) }}</span>
           </h3>
           <div v-if="!comments.length" class="psp__empty-sub">
             {{ t('portal.noComments') }}

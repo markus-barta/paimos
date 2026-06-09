@@ -10,6 +10,8 @@ import {
   ACCRUALS_DEFAULT_STATUSES as ACCRUALS_DEFAULTS,
   ACCRUALS_EXTRA_STATUSES   as ACCRUALS_EXTRAS,
 } from '@/constants/status'
+import { formatDecimal, formatInteger } from '@/composables/useNumberFormat'
+import { formatDateTimeWithLocale, formatDateWithLocale } from '@/composables/useDateFormat'
 
 const route = useRoute()
 
@@ -54,7 +56,7 @@ function rowTotal(r: AccrualsApiRow): number {
 
 function fmt(n: number): string {
   if (!n) return '—'
-  return n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return formatDecimal(n, 1, 'de-DE')
 }
 
 const STATUS_DE: Record<string, string> = {
@@ -73,12 +75,13 @@ function statusLabel(s: string): string { return STATUS_DE[s] ?? s }
 function periodLabel(): string {
   if (!from || !to) return ''
   const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' }
-  const f = new Date(from).toLocaleDateString('de-DE', opts)
-  const t = new Date(to).toLocaleDateString('de-DE', opts)
+  const f = formatDateWithLocale(from, 'de-DE', opts)
+  const t = formatDateWithLocale(to, 'de-DE', opts)
   return `${f} — ${t}`
 }
 
-const generatedAt = new Date().toLocaleString('de-DE', {
+// This report is intentionally German-language, independent of app UI locale.
+const generatedAt = formatDateTimeWithLocale(new Date(), 'de-DE', {
   day: 'numeric', month: 'long', year: 'numeric',
   hour: '2-digit', minute: '2-digit',
 })
@@ -129,7 +132,7 @@ function closeWindow() {
           </div>
           <div class="masthead-meta">
             <span class="meta-label">Projekte</span>
-            <span class="meta-value">{{ String(rows.length).padStart(3,'0') }}</span>
+            <span class="meta-value">{{ formatInteger(rows.length) }}</span>
           </div>
         </div>
       </header>

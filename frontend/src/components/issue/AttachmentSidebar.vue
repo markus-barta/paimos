@@ -11,6 +11,7 @@ import { computed, ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import type { AttachmentJob } from '@/composables/useAttachmentUploads'
 import { useAttachmentLightbox } from '@/composables/useAttachmentLightbox'
+import { formatFileSize, formatInteger } from '@/composables/useNumberFormat'
 import type { Attachment } from '@/types'
 
 const props = defineProps<{
@@ -64,9 +65,7 @@ const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
+  return formatFileSize(n)
 }
 
 function onDrop(e: DragEvent) {
@@ -90,7 +89,7 @@ function openUrlForJob(job: AttachmentJob): string | null {
     <header class="att-header">
       <AppIcon name="paperclip" :size="13" />
       <span>{{ title ?? 'Attachments' }}</span>
-      <span v-if="jobs.length" class="att-count">{{ jobs.length }}</span>
+      <span v-if="jobs.length" class="att-count">{{ formatInteger(jobs.length) }}</span>
     </header>
 
     <div v-if="!jobs.length && emptyHint && readonly" class="att-empty">{{ emptyHint }}</div>

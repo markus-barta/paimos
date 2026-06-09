@@ -3,6 +3,7 @@ import { computed, ref, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/AppIcon.vue'
 import { useAiPhases, type AiPhase } from '@/composables/useAiPhases'
+import { formatDecimalFlex } from '@/composables/useNumberFormat'
 
 const props = defineProps<{
   actionKey: string
@@ -29,7 +30,7 @@ const phaseText = computed(() => {
 })
 
 const show = computed(() => phase.value !== 'pending' || failed.value)
-const elapsedText = computed(() => `${(elapsedMs.value / 1000).toFixed(elapsedMs.value >= 10_000 ? 0 : 1)}s`)
+const elapsedText = computed(() => `${formatDecimalFlex(elapsedMs.value / 1000, elapsedMs.value >= 10_000 ? 0 : 1)}s`)
 const iconName = computed(() => (failed.value ? 'alert-circle' : phase.value === 'stalled' ? 'clock-3' : 'loader-circle'))
 </script>
 

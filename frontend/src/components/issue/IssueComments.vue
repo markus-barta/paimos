@@ -6,6 +6,7 @@ import { escapeHtml } from '@/utils/html'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
 import { fmtShortDateTime } from '@/utils/formatTime'
+import { formatInteger } from '@/composables/useNumberFormat'
 import AppIcon from '@/components/AppIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { marked } from 'marked'
@@ -117,7 +118,7 @@ async function flipVisibility(comment: Comment) {
 
 <template>
   <div class="comments-section">
-    <h3 class="comments-title">Comments <span class="comments-count" v-if="comments.length">{{ comments.length }}</span></h3>
+    <h3 class="comments-title">Comments <span class="comments-count" v-if="comments.length">{{ formatInteger(comments.length) }}</span></h3>
 
     <div v-if="comments.length" class="comments-list">
       <div

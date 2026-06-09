@@ -18,6 +18,7 @@ import { useDirtyGuard } from "@/composables/useDirtyGuard";
 import { useConfirm } from "@/composables/useConfirm";
 import { useMarkdown } from "@/composables/useMarkdown";
 import { useTimeUnit } from "@/composables/useTimeUnit";
+import { fmtDateTime as formatDisplayDateTime } from "@/utils/formatTime";
 import { ApiError, api, errMsg } from "@/api/client";
 import { isDevFixtureUser } from "@/utils/devUsers";
 import { attachmentsEnabled } from "@/api/instance";
@@ -1000,17 +1001,7 @@ const linkedBillingType = computed(() => {
 });
 
 function fmtDateTime(s: string): string {
-  if (!s) return "—";
-  const d = new Date(s.endsWith("Z") ? s : s + "Z");
-  return isNaN(d.getTime())
-    ? s
-    : d.toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+  return s ? formatDisplayDateTime(s) : "—";
 }
 
 // ── Aggregation (cost_unit / epic) ──────────────────────────────────────────

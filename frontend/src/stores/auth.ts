@@ -21,6 +21,7 @@ import { api, announceSessionRestored, permissionsEpoch } from '@/api/client'
 import router from '@/router'
 import i18n from '@/i18n'
 import { setDisplayTimezone } from '@/utils/formatTime'
+import { setDisplayLocale } from '@/utils/displayLocale'
 import { useSearchStore } from '@/stores/search'
 
 export interface User {
@@ -123,6 +124,7 @@ export const useAuthStore = defineStore('auth', () => {
     hydrateAccess(resp.access)
     viaDevLogin.value = !!resp.via_dev_login
     impersonation.value = resp.impersonation?.active ? resp.impersonation : null
+    setDisplayLocale(user.value?.locale)
     if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
     setDisplayTimezone(user.value?.timezone)
   }
@@ -167,6 +169,7 @@ export const useAuthStore = defineStore('auth', () => {
       impersonation.value = null
       totpEnabled.value = false
       totpChecked.value = false
+      setDisplayLocale(undefined)
     } finally {
       checked.value = true
     }

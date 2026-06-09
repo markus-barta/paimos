@@ -5,6 +5,7 @@ import LoadingText from '@/components/LoadingText.vue'
 import { fmtShortDateTime } from '@/utils/formatTime'
 import { loadIssueHistory, type IssueHistoryEntry as HistoryEntry } from '@/services/issueHistory'
 import { loadIssueAICalls, type AICallRow } from '@/services/aiPaperTrail'
+import { formatCurrency, formatInteger } from '@/composables/useNumberFormat'
 
 const props = defineProps<{
   issueId: number
@@ -98,7 +99,7 @@ function hasAttribution(entry: HistoryEntry | null): boolean {
             <div class="history-nav">
               <button class="hist-arrow" :disabled="historyIndex === 0" @click="historyPrev"><AppIcon name="chevron-left" :size="16" /></button>
               <span class="history-pos" v-if="historyEntries.length">
-                Version {{ historyIndex + 1 }} of {{ historyEntries.length }}
+                Version {{ formatInteger(historyIndex + 1) }} of {{ formatInteger(historyEntries.length) }}
               </span>
               <button class="hist-arrow" :disabled="historyIndex === historyEntries.length - 1" @click="historyNext"><AppIcon name="chevron-right" :size="16" /></button>
             </div>
@@ -168,8 +169,8 @@ function hasAttribution(entry: HistoryEntry | null): boolean {
                   </div>
                   <div class="hist-ai-meta">
                     <span>{{ call.model || '—' }}</span>
-                    <span>{{ call.total_tokens }} tokens</span>
-                    <span>${{ (call.cost_micro_usd / 1_000_000).toFixed(4) }}</span>
+                    <span>{{ formatInteger(call.total_tokens) }} tokens</span>
+                    <span>{{ formatCurrency(call.cost_micro_usd / 1_000_000, 'USD', undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) }}</span>
                     <span>{{ fmtShortDateTime(call.created_at) }}</span>
                   </div>
                 </div>

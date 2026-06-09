@@ -23,6 +23,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import ProviderBadge from '@/components/customer/ProviderBadge.vue'
 import CustomerCreateModal from '@/components/customer/CustomerCreateModal.vue'
 import CustomerImportModal from '@/components/customer/CustomerImportModal.vue'
+import { formatCurrency } from '@/composables/useNumberFormat'
 import type { Customer, ExternalProvider } from '@/types'
 
 const auth = useAuthStore()
@@ -218,7 +219,7 @@ function onImported(id: number) {
 
 function fmtRate(v: number | null | undefined): string {
   if (v == null) return '—'
-  return `€${v.toFixed(0)}`
+  return formatCurrency(v, 'EUR', undefined, { maximumFractionDigits: 0 })
 }
 </script>
 

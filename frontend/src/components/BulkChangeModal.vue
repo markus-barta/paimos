@@ -5,6 +5,7 @@ import type { Issue, Sprint } from '@/types'
 import { api, errMsg } from '@/api/client'
 import { useIssueContext } from '@/composables/useIssueContext'
 import { assignableIssueUsers } from '@/utils/users'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 const { users, sprints, costUnits, releases } = useIssueContext()
 
@@ -321,7 +322,7 @@ defineExpose({ reset })
   <AppModal title="Bulk Change" :open="open" @close="emit('close')">
     <div class="form">
       <p class="bulk-change-desc">
-        Change <strong>{{ selectedIds.size }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</strong>:
+        Change <strong>{{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</strong>:
       </p>
       <div class="field">
         <label>Field</label>
@@ -353,11 +354,11 @@ defineExpose({ reset })
             <span v-if="s.start_date" class="bulk-sprint-date">{{ s.start_date }}</span>
           </label>
         </div>
-        <div v-if="bulkSprintIds.length" class="bulk-sprint-summary">{{ bulkSprintIds.length }} sprint{{ bulkSprintIds.length !== 1 ? 's' : '' }} selected</div>
+        <div v-if="bulkSprintIds.length" class="bulk-sprint-summary">{{ formatInteger(bulkSprintIds.length) }} sprint{{ bulkSprintIds.length !== 1 ? 's' : '' }} selected</div>
       </div>
       <div v-if="bulkChanging && bulkProgress.total > 0" class="bulk-progress">
         <div class="bulk-progress-label">
-          Applying {{ bulkProgress.done }} of {{ bulkProgress.total }} issue{{ bulkProgress.total !== 1 ? 's' : '' }}…
+          Applying {{ formatInteger(bulkProgress.done) }} of {{ formatInteger(bulkProgress.total) }} issue{{ bulkProgress.total !== 1 ? 's' : '' }}…
         </div>
         <div class="bulk-progress-track">
           <div class="bulk-progress-fill" :style="{ width: bulkProgressPct + '%' }"></div>
@@ -368,10 +369,10 @@ defineExpose({ reset })
         <button class="btn btn-ghost" @click="emit('close')" :disabled="bulkChanging">Cancel</button>
         <button class="btn btn-primary" @click="executeBulkChange" :disabled="bulkChanging || !bulkField || (bulkField === 'sprint' ? !bulkSprintIds.length : !bulkValueSelected)">
           <template v-if="bulkChanging && bulkProgress.total > 0">
-            Applying {{ bulkProgress.done }}/{{ bulkProgress.total }}…
+            Applying {{ formatInteger(bulkProgress.done) }}/{{ formatInteger(bulkProgress.total) }}…
           </template>
           <template v-else-if="bulkChanging">Applying…</template>
-          <template v-else>Apply to {{ selectedIds.size }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</template>
+          <template v-else>Apply to {{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</template>
         </button>
       </div>
     </div>

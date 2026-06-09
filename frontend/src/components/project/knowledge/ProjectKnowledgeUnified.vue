@@ -38,6 +38,7 @@ import type {
   KnowledgeEntry,
   KnowledgeEntryInput,
 } from '@/types'
+import { fmtRelative } from '@/utils/formatTime'
 
 const props = defineProps<{
   projectId: number
@@ -312,19 +313,7 @@ async function onDelete() {
 }
 
 function formatRelative(iso: string | undefined): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ''
-  const diffMs = Date.now() - d.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  if (diffSec < 60) return 'just now'
-  const diffMin = Math.floor(diffSec / 60)
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}h ago`
-  const diffDay = Math.floor(diffHour / 24)
-  if (diffDay < 30) return `${diffDay}d ago`
-  return d.toLocaleDateString()
+  return iso ? fmtRelative(iso) : ''
 }
 
 function emptyDraft(): KnowledgeEntryInput {

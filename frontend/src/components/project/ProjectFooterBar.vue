@@ -16,6 +16,7 @@
 
 import { computed } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 export type ProjectPrimaryTab =
   | 'issues'
@@ -93,7 +94,7 @@ function select(t: ProjectPrimaryTab) {
         v-if="t.count !== null && t.count !== undefined"
         class="pfb__count"
         :class="{ 'pfb__count--zero': t.count === 0 }"
-      >{{ t.count }}</span>
+      >{{ formatInteger(t.count) }}</span>
       <span v-else-if="t.dot" class="pfb__dot" aria-label="populated"></span>
     </button>
 

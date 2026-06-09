@@ -9,6 +9,7 @@ import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
 import { useIssueRefreshPromptStore } from '@/stores/issueRefreshPrompt'
 import { issueSearchSummary } from '@/utils/issueSearchSummary'
+import { formatInteger } from '@/composables/useNumberFormat'
 import type { Issue, IssueListEnvelope, Project, Tag, Sprint, User, SavedView } from '@/types'
 
 const search = useSearchStore()
@@ -113,8 +114,8 @@ const searchSubtitle = computed(() =>
 )
 const browseSubtitle = computed(() =>
   total.value > issues.value.length
-    ? `${total.value.toLocaleString()} issues · ${issues.value.length.toLocaleString()} loaded`
-    : `${total.value.toLocaleString()} issues`,
+    ? `${formatInteger(total.value)} issues · ${formatInteger(issues.value.length)} loaded`
+    : `${formatInteger(total.value)} issues`,
 )
 
 const showEmptyFilterBanner = computed(() => {
@@ -323,13 +324,13 @@ function onDeleted(id: number) {
           :disabled="loadingMore"
           @click="loadAll"
         >
-          · Load all {{ total.toLocaleString() }}
+          · Load all {{ formatInteger(total) }}
         </button>
       </template>
       <span v-else-if="!loading" class="ah-subtitle">
         {{ browseSubtitle }}
         <button v-if="hasMore" class="load-all-link" :disabled="loadingMore" @click="loadAll">
-          · Load all {{ total.toLocaleString() }}
+          · Load all {{ formatInteger(total) }}
         </button>
       </span>
     </Teleport>

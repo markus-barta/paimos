@@ -4,6 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import IssueList from '@/components/IssueList.vue'
 import { api, errMsg } from '@/api/client'
 import { provideIssueContext } from '@/composables/useIssueContext'
+import { formatInteger } from '@/composables/useNumberFormat'
 import type { Issue, Project, Tag, Sprint, User } from '@/types'
 
 interface IssueEnvelope {
@@ -91,7 +92,7 @@ function onDeleted(id: number) {
      <Teleport defer to="#app-header-left">
        <span class="ah-title">Sprints</span>
        <span v-if="!loading" class="ah-subtitle">
-         {{ total.toLocaleString() }} sprint{{ total !== 1 ? 's' : '' }} across all projects
+         {{ formatInteger(total) }} sprint{{ total !== 1 ? 's' : '' }} across all projects
        </span>
      </Teleport>
 
@@ -108,7 +109,7 @@ function onDeleted(id: number) {
       />
 
       <div v-if="hasMore" class="load-more">
-        <span class="load-more-label">{{ remaining.toLocaleString() }} more sprint{{ remaining !== 1 ? 's' : '' }}</span>
+        <span class="load-more-label">{{ formatInteger(remaining) }} more sprint{{ remaining !== 1 ? 's' : '' }}</span>
         <button class="btn btn-ghost btn-sm" :disabled="loadingMore" @click="loadMore">
           {{ loadingMore ? 'Loading…' : 'Load more' }}
         </button>

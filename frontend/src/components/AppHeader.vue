@@ -10,6 +10,7 @@ import { useUndoStore } from "@/stores/undo";
 import { useIssueRefreshPromptStore } from "@/stores/issueRefreshPrompt";
 import { useAuthStore } from "@/stores/auth";
 import { parseShortcut, matchesShortcut } from "@/composables/searchScopeShortcut";
+import { formatInteger } from "@/composables/useNumberFormat";
 import type { Project } from "@/types";
 
 const route = useRoute();
@@ -83,7 +84,7 @@ const issueAutoRefreshIntervalSeconds = computed(() => {
     : ISSUE_AUTO_REFRESH_DEFAULT_SECONDS;
 });
 const refreshCountdownLabel = computed(
-  () => `(refreshing in ${refreshCountdownSeconds.value}s)`,
+  () => `(refreshing in ${formatInteger(refreshCountdownSeconds.value)}s)`,
 );
 
 function onFocus() {
@@ -422,7 +423,7 @@ defineExpose({
         <AppIcon name="rewind" :size="13" />
         <span>Undo</span>
         <span v-if="undoStackCount" class="ah-undo-count">
-          {{ undoStackCount }}
+          {{ formatInteger(undoStackCount) }}
         </span>
       </button>
     </div>

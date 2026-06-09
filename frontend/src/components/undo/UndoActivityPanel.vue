@@ -5,6 +5,7 @@ import LoadingText from "@/components/LoadingText.vue";
 import { fmtShortDateTime } from "@/utils/formatTime";
 import { useUndoStore } from "@/stores/undo";
 import { onOtherSidePanelOpened } from "@/composables/useSidePanelExclusion";
+import { formatInteger } from "@/composables/useNumberFormat";
 import {
   useSidePanelWidth,
   SIDE_PANEL_DEFAULT_WIDTH,
@@ -22,7 +23,7 @@ const stackCount = computed(
 );
 const subtitle = computed(() =>
   stackCount.value
-    ? `${stackCount.value} action${stackCount.value === 1 ? "" : "s"}`
+    ? `${formatInteger(stackCount.value)} action${stackCount.value === 1 ? "" : "s"}`
     : "No recent activity",
 );
 
@@ -155,7 +156,7 @@ onUnmounted(() => {
           <section class="undo-section">
             <header class="undo-section__head">
               <span class="undo-section__label">Undo stack</span>
-              <span class="undo-section__count">{{ undo.undoRows.length }}</span>
+              <span class="undo-section__count">{{ formatInteger(undo.undoRows.length) }}</span>
             </header>
             <p v-if="!undo.undoRows.length" class="undo-section__empty">
               No active undo entries.
@@ -190,7 +191,7 @@ onUnmounted(() => {
           <section class="undo-section">
             <header class="undo-section__head">
               <span class="undo-section__label">Redo stack</span>
-              <span class="undo-section__count">{{ undo.redoRows.length }}</span>
+              <span class="undo-section__count">{{ formatInteger(undo.redoRows.length) }}</span>
             </header>
             <p v-if="!undo.redoRows.length" class="undo-section__empty">
               Nothing to redo.
@@ -225,7 +226,7 @@ onUnmounted(() => {
           <section class="undo-section">
             <header class="undo-section__head">
               <span class="undo-section__label">History</span>
-              <span class="undo-section__count">{{ undo.historyRows.length }}</span>
+              <span class="undo-section__count">{{ formatInteger(undo.historyRows.length) }}</span>
             </header>
             <p v-if="!undo.historyRows.length" class="undo-section__empty">
               No older entries yet.

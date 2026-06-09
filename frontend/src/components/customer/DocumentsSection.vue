@@ -22,6 +22,8 @@ import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, csrfHeaders, errMsg } from '@/api/client'
+import { formatFileSize } from '@/composables/useNumberFormat'
+import { fmtDate as formatDisplayDate } from '@/utils/formatTime'
 import type { Document } from '@/types'
 
 const props = defineProps<{
@@ -155,16 +157,12 @@ function fileIcon(mime: string): string {
 }
 
 function fmtSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return formatFileSize(bytes)
 }
 
 function fmtDate(s: string | null | undefined): string {
   if (!s) return ''
-  return new Date(s.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-  })
+  return formatDisplayDate(s)
 }
 </script>
 

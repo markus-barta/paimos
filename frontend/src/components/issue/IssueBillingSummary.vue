@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatCurrency, formatDecimalFlex, formatInteger } from '@/composables/useNumberFormat'
+
 defineProps<{
   aggregation: {
     member_count: number
@@ -24,11 +26,11 @@ defineProps<{
         </div>
         <div class="billing-row" v-if="aggregation.estimate_lp != null">
           <span class="billing-label">LP</span>
-          <span class="billing-value">{{ aggregation.estimate_lp }}</span>
+          <span class="billing-value">{{ formatDecimalFlex(aggregation.estimate_lp, 2) }}</span>
         </div>
         <div class="billing-row" v-if="aggregation.estimate_eur != null">
           <span class="billing-label">EUR</span>
-          <span class="billing-value billing-value--eur">{{ aggregation.estimate_eur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+          <span class="billing-value billing-value--eur">{{ formatCurrency(aggregation.estimate_eur, 'EUR') }}</span>
         </div>
       </div>
       <div class="billing-col">
@@ -39,11 +41,11 @@ defineProps<{
         </div>
         <div class="billing-row" v-if="aggregation.ar_lp != null">
           <span class="billing-label">LP</span>
-          <span class="billing-value">{{ aggregation.ar_lp }}</span>
+          <span class="billing-value">{{ formatDecimalFlex(aggregation.ar_lp, 2) }}</span>
         </div>
         <div class="billing-row" v-if="aggregation.ar_eur != null">
           <span class="billing-label">EUR</span>
-          <span class="billing-value billing-value--eur">{{ aggregation.ar_eur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+          <span class="billing-value billing-value--eur">{{ formatCurrency(aggregation.ar_eur, 'EUR') }}</span>
         </div>
       </div>
       <div class="billing-col">
@@ -54,15 +56,15 @@ defineProps<{
         </div>
         <div class="billing-row" v-if="aggregation.actual_internal_cost != null">
           <span class="billing-label">Internal</span>
-          <span class="billing-value">{{ aggregation.actual_internal_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+          <span class="billing-value">{{ formatCurrency(aggregation.actual_internal_cost, 'EUR') }}</span>
         </div>
         <div class="billing-row" v-if="aggregation.margin_eur != null">
           <span class="billing-label">Margin</span>
-          <span :class="['billing-value', 'billing-value--margin', aggregation.margin_eur >= 0 ? 'margin-pos' : 'margin-neg']">{{ aggregation.margin_eur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+          <span :class="['billing-value', 'billing-value--margin', aggregation.margin_eur >= 0 ? 'margin-pos' : 'margin-neg']">{{ formatCurrency(aggregation.margin_eur, 'EUR') }}</span>
         </div>
       </div>
     </div>
-    <p class="billing-members">{{ aggregation.member_count }} member issue{{ aggregation.member_count !== 1 ? 's' : '' }}</p>
+    <p class="billing-members">{{ formatInteger(aggregation.member_count) }} member issue{{ aggregation.member_count !== 1 ? 's' : '' }}</p>
   </div>
 </template>
 

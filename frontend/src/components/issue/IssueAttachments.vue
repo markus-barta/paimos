@@ -6,6 +6,7 @@ import { MAX_ATTACHMENT_SIZE } from '@/utils/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
 import { useAttachmentLightbox } from '@/composables/useAttachmentLightbox'
+import { formatFileSize, formatInteger } from '@/composables/useNumberFormat'
 import AppIcon from '@/components/AppIcon.vue'
 import type { Attachment } from '@/types'
 import { deleteIssueAttachment, loadIssueAttachments, uploadIssueAttachment } from '@/services/issueAttachments'
@@ -45,9 +46,7 @@ function openInLightbox(a: Attachment, e: Event) {
 }
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return formatFileSize(bytes)
 }
 
 async function uploadFiles(files: FileList | File[]) {
@@ -104,7 +103,7 @@ async function deleteAttachment(a: Attachment) {
   <div class="attachments-section">
     <h3 class="section-title">
       Attachments
-      <span class="attach-count" v-if="attachments.length">{{ attachments.length }}</span>
+      <span class="attach-count" v-if="attachments.length">{{ formatInteger(attachments.length) }}</span>
     </h3>
 
     <div v-if="attachError" class="form-error" style="margin-bottom:.5rem">{{ attachError }}</div>

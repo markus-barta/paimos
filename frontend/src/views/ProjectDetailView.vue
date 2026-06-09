@@ -74,6 +74,8 @@ import ProjectFooterBar from '@/components/project/ProjectFooterBar.vue'
 // "description") so the prompt reminder fits a stakeholder audience.
 import AiActionMenu from '@/components/ai/AiActionMenu.vue'
 import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
+import { formatDurationHours, formatInteger } from '@/composables/useNumberFormat'
+import { fmtRelative } from '@/utils/formatTime'
 // PAI-359: side-panel exclusion machinery dropped with the
 // workspace dock; primaryTab is mutually exclusive by construction.
 
@@ -828,16 +830,7 @@ const lastChanged = computed(() => {
   const latest = [...issues.value].sort((a, b) =>
     b.updated_at.localeCompare(a.updated_at)
   )[0]
-  // Relative time
-  const diff = Date.now() - new Date(latest.updated_at.replace(' ', 'T') + 'Z').getTime()
-  const mins  = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days  = Math.floor(diff / 86400000)
-  const when  = mins < 1   ? 'just now'
-              : mins < 60  ? `${mins}m ago`
-              : hours < 24 ? `${hours}h ago`
-              : days < 30  ? `${days}d ago`
-              : new Date(latest.updated_at).toLocaleDateString()
+  const when = fmtRelative(latest.updated_at)
   return { id: latest.id, key: latest.issue_key, when, title: latest.title }
 })
 
@@ -969,10 +962,10 @@ watch(
 
       <!-- Import result banner -->
       <div v-if="importResult" class="import-result">
-        <span class="import-ok"><AppIcon name="check" :size="13" /> {{ importResult.imported }} imported</span>
-        <span v-if="importResult.updated" class="import-ok"> · {{ importResult.updated }} updated</span>
-        <span v-if="importResult.skipped" class="import-skip"> · {{ importResult.skipped }} skipped</span>
-        <span v-if="importResult.errors?.length" class="import-errs"> · {{ importResult.errors.length }} error(s): {{ importResult.errors.join('; ') }}</span>
+        <span class="import-ok"><AppIcon name="check" :size="13" /> {{ formatInteger(importResult.imported) }} imported</span>
+        <span v-if="importResult.updated" class="import-ok"> · {{ formatInteger(importResult.updated) }} updated</span>
+        <span v-if="importResult.skipped" class="import-skip"> · {{ formatInteger(importResult.skipped) }} skipped</span>
+        <span v-if="importResult.errors?.length" class="import-errs"> · {{ formatInteger(importResult.errors.length) }} error(s): {{ importResult.errors.join('; ') }}</span>
         <button class="import-dismiss" @click="importResult=null"><AppIcon name="x" :size="14" /></button>
       </div>
       <div v-if="importError" class="import-error">{{ importError }} <button class="import-dismiss" @click="importError=''"><AppIcon name="x" :size="14" /></button></div>
@@ -1362,9 +1355,9 @@ watch(
 
         <div v-if="purgePreview" class="purge-preview">
           <p class="purge-warning">
-            This will permanently delete <strong>{{ purgePreview.count }}</strong> time
+            This will permanently delete <strong>{{ formatInteger(purgePreview.count) }}</strong> time
             {{ purgePreview.count === 1 ? 'entry' : 'entries' }}
-            ({{ purgePreview.total_hours.toFixed(1) }}h). This cannot be undone.
+            ({{ formatDurationHours(purgePreview.total_hours) }}). This cannot be undone.
           </p>
           <div class="field">
             <label>Type <strong>{{ project?.key }}</strong> to confirm</label>
@@ -1375,12 +1368,12 @@ watch(
             :disabled="purgeBusy || purgeConfirmKey.toUpperCase() !== project?.key?.toUpperCase()"
             @click="executePurge"
           >
-            {{ purgeBusy ? 'Purging...' : `Purge ${purgePreview.count} entries` }}
+            {{ purgeBusy ? 'Purging...' : `Purge ${formatInteger(purgePreview.count)} entries` }}
           </button>
         </div>
 
         <div v-if="purgeSuccess" class="purge-success">
-          Deleted {{ purgeSuccess.count }} {{ purgeSuccess.count === 1 ? 'entry' : 'entries' }} ({{ purgeSuccess.total_hours.toFixed(1) }}h).
+          Deleted {{ formatInteger(purgeSuccess.count) }} {{ purgeSuccess.count === 1 ? 'entry' : 'entries' }} ({{ formatDurationHours(purgeSuccess.total_hours) }}).
         </div>
         <div v-if="purgeError" class="form-error">{{ purgeError }}</div>
       </div>

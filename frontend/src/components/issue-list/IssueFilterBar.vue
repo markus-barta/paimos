@@ -29,6 +29,7 @@ import type {
   SharedFilterState,
   TagOption,
 } from './types'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 const props = defineProps<{
   modelValue: SharedFilterState
@@ -190,7 +191,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           @click="toggleDropdown('status')"
         >
           {{ $t('portal.filters.allStatus') }}
-          <span v-if="filters.status.length" class="if-bar__count">{{ filters.status.length }}</span>
+          <span v-if="filters.status.length" class="if-bar__count">{{ formatInteger(filters.status.length) }}</span>
           <AppIcon name="chevron-down" :size="11" />
         </button>
 
@@ -202,7 +203,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           @click="toggleDropdown('type')"
         >
           {{ $t('portal.filters.allTypes') }}
-          <span v-if="filters.type.length" class="if-bar__count">{{ filters.type.length }}</span>
+          <span v-if="filters.type.length" class="if-bar__count">{{ formatInteger(filters.type.length) }}</span>
           <AppIcon name="chevron-down" :size="11" />
         </button>
 
@@ -214,7 +215,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           @click="toggleDropdown('priority')"
         >
           {{ t('visibility.filterBarPriority') }}
-          <span v-if="filters.priority.length" class="if-bar__count">{{ filters.priority.length }}</span>
+          <span v-if="filters.priority.length" class="if-bar__count">{{ formatInteger(filters.priority.length) }}</span>
           <AppIcon name="chevron-down" :size="11" />
         </button>
 
@@ -226,7 +227,7 @@ function removeChip(chip: { field: keyof SharedFilterState; value: string | numb
           @click="toggleDropdown('tag')"
         >
           {{ t('visibility.filterBarTags') }}
-          <span v-if="filters.tagIds.length" class="if-bar__count">{{ filters.tagIds.length }}</span>
+          <span v-if="filters.tagIds.length" class="if-bar__count">{{ formatInteger(filters.tagIds.length) }}</span>
           <AppIcon name="chevron-down" :size="11" />
         </button>
 

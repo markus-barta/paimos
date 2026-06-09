@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
+import { fmtDateTime } from '@/utils/formatTime'
 import type { User } from '@/types'
 
 interface SuperAdminAuditRow {
@@ -56,13 +57,7 @@ function rowAction(row: SuperAdminAuditRow): string {
 function formatDate(value: string): string {
   if (!value) return ''
   try {
-    return new Date(value).toLocaleString('en-GB', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    return fmtDateTime(value)
   } catch {
     return value
   }

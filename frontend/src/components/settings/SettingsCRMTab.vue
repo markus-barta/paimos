@@ -19,6 +19,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { api, errMsg } from '@/api/client'
 import AppIcon from '@/components/AppIcon.vue'
 import { useExternalProvider } from '@/composables/useExternalProvider'
+import { formatTimeWithLocale } from '@/composables/useDateFormat'
 import type { CRMTestResult, ExternalProvider, ExternalProviderConfig, ExternalProviderConfigField } from '@/types'
 
 const providers = ref<ExternalProvider[]>([])
@@ -221,8 +222,7 @@ function clearTestLog(providerId: string) {
 }
 
 function fmtTime(ts: number): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString(undefined, { hour12: false })
+  return formatTimeWithLocale(ts, undefined, { hour12: false })
 }
 
 function statusLabel(p: ExternalProvider): string {

@@ -13,6 +13,7 @@ import {
   notifySidePanelOpened,
   onOtherSidePanelOpened,
 } from '@/composables/useSidePanelExclusion'
+import { formatCurrency, formatDecimal, formatInteger } from '@/composables/useNumberFormat'
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 const route        = useRoute()
@@ -196,9 +197,8 @@ onUnmounted(() => {
   unbindReportPanelExclusion = null
 })
 
-// Locale-aware number formatting
-const fmtNum = (v: number, decimals = 1) => v.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-const fmtEur = (v: number) => v.toLocaleString(undefined, { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const fmtNum = (v: number, decimals = 1) => formatDecimal(v, decimals)
+const fmtEur = (v: number) => formatCurrency(v, 'EUR', undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 
 function issueEur(i: Issue): number {
   const rh = i.rate_hourly ?? 0
@@ -415,7 +415,7 @@ async function onDrop(targetCol: ColKey, parentTicket?: Issue) {
     const tasks = tasksByTicket.value.get(issue.id) ?? []
     const incomplete = tasks.filter(t => normaliseStatus(t.status) !== 'done')
     if (incomplete.length > 0) {
-      if (!await confirm({ message: `${incomplete.length} task${incomplete.length !== 1 ? 's' : ''} not yet done. Mark ticket as Done anyway?`, confirmLabel: 'Mark Done' })) return
+      if (!await confirm({ message: `${formatInteger(incomplete.length)} task${incomplete.length !== 1 ? 's' : ''} not yet done. Mark ticket as Done anyway?`, confirmLabel: 'Mark Done' })) return
     }
   }
 
@@ -459,7 +459,7 @@ async function applyTicketStatus(ticket: Issue, col: ColKey) {
     const tasks = tasksByTicket.value.get(ticket.id) ?? []
     const incomplete = tasks.filter(t => normaliseStatus(t.status) !== 'done')
     if (incomplete.length > 0) {
-      if (!await confirm({ message: `${incomplete.length} task${incomplete.length !== 1 ? 's' : ''} not yet done. Mark ticket as Done anyway?`, confirmLabel: 'Mark Done' })) return
+      if (!await confirm({ message: `${formatInteger(incomplete.length)} task${incomplete.length !== 1 ? 's' : ''} not yet done. Mark ticket as Done anyway?`, confirmLabel: 'Mark Done' })) return
     }
   }
   await applyStatus(ticket, col)
@@ -603,7 +603,7 @@ function sprintLabel(s: Sprint): string {
       <!-- Move incomplete confirmation dialog -->
       <div v-if="showMoveConfirm" class="sb-move-dialog-backdrop" @click="showMoveConfirm = false">
         <div class="sb-move-dialog" @click.stop>
-          <p style="font-size:14px;margin:0 0 .75rem"><strong>{{ incompleteIssues.length }}</strong> incomplete issue{{ incompleteIssues.length !== 1 ? 's' : '' }} will be moved to <strong>{{ nextSprint?.title }}</strong>:</p>
+          <p style="font-size:14px;margin:0 0 .75rem"><strong>{{ formatInteger(incompleteIssues.length) }}</strong> incomplete issue{{ incompleteIssues.length !== 1 ? 's' : '' }} will be moved to <strong>{{ nextSprint?.title }}</strong>:</p>
           <ul style="font-size:13px;margin:0 0 1rem;padding-left:1.25rem;max-height:200px;overflow-y:auto">
             <li v-for="i in incompleteIssues" :key="i.id">{{ i.issue_key }} — {{ i.title }}</li>
           </ul>
@@ -623,7 +623,7 @@ function sprintLabel(s: Sprint): string {
             <div class="sb-report-card">
               <span class="sb-report-label"><AppIcon name="check-circle" :size="11" class="sb-card-icon" /> Completion</span>
               <span class="sb-report-value">{{ reportMetrics.completionPct }}%</span>
-              <span class="sb-report-sub">{{ reportMetrics.completedCount }}/{{ reportMetrics.totalCount }} tickets</span>
+              <span class="sb-report-sub">{{ formatInteger(reportMetrics.completedCount) }}/{{ formatInteger(reportMetrics.totalCount) }} tickets</span>
             </div>
             <div class="sb-report-card">
               <span class="sb-report-label"><AppIcon name="crosshair" :size="11" class="sb-card-icon" /> Est H</span>
@@ -773,7 +773,7 @@ function sprintLabel(s: Sprint): string {
             </div>
             <span v-if="ticket.tags?.some(t => t.system && t.name === 'At Risk')" class="sb-at-risk-badge" title="At Risk: booked hours near estimate">⚠</span>
             <span class="sb-task-count" v-if="tasksByTicket.get(ticket.id)?.length">
-              {{ tasksByTicket.get(ticket.id)!.length }} task{{ tasksByTicket.get(ticket.id)!.length !== 1 ? 's' : '' }}
+              {{ formatInteger(tasksByTicket.get(ticket.id)!.length) }} task{{ tasksByTicket.get(ticket.id)!.length !== 1 ? 's' : '' }}
             </span>
             <span class="sb-avatar sb-avatar--clickable" :class="{ 'sb-avatar--empty': !ticket.assignee_id }" :title="userName(ticket.assignee_id)" @click="toggleAssigneePicker(ticket.id, $event)">
               <UserAvatar :user="allUsers.find(u => u.id === ticket.assignee_id) ?? null" size="sm" :show-tooltip="false" />
@@ -801,7 +801,7 @@ function sprintLabel(s: Sprint): string {
             >
               <div class="sb-col-header" :style="{ borderColor: col.color }">
                 <span class="sb-col-title" :style="{ color: col.color }">{{ col.label }}</span>
-                <span class="sb-col-count">{{ issuesInCol(tasksByTicket.get(ticket.id) ?? [], col.key).length }}</span>
+                <span class="sb-col-count">{{ formatInteger(issuesInCol(tasksByTicket.get(ticket.id) ?? [], col.key).length) }}</span>
               </div>
 
               <!-- Task cards -->

@@ -19,6 +19,7 @@ import {
   validateAgentName,
 } from '@/services/projectAgents'
 import LoadingText from '@/components/LoadingText.vue'
+import { formatInteger } from '@/composables/useNumberFormat'
 
 const props = defineProps<{
   projectId: number
@@ -275,7 +276,7 @@ onMounted(load)
             <details class="pa-collapsible">
               <summary>
                 Bootstrap steps
-                <span class="pa-hint">{{ form.bootstrap_steps.length }} step(s)</span>
+                <span class="pa-hint">{{ formatInteger(form.bootstrap_steps.length) }} step(s)</span>
               </summary>
               <div class="pa-repeater">
                 <div
@@ -300,7 +301,7 @@ onMounted(load)
             <details class="pa-collapsible">
               <summary>
                 Non-negotiable rules
-                <span class="pa-hint">{{ form.non_negotiable_rules.length }} rule(s)</span>
+                <span class="pa-hint">{{ formatInteger(form.non_negotiable_rules.length) }} rule(s)</span>
               </summary>
               <div class="pa-repeater">
                 <div
@@ -348,8 +349,8 @@ onMounted(load)
             </div>
             <div v-if="agent.body || agent.bootstrap_steps?.length || agent.non_negotiable_rules?.length" class="pa-meta">
               <span v-if="agent.body" class="pa-meta-pill">body</span>
-              <span v-if="agent.bootstrap_steps?.length" class="pa-meta-pill">{{ agent.bootstrap_steps.length }} bootstrap step(s)</span>
-              <span v-if="agent.non_negotiable_rules?.length" class="pa-meta-pill">{{ agent.non_negotiable_rules.length }} rule(s)</span>
+              <span v-if="agent.bootstrap_steps?.length" class="pa-meta-pill">{{ formatInteger(agent.bootstrap_steps.length) }} bootstrap step(s)</span>
+              <span v-if="agent.non_negotiable_rules?.length" class="pa-meta-pill">{{ formatInteger(agent.non_negotiable_rules.length) }} rule(s)</span>
             </div>
           </div>
           <div v-if="canWrite && editingName === null && !adding" class="pa-row-actions">
@@ -391,7 +392,7 @@ onMounted(load)
           <details class="pa-collapsible">
             <summary>
               Bootstrap steps
-              <span class="pa-hint">{{ form.bootstrap_steps.length }} step(s)</span>
+              <span class="pa-hint">{{ formatInteger(form.bootstrap_steps.length) }} step(s)</span>
             </summary>
             <div class="pa-repeater">
               <div
@@ -415,7 +416,7 @@ onMounted(load)
           <details class="pa-collapsible">
             <summary>
               Non-negotiable rules
-              <span class="pa-hint">{{ form.non_negotiable_rules.length }} rule(s)</span>
+              <span class="pa-hint">{{ formatInteger(form.non_negotiable_rules.length) }} rule(s)</span>
             </summary>
             <div class="pa-repeater">
               <div
