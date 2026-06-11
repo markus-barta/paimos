@@ -229,7 +229,7 @@ func buildAnchorIndex(root, repoOverride, schemaVersion string) (*anchorIndex, e
 		if info, err := os.Stat(path); err != nil || info.IsDir() {
 			continue
 		}
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) // #nosec G304 -- path is the user-specified repo root joined with entries enumerated from that same checkout.
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", rel, err)
 		}
@@ -277,7 +277,7 @@ func writeAnchorIndex(path string, index *anchorIndex) error {
 	if index == nil {
 		return fmt.Errorf("anchor index is nil")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 	raw, err := json.MarshalIndent(index, "", "  ")
@@ -285,11 +285,11 @@ func writeAnchorIndex(path string, index *anchorIndex) error {
 		return err
 	}
 	raw = append(raw, '\n')
-	return os.WriteFile(path, raw, 0o644)
+	return os.WriteFile(path, raw, 0o600)
 }
 
 func readAnchorIndex(path string) (*anchorIndex, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path comes from the CLI user's own --index/--output flag.
 	if err != nil {
 		return nil, err
 	}

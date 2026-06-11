@@ -417,6 +417,7 @@ func loadMemoryTagsBatch(cands []candidate) map[int64][]string {
 		placeholders = append(placeholders, "?")
 		args = append(args, c.ID)
 	}
+	// #nosec G202 -- IN-list is ?-only placeholder assembly; ids are bound as args.
 	q := `SELECT it.issue_id, t.name
 	        FROM issue_tags it
 	        JOIN tags t ON t.id = it.tag_id

@@ -884,7 +884,7 @@ func runOnboardCheck(path, currentRev string, format onboardFormat) error {
 	if strings.TrimSpace(path) == "" {
 		return &usageError{msg: "--check requires --out (path to existing briefing)"}
 	}
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- path comes from the CLI user's own --out flag.
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Fprintf(stderr, "paimos: %s does not exist (would be created on render)\n", path)

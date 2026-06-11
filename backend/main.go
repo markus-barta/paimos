@@ -722,7 +722,11 @@ func main() {
 		fileServer := http.FileServer(http.Dir(staticDir))
 		indexPath := filepath.Join(staticDir, "index.html")
 		r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			path := filepath.Join(staticDir, r.URL.Path)
+			// Anchor-clean the request path so ".." segments cannot climb
+			// out of staticDir before the Stat below. (The FileServer that
+			// actually serves files has its own containment via http.Dir.)
+			path := filepath.Join(staticDir, filepath.Clean("/"+r.URL.Path))
+			// #nosec G703 -- path is contained: anchored filepath.Clean above strips traversal before the join.
 			info, err := os.Stat(path)
 			if os.IsNotExist(err) || (info != nil && info.IsDir()) {
 				// SPA fallback (or root /): serve index.html with no-cache so
@@ -823,6 +827,7 @@ func serveLogoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// #nosec G703 -- filename is whitelisted above to a single [0-9a-z.] segment, and ServeFile rejects ".." path elements.
 	http.ServeFile(w, r, filepath.Join(getDataDir(), "logos", filename))
 }
 
@@ -834,6 +839,7 @@ func serveAvatarHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// #nosec G703 -- filename is whitelisted above to a single [0-9a-z.] segment, and ServeFile rejects ".." path elements.
 	http.ServeFile(w, r, filepath.Join(getDataDir(), "avatars", filename))
 }
 

@@ -538,7 +538,7 @@ func parseJSONObjectFlag(flagName, raw string) (map[string]any, error) {
 
 // readBootstrapStepsFile reads a JSON array file of bootstrap steps.
 func readBootstrapStepsFile(path string) ([]models.AgentBootstrapStep, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path comes from the CLI user's own --bootstrap-steps-file flag.
 	if err != nil {
 		return nil, fmt.Errorf("read --bootstrap-steps-file %s: %w", path, err)
 	}
@@ -551,7 +551,7 @@ func readBootstrapStepsFile(path string) ([]models.AgentBootstrapStep, error) {
 
 // readRulesFile reads a JSON array file of non-negotiable rules.
 func readRulesFile(path string) ([]models.AgentRule, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path comes from the CLI user's own --rules-file flag.
 	if err != nil {
 		return nil, fmt.Errorf("read --rules-file %s: %w", path, err)
 	}

@@ -1040,7 +1040,7 @@ func computeBundleRev(b *bundlePayload) string {
 
 // writeBundleManifest serialises the bundle into the canonical
 // manifest path under `<cacheRoot>/<project-key>/manifest.json`. The
-// directory is created on demand (0o755) and the manifest is written
+// directory is created on demand (0o750) and the manifest is written
 // via tmp+rename so a concurrent reader never sees a half-written
 // JSON document.
 func writeBundleManifest(cacheRoot string, b *bundlePayload, agentName string) (string, string, error) {
@@ -1058,8 +1058,11 @@ func writeBundleManifest(cacheRoot string, b *bundlePayload, agentName string) (
 			"guidelines":       b.Guidelines,
 		},
 	}
-	dir := filepath.Join(cacheRoot, b.Project.Key)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := bundleCacheDir(cacheRoot, b.Project.Key)
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", "", fmt.Errorf("mkdir cache: %w", err)
 	}
 	manifestPath := filepath.Join(dir, "manifest.json")
@@ -1068,7 +1071,7 @@ func writeBundleManifest(cacheRoot string, b *bundlePayload, agentName string) (
 		return "", "", fmt.Errorf("marshal manifest: %w", err)
 	}
 	tmp := manifestPath + ".tmp"
-	if err := os.WriteFile(tmp, append(bs, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(tmp, append(bs, '\n'), 0o600); err != nil {
 		return "", "", fmt.Errorf("write manifest: %w", err)
 	}
 	if err := os.Rename(tmp, manifestPath); err != nil {
@@ -1086,6 +1089,7 @@ func writeBundleManifest(cacheRoot string, b *bundlePayload, agentName string) (
 // up the API on every command.
 func readBundleManifest(cacheRoot, projectKey string) (*cacheManifest, error) {
 	manifestPath := filepath.Join(cacheRoot, projectKey, "manifest.json")
+	// #nosec G304 -- cacheRoot comes from the user's own --cache-dir flag (default ./.paimos/cache) and the fixed manifest.json name is appended.
 	bs, err := os.ReadFile(manifestPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1116,8 +1120,11 @@ func readBundleManifest(cacheRoot, projectKey string) (*cacheManifest, error) {
 //	<cacheRoot>/<project-key>/runbooks/<slug>.md
 //	... (one folder per category)
 func writeBundleFiles(cacheRoot string, b *bundlePayload) (string, error) {
-	dir := filepath.Join(cacheRoot, b.Project.Key)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := bundleCacheDir(cacheRoot, b.Project.Key)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("mkdir cache: %w", err)
 	}
 	// Agent artifact — pretty-print so a human inspecting the cache
@@ -1130,7 +1137,7 @@ func writeBundleFiles(cacheRoot string, b *bundlePayload) (string, error) {
 		// over a cosmetic re-encode failure.
 		agentBs = b.Agent
 	}
-	if err := os.WriteFile(filepath.Join(dir, "agent.json"), append(agentBs, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "agent.json"), append(agentBs, '\n'), 0o600); err != nil {
 		return "", fmt.Errorf("write agent.json: %w", err)
 	}
 	cats := []struct {
@@ -1156,16 +1163,32 @@ func writeBundleFiles(cacheRoot string, b *bundlePayload) (string, error) {
 // listing the tree gets a stable layout.
 func writeCategoryFiles(rootDir, alias string, entries []knowledgeEntry) error {
 	catDir := filepath.Join(rootDir, alias)
-	if err := os.MkdirAll(catDir, 0o755); err != nil {
+	if err := os.MkdirAll(catDir, 0o750); err != nil {
 		return fmt.Errorf("mkdir %s: %w", catDir, err)
 	}
 	for _, e := range entries {
-		path := filepath.Join(catDir, e.Slug+".md")
-		if err := os.WriteFile(path, []byte(renderEntryMarkdown(e)), 0o644); err != nil {
+		// Slugs come from the server payload; refuse anything that
+		// would escape the category directory.
+		name := e.Slug + ".md"
+		if !filepath.IsLocal(name) || strings.ContainsAny(e.Slug, `/\`) {
+			return fmt.Errorf("entry slug %q is not a safe file name", e.Slug)
+		}
+		path := filepath.Join(catDir, name)
+		if err := os.WriteFile(path, []byte(renderEntryMarkdown(e)), 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 	}
 	return nil
+}
+
+// bundleCacheDir joins the server-reported project key under cacheRoot,
+// rejecting keys containing separators or ".." so a hostile bundle
+// payload cannot steer cache writes outside the cache root.
+func bundleCacheDir(cacheRoot, projectKey string) (string, error) {
+	if projectKey == "" || !filepath.IsLocal(projectKey) || strings.ContainsAny(projectKey, `/\`) {
+		return "", fmt.Errorf("project key %q is not a safe cache directory name", projectKey)
+	}
+	return filepath.Join(cacheRoot, projectKey), nil
 }
 
 // renderEntryMarkdown serialises one knowledge entry as

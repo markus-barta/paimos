@@ -493,11 +493,11 @@ func resolveTargetPath(outPath, workspace, suggested string) (string, error) {
 // writeRendered creates parent directories then writes atomically via
 // rename so a concurrent reader never sees a half-written file.
 func writeRendered(path, body string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(tmp, []byte(body), 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
@@ -511,7 +511,7 @@ func writeRendered(path, body string) error {
 // non-zero cases so main() can map directly without printing a generic
 // "Error:" prefix.
 func runCheck(path, rendered string) error {
-	existing, err := os.ReadFile(path)
+	existing, err := os.ReadFile(path) // #nosec G304 -- path is the render target the CLI user chose via --out/--workspace.
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Fprintf(stderr, "paimos: %s does not exist (would be created on render)\n", path)

@@ -46,6 +46,7 @@ func listStoredTestReportsFromDir(dir string) ([]TestReportMeta, error) {
 			SizeBytes:   info.Size(),
 		}
 		sidecarPath := filepath.Join(dir, "test-results-"+version+"-summary.json")
+		// #nosec G304 -- version derives from server-side directory entry names; dir is operator-configured.
 		if sidecarData, err := os.ReadFile(sidecarPath); err == nil {
 			var s struct {
 				Passed   int `json:"passed"`
@@ -74,6 +75,7 @@ func readTestReportSummaryFromDir(dir string) TestReportSummary {
 		return defaultTestReportSummary("error", 0)
 	}
 
+	// #nosec G304 -- fixed filename under the operator-configured reports dir; no user input in the path.
 	data, err := os.ReadFile(filepath.Join(dir, "latest-summary.json"))
 	if err != nil {
 		if len(reports) == 0 {
@@ -102,6 +104,11 @@ func readTestReportSummaryFromDir(dir string) TestReportSummary {
 }
 
 func parseUploadedTestReportBundle(r *http.Request) (uploadedTestReportBundle, error) {
+	// Cap the request body before parsing: ParseMultipartForm's argument only
+	// bounds in-memory buffering, not total body size (overflow spills to
+	// disk). A nil ResponseWriter is allowed since Go 1.19.
+	r.Body = http.MaxBytesReader(nil, r.Body, 16<<20)
+	// #nosec G120 -- body is capped via http.MaxBytesReader above.
 	if err := r.ParseMultipartForm(16 << 20); err != nil {
 		return uploadedTestReportBundle{}, errors.New("invalid multipart form")
 	}
@@ -186,21 +193,21 @@ func parseUploadedTestReportBundle(r *http.Request) (uploadedTestReportBundle, e
 }
 
 func storeUploadedTestReportBundle(dir string, bundle uploadedTestReportBundle) (TestReportSummary, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return TestReportSummary{}, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, bundle.reportFilename), bundle.reportData, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, bundle.reportFilename), bundle.reportData, 0o600); err != nil {
 		return TestReportSummary{}, err
 	}
 	if bundle.summaryFilename != "" {
-		if err := os.WriteFile(filepath.Join(dir, bundle.summaryFilename), bundle.summaryData, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, bundle.summaryFilename), bundle.summaryData, 0o600); err != nil {
 			return TestReportSummary{}, err
 		}
 	}
 	reports, _ := listStoredTestReportsFromDir(dir)
 	bundle.latestSummary.ReportCount = len(reports)
 	latestSummaryJSON, _ := json.Marshal(bundle.latestSummary)
-	if err := os.WriteFile(filepath.Join(dir, "latest-summary.json"), latestSummaryJSON, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "latest-summary.json"), latestSummaryJSON, 0o600); err != nil {
 		return TestReportSummary{}, err
 	}
 	return bundle.latestSummary, nil

@@ -837,7 +837,7 @@ func deleteAnchorEntityRelationsByIssueIDs(issueIDs []int64) {
 	for _, id := range issueIDs {
 		args = append(args, id)
 	}
-	rows, err := db.DB.Query(`SELECT id FROM issue_anchors WHERE issue_id IN (`+ph+`)`, args...)
+	rows, err := db.DB.Query(`SELECT id FROM issue_anchors WHERE issue_id IN (`+ph+`)`, args...) // #nosec G202 -- makePlaceholders emits ?-only; issue ids are bound args.
 	if err != nil {
 		return
 	}

@@ -149,6 +149,7 @@ func uploadDocument(w http.ResponseWriter, r *http.Request, scope string, scopeI
 	// Hard-cap the request body so a malicious client can't exhaust
 	// memory before we get to the per-file size check below.
 	r.Body = http.MaxBytesReader(w, r.Body, documentsMaxFileSize+1<<20)
+	// #nosec G120 -- body capped by MaxBytesReader on the line above.
 	if err := r.ParseMultipartForm(documentsMaxFileSize); err != nil {
 		jsonError(w, "file too large or malformed multipart", http.StatusRequestEntityTooLarge)
 		return

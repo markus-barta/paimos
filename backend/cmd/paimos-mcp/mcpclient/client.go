@@ -58,7 +58,7 @@ func NewFromConfig() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path is the user's own PAIMOS_CONFIG override or the fixed ~/.paimos/config.yaml.
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}

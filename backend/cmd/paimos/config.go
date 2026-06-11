@@ -72,7 +72,7 @@ func loadConfig() (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path is the user's own --config flag or the fixed default config location.
 	if err != nil {
 		if os.IsNotExist(err) {
 			return cfg, nil

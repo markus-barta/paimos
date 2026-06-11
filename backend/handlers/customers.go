@@ -403,6 +403,7 @@ func scanCustomer(s rowScanner) *models.Customer {
 }
 
 func getCustomerByID(id int64) *models.Customer {
+	// #nosec G202 -- customerSelectColumns returns a fixed column list; id is a placeholder arg.
 	row := db.DB.QueryRow(`
 		SELECT `+customerSelectColumns()+`,
 		       (SELECT COUNT(*) FROM projects p

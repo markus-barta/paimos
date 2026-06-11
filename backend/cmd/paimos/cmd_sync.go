@@ -539,6 +539,7 @@ func resolveDeviceID() (string, error) {
 		return "", fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, "device-id")
+	// #nosec G304 -- fixed cache path under the user's own home directory.
 	if data, err := os.ReadFile(path); err == nil {
 		id := strings.TrimSpace(string(data))
 		if id != "" {

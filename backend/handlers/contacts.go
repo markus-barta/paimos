@@ -47,6 +47,7 @@ func ListCustomerContacts(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	// #nosec G202 -- contactSelectColumns returns a fixed column list; customer id is a placeholder arg.
 	rows, err := db.DB.Query(`
 		SELECT `+contactSelectColumns()+`
 		FROM contacts
@@ -329,7 +330,7 @@ func scanContact(s rowScanner) *models.Contact {
 }
 
 func getContactByID(id int64) *models.Contact {
-	row := db.DB.QueryRow(`SELECT `+contactSelectColumns()+` FROM contacts WHERE id=?`, id)
+	row := db.DB.QueryRow(`SELECT `+contactSelectColumns()+` FROM contacts WHERE id=?`, id) // #nosec G202 -- contactSelectColumns returns a fixed column list; id is a placeholder arg.
 	return scanContact(row)
 }
 

@@ -526,7 +526,7 @@ func embedTextDeterministic(text string) []float32 {
 	tokens := embeddingTokenPattern.FindAllString(strings.ToLower(text), -1)
 	for _, token := range tokens {
 		sum := fnvHash(token)
-		idx := int(sum % uint64(len(vec)))
+		idx := int(sum % uint64(len(vec))) // #nosec G115 -- sum % uint64(len(vec)) is < len(vec), so it always fits in int.
 		sign := float32(1)
 		if sum&(1<<63) != 0 {
 			sign = -1
@@ -634,7 +634,7 @@ func charNgrams(token string, minN, maxN int) []string {
 
 func addEmbeddingFeature(vec []float32, feature string, weight float32) {
 	sum := fnvHash(feature)
-	idx := int(sum % uint64(len(vec)))
+	idx := int(sum % uint64(len(vec))) // #nosec G115 -- sum % uint64(len(vec)) is < len(vec), so it always fits in int.
 	sign := float32(1)
 	if sum&(1<<63) != 0 {
 		sign = -1

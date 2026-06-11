@@ -187,6 +187,7 @@ func Middleware(next http.Handler) http.Handler {
 				log.Printf("Middleware: slide renewal for %s: %v", cookie.Value, uerr)
 			} else {
 				rec.expiresAt = newExpiry
+				// #nosec G124 -- HttpOnly + SameSite=Lax are set; Secure mirrors COOKIE_SECURE (true on HTTPS deployments).
 				http.SetCookie(w, &http.Cookie{
 					Name:     sessionCookie,
 					Value:    cookie.Value,
@@ -255,6 +256,7 @@ func Middleware(next http.Handler) http.Handler {
 // (absolute cap, account disabled, etc.) so the browser doesn't keep
 // presenting a value the server has already deleted.
 func clearSessionCookie(w http.ResponseWriter) {
+	// #nosec G124 -- deletion cookie (empty value, MaxAge -1); it carries no session data to protect.
 	http.SetCookie(w, &http.Cookie{
 		Name:    sessionCookie,
 		Value:   "",
@@ -336,6 +338,7 @@ func loadSession(sessionID string) (*sessionRecord, error) {
 		userScanDests(rec.user)...,
 	)
 	dests = append(dests, userScanDests(rec.actor)...)
+	// #nosec G202 -- userSelectCols / userSelectColsFor are fixed column lists; the session id binds as a placeholder.
 	row := db.DB.QueryRow(`
 		SELECT s.csrf_token, s.via_dev_login, s.expires_at, s.created_at,
 		       u.permissions_epoch,
@@ -469,6 +472,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// backend has slid expires_at past the current value. The DB row
 	// is the source of truth; the cookie just has to survive long
 	// enough for the next request to renew it.
+	// #nosec G124 -- HttpOnly + SameSite=Lax are set; Secure mirrors COOKIE_SECURE (true on HTTPS deployments).
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sid,
@@ -505,6 +509,7 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("LogoutHandler: delete session: %v", err)
 		}
 	}
+	// #nosec G124 -- deletion cookie (empty value, MaxAge -1); it carries no session data to protect.
 	http.SetCookie(w, &http.Cookie{
 		Name:    sessionCookie,
 		Value:   "",

@@ -274,6 +274,7 @@ func TOTPVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #nosec G124 -- HttpOnly + SameSite=Lax are set; Secure mirrors COOKIE_SECURE (true on HTTPS deployments).
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sid,

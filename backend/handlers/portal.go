@@ -448,6 +448,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 
 	countArgs := append([]any{}, args...)
 	var total int
+	// #nosec G701 -- where is assembled from fixed SQL fragments; user values are placeholders.
 	if err := db.DB.QueryRow(fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM issues i
@@ -459,6 +460,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit, offset := parseIssueListWindow(r, 0)
+	// #nosec G201 -- where is fixed-fragment assembly; sortCol/orderDir come from server-side allowlists.
 	listSQL := fmt.Sprintf(`
 		SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 		       i.title, i.description, i.acceptance_criteria,
@@ -476,6 +478,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		args = append(args, limit, offset)
 	}
 
+	// #nosec G701 -- listSQL uses fixed fragments and allowlisted sort columns; user values are placeholders.
 	rows, err := db.DB.Query(listSQL, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -1035,6 +1038,7 @@ func PortalProjectSummary(w http.ResponseWriter, r *http.Request) {
 		args = append(args, visArg)
 	}
 
+	// #nosec G202 -- visFrag is a fixed SQL fragment; its tag id is bound as a placeholder arg.
 	rows, err := db.DB.Query(`
 		SELECT status, COUNT(*)
 		FROM issues
@@ -1216,6 +1220,7 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 		if statusVisOn {
 			statusArgs = append(statusArgs, statusVisArg)
 		}
+		// #nosec G202 -- placeholders is ?-only assembly; statusVisFrag is a fixed fragment with a placeholder arg.
 		q := `
 			SELECT project_id, status, COUNT(*)
 			FROM issues
@@ -1266,6 +1271,7 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 		if awaitVisOn {
 			awaitArgs = append(awaitArgs, awaitVisArg)
 		}
+		// #nosec G202 -- placeholders is ?-only assembly; awaitVisFrag is a fixed fragment with a placeholder arg.
 		q := `
 			SELECT i.id, COALESCE(p.key || '-' || i.issue_number, ''),
 			       i.title, i.type, i.status, i.priority,
@@ -1308,6 +1314,7 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 		if acceptVisOn {
 			acceptArgs = append(acceptArgs, acceptVisArg)
 		}
+		// #nosec G202 -- placeholders is ?-only assembly; acceptVisFrag is a fixed fragment with a placeholder arg.
 		q := `
 			SELECT COUNT(*)
 			FROM issues
@@ -1329,6 +1336,7 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 	if !portalVisibilityEnforced() {
 		tagID, _ := customerPortalTagID()
 		whcArgs := append([]any{tagID}, idArgs...)
+		// #nosec G202 -- placeholders is ?-only assembly; the rest of the SQL is fixed with placeholder args.
 		q := `
 			SELECT i.project_id, COUNT(*)
 			FROM issues i
@@ -1364,6 +1372,7 @@ func PortalOverview(w http.ResponseWriter, r *http.Request) {
 
 	// Recent Projektbericht snapshots across accessible projects. Top 5.
 	{
+		// #nosec G202 -- placeholders is ?-only assembly; the rest of the SQL is fixed.
 		q := `
 			SELECT prs.code, prs.project_id, p.key, p.name,
 			       prs.status, prs.total_issues, prs.created_at, prs.accepted_at

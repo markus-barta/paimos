@@ -45,6 +45,7 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 	filter, filterArgs := projectIDFilter(r, "p.id", false)
 	args := append([]any{status}, filterArgs...)
 
+	// #nosec G202 G701 -- projectIDFilter returns a fixed SQL fragment plus placeholder args; status is allowlisted above.
 	rows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status,
 		       p.product_owner, p.customer_label, p.customer_id,

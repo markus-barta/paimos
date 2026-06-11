@@ -97,7 +97,7 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(placeholders) > 0 {
-			query += " AND i.id IN (" + strings.Join(placeholders, ",") + ")"
+			query += " AND i.id IN (" + strings.Join(placeholders, ",") + ")" // #nosec G202 -- placeholders are ?-only for ids parsed as int64; values are bound args.
 		}
 	}
 
@@ -263,6 +263,12 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 // ── CSV parsing helper ────────────────────────────────────────────────────────
 
 func parseCSV(r *http.Request) ([]ImportRow, error) {
+	// Hard-cap the request body before parsing — no upstream middleware
+	// limits it, and ParseMultipartForm's argument only bounds the
+	// in-memory portion, not the bytes read. nil writer: callers turn the
+	// error into their own JSON response.
+	r.Body = http.MaxBytesReader(nil, r.Body, (8<<20)+(1<<20))
+	// #nosec G120 -- body capped by MaxBytesReader above.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		return nil, fmt.Errorf("parse form failed")
 	}

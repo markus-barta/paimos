@@ -217,8 +217,12 @@ func (k *knowledgeResource) fetchEntries(c SyncClient, projectID int64, selectNa
 func (k *knowledgeResource) syncOne(projectKey, workspaceRoot string, entry KnowledgeEntry) (SyncedItem, error) {
 	rendered := k.renderEntry(projectKey, entry)
 	suggested := k.LocalPath(projectKey, entry.Slug)
-	target := filepath.Join(workspaceRoot, suggested)
+	target, err := joinWorkspacePath(workspaceRoot, suggested)
+	if err != nil {
+		return SyncedItem{}, err
+	}
 	action := "wrote"
+	// #nosec G304 -- target is contained in workspaceRoot by joinWorkspacePath.
 	if existing, readErr := os.ReadFile(target); readErr == nil && k.HeaderRev(rendered, existing) {
 		action = "unchanged"
 	}
@@ -324,13 +328,17 @@ func (k *knowledgeResource) Check(
 		}
 		rendered := k.renderEntry(projectKey, entry)
 		suggested := k.LocalPath(projectKey, entry.Slug)
-		target := filepath.Join(workspaceRoot, suggested)
+		target, err := joinWorkspacePath(workspaceRoot, suggested)
+		if err != nil {
+			return out, fmt.Errorf("check %s %q: %w", k.kind, entry.Slug, err)
+		}
 		rec := CheckRecord{
 			Kind: k.kind,
 			Name: entry.Slug,
 			Path: target,
 			Rev:  ExtractRevFromHeader(rendered),
 		}
+		// #nosec G304 -- target is contained in workspaceRoot by joinWorkspacePath.
 		existing, readErr := os.ReadFile(target)
 		switch {
 		case readErr != nil && os.IsNotExist(readErr):

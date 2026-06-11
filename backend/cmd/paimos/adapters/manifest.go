@@ -263,7 +263,7 @@ func LoadManifestAdapter(path string) (*ManifestAdapter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve manifest path: %w", err)
 	}
-	raw, err := os.ReadFile(abs)
+	raw, err := os.ReadFile(abs) // #nosec G304 -- abs is the manifest the CLI user named via --harness-from-file.
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %s: %w", abs, err)
 	}

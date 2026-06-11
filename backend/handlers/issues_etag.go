@@ -22,6 +22,7 @@ func computeIssueListETag(whereSQL string, args []any) (string, error) {
 	var maxUpdated string
 	var total int
 	var contentRev int64
+	// #nosec G701 -- whereSQL is composed from fixed fragments; user values are placeholders.
 	if err := db.DB.QueryRow(query, args...).Scan(&maxUpdated, &total, &contentRev); err != nil {
 		// PAI-283: surface the underlying SQL error so operators can diagnose
 		// "etag computation failed" 500s instead of guessing at the cause.

@@ -42,7 +42,7 @@ func readMultilineInput(inlineFlag, fileFlag, fieldName string) (string, bool, e
 			}
 			return string(b), true, nil
 		}
-		b, err := os.ReadFile(fileFlag)
+		b, err := os.ReadFile(fileFlag) // #nosec G304 -- fileFlag comes from the CLI user's own --<field>-file flag.
 		if err != nil {
 			return "", false, fmt.Errorf("read --%s-file %s: %w", fieldName, fileFlag, err)
 		}

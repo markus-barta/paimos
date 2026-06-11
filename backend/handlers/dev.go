@@ -150,12 +150,14 @@ func GetTestReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := filepath.Join(testReportsDir(), filename)
+	// #nosec G703 -- filename is validated above (fixed test-results-*.html prefix/suffix, no separators or ".."), so path stays inside testReportsDir.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// #nosec G703 -- same containment as above: validated filename joined to the fixed reports dir.
 	http.ServeFile(w, r, path)
 }
 

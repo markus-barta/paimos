@@ -796,6 +796,7 @@ func PurgeIssue(w http.ResponseWriter, r *http.Request) {
 	for _, issueID := range descendantIDs {
 		args = append(args, issueID)
 	}
+	// #nosec G202 -- ph is ?-only placeholder assembly from makePlaceholders; descendant ids are bound args.
 	if _, err := db.DB.Exec(`DELETE FROM entity_relations WHERE (source_type='issue' AND source_id IN (`+ph+`)) OR (target_type='issue' AND target_id IN (`+ph+`))`, args...); err != nil {
 		jsonError(w, "purge failed", http.StatusInternalServerError)
 		return

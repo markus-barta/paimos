@@ -91,6 +91,7 @@ func GetBranding(w http.ResponseWriter, r *http.Request) {
 	filename := resolveBrandingFile(r)
 
 	path := filepath.Join(brandingDir(), filename)
+	// #nosec G304 G703 -- filename is whitelisted by the anchored brandingFilePattern regex; no traversal possible.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// Fall back to default branding
@@ -108,6 +109,7 @@ func GetBranding(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	// #nosec G705 -- response is application/json (content validated as JSON above), never rendered as HTML.
 	w.Write(data)
 }
 
@@ -132,6 +134,7 @@ func ListBrandings(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// Read the file to extract the "name" field
+		// #nosec G304 -- name comes from os.ReadDir and must match brandingFilePattern; not user input.
 		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			continue
@@ -218,7 +221,7 @@ func PutBranding(w http.ResponseWriter, r *http.Request) {
 
 	filename := resolveBrandingFile(r)
 	dir := brandingDir()
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		jsonError(w, "storage error", http.StatusInternalServerError)
 		return
 	}
@@ -235,12 +238,13 @@ func PutBranding(w http.ResponseWriter, r *http.Request) {
 	// defaults on next boot.
 	path := filepath.Join(dir, filename)
 	tmp := path + ".tmp"
+	// #nosec G306 G703 -- filename is whitelisted by brandingFilePattern; branding.json is non-secret operator-editable config whose content is served publicly, so 0644 is intentional.
 	if err := os.WriteFile(tmp, out, 0644); err != nil {
 		jsonError(w, "write failed", http.StatusInternalServerError)
 		return
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := os.Rename(tmp, path); err != nil { // #nosec G703 -- path/tmp derive from the whitelisted branding filename.
+		_ = os.Remove(tmp) // #nosec G703 -- tmp derives from the whitelisted branding filename.
 		jsonError(w, "write failed", http.StatusInternalServerError)
 		return
 	}
@@ -273,7 +277,11 @@ const (
 // handlers. `baseName` is the on-disk name sans extension ("logo" or
 // "favicon"); the caller provides the MIME whitelist and size cap.
 func uploadBrandingAsset(w http.ResponseWriter, r *http.Request, baseName string, accept map[string]string, maxBytes int64) {
-	// +1KB for multipart envelope overhead
+	// Cap the request body before parsing: ParseMultipartForm's argument only
+	// bounds in-memory buffering, not total body size (overflow spills to
+	// disk). +1KB for multipart envelope overhead.
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024)
+	// #nosec G120 -- body is capped via http.MaxBytesReader above.
 	if err := r.ParseMultipartForm(maxBytes + 1024); err != nil {
 		jsonError(w, fmt.Sprintf("file too large (max %d KB)", maxBytes/1024), http.StatusBadRequest)
 		return
@@ -325,7 +333,7 @@ func uploadBrandingAsset(w http.ResponseWriter, r *http.Request, baseName string
 	}
 
 	assetsDir := brandingAssetsDir()
-	if err := os.MkdirAll(assetsDir, 0755); err != nil {
+	if err := os.MkdirAll(assetsDir, 0750); err != nil {
 		jsonError(w, "storage error", http.StatusInternalServerError)
 		return
 	}
@@ -341,6 +349,7 @@ func uploadBrandingAsset(w http.ResponseWriter, r *http.Request, baseName string
 	}
 
 	outPath := filepath.Join(assetsDir, baseName+"."+ext)
+	// #nosec G306 -- public web asset (logo/favicon) served unauthenticated at /brand/; world-readable is intentional.
 	if err := os.WriteFile(outPath, data, 0644); err != nil {
 		jsonError(w, "write failed", http.StatusInternalServerError)
 		return
@@ -400,7 +409,7 @@ func ServeBrandingAsset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) // #nosec G703 -- filename regex-whitelisted and abs-path containment checked above.
 	if err != nil || info.IsDir() {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -415,5 +424,6 @@ func ServeBrandingAsset(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Short cache: the file can change at any time via the admin UI.
 	w.Header().Set("Cache-Control", "public, max-age=60")
+	// #nosec G703 -- filename regex-whitelisted and abs-path containment checked above.
 	http.ServeFile(w, r, path)
 }

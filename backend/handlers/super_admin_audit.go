@@ -140,6 +140,7 @@ func ListSuperAdminActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, limit)
 
+	// #nosec G202 -- where contains fixed clauses only; user values are placeholder args.
 	rows, err := db.DB.QueryContext(r.Context(), `
 		SELECT a.id, a.actor_user_id, actor.username,
 		       a.target_user_id, target.username,

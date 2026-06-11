@@ -258,6 +258,7 @@ func loadSprintIDsBatch(issues []models.Issue) {
 		byID[iss.ID] = i
 	}
 	placeholders := buildPlaceholders(len(ids))
+	// #nosec G202 -- buildPlaceholders returns a fixed "?,?" list; IDs are bound as args.
 	rows, err := db.DB.Query(`
 		SELECT ir.target_id, GROUP_CONCAT(ir.source_id)
 		FROM issue_relations ir
@@ -304,6 +305,7 @@ func loadLastChangedByBatch(issues []models.Issue) {
 	}
 	placeholders := buildPlaceholders(len(ids))
 	// Use MAX(id) per issue to find the latest history entry — avoids correlated subquery.
+	// #nosec G202 -- buildPlaceholders returns a fixed "?,?" list; IDs are bound as args.
 	rows, err := db.DB.Query(`
 		SELECT ih.issue_id, eu.username
 		FROM issue_history ih
@@ -344,6 +346,7 @@ func loadBookedHoursBatch(issues []models.Issue) {
 		byID[iss.ID] = i
 	}
 	placeholders := buildPlaceholders(len(ids))
+	// #nosec G202 -- buildPlaceholders returns a fixed "?,?" list; IDs are bound as args.
 	rows, err := db.DB.Query(`
 		SELECT te.issue_id, SUM(
 			CASE

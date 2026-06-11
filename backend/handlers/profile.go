@@ -141,7 +141,10 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUser(r)
 
-	// 3MB limit
+	// 3MB limit. Hard-cap the request body (plus 1MB multipart overhead) so a
+	// malicious client can't exhaust memory before the size check.
+	r.Body = http.MaxBytesReader(w, r.Body, 3<<20+1<<20)
+	// #nosec G120 -- body is hard-capped by MaxBytesReader above; the rule is syntactic.
 	if err := r.ParseMultipartForm(3 << 20); err != nil {
 		jsonError(w, "file too large (max 3MB)", http.StatusBadRequest)
 		return
@@ -179,13 +182,14 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 
 	// Save to DATA_DIR/avatars/{id}.jpg
 	avatarsDir := filepath.Join(getDataDir(), "avatars")
-	if err := os.MkdirAll(avatarsDir, 0755); err != nil {
+	if err := os.MkdirAll(avatarsDir, 0o750); err != nil {
 		jsonError(w, "storage error", http.StatusInternalServerError)
 		return
 	}
 	filename := fmt.Sprintf("%d.jpg", user.ID)
 	destPath := filepath.Join(avatarsDir, filename)
-	if err := os.WriteFile(destPath, processed, 0644); err != nil {
+	// #nosec G703 -- destPath is DATA_DIR plus a filename derived from the authenticated user's numeric ID; no client-controlled path segments.
+	if err := os.WriteFile(destPath, processed, 0o600); err != nil {
 		jsonError(w, "write error", http.StatusInternalServerError)
 		return
 	}

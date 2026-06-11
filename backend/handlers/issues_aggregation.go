@@ -66,6 +66,7 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 	aggAccessFilter, aggAccessArgs := projectIDFilter(r, "i.project_id", true)
 	aggArgs := append([]any{id}, aggAccessArgs...)
 	var agg IssueAggregation
+	// #nosec G701 -- aggAccessFilter comes from projectIDFilter (fixed SQL fragment plus placeholder args).
 	err = db.DB.QueryRow(`
 		SELECT COUNT(*),
 		       SUM(i.estimate_hours), SUM(i.estimate_lp),
@@ -118,6 +119,7 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 	actArgs := append([]any{id}, aggAccessArgs...)
 	actArgs = append(actArgs, id)
 	var actualHours, actualInternalCost *float64
+	// #nosec G701 -- aggAccessFilter comes from projectIDFilter (fixed SQL fragment plus placeholder args).
 	err = db.DB.QueryRow(`
 		SELECT SUM(
 			CASE

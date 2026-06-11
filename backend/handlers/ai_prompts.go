@@ -255,7 +255,7 @@ func AIUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 	updates = append(updates, "updated_at = datetime('now')")
 	args = append(args, id)
-	q := "UPDATE ai_prompts SET " + strings.Join(updates, ", ") + " WHERE id = ?"
+	q := "UPDATE ai_prompts SET " + strings.Join(updates, ", ") + " WHERE id = ?" // #nosec G202 -- buildUpdate emits fixed "col = ?" fragments; user values are placeholder args.
 	if _, err := db.DB.Exec(q, args...); err != nil {
 		log.Printf("ai_prompts: update: %v", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)

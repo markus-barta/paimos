@@ -91,6 +91,7 @@ func ListIncidents(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, limit)
 
+	// #nosec G202 -- clauses are fixed fragments gated by allowlists/parsing; user values are placeholder args.
 	rows, err := db.DB.Query(`
 		SELECT id, severity, kind, title, summary, details, reported_by,
 		       status, detected_at, resolved_at, created_at, updated_at

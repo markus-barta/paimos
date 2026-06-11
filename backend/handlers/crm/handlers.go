@@ -445,7 +445,7 @@ func annotateAlreadyImported(groups []searchProviderResult) {
 			ph[i] = "?"
 			args = append(args, id)
 		}
-		query := "SELECT id, external_id FROM customers WHERE external_provider = ? AND external_id IN (" + strings.Join(ph, ",") + ")"
+		query := "SELECT id, external_id FROM customers WHERE external_provider = ? AND external_id IN (" + strings.Join(ph, ",") + ")" // #nosec G202 -- IN-list is ?-only placeholder assembly; provider and ids are bound args.
 		rows, err := db.DB.Query(query, args...)
 		if err != nil {
 			log.Printf("crm/search: dedup query %s: %v", prov, err)

@@ -225,6 +225,7 @@ func PutMiteIntegration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := miteConfig{APIKey: apiKey, BaseURL: baseURL, LoadDataSinceDate: body.LoadDataSinceDate}
+	// #nosec G117 -- marshaled config goes to the server-side integrations table only; API responses expose has_api_key, never the key.
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		jsonError(w, "marshal failed", http.StatusInternalServerError)

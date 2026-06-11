@@ -119,6 +119,10 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	maxSize := int64(defaultMaxFileSize)
+	// Hard-cap the request body before parsing — ParseMultipartForm's
+	// argument only bounds the in-memory portion, not the bytes read.
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize+1<<20)
+	// #nosec G120 -- body capped by MaxBytesReader above.
 	if err := r.ParseMultipartForm(maxSize + 1024); err != nil {
 		jsonError(w, "file too large (max 10 MB)", http.StatusRequestEntityTooLarge)
 		return
@@ -359,6 +363,10 @@ func UploadPendingAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	maxSize := int64(defaultMaxFileSize)
+	// Hard-cap the request body before parsing — ParseMultipartForm's
+	// argument only bounds the in-memory portion, not the bytes read.
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize+1<<20)
+	// #nosec G120 -- body capped by MaxBytesReader above.
 	if err := r.ParseMultipartForm(maxSize + 1024); err != nil {
 		jsonError(w, "file too large (max 10 MB)", http.StatusRequestEntityTooLarge)
 		return

@@ -631,6 +631,7 @@ func ripgrepBaseArgs(k int) []string {
 func (b *contextBroker) runRipgrep(parent context.Context, args []string, k int, kind, method string) ([]localHit, error) {
 	ctx, cancel := context.WithTimeout(parent, serveCommandTimeout)
 	defer cancel()
+	// #nosec G204 -- fixed "rg" binary; args are a fixed flag set plus the query passed as structured argv (after "--" or regexp-quoted), no shell involved.
 	cmd := exec.CommandContext(ctx, "rg", args...)
 	cmd.Dir = b.repoRoot
 	raw, err := cmd.CombinedOutput()
@@ -732,7 +733,7 @@ func (b *contextBroker) walkMatching(k int, kind, method string, match func(stri
 		if err != nil {
 			continue
 		}
-		f, err := os.Open(abs)
+		f, err := os.Open(abs) // #nosec G304 -- abs is validated by resolveRepoPath (symlinks resolved, contained in repoRoot, denyUnsafeRepoRel).
 		if err != nil {
 			continue
 		}
@@ -785,7 +786,7 @@ func (b *contextBroker) readFile(req contextReadRequest) (contextReadResponse, e
 	if end < start {
 		return contextReadResponse{}, fmt.Errorf("end_line must be greater than or equal to start_line")
 	}
-	f, err := os.Open(abs)
+	f, err := os.Open(abs) // #nosec G304 -- abs is validated by resolveRepoPath (symlinks resolved, contained in repoRoot, denyUnsafeRepoRel).
 	if err != nil {
 		return contextReadResponse{}, err
 	}

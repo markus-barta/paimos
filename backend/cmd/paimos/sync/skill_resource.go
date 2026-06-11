@@ -167,8 +167,12 @@ func (s *SkillResource) syncOne(c SyncClient, projectID int64, projectKey, works
 	if err != nil {
 		return SyncedItem{}, err
 	}
-	target := filepath.Join(workspaceRoot, suggested)
+	target, err := joinWorkspacePath(workspaceRoot, suggested)
+	if err != nil {
+		return SyncedItem{}, err
+	}
 	action := "wrote"
+	// #nosec G304 -- target is contained in workspaceRoot by joinWorkspacePath.
 	if existing, readErr := os.ReadFile(target); readErr == nil && s.HeaderRev(rendered, existing) {
 		action = "unchanged"
 	}
@@ -239,13 +243,17 @@ func (s *SkillResource) Check(
 		if err != nil {
 			return out, fmt.Errorf("check skill %q: %w", name, err)
 		}
-		target := filepath.Join(workspaceRoot, suggested)
+		target, err := joinWorkspacePath(workspaceRoot, suggested)
+		if err != nil {
+			return out, fmt.Errorf("check skill %q: %w", name, err)
+		}
 		rec := CheckRecord{
 			Kind: s.Kind(),
 			Name: name,
 			Path: target,
 			Rev:  ExtractRevFromHeader(rendered),
 		}
+		// #nosec G304 -- target is contained in workspaceRoot by joinWorkspacePath.
 		existing, readErr := os.ReadFile(target)
 		switch {
 		case readErr != nil && os.IsNotExist(readErr):
@@ -298,15 +306,27 @@ func ExtractRevFromHeader(body []byte) string {
 // knowledge-plane Resources (memory_resource.go, runbook_resource.go, …)
 // can reuse the same atomic-write helper without duplication.
 func WriteFileAtomic(path string, body []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
 	}
 	return nil
+}
+
+// joinWorkspacePath joins a server/adapter-suggested relative path under
+// workspaceRoot, rejecting absolute paths and ".." traversal so a
+// hostile artifact (suggested path, agent name, or slug) cannot steer
+// reads or writes outside the workspace.
+func joinWorkspacePath(workspaceRoot, suggested string) (string, error) {
+	rel := filepath.FromSlash(strings.TrimSpace(suggested))
+	if rel == "" || !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("suggested path %q escapes the workspace root", suggested)
+	}
+	return filepath.Join(workspaceRoot, rel), nil
 }

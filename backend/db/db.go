@@ -112,7 +112,10 @@ func Open() error {
 		dataDir = "/app/data"
 	}
 
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	// 0o750: the data dir holds the SQLite DB and secret key; only the
+	// backend process (and its group) need access.
+	// #nosec G703 -- dataDir is the operator-configured DATA_DIR env, not user input.
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
 

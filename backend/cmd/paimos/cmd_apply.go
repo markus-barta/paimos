@@ -59,7 +59,7 @@ need strict all-or-nothing, keep the file under 100 items.`,
 			if path == "-" {
 				src = os.Stdin
 			} else {
-				f, err := os.Open(path)
+				f, err := os.Open(path) // #nosec G304 -- path comes from the CLI user's own --from-file flag.
 				if err != nil {
 					return fmt.Errorf("open %s: %w", path, err)
 				}
@@ -236,7 +236,7 @@ epic+children once, then use ` + "`issue ensure-status`" + ` or
 			if path == "-" {
 				reader = os.Stdin
 			} else {
-				f, err := os.Open(path)
+				f, err := os.Open(path) // #nosec G304 -- path comes from the CLI user's own --from-file flag.
 				if err != nil {
 					return fmt.Errorf("open %s: %w", path, err)
 				}

@@ -368,10 +368,12 @@ func listAICalls(f aiCallFilters) (aiCallListResponse, error) {
 	}
 
 	countSQL := `SELECT COUNT(*), COALESCE(SUM(c.cost_micro_usd), 0) FROM ai_calls c` + where
+	// #nosec G701 -- countSQL is fixed SQL plus buildAICallWhere, which emits fixed fragments; user values are placeholders.
 	if err := db.DB.QueryRow(countSQL, args...).Scan(&resp.TotalCount, &resp.TotalCostMicroUSD); err != nil {
 		return resp, err
 	}
 
+	// #nosec G202 -- where comes from buildAICallWhere: fixed fragments with user values as placeholders.
 	query := `
 		SELECT
 			c.id, c.request_id, c.user_id, COALESCE(u.username, 'deleted user'),
@@ -398,6 +400,7 @@ func listAICalls(f aiCallFilters) (aiCallListResponse, error) {
 		ORDER BY c.created_at DESC, c.id DESC
 		LIMIT ?
 	`
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, append(args, f.Limit)...)
 	if err != nil {
 		return resp, err
@@ -564,6 +567,7 @@ func exportAICallsCSV(w http.ResponseWriter, r *http.Request, selfOnly *int64) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// #nosec G202 -- where comes from buildAICallWhere: fixed fragments with user values as placeholders.
 	query := `
 		SELECT
 			c.created_at, COALESCE(u.username, 'deleted user'),
@@ -588,6 +592,7 @@ func exportAICallsCSV(w http.ResponseWriter, r *http.Request, selfOnly *int64) {
 	` + where + `
 		ORDER BY c.created_at DESC, c.id DESC
 	`
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		log.Printf("ai_calls: export: %v", err)

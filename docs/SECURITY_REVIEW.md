@@ -17,7 +17,7 @@ This document is the **agreed posture** for PAIMOS's secure-SDLC pipeline:
 
 It is **not**:
 
-- A claim that PAIMOS is bug-free at the SAST or vulnerability layer. Both `gosec` and `govulncheck` currently produce findings (see §3) — those are tracked, not ignored.
+- A claim that PAIMOS is bug-free at the SAST or vulnerability layer. The gosec baseline was triaged to zero under PAI-223 (2026-06-11); suppressed findings carry inline `#nosec` justifications, and any new finding fails CI (see §3).
 - A pen-test report. External review is tracked under [`PAI-139`](https://github.com/markus-barta/paimos/issues/139).
 - A SOC-2 control mapping. PAIMOS doesn't claim certification.
 
@@ -31,15 +31,15 @@ PAIMOS's CI runs four security scanners against every push and PR. Each tool has
 |---|---|---|---|---|
 | **gitleaks** | Secret scanning (history-aware) | `.gitleaks.toml` + `ci.yml` | **blocking** | any finding fails build; doc-example allowlist for `paimos_<≤16-hex>` in `*.md` |
 | **npm audit** | Frontend dependency vulnerability | `ci.yml` (`frontend/` step) | **blocking** | `--audit-level=high`; production deps only (`--omit=dev`) |
-| **gosec** | Go SAST (taint analysis, common patterns) | `ci.yml` + `.gosec-baseline.txt` | **blocking baseline gate** | severity=medium / confidence=medium; current findings are baselined, new findings fail CI |
+| **gosec** | Go SAST (taint analysis, common patterns) | `ci-v2.yml` + `.gosec-baseline.txt` | **blocking baseline gate** | severity=medium / confidence=medium; baseline is empty (PAI-223) — any finding fails CI |
 | **govulncheck** | Go module + stdlib vulnerability | `ci.yml` (`backend/` step) | **blocking** | any reachable vulnerability reported by the CI Go toolchain fails CI |
 
 All four scanners are release-blocking in CI. `gitleaks`, `npm audit`, and
 `govulncheck` fail directly on findings at their configured threshold.
-`gosec` fails through a committed baseline gate: the current residual set is
-tracked in `.gosec-baseline.txt`, and any new medium+ severity / medium+
-confidence finding is a CI failure. Shrinking that baseline remains PAI-223's
-job; growing it requires explicit review.
+`gosec` fails through a committed baseline gate: `.gosec-baseline.txt` is
+**empty** since the PAI-223 triage (2026-06-11), so any medium+ severity /
+medium+ confidence finding is a CI failure. Growing the baseline requires
+explicit review.
 
 ---
 
@@ -78,28 +78,30 @@ CI step uses `gitleaks/gitleaks-action@v2` with `fetch-depth: 0` so the scanner 
 
 ### 2.3 · gosec — Go SAST
 
-**Blocking shape.** A clean-room run on the v2.0 codebase produced **118 findings** at `severity=medium / confidence=medium`. Distribution:
+**Blocking shape.** gosec runs as a **zero-baseline gate**: `scripts/check-gosec-baseline.sh` compares normalized findings (severity≥medium / confidence≥medium) against `.gosec-baseline.txt`, and the baseline is **empty** — any finding fails CI.
 
-- **38 high-severity findings** — mostly G115 (uint→int overflow in tree-sitter integration), G704 (SSRF taint in `jiraimport.go` and `auth/oidc.go`, where the *feature* is making outbound HTTP to operator-configured URLs — gosec's taint analysis flags the design intent), G701 (SQL injection taint in FTS5 query construction in `search.go`, where the queries are parameterised but gosec doesn't recognise SQLite FTS5's MATCH syntax).
-- **80 medium-severity findings** — G306 (file-permissions 0o644 vs 0o600 expected), various G404 (insecure rand for non-crypto purposes), etc.
+**Triage history (PAI-223, completed 2026-06-11).** The v2.0 clean-room run produced 118 findings; by triage time (gosec pinned to v2.27.1, which added the G1xx/G7xx rules) the grandfathered set had grown to 157. Every finding was classified and resolved:
 
-Most are false positives; a non-trivial subset are real edge cases that warrant either a `// #nosec G104` annotation with a justification comment, or a small refactor. **Triaging the residual set is multi-day work** that PAI-223 tracks. Until then, `scripts/check-gosec-baseline.sh` runs gosec and compares normalized findings against `.gosec-baseline.txt`; CI fails if the set grows.
+- **False positives** (the large majority) carry inline `// #nosec <rule> -- <reason>` annotations at the finding site: fixed-fragment SQL assembly with placeholder-bound values that the taint rules can't follow (G202/G701/G201), operator-configured paths and outbound URLs where the I/O is the feature (G304/G703/G704 — OIDC issuer, Jira import, `DATA_DIR`), conditional cookie attributes and deletion cookies (G124), and CLI file paths supplied by the invoking user (G304 in `cmd/paimos`).
+- **Real fixes** shipped in the same pass: request-body caps (`http.MaxBytesReader`) on seven previously unbounded multipart upload handlers (G120), private-data file/dir permissions tightened to `0600`/`0750` (G306/G301), an anchored-clean fix for the SPA-fallback path check in `main.go` (G703), and workspace-containment checks (`filepath.IsLocal`) in the CLI sync engine so server-supplied artifact paths cannot escape the workspace (zip-slip class, G304).
+- **Out of scope**: `cmd/genreport` (dev tooling) and rule G104 (unhandled errors, low-signal here) are excluded in the gate script.
 
 **Config**:
 
 ```yaml
 - name: gosec (Go SAST baseline gate)
   run: |
-    go install github.com/securego/gosec/v2/cmd/gosec@latest
+    go install github.com/securego/gosec/v2/cmd/gosec@v2.27.1
     ./scripts/check-gosec-baseline.sh
 ```
 
-**The triage plan (PAI-223):**
+The version is pinned: `@latest` silently bumps when a new gosec releases, and rule changes drift findings with no code change (that bit once — PAI-578). Bump deliberately and re-verify the zero baseline in the same commit.
 
-1. Walk every finding; classify as false-positive (annotate), real-edge-case (fix or accept with comment), or out-of-scope (move out of `./...`).
-2. Remove resolved findings from `.gosec-baseline.txt`.
-3. Keep CI blocking on any new finding beyond the baseline.
-4. Review the baseline every six months.
+**Keeping it at zero:**
+
+1. New findings fail CI immediately — fix or annotate with a justified `#nosec` in the same PR.
+2. Any addition to `.gosec-baseline.txt` requires explicit review; the default is that the file stays empty.
+3. Review `#nosec` annotations for staleness every six months per [`SECURITY_GOVERNANCE.md`](SECURITY_GOVERNANCE.md) §1 (gosec baseline review control).
 
 ### 2.4 · govulncheck — Go module + stdlib vulnerabilities
 
@@ -125,7 +127,7 @@ Any newly-disclosed Go-runtime or module CVE that PAIMOS actually calls fails th
 |---|---|---|---|
 | gitleaks | blocking · any finding | unchanged | — (this ticket) |
 | npm audit | blocking · `--audit-level=high` | unchanged for now; tighten to `moderate` only after a moderate-finding triage cycle | future |
-| gosec | blocking baseline gate · severity=medium / confidence=medium | shrink baseline as findings are fixed/annotated | **PAI-223** (filed) |
+| gosec | blocking zero-baseline gate · severity=medium / confidence=medium | keep the baseline empty | **PAI-223** (done 2026-06-11) |
 | govulncheck | blocking · reachable vulnerabilities | keep Go toolchain patched | **PAI-224** (historical upgrade) |
 
 **This is the agreed threshold per the PAI-128 / PAI-288 AC.** "Blocking at the agreed severity threshold" = the table above. Any future advisory-only scanner must be named advisory in CI and in this document; otherwise scanner steps are assumed to be release-blocking.
@@ -224,7 +226,7 @@ The scanners and review checklist are defence in depth, not perfect. When someth
 - **[`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md)** — when defence fails. § 3.1 (compromised API key) is the tabletop that named the gitleaks `paimos_` rule as the targeted defence.
 - **[`SECURITY.md`](../SECURITY.md)** — inbound disclosure policy.
 - **`.gitleaks.toml`** — the gitleaks config (custom `paimos-api-key` rule + doc allowlist).
-- **`.github/workflows/ci.yml`** — the four scanner steps.
+- **`.github/workflows/ci-v2.yml`** — the four scanner steps.
 - **`backend/handlers/security_regression_test.go`** + **`backend/handlers/authz_fuzz_test.go`** + **`backend/handlers/ai_optimize_audit_test.go`** — the regression suites that back the review rules.
-- **PAI-223** — gosec triage follow-on (118 findings → annotate / fix / baseline).
-- **[`SECURITY_GOVERNANCE.md`](SECURITY_GOVERNANCE.md)** — the operating system for this doc's review cadence; §1 names "gosec re-baseline" as a recurring control once PAI-223 lands.
+- **PAI-223** — gosec triage (157 findings → annotated / fixed; baseline empty since 2026-06-11).
+- **[`SECURITY_GOVERNANCE.md`](SECURITY_GOVERNANCE.md)** — the operating system for this doc's review cadence; §1's "gosec baseline review" control (6-monthly) keeps the baseline at zero and the `#nosec` annotations honest.

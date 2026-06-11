@@ -91,7 +91,7 @@ func repoRootFrom(path string) (string, error) {
 }
 
 func gitOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) // #nosec G204 -- fixed git binary; args are fixed subcommand fragments supplied by our own callers.
 	if dir != "" {
 		cmd.Dir = dir
 	}

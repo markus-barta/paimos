@@ -66,6 +66,7 @@ func GetRecentProjects(w http.ResponseWriter, r *http.Request) {
 	args := []any{user.ID}
 	args = append(args, filterArgs...)
 	args = append(args, limit)
+	// #nosec G202 G701 -- projectIDFilter returns a fixed SQL fragment plus placeholder args; user values are placeholders.
 	rows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.key, p.description, p.status,
 		       p.product_owner, p.customer_label, p.customer_id,

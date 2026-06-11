@@ -129,6 +129,7 @@ func bumpMemoryReferenceCounts(d *sql.DB, projectID int64, ids []int64) (int64, 
 		placeholders = append(placeholders, '?')
 		args = append(args, id)
 	}
+	// #nosec G202 -- IN-list is ?-only placeholder assembly; project id and memory ids are bound args.
 	query := `UPDATE issues
 		   SET reference_count    = reference_count + 1,
 		       last_referenced_at = datetime('now')

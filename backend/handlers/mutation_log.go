@@ -393,6 +393,7 @@ func enforceUndoStackDepth(ctx context.Context, tx *sql.Tx, userID int64) error 
 	for i, id := range ids {
 		args[i] = id
 	}
+	// #nosec G202 -- makePlaceholders returns a fixed "?,?" list; IDs are bound as args.
 	_, err = tx.ExecContext(ctx, `UPDATE mutation_log SET on_user_stack = 0 WHERE id IN (`+ph+`)`, args...)
 	return err
 }
@@ -817,6 +818,7 @@ func loadMutationsByRequestID(tx *sql.Tx, requestID string, userID int64, mode u
 		} else {
 			modeFilter = `undoable = 1 AND redoable = 1 AND undone_at IS NOT NULL`
 		}
+		// #nosec G202 -- modeFilter is one of two fixed SQL fragments; user values are placeholders.
 		rows, qerr = tx.Query(`
 			SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
 			       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice
@@ -826,6 +828,7 @@ func loadMutationsByRequestID(tx *sql.Tx, requestID string, userID int64, mode u
 		`, anchorBatchID.String, userID)
 	} else {
 		// Single-row case — return just the anchor.
+		// #nosec G202 -- anchorWhere is one of two fixed SQL fragments; user values are placeholders.
 		rows, qerr = tx.Query(`
 			SELECT id, request_id, user_id, mutation_type, subject_type, subject_id, batch_id, parent_log_id, inverse_op,
 			       before_state, after_state, before_hash, after_hash, undoable, on_user_stack, redoable, undone_at, undone_by, resolution_choice

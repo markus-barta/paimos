@@ -47,7 +47,7 @@ stdout so callers can pipe it to jq.`,
 				if dataFile == "-" {
 					body, err = io.ReadAll(os.Stdin)
 				} else {
-					body, err = os.ReadFile(dataFile)
+					body, err = os.ReadFile(dataFile) // #nosec G304 -- dataFile comes from the CLI user's own --data-file flag.
 				}
 				if err != nil {
 					return fmt.Errorf("read data file: %w", err)

@@ -282,6 +282,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		}
 	}
 
+	// #nosec G202 -- query is assembled from fixed fragments: where/windowJoin are fixed SQL with ?-placeholders, the AR/booked exprs and orderBy come from server-side constants.
 	query := `
 		SELECT
 			i.id,
@@ -313,6 +314,7 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		args = append(append([]any{}, windowArgs...), args...)
 	}
 
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)

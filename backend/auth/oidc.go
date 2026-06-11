@@ -128,11 +128,12 @@ type oidcDiscoveryDoc struct {
 func fetchDiscovery(ctx context.Context, issuer string) (oidcDiscoveryDoc, error) {
 	var doc oidcDiscoveryDoc
 	url := issuer + "/.well-known/openid-configuration"
+	// #nosec G704 -- issuer is the operator-configured OIDC_ISSUER_URL; discovery against it is the SSO feature.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return doc, err
 	}
-	resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req) // #nosec G704 -- request targets the operator-configured OIDC issuer.
 	if err != nil {
 		return doc, err
 	}
@@ -164,6 +165,7 @@ const (
 // lifetime. Used for the state/PKCE/nonce values that survive only the
 // authorisation redirect.
 func setShortCookie(w http.ResponseWriter, name, value string) {
+	// #nosec G124 -- HttpOnly + SameSite=Lax are set; Secure mirrors COOKIE_SECURE (true on HTTPS deployments).
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
 		Value:    value,
@@ -176,6 +178,7 @@ func setShortCookie(w http.ResponseWriter, name, value string) {
 }
 
 func clearCookie(w http.ResponseWriter, name string) {
+	// #nosec G124 -- deletion cookie (empty value, MaxAge -1); it carries no handshake state to protect.
 	http.SetCookie(w, &http.Cookie{
 		Name:   name,
 		Value:  "",
@@ -313,6 +316,7 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		ssoError(w, r, "session_failed")
 		return
 	}
+	// #nosec G124 -- HttpOnly + SameSite=Lax are set; Secure mirrors COOKIE_SECURE (true on HTTPS deployments).
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sid,

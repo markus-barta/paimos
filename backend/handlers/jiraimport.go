@@ -951,6 +951,7 @@ func DebugJiraFetch(w http.ResponseWriter, r *http.Request) {
 
 func jiraGET(cfg *jiraConfig, path string) ([]byte, int, error) {
 	u := strings.TrimRight(cfg.Host, "/") + path
+	// #nosec G704 -- cfg.Host is the admin-configured Jira base URL (integrations settings); fetching from it is the import feature.
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, 0, err
@@ -959,6 +960,7 @@ func jiraGET(cfg *jiraConfig, path string) ([]byte, int, error) {
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	// #nosec G704 -- request targets the admin-configured Jira host only.
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err

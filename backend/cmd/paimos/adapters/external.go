@@ -144,6 +144,7 @@ func (e *ExternalAdapter) run(verb string, stdin []byte, extraArgs ...string) ([
 	defer cancel()
 
 	args := append([]string{verb}, extraArgs...)
+	// #nosec G204 -- executablePath is the user-installed paimos-adapter-<name> binary located at discovery time; verb/extraArgs are fixed strings from our own callers.
 	cmd := exec.CommandContext(ctx, e.executablePath, args...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)

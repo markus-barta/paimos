@@ -213,7 +213,7 @@ func (c *Client) doMultipartFile(path, fieldName, filePath string) ([]byte, erro
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 	go func() {
-		file, err := os.Open(filePath)
+		file, err := os.Open(filePath) // #nosec G304 -- filePath is the attachment the CLI user chose to upload via their own flag/arg.
 		if err != nil {
 			_ = pw.CloseWithError(err)
 			return

@@ -139,6 +139,7 @@ func loadRootKey() {
 		dir = "./data"
 	}
 	path := filepath.Join(dir, ".secret-key")
+	// #nosec G304 G703 -- path is $DATA_DIR/.secret-key; DATA_DIR comes from operator env config, not user input.
 	if data, err := os.ReadFile(path); err == nil && len(data) == rootKeyBytes {
 		rootKey = data
 		return
@@ -150,10 +151,12 @@ func loadRootKey() {
 		rootKeyErr = fmt.Errorf("generate secret key: %w", err)
 		return
 	}
+	// #nosec G703 -- dir is the operator-configured DATA_DIR, not user input.
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		rootKeyErr = fmt.Errorf("mkdir data: %w", err)
 		return
 	}
+	// #nosec G703 -- path is $DATA_DIR/.secret-key; DATA_DIR comes from operator env config, not user input.
 	if err := os.WriteFile(path, k, 0o600); err != nil {
 		rootKeyErr = fmt.Errorf("write secret key: %w", err)
 		return

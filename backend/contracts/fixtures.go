@@ -41,6 +41,7 @@ type ContractErrorExpected struct {
 
 func LoadContractFixture(path string) (ContractFixture, error) {
 	var fixture ContractFixture
+	// #nosec G304 -- path is supplied by test code pointing at in-repo fixture files, not user input.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fixture, err

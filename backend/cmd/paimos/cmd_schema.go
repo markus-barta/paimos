@@ -96,6 +96,7 @@ func loadCachedSchema(instanceName string) (*CachedSchema, error) {
 	if err != nil {
 		return nil, err
 	}
+	// #nosec G304 -- cache path under the user's own home dir, derived from an instance name in their own config.
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

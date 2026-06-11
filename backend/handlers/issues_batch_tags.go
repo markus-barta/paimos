@@ -101,6 +101,7 @@ func BatchTagIssues(w http.ResponseWriter, r *http.Request) {
 	// the request and surface a clean 404/403 before we touch any
 	// state. Missing issues fail the batch — UI shouldn't be sending
 	// stale ids.
+	// #nosec G202 -- buildPlaceholders emits ?-only; issue ids are bound args.
 	rows, err := db.DB.Query(`
 		SELECT id, project_id FROM issues
 		WHERE id IN (`+buildPlaceholders(len(body.IssueIDs))+`)

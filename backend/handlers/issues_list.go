@@ -192,6 +192,7 @@ func writeIssueIDsOnly(w http.ResponseWriter, whereSQL string, args []any, finge
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// #nosec G202 -- whereSQL is composed from fixed fragments; user values are placeholders.
 	idsQuery := `SELECT i.id FROM issues i LEFT JOIN users u ON u.id = i.assignee_id LEFT JOIN projects p ON p.id = i.project_id WHERE ` + whereSQL + ` ORDER BY i.id LIMIT ?`
 	idsArgs := append(append([]any{}, args...), idsOnlyCap+1)
 	// #nosec G701 -- idsQuery is composed from fixed fragments; user values are placeholders.
@@ -321,9 +322,10 @@ func ListIssues(w http.ResponseWriter, r *http.Request) {
 
 	limit, offset := parseIssueListWindow(r, 0)
 	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset) // #nosec G202 -- limit/offset are validated non-negative ints from parseIssueListWindow.
 	}
 
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -459,10 +461,11 @@ func ListTrashIssues(w http.ResponseWriter, r *http.Request) {
 	query := issueSelectCore + ` WHERE i.deleted_at IS NOT NULL`
 	args := []any{}
 	if accessFilter, accessArgs := projectIDFilter(r, "i.project_id", true); accessFilter != "" {
-		query += accessFilter
+		query += accessFilter // #nosec G202 -- projectIDFilter returns a fixed SQL fragment plus placeholder args.
 		args = append(args, accessArgs...)
 	}
 	query += ` ORDER BY i.deleted_at DESC, i.id DESC`
+	// #nosec G701 -- query is assembled from fixed SQL fragments; user values are placeholders.
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
@@ -525,7 +528,7 @@ func ListAllIssues(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	query += orderBy
+	query += orderBy // #nosec G202 -- issueListSortOrder returns an allowlisted ORDER BY fragment.
 	countArgs := append([]any{}, args...)
 	fingerprint := issueListFingerprint("global", whereSQL, countArgs, searchTerm, sortKey, order)
 	args = append(args, orderArgs...)

@@ -487,6 +487,7 @@ func LoadTagsForIssues(issues []models.Issue) []models.Issue {
 	}
 
 	placeholders := buildPlaceholders(len(ids))
+	// #nosec G202 -- buildPlaceholders emits ?-only; issue ids are bound args.
 	rows, err := db.DB.Query(`
 		SELECT it.issue_id, t.id, t.name, t.color, t.description, t.system, t.created_at
 		FROM issue_tags it
@@ -525,6 +526,7 @@ func LoadTagsForProjects(projects []models.Project) []models.Project {
 		projects[i].Tags = []models.Tag{}
 	}
 	placeholders := buildPlaceholders(len(ids))
+	// #nosec G202 -- buildPlaceholders emits ?-only; project ids are bound args.
 	rows, err := db.DB.Query(`
 		SELECT pt.project_id, t.id, t.name, t.color, t.description, t.system, t.created_at
 		FROM project_tags pt

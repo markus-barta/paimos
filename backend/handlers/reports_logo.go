@@ -65,6 +65,7 @@ func activeBrandingLogoBytes() ([]byte, bool) {
 		dataDir = "/app/data"
 	}
 
+	// #nosec G304 G703 -- path is DATA_DIR (operator-set env, "/app/data" default) plus a fixed filename; no client input.
 	cfg, err := os.ReadFile(filepath.Join(dataDir, "branding.json"))
 	if err != nil {
 		return nil, false
@@ -86,6 +87,7 @@ func activeBrandingLogoBytes() ([]byte, bool) {
 	}
 
 	assetPath := filepath.Join(dataDir, "branding-assets", filename)
+	// #nosec G304 G703 -- filename comes from server-side branding.json and is validated against brandingAssetFilenamePattern above (no separators or traversal).
 	raw, err := os.ReadFile(assetPath)
 	if err != nil {
 		return nil, false

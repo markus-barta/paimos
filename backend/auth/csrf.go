@@ -121,6 +121,7 @@ func NewCSRFToken() (string, error) {
 // 90 days. The mismatch broke every POST after a browser restart with
 // `csrf_token_mismatch` because `got` was empty.
 func SetCSRFCookie(w http.ResponseWriter, token string) {
+	// #nosec G124 -- intentionally non-HttpOnly (the SPA must echo the token back); SameSite=Strict; Secure mirrors COOKIE_SECURE.
 	http.SetCookie(w, &http.Cookie{
 		Name:     CSRFCookieName,
 		Value:    token,
@@ -137,6 +138,7 @@ func SetCSRFCookie(w http.ResponseWriter, token string) {
 
 // ClearCSRFCookie removes the cookie at logout time.
 func ClearCSRFCookie(w http.ResponseWriter) {
+	// #nosec G124 -- deletion cookie (empty value, MaxAge -1); it carries no token to protect.
 	http.SetCookie(w, &http.Cookie{
 		Name:   CSRFCookieName,
 		Value:  "",

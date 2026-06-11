@@ -153,7 +153,7 @@ func discoverInDirectory(dir string, logger func(format string, a ...any)) ([]Di
 		if _, err := os.Stat(manifestPath); err != nil {
 			continue
 		}
-		raw, err := os.ReadFile(manifestPath)
+		raw, err := os.ReadFile(manifestPath) // #nosec G304 -- fixed manifest filename under the user-configured adapter search dirs ($PAIMOS_ADAPTER_PATH).
 		if err != nil {
 			logger("paimos: read %s: %v", manifestPath, err)
 			continue

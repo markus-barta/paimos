@@ -271,7 +271,7 @@ func caseDescribeMatchesManifest(e *ExternalAdapter) ConformanceCase {
 // because of the rev hash).
 func caseSnapshotMatch(a Adapter, snapPath string) ConformanceCase {
 	c := ConformanceCase{Name: "snapshot_byte_equality"}
-	raw, err := os.ReadFile(snapPath)
+	raw, err := os.ReadFile(snapPath) // #nosec G304 -- snapPath is the fixture next to the user-installed adapter manifest under the configured search dirs.
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			c.Pass = true

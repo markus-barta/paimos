@@ -40,6 +40,10 @@ func UploadProjectLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Hard-cap the request body (3MB file + 1MB multipart overhead) so a
+	// malicious client can't exhaust memory before the size check.
+	r.Body = http.MaxBytesReader(w, r.Body, 3<<20+1<<20)
+	// #nosec G120 -- body is hard-capped by MaxBytesReader above; the rule is syntactic.
 	if err := r.ParseMultipartForm(3 << 20); err != nil {
 		jsonError(w, "file too large (max 3MB)", http.StatusBadRequest)
 		return
@@ -74,7 +78,7 @@ func UploadProjectLogo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logosDir := filepath.Join(getDataDir(), "logos")
-	if err := os.MkdirAll(logosDir, 0755); err != nil {
+	if err := os.MkdirAll(logosDir, 0o750); err != nil {
 		jsonError(w, "storage error", http.StatusInternalServerError)
 		return
 	}
@@ -84,7 +88,7 @@ func UploadProjectLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	filename := fmt.Sprintf("%d.%s", id, ext)
 	destPath := filepath.Join(logosDir, filename)
-	if err := os.WriteFile(destPath, processed, 0644); err != nil {
+	if err := os.WriteFile(destPath, processed, 0o600); err != nil {
 		jsonError(w, "write error", http.StatusInternalServerError)
 		return
 	}
