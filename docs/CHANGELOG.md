@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.6] — 2026-06-21
+
+### Changed
+
+- **IssueList v2 is now the default (PAI-575).** `ff_issuelist_v2` flips ON: the
+  internal Issues and Project lists and the customer portal run on the shared
+  `useIssueQuery` controller by default. The v1 paths remain as a fallback,
+  reachable without a redeploy via `localStorage.setItem('ff_issuelist_v2','0')`,
+  and are removed in a later cleanup.
+- **Customer portal on the shared core (PAI-570).** `PortalProjectView` now
+  fetches through the controller (portal mode + `createPortalFetcher`), so the
+  internal and portal lists share one fetch/orchestration engine — completing
+  the shared-core goal of the IssueList v2 epic (PAI-560).
+
+### Notes
+
+- Verified at v1/v2 parity (render, mount, load-all, filter, search, selection,
+  bulk over all-matching, portal visible-only) and by the PAI-574 cross-cutting
+  regression matrix; 320 frontend tests + typecheck + build green.
+
 ## [3.10.5] — 2026-06-21
 
 ### Added
