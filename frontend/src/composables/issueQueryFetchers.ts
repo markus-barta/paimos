@@ -136,6 +136,48 @@ export function createInternalFetcher(): IssueFetcher<Issue> {
   }
 }
 
+/**
+ * Portal param builder (PAI-570 + PAI-461 contract): the portal endpoint takes
+ * status/type/priority/tag_ids + q (no assignee/cost_unit/etc), envelope=1, and
+ * does not gate q on length. Maps the controller's structured filters onto it.
+ */
+export function buildPortalParams(q: IssueQuery): URLSearchParams {
+  const p = new URLSearchParams()
+  const f = q.filters
+  if (f.status.length) p.set('status', f.status.join(','))
+  if (f.type.length) p.set('type', f.type.join(','))
+  if (f.priority.length) p.set('priority', f.priority.join(','))
+  if (f.tags.length) p.set('tag_ids', f.tags.join(','))
+  p.set('fields', 'list')
+  p.set('envelope', '1')
+  p.set('limit', String(q.window.mode === 'all' ? 0 : q.window.limit))
+  p.set('offset', String(q.window.offset))
+  if (q.sort.key) {
+    p.set('sort', q.sort.key)
+    p.set('order', q.sort.dir)
+  }
+  const search = q.search.trim()
+  if (search) p.set('q', search)
+  return p
+}
+
+/** Fetcher for the customer-portal list (PAI-570: portal on the shared core). */
+export function createPortalFetcher<T extends { id: number }>(): IssueFetcher<T> {
+  return async (q, signal) => {
+    const url = `/portal/projects/${q.projectId}/issues?${buildPortalParams(q).toString()}`
+    const env = await api.get<IssueListEnvelope<T>>(url, { signal })
+    const issues = env.issues ?? []
+    const total = env.total ?? issues.length
+    const hasMore = env.has_more ?? total > issues.length
+    return {
+      issues, total, hasMore,
+      revision: env.revision,
+      fingerprint: env.fingerprint,
+      selectionFingerprint: env.selection_fingerprint,
+    }
+  }
+}
+
 /** Endpoint for a query's mode (structured filters). */
 export function issuePath(q: IssueQuery): string {
   const qs = buildIssueQueryParams(q).toString()

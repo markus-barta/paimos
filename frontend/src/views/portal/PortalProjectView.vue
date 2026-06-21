@@ -37,6 +37,9 @@ import type {
   SharedFilterState,
 } from '@/components/issue-list/types'
 import type { IssueListEnvelope } from '@/types'
+import { useIssueQuery } from '@/composables/useIssueQuery'
+import { createPortalFetcher } from '@/composables/issueQueryFetchers'
+import { isIssueListV2 } from '@/config/featureFlags'
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
@@ -95,6 +98,41 @@ const loadingMore = ref(false)
 const PORTAL_PAGE = 100
 const portalIssueWindowMode = ref<'page' | 'all'>('page')
 let portalIssueRequestSeq = 0
+
+// PAI-570: portal on the shared core. Behind ff_issuelist_v2, useIssueQuery
+// (portal mode) owns fetch + orchestration; a mirror watcher syncs its outputs
+// into the existing refs so the table, tabs, and client-side search are
+// unchanged. v1 path (own fetchIssues) stays the default until flip.
+const V2 = isIssueListV2()
+const portalCtrl = useIssueQuery<PortalIssue>({
+  initial: { mode: 'portal', projectId },
+  fetcher: createPortalFetcher<PortalIssue>(),
+})
+watch(
+  () => [
+    portalCtrl.issues.value, portalCtrl.total.value, portalCtrl.hasMore.value,
+    portalCtrl.loading.value, portalCtrl.serverFingerprint.value, portalCtrl.selectionFingerprint.value,
+  ],
+  () => {
+    if (!V2) return
+    issues.value = portalCtrl.issues.value
+    totalIssues.value = portalCtrl.total.value
+    portalIssueHasMore.value = portalCtrl.hasMore.value
+    loadingMore.value = portalCtrl.loading.value
+    portalIssueFingerprint.value = portalCtrl.serverFingerprint.value
+    portalIssueSelectionFingerprint.value = portalCtrl.selectionFingerprint.value
+  },
+)
+function copyFiltersToCtrl() {
+  portalCtrl.query.projectId = projectId
+  portalCtrl.query.filters.status = [...filters.value.status]
+  portalCtrl.query.filters.type = [...filters.value.type]
+  portalCtrl.query.filters.priority = [...filters.value.priority]
+  portalCtrl.query.filters.tags = filters.value.tagIds.map(String)
+  portalCtrl.query.search = filters.value.q
+  portalCtrl.query.sort = { key: sortCol.value, dir: sortDir.value }
+}
+function applyPortalQueryToCtrl() { copyFiltersToCtrl(); void portalCtrl.reload() }
 
 // Filter state owned by this view; mirrored to the URL on every change.
 const filters = ref<SharedFilterState>({
@@ -192,9 +230,10 @@ async function loadAll() {
   loading.value = true
   portalIssueWindowMode.value = 'page'
   try {
-    const [p, _] = await Promise.all([
+    if (V2) copyFiltersToCtrl()
+    const [p] = await Promise.all([
       api.get<PortalProject>(`/portal/projects/${projectId}`),
-      fetchIssues({ replace: true }),
+      V2 ? portalCtrl.start() : fetchIssues({ replace: true }),
     ])
     project.value = p
   } catch {
@@ -236,12 +275,14 @@ function writeUrlState() {
 
 watch(filters, () => {
   writeUrlState()
-  void fetchIssues({ replace: true })
+  if (V2) applyPortalQueryToCtrl()
+  else void fetchIssues({ replace: true })
 }, { deep: true })
 
 watch([sortCol, sortDir], () => {
   writeUrlState()
-  void fetchIssues({ replace: true })
+  if (V2) applyPortalQueryToCtrl()
+  else void fetchIssues({ replace: true })
 })
 
 watch(activeTab, writeUrlState)
@@ -304,6 +345,7 @@ const portalHasMore = computed(() => portalIssueHasMore.value || totalIssues.val
 
 async function loadMoreIssues() {
   if (loadingMore.value || !portalHasMore.value) return
+  if (V2) { await portalCtrl.setWindow('all'); return }
   loadingMore.value = true
   portalIssueWindowMode.value = 'all'
   try {

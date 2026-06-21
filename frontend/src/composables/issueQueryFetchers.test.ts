@@ -6,6 +6,7 @@ import { api } from '@/api/client'
 import {
   buildIssueQueryParams, issuePath, createIssueFetcher,
   buildInternalParams, internalIssuePath, controllerFreshnessPath,
+  buildPortalParams,
 } from './issueQueryFetchers'
 import { emptyFilters, type IssueQuery } from './useIssueQuery'
 
@@ -109,6 +110,24 @@ describe('buildInternalParams / internalIssuePath', () => {
     expect(p1.searchParams.get('limit')).toBe('100') // max(100, 30)
     const p2 = new URL('http://x' + controllerFreshnessPath(q(), 250, 100))
     expect(p2.searchParams.get('limit')).toBe('250') // grows with loaded
+  })
+})
+
+describe('buildPortalParams (PAI-570/461)', () => {
+  it('maps structured filters to the portal contract (tag_ids, envelope, q ungated, no assignee/cost_unit)', () => {
+    const p = buildPortalParams(q({
+      mode: 'portal', projectId: 9,
+      filters: { ...emptyFilters(), status: ['done'], type: ['ticket'], priority: ['high'], tags: ['5', '7'], assignee: ['12'], costUnit: ['x'] },
+      search: 'x', // 1 char — portal does not gate q length
+    }))
+    expect(p.get('status')).toBe('done')
+    expect(p.get('type')).toBe('ticket')
+    expect(p.get('priority')).toBe('high')
+    expect(p.get('tag_ids')).toBe('5,7')
+    expect(p.get('envelope')).toBe('1')
+    expect(p.get('q')).toBe('x')
+    expect(p.has('assignee_id')).toBe(false)
+    expect(p.has('cost_unit')).toBe(false)
   })
 })
 
