@@ -115,8 +115,12 @@ const displayTabs = computed(() => {
 
 async function selectTab(view: SavedView) {
   activeTabId.value = view.id
-  issueWindowMode.value = 'page'
-  await fetchIssues(PAGE, true)
+  // In v2, applyView drives IssueList -> server-filter-change -> controller,
+  // which does the fetch. v1 fetches here directly.
+  if (!V2) {
+    issueWindowMode.value = 'page'
+    await fetchIssues(PAGE, true)
+  }
   nextTick(() => issueListRef.value?.applyView(view))
 }
 
@@ -358,16 +362,16 @@ function onDeleted(id: number) {
         <button
           v-if="searchHasMore"
           class="load-all-link"
-          :disabled="loadingMore"
+          :disabled="displayLoadingMore"
           @click="loadAll"
         >
-          · Load all {{ formatInteger(total) }}
+          · Load all {{ formatInteger(displayTotal) }}
         </button>
       </template>
       <span v-else-if="!loading" class="ah-subtitle">
         {{ browseSubtitle }}
-        <button v-if="hasMore" class="load-all-link" :disabled="loadingMore" @click="loadAll">
-          · Load all {{ formatInteger(total) }}
+        <button v-if="hasMore" class="load-all-link" :disabled="displayLoadingMore" @click="loadAll">
+          · Load all {{ formatInteger(displayTotal) }}
         </button>
       </span>
     </Teleport>
@@ -410,7 +414,7 @@ function onDeleted(id: number) {
 
       <div v-if="!isSearchMode && showEmptyFilterBanner" class="empty-filter-banner">
         No matches in the loaded issues —
-        <button class="banner-load-btn" :disabled="loadingMore" @click="loadAll">load all</button>
+        <button class="banner-load-btn" :disabled="displayLoadingMore" @click="loadAll">load all</button>
         to search everything.
       </div>
 
