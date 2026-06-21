@@ -81,7 +81,49 @@ export function buildIssueQueryParams(q: IssueQuery): URLSearchParams {
   return p
 }
 
-/** Endpoint for a query's mode. */
+/**
+ * Internal-host param builder: starts from the pre-encoded filter string that
+ * IssueList emits (`rawFilter`) and layers fields/limit/offset/sort/q exactly
+ * as v1's fetchIssues did, so the controller is a drop-in for those hosts.
+ */
+export function buildInternalParams(q: IssueQuery): URLSearchParams {
+  const p = new URLSearchParams(q.rawFilter || '')
+  p.set('fields', 'list')
+  p.set('limit', String(q.window.mode === 'all' ? 0 : q.window.limit))
+  p.set('offset', String(q.window.offset))
+  if (q.sort.key) {
+    p.set('sort', q.sort.key)
+    p.set('order', q.sort.dir)
+  }
+  const search = q.search.trim()
+  if (search.length >= 2) p.set('q', search)
+  return p
+}
+
+export function internalIssuePath(q: IssueQuery): string {
+  const qs = buildInternalParams(q).toString()
+  return q.mode === 'internal-project' && q.projectId != null
+    ? `/projects/${q.projectId}/issues?${qs}`
+    : `/issues?${qs}`
+}
+
+/** Fetcher for the internal global/project lists (IssueList-driven). */
+export function createInternalFetcher(): IssueFetcher<Issue> {
+  return async (q, signal) => {
+    const env = await api.get<IssueListEnvelope<Issue>>(internalIssuePath(q), { signal })
+    const issues = env.issues ?? []
+    const total = env.total ?? issues.length
+    const hasMore = env.has_more ?? total > issues.length
+    return {
+      issues, total, hasMore,
+      revision: env.revision,
+      fingerprint: env.fingerprint,
+      selectionFingerprint: env.selection_fingerprint,
+    }
+  }
+}
+
+/** Endpoint for a query's mode (structured filters). */
 export function issuePath(q: IssueQuery): string {
   const qs = buildIssueQueryParams(q).toString()
   switch (q.mode) {
@@ -106,6 +148,11 @@ export function createIssueFetcher(): IssueFetcher<Issue> {
     const issues = env.issues ?? []
     const total = env.total ?? issues.length
     const hasMore = env.has_more ?? total > issues.length
-    return { issues, total, hasMore, revision: env.revision }
+    return {
+      issues, total, hasMore,
+      revision: env.revision,
+      fingerprint: env.fingerprint,
+      selectionFingerprint: env.selection_fingerprint,
+    }
   }
 }

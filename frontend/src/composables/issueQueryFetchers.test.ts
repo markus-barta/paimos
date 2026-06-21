@@ -3,7 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/api/client', () => ({ api: { get: vi.fn() } }))
 
 import { api } from '@/api/client'
-import { buildIssueQueryParams, issuePath, createIssueFetcher } from './issueQueryFetchers'
+import {
+  buildIssueQueryParams, issuePath, createIssueFetcher,
+  buildInternalParams, internalIssuePath,
+} from './issueQueryFetchers'
 import { emptyFilters, type IssueQuery } from './useIssueQuery'
 
 function q(overrides: Partial<IssueQuery> = {}): IssueQuery {
@@ -16,6 +19,7 @@ function q(overrides: Partial<IssueQuery> = {}): IssueQuery {
     window: overrides.window ?? { mode: 'page', limit: 100, offset: 0 },
     viewId: overrides.viewId ?? null,
     tab: overrides.tab ?? null,
+    rawFilter: overrides.rawFilter ?? '',
     ...('mode' in overrides ? { mode: overrides.mode! } : {}),
     ...('projectId' in overrides ? { projectId: overrides.projectId! } : {}),
   }
@@ -68,6 +72,30 @@ describe('buildIssueQueryParams', () => {
     }))
     expect(p.get('date_field')).toBe('completed') // default field
     expect(p.get('date_from')).toBe('2026-01-01')
+  })
+})
+
+describe('buildInternalParams / internalIssuePath', () => {
+  it('layers fields/limit/offset/sort/q onto the raw filter string', () => {
+    const p = buildInternalParams(q({
+      rawFilter: 'status=open&priority=high',
+      sort: { key: 'priority', dir: 'asc' },
+      search: 'login',
+    }))
+    expect(p.get('status')).toBe('open')
+    expect(p.get('priority')).toBe('high')
+    expect(p.get('fields')).toBe('list')
+    expect(p.get('limit')).toBe('100')
+    expect(p.get('offset')).toBe('0')
+    expect(p.get('sort')).toBe('priority')
+    expect(p.get('order')).toBe('asc')
+    expect(p.get('q')).toBe('login')
+  })
+
+  it('routes global vs project and uses limit 0 for show-all', () => {
+    expect(internalIssuePath(q())).toMatch(/^\/issues\?/)
+    expect(internalIssuePath(q({ mode: 'internal-project', projectId: 5 }))).toMatch(/^\/projects\/5\/issues\?/)
+    expect(buildInternalParams(q({ window: { mode: 'all', limit: 0, offset: 0 } })).get('limit')).toBe('0')
   })
 })
 

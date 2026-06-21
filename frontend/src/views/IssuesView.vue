@@ -4,6 +4,9 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import IssueList from '@/components/IssueList.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
+import { useIssueQuery } from '@/composables/useIssueQuery'
+import { createInternalFetcher } from '@/composables/issueQueryFetchers'
+import { isIssueListV2 } from '@/config/featureFlags'
 import { useSearchStore } from '@/stores/search'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
@@ -37,6 +40,22 @@ const releases  = ref<string[]>([])
 const sprints   = ref<Sprint[]>([])
 
 provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
+
+// PAI-570: IssueList v2 behind a flag. When on, the controller owns fetch +
+// cache + orchestration; the v1 path stays the default until v2 is runtime-
+// verified (PAI-575). Display accessors pass through to v1 when the flag is
+// off, so default behavior is byte-identical.
+const V2 = isIssueListV2()
+const ctrl = useIssueQuery<Issue>({
+  initial: { mode: 'internal-global' },
+  fetcher: createInternalFetcher(),
+})
+const displayIssues = computed(() => (V2 ? ctrl.issues.value : issues.value))
+const displayTotal = computed(() => (V2 ? ctrl.total.value : total.value))
+const displayHasMore = computed(() => (V2 ? ctrl.hasMore.value : issueHasMore.value))
+const displayLoadingMore = computed(() => (V2 ? ctrl.loading.value : loadingMore.value))
+const displayFingerprint = computed(() => (V2 ? ctrl.serverFingerprint.value : issueFingerprint.value))
+const displaySelFingerprint = computed(() => (V2 ? ctrl.selectionFingerprint.value : issueSelectionFingerprint.value))
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 const trimmedSearchQuery = computed(() => search.query.trim())
@@ -105,17 +124,17 @@ async function selectTab(view: SavedView) {
 
 const isSearchMode = computed(() => trimmedSearchQuery.value.length >= 2)
 
-const remaining = computed(() => Math.max(0, total.value - issues.value.length))
-const hasMore   = computed(() => issueHasMore.value || remaining.value > 0)
+const remaining = computed(() => Math.max(0, displayTotal.value - displayIssues.value.length))
+const hasMore   = computed(() => displayHasMore.value || remaining.value > 0)
 const canAutoLoadMore = computed(() => !isSearchMode.value && hasMore.value)
 const searchHasMore = computed(() => isSearchMode.value && hasMore.value)
 const searchSubtitle = computed(() =>
-  issueSearchSummary(issues.value.length, total.value, trimmedSearchQuery.value),
+  issueSearchSummary(displayIssues.value.length, displayTotal.value, trimmedSearchQuery.value),
 )
 const browseSubtitle = computed(() =>
-  total.value > issues.value.length
-    ? `${formatInteger(total.value)} issues · ${formatInteger(issues.value.length)} loaded`
-    : `${formatInteger(total.value)} issues`,
+  displayTotal.value > displayIssues.value.length
+    ? `${formatInteger(displayTotal.value)} issues · ${formatInteger(displayIssues.value.length)} loaded`
+    : `${formatInteger(displayTotal.value)} issues`,
 )
 
 const showEmptyFilterBanner = computed(() => {
@@ -156,6 +175,7 @@ function refreshIssueListFromHeader() {
 watch(
   [freshnessStale, freshnessCount],
   ([stale, count]) => {
+    if (V2) return // v2 refresh is controller-driven (PAI-568 follow-up)
     if (stale) issueRefreshPrompt.show(count, refreshIssueListFromHeader)
     else issueRefreshPrompt.clear(refreshIssueListFromHeader)
   },
@@ -228,7 +248,7 @@ async function load() {
   loading.value = true
   error.value = ''
   issueWindowMode.value = 'page'
-  await Promise.all([fetchIssues(PAGE, true), fetchMeta()])
+  await Promise.all([V2 ? ctrl.start() : fetchIssues(PAGE, true), fetchMeta()])
   loading.value = false
   // Apply first tab
   if (displayTabs.value.length && activeTabId.value == null) {
@@ -238,12 +258,14 @@ async function load() {
 }
 
 async function loadMore(n: number) {
+  if (V2) { await ctrl.loadMore(); return }
   loadingMore.value = true
   await fetchIssues(n)
   loadingMore.value = false
 }
 
 async function loadAll() {
+  if (V2) { await ctrl.setWindow('all'); return }
   loadingMore.value = true
   issueWindowMode.value = 'all'
   await fetchIssues(0, true)
@@ -256,6 +278,7 @@ function currentWindowLimit() {
 
 // Re-fetch when search query changes (search-as-filter overlay).
 watch(trimmedSearchQuery, () => {
+  if (V2) { ctrl.setSearch(trimmedSearchQuery.value); return }
   if (searchReloadTimer) clearTimeout(searchReloadTimer)
   searchReloadTimer = setTimeout(() => {
     void fetchIssues(currentWindowLimit(), true)
@@ -263,12 +286,14 @@ watch(trimmedSearchQuery, () => {
 })
 
 function onServerFilterChange(query: string) {
+  if (V2) { void ctrl.setRawFilter(query); return }
   if (serverFilterQuery.value === query) return
   serverFilterQuery.value = query
   void fetchIssues(currentWindowLimit(), true)
 }
 
 function onServerSortChange(key: string, dir: 'asc' | 'desc') {
+  if (V2) { void ctrl.setSort(key, dir); return }
   if (serverSortKey.value === key && serverSortDir.value === dir) return
   serverSortKey.value = key
   serverSortDir.value = dir
@@ -284,7 +309,7 @@ onMounted(async () => {
   nextTick(() => {
     if (scrollSentinel.value) {
       scrollObserver = new IntersectionObserver((entries) => {
-        if (entries[0]?.isIntersecting && canAutoLoadMore.value && !loadingMore.value) {
+        if (entries[0]?.isIntersecting && canAutoLoadMore.value && !displayLoadingMore.value) {
           loadMore(PAGE)
         }
       }, { rootMargin: '200px' })
@@ -301,12 +326,17 @@ onUnmounted(() => {
 
 // ── Issue list mutations (browse mode only) ───────────────────────────────────
 
-function onCreated(issue: Issue) { issues.value.push(issue); total.value++ }
+function onCreated(issue: Issue) {
+  if (V2) { void ctrl.refresh(); return }
+  issues.value.push(issue); total.value++
+}
 function onUpdated(issue: Issue) {
+  if (V2) { ctrl.confirmMutation(issue.id, issue); return }
   const idx = issues.value.findIndex(i => i.id === issue.id)
   if (idx >= 0) issues.value[idx] = issue
 }
 function onDeleted(id: number) {
+  if (V2) { void ctrl.refresh(); return }
   issues.value = issues.value.filter(i => i.id !== id)
   total.value = Math.max(0, total.value - 1)
 }
@@ -356,12 +386,12 @@ function onDeleted(id: number) {
 
       <IssueList
         ref="issueListRef"
-        :issues="issues"
-        :result-total="total"
-        :result-has-more="issueHasMore"
-        :result-fingerprint="issueFingerprint"
-        :selection-fingerprint="issueSelectionFingerprint"
-        :loading-more="loadingMore"
+        :issues="displayIssues"
+        :result-total="displayTotal"
+        :result-has-more="displayHasMore"
+        :result-fingerprint="displayFingerprint"
+        :selection-fingerprint="displaySelFingerprint"
+        :loading-more="displayLoadingMore"
         :url-sync-selection="true"
         @load-all="loadAll"
         @created="onCreated"

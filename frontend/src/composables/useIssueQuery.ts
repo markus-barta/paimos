@@ -76,6 +76,13 @@ export interface IssueQuery {
   viewId: number | null
   /** active tab/scope — a projection; resolves into filters. */
   tab: string | null
+  /**
+   * Pre-encoded filter query string for internal hosts that still own the
+   * filter UI (IssueList emits `server-filter-change`). Opaque to the model
+   * but part of the fingerprint so it invalidates the cache like any filter.
+   * Portal/structured hosts leave this empty and use `filters` instead.
+   */
+  rawFilter: string
 }
 
 export interface IssueListResult<T> {
@@ -84,6 +91,10 @@ export interface IssueListResult<T> {
   hasMore: boolean
   /** server revision after this window, for delta reconciliation (PAI-568). */
   revision?: string
+  /** server result fingerprint (passed through to IssueList's selection UI). */
+  fingerprint?: string
+  /** server selection fingerprint for safe all-matching bulk ops. */
+  selectionFingerprint?: string
 }
 
 /** PAI-568: an incremental refresh patch for the current query. */
@@ -134,6 +145,7 @@ function makeQuery(initial: Partial<IssueQuery> & { mode: IssueQueryMode }): Iss
       : { mode: 'page', limit: DEFAULT_PAGE_SIZE, offset: 0 },
     viewId: initial.viewId ?? null,
     tab: initial.tab ?? null,
+    rawFilter: initial.rawFilter ?? '',
   }
 }
 
@@ -152,6 +164,7 @@ export function queryFingerprint(q: IssueQuery): string {
     search: q.search.trim(),
     sort: q.sort,
     window: { mode: q.window.mode, limit: q.window.limit },
+    rawFilter: q.rawFilter,
     filters: {
       status: norm(f.status), priority: norm(f.priority), type: norm(f.type),
       costUnit: norm(f.costUnit), release: norm(f.release), assignee: norm(f.assignee),
@@ -186,6 +199,8 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
   const win = new IssueRowWindow<T>()
   const rev = ref(0) // bumped on every window mutation to drive the computeds
   const revision = ref('') // server revision of the loaded window (PAI-568)
+  const serverFingerprint = ref('') // server result fingerprint (for IssueList)
+  const serverSelectionFingerprint = ref('')
   const loading = ref(false)
   const error = ref<unknown>(null)
   const fingerprint = computed(() => queryFingerprint(query))
@@ -229,6 +244,8 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
       if (replace) win.setWindow(res.issues, res.total, res.hasMore, fp)
       else win.appendWindow(res.issues, res.total, res.hasMore)
       if (res.revision !== undefined) revision.value = res.revision
+      if (res.fingerprint !== undefined) serverFingerprint.value = res.fingerprint
+      if (res.selectionFingerprint !== undefined) serverSelectionFingerprint.value = res.selectionFingerprint
       reassertPending() // optimistic edits win over a freshly loaded snapshot
       rev.value++
     } catch (e) {
@@ -256,6 +273,13 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
 
   function setFilter(patch: Partial<IssueFilters>): Promise<void> {
     Object.assign(query.filters, patch)
+    return reload()
+  }
+
+  /** Set the pre-encoded filter string (internal hosts; IssueList emit). */
+  function setRawFilter(raw: string): Promise<void> {
+    if (query.rawFilter === raw) return Promise.resolve()
+    query.rawFilter = raw
     return reload()
   }
 
@@ -409,6 +433,8 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     complete,
     rowErrors,
     revision: readonly(revision),
+    serverFingerprint: readonly(serverFingerprint),
+    selectionFingerprint: readonly(serverSelectionFingerprint),
     loading: readonly(loading),
     error: readonly(error),
     start,
@@ -419,6 +445,7 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     reload,
     refresh,
     setFilter,
+    setRawFilter,
     setSort,
     setWindow,
     setSearch,

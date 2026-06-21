@@ -137,7 +137,7 @@ describe('useIssueQuery', () => {
       },
       search: '', sort: { key: 'created_at', dir: 'desc' },
       window: { mode: 'page', limit: 100, offset: 0 },
-      viewId: null, tab: null,
+      viewId: null, tab: null, rawFilter: '',
     }
     const paged = queryFingerprint(base)
     const all = queryFingerprint({ ...base, window: { mode: 'all', limit: 0, offset: 0 } })
