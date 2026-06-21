@@ -144,3 +144,54 @@ describe('useIssueQuery', () => {
     expect(all).not.toBe(paged)
   })
 })
+
+describe('useIssueQuery inline reconciliation (PAI-567)', () => {
+  type R = { id: number; status?: string }
+  function ctrl(rows: () => R[]) {
+    const fetcher = vi.fn(async (): Promise<IssueListResult<R>> => {
+      const issues = rows()
+      return { issues, total: issues.length, hasMore: false }
+    })
+    return useIssueQuery<R>({ initial: { mode: 'internal-global' }, fetcher })
+  }
+
+  it('optimistic edit is not reverted by a stale reload', async () => {
+    const serverRows: R[] = [{ id: 1, status: 'todo' }]
+    const c = ctrl(() => serverRows)
+    await c.start()
+    c.mutateRow(1, { status: 'done' })
+    expect(c.issues.value).toEqual([{ id: 1, status: 'done' }])
+    await c.refresh() // server still returns the old value
+    expect(c.issues.value).toEqual([{ id: 1, status: 'done' }]) // optimistic wins
+  })
+
+  it('confirm makes the server row canonical and clears the gate', async () => {
+    let serverRows: R[] = [{ id: 1, status: 'todo' }]
+    const c = ctrl(() => serverRows)
+    await c.start()
+    const mid = c.mutateRow(1, { status: 'done' })!
+    c.confirmMutation(1, { id: 1, status: 'done' }, mid)
+    serverRows = [{ id: 1, status: 'todo' }] // server authority changes
+    await c.refresh()
+    expect(c.issues.value).toEqual([{ id: 1, status: 'todo' }]) // gate gone
+  })
+
+  it('reject rolls back only the affected row and records an error', async () => {
+    const c = ctrl(() => [{ id: 1, status: 'todo' }, { id: 2, status: 'todo' }])
+    await c.start()
+    const mid = c.mutateRow(1, { status: 'done' })!
+    c.rejectMutation(1, mid, 'nope')
+    expect(c.issues.value.find((r) => r.id === 1)!.status).toBe('todo')
+    expect(c.issues.value.find((r) => r.id === 2)!.status).toBe('todo')
+    expect(c.rowErrors.value.get(1)).toBe('nope')
+  })
+
+  it('an older confirm cannot override a newer pending edit', async () => {
+    const c = ctrl(() => [{ id: 1, status: 'todo' }])
+    await c.start()
+    const m1 = c.mutateRow(1, { status: 'a' })!
+    c.mutateRow(1, { status: 'b' }) // newer
+    c.confirmMutation(1, { id: 1, status: 'a' }, m1) // stale confirm, ignored
+    expect(c.issues.value).toEqual([{ id: 1, status: 'b' }])
+  })
+})

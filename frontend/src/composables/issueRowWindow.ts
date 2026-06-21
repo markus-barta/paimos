@@ -44,6 +44,7 @@ export class IssueRowWindow<T extends { id: number }> {
   get complete(): boolean { return !this._hasMore }
 
   has(id: number): boolean { return this.byId.has(id) }
+  get(id: number): T | undefined { return this.byId.get(id) }
 
   /** Materialize the ordered rows (defensively skips any dropped ids). */
   rows(): T[] {

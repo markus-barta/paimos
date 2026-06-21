@@ -166,12 +166,25 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
   const error = ref<unknown>(null)
   const fingerprint = computed(() => queryFingerprint(query))
 
+  // PAI-567: optimistic inline-edit reconciliation. Pending mutations are
+  // re-asserted after every window write, so a stale reload or an older
+  // in-flight response can never visually revert a fresh edit.
+  const pending = new Map<number, { mutationId: number; prev: T; optimistic: T }>()
+  const errs = new Map<number, string>()
+  let mutationSeq = 0
+
   const issues = computed<T[]>(() => { void rev.value; return win.rows() })
   const total = computed(() => { void rev.value; return win.total })
   const loaded = computed(() => { void rev.value; return win.loaded })
   const hasMore = computed(() => { void rev.value; return win.hasMore })
   /** True when every matching row is loaded (showing all, not a subset). */
   const complete = computed(() => { void rev.value; return win.complete })
+  /** Per-row write errors from rejected optimistic mutations. */
+  const rowErrors = computed(() => { void rev.value; return new Map(errs) })
+
+  function reassertPending() {
+    for (const m of pending.values()) win.patch(m.optimistic)
+  }
 
   let seq = 0
   let inFlight: AbortController | null = null
@@ -191,6 +204,7 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
       if (fingerprint.value !== fp) return    // query mutated mid-flight
       if (replace) win.setWindow(res.issues, res.total, res.hasMore, fp)
       else win.appendWindow(res.issues, res.total, res.hasMore)
+      reassertPending() // optimistic edits win over a freshly loaded snapshot
       rev.value++
     } catch (e) {
       if (ac.signal.aborted || id !== seq) return
@@ -281,6 +295,43 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     return reload()
   }
 
+  // ── PAI-567: inline mutation reconciliation ──────────────────────────────
+
+  /** Optimistically patch a loaded row; returns a mutation id (or null). */
+  function mutateRow(id: number, patch: Partial<T>): number | null {
+    const cur = win.get(id)
+    if (!cur) return null
+    const mutationId = ++mutationSeq
+    const optimistic = { ...cur, ...patch } as T
+    const existing = pending.get(id)
+    pending.set(id, { mutationId, prev: existing ? existing.prev : cur, optimistic })
+    errs.delete(id)
+    win.patch(optimistic)
+    rev.value++
+    return mutationId
+  }
+
+  /** Server confirmed: make `serverRow` canonical (unless a newer edit is pending). */
+  function confirmMutation(id: number, serverRow: T, mutationId?: number): void {
+    const m = pending.get(id)
+    if (m && mutationId !== undefined && mutationId !== m.mutationId) return
+    if (m) pending.delete(id)
+    errs.delete(id)
+    win.patch(serverRow)
+    rev.value++
+  }
+
+  /** Server rejected: roll back only this row and record an error. */
+  function rejectMutation(id: number, mutationId?: number, message = 'Update failed'): void {
+    const m = pending.get(id)
+    if (!m) return
+    if (mutationId !== undefined && mutationId !== m.mutationId) return
+    pending.delete(id)
+    win.patch(m.prev)
+    errs.set(id, message)
+    rev.value++
+  }
+
   /** Initial load — call from the host's onMounted. */
   function start(): Promise<void> {
     return reload()
@@ -294,9 +345,13 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     loaded,
     hasMore,
     complete,
+    rowErrors,
     loading: readonly(loading),
     error: readonly(error),
     start,
+    mutateRow,
+    confirmMutation,
+    rejectMutation,
     reload,
     refresh,
     setFilter,
