@@ -123,6 +123,9 @@ describe('IssuesView search summary', () => {
   })
 
   it('states capped search results and can load the remaining matches', async () => {
+    // v1 fallback path (asserts exact request URLs). v2 (the default) is
+    // covered by issueListV2Matrix.test.ts + runtime QA; opt this off the flag.
+    localStorage.setItem('ff_issuelist_v2', '0')
     const issueUrls: string[] = []
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url.startsWith('/issues?')) {

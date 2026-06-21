@@ -16,19 +16,24 @@
  */
 
 /**
- * Lightweight client feature flags (PAI-575 rollout). Read once at setup; flip
- * via `localStorage.setItem('ff_<name>', '1')`. The IssueList v2 engine ships
- * behind `issuelist_v2` so it can be exercised in the running app before it
- * becomes the default and the v1 paths are deleted.
+ * Lightweight client feature flags (PAI-575 rollout). Read once at setup.
+ *
+ * `flagDefaultOn` reads a flag that is ON by default: it stays on unless the
+ * operator explicitly opts out with `localStorage.setItem('ff_<name>', '0')`.
  */
-function flag(name: string): boolean {
+function flagDefaultOn(name: string): boolean {
   try {
-    return localStorage.getItem(`ff_${name}`) === '1'
+    return localStorage.getItem(`ff_${name}`) !== '0'
   } catch {
-    return false
+    return true
   }
 }
 
+/**
+ * PAI-575: IssueList v2 is now the default. The v1 paths remain as a fallback,
+ * reachable via the off-switch `localStorage.setItem('ff_issuelist_v2','0')`
+ * (no redeploy needed) until they are deleted in a later cleanup.
+ */
 export function isIssueListV2(): boolean {
-  return flag('issuelist_v2')
+  return flagDefaultOn('issuelist_v2')
 }
