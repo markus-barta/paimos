@@ -14,7 +14,7 @@
  * is the user-facing affordance.
  *
  * Reuses the existing /api/auth/password endpoint and the same shape
- * of password rules (≥6 chars, current password required) so there's
+ * of password rules (≥8 chars, current password required) so there's
  * no parallel password-policy implementation. The intent over the
  * older reset-password screen is mainly the framing: this is a
  * "set your real password" moment, not a "you forgot it" recovery.
@@ -41,7 +41,7 @@ const username = computed(() => auth.user?.username ?? "");
 // stricter is intentionally avoided here — diverging the two is the
 // fastest way to ship a frustrating "your password meets the rules
 // shown but the server rejected it anyway" loop.
-const MIN_LENGTH = 6;
+const MIN_LENGTH = 8;
 
 const lengthOK = computed(() => newPassword.value.length >= MIN_LENGTH);
 const matchOK = computed(

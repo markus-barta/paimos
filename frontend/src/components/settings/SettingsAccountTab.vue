@@ -253,7 +253,7 @@ const pwSaving = ref(false)
 async function changePassword() {
   pwError.value = ''; pwOk.value = false
   if (!pwForm.value.current || !pwForm.value.next) { pwError.value = 'All fields required.'; return }
-  if (pwForm.value.next.length < 6) { pwError.value = 'New password must be at least 6 characters.'; return }
+  if (pwForm.value.next.length < 8) { pwError.value = 'New password must be at least 8 characters.'; return }
   if (pwForm.value.next !== pwForm.value.confirm) { pwError.value = 'New passwords do not match.'; return }
   pwSaving.value = true
   try {
