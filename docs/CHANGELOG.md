@@ -5,6 +5,40 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.4] — 2026-06-21
+
+### Added
+
+- **Users** — Admin user management is now one harmonized surface. A single
+  create/edit form exposes the same fields for both flows (username, role,
+  password + force-change, email, nickname, internal rate, locale), and the
+  Users tab gained an Active / Inactive / Deleted status filter with inline
+  disable, enable, delete, and restore — the whole account lifecycle on one
+  screen. `CreateUser` now accepts the same profile fields as `UpdateUser`, so
+  a new account no longer needs a second edit to set email/nickname/rate/locale.
+
+### Changed
+
+- **Auth** — Consolidated every password-write path behind one minimum-length
+  policy (`auth.MinPasswordLen` = 8): self-service reset, self-change, admin
+  create, and admin reset. Client hints (first-login screen + account settings)
+  now agree with the server instead of advertising the old 6-char minimum.
+- Admin password reset (`PUT /users/{id}` with a password) now invalidates the
+  target user's sessions and forces a password change on next login, atomically
+  with the password update — matching the self-service reset and self-change
+  flows. A self-edit keeps the current session and does not force a re-change.
+
+### Fixed
+
+- The admin "Edit user → new password" flow now reliably takes effect with the
+  same side-effects as the other password flows. Removed a dead, unrouted
+  duplicate users view; deleted users now live under the Users tab's Deleted
+  filter rather than the Trash tab.
+
+### Security
+
+- **PAI-223** — Triaged the gosec baseline to zero.
+
 ## [3.10.3] — 2026-06-09
 
 ### Added
