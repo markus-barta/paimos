@@ -32,7 +32,7 @@
  */
 
 import { reactive, ref, computed, readonly } from 'vue'
-import type { Ref, DeepReadonly } from 'vue'
+import { IssueRowWindow } from './issueRowWindow'
 
 export type IssueQueryMode = 'internal-global' | 'internal-project' | 'portal'
 export type SortDir = 'asc' | 'desc'
@@ -160,12 +160,18 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
   const query = reactive<IssueQuery>(makeQuery(opts.initial))
   const pageLimit = opts.initial.window?.limit ?? DEFAULT_PAGE_SIZE
 
-  const issues = ref<T[]>([]) as Ref<T[]>
-  const total = ref(0)
-  const hasMore = ref(false)
+  const win = new IssueRowWindow<T>()
+  const rev = ref(0) // bumped on every window mutation to drive the computeds
   const loading = ref(false)
   const error = ref<unknown>(null)
   const fingerprint = computed(() => queryFingerprint(query))
+
+  const issues = computed<T[]>(() => { void rev.value; return win.rows() })
+  const total = computed(() => { void rev.value; return win.total })
+  const loaded = computed(() => { void rev.value; return win.loaded })
+  const hasMore = computed(() => { void rev.value; return win.hasMore })
+  /** True when every matching row is loaded (showing all, not a subset). */
+  const complete = computed(() => { void rev.value; return win.complete })
 
   let seq = 0
   let inFlight: AbortController | null = null
@@ -183,9 +189,9 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
       const res = await opts.fetcher(snapshot(query), ac.signal)
       if (id !== seq) return                  // superseded by a newer request
       if (fingerprint.value !== fp) return    // query mutated mid-flight
-      issues.value = replace ? res.issues : [...issues.value, ...res.issues]
-      total.value = res.total
-      hasMore.value = res.hasMore
+      if (replace) win.setWindow(res.issues, res.total, res.hasMore, fp)
+      else win.appendWindow(res.issues, res.total, res.hasMore)
+      rev.value++
     } catch (e) {
       if (ac.signal.aborted || id !== seq) return
       error.value = e
@@ -259,7 +265,7 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
 
   function loadMore(): Promise<void> {
     if (!hasMore.value || loading.value) return Promise.resolve()
-    query.window.offset = issues.value.length
+    query.window.offset = win.loaded
     return run(false)
   }
 
@@ -283,10 +289,12 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
   return {
     query,
     fingerprint,
-    issues: issues as Readonly<Ref<T[]>>,
-    total: readonly(total) as DeepReadonly<Ref<number>>,
-    hasMore: readonly(hasMore) as DeepReadonly<Ref<boolean>>,
-    loading: readonly(loading) as DeepReadonly<Ref<boolean>>,
+    issues,
+    total,
+    loaded,
+    hasMore,
+    complete,
+    loading: readonly(loading),
     error: readonly(error),
     start,
     reload,
