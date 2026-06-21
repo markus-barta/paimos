@@ -17,27 +17,27 @@
 //
 // Design:
 //
-//   1. POST /api/auth/forgot  { "email": "..." }
-//      - Always returns 202 regardless of whether the email exists.
-//        This prevents user enumeration via timing or status codes.
-//      - On a real match, generates a 32-byte crypto-random token,
-//        stores its sha256 hash in password_reset_tokens with a 60min
-//        TTL, and either:
-//          * SMTP_HOST set → sends the magic link via net/smtp
-//          * SMTP_HOST unset → logs the link to stdout (dev/staging mode)
+//  1. POST /api/auth/forgot  { "email": "..." }
+//     - Always returns 202 regardless of whether the email exists.
+//     This prevents user enumeration via timing or status codes.
+//     - On a real match, generates a 32-byte crypto-random token,
+//     stores its sha256 hash in password_reset_tokens with a 60min
+//     TTL, and either:
+//     * SMTP_HOST set → sends the magic link via net/smtp
+//     * SMTP_HOST unset → logs the link to stdout (dev/staging mode)
 //
-//   2. GET /api/auth/reset/validate?token=...
-//      - Returns { "valid": true } or { "valid": false, "reason": ... }
-//      - Used by the reset view to show "link expired" before asking
-//        the user to type a new password.
+//  2. GET /api/auth/reset/validate?token=...
+//     - Returns { "valid": true } or { "valid": false, "reason": ... }
+//     - Used by the reset view to show "link expired" before asking
+//     the user to type a new password.
 //
-//   3. POST /api/auth/reset  { "token": "...", "new_password": "..." }
-//      - Looks up the hashed token, verifies not expired / not used.
-//      - Updates users.password with a fresh bcrypt hash.
-//      - Marks the token used_at=now (single-use).
-//      - DELETE FROM sessions WHERE user_id=? — invalidates every
-//        existing session as defense in depth.
-//      - Returns 200 on success, 400 with a generic message otherwise.
+//  3. POST /api/auth/reset  { "token": "...", "new_password": "..." }
+//     - Looks up the hashed token, verifies not expired / not used.
+//     - Updates users.password with a fresh bcrypt hash.
+//     - Marks the token used_at=now (single-use).
+//     - DELETE FROM sessions WHERE user_id=? — invalidates every
+//     existing session as defense in depth.
+//     - Returns 200 on success, 400 with a generic message otherwise.
 //
 // Security knobs:
 //
@@ -76,7 +76,9 @@ import (
 const (
 	passwordResetTTL        = 60 * time.Minute
 	passwordResetTokenBytes = 32
-	passwordResetMinLen     = 8
+	// passwordResetMinLen mirrors the shared policy so every password-write
+	// flow enforces the same floor (see auth.MinPasswordLen).
+	passwordResetMinLen = auth.MinPasswordLen
 )
 
 // ── Token generation + hashing ────────────────────────────────────────────

@@ -71,6 +71,12 @@ const sessionRenewThreshold = sessionDuration / 2
 const authRateLimitWindow = 10 * time.Minute
 const authRateLimitMaxAttempts = 5
 
+// MinPasswordLen is the single source of truth for the minimum length of
+// any password a user or admin sets. Every flow that writes a password —
+// self-service reset, self-change, admin create, admin reset — enforces
+// this same constant so the policy can't silently drift between them.
+const MinPasswordLen = 8
+
 func HashPassword(password string) (string, error) {
 	b, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return string(b), err
@@ -78,6 +84,17 @@ func HashPassword(password string) (string, error) {
 
 func CheckPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+}
+
+// CurrentSessionID returns the session id carried by the request's session
+// cookie, or "" if there is none (e.g. API-key auth). Lets handlers outside
+// this package preserve "the current session" when pruning sessions on a
+// password change without duplicating the cookie name.
+func CurrentSessionID(r *http.Request) string {
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
 }
 
 func newSessionID() (string, error) {
@@ -574,8 +591,8 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"current_password and new_password required"}`, http.StatusBadRequest)
 		return
 	}
-	if len(body.NewPassword) < 6 {
-		http.Error(w, `{"error":"new password must be at least 6 characters"}`, http.StatusBadRequest)
+	if len(body.NewPassword) < MinPasswordLen {
+		http.Error(w, fmt.Sprintf(`{"error":"new password must be at least %d characters"}`, MinPasswordLen), http.StatusBadRequest)
 		return
 	}
 

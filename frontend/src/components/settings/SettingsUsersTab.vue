@@ -24,19 +24,26 @@ const ROLE_OPTIONS: MetaOption[] = [
 
 const users          = ref<User[]>([])
 const usersLoaded    = ref(false)
-const showCreateUser = ref(false)
-// PAI-321: must_change_password defaults to TRUE so a new account is
-// forced through the change-password screen on its first login. The
-// admin can uncheck it for service / test accounts; the field is sent
-// explicitly (not omitted) so the backend honors `false` rather than
-// falling back to its server-side default of true.
-const createUserForm  = ref({ username: '', password: '', role: 'member', must_change_password: true })
-const createUserError = ref('')
-const creatingUser    = ref(false)
-const editUserTarget  = ref<User | null>(null)
-const editUserForm    = ref({ username: '', nickname: '', email: '', password: '', role: 'member', internal_rate_hourly: null as number | null, locale: 'en' })
-const editUserError   = ref('')
-const updatingUser    = ref(false)
+
+// ── Unified create / edit form ─────────────────────────────────────────────
+// One form drives both "New user" and "Edit user" so the two flows can never
+// drift apart (same fields, same validation). `mode` selects POST vs PUT.
+// PAI-321: must_change_password defaults to TRUE so a new (or admin-reset)
+// account is forced through the change-password screen; it's sent explicitly
+// so the backend honors `false` rather than its server-side default of true.
+type UserFormMode = 'create' | 'edit'
+const blankUserForm = () => ({
+  username: '', role: 'member', password: '', must_change_password: true,
+  nickname: '', email: '', internal_rate_hourly: null as number | null, locale: 'en',
+})
+const userFormOpen   = ref(false)
+const userFormMode   = ref<UserFormMode>('create')
+const userFormTarget = ref<User | null>(null)
+const userForm       = ref(blankUserForm())
+const userFormError  = ref('')
+const savingUser     = ref(false)
+const isEditing      = computed(() => userFormMode.value === 'edit')
+
 const resetTotpConfirm = ref(false)
 const resetTotpLoading = ref(false)
 const disableUserTarget = ref<User | null>(null)
@@ -48,6 +55,23 @@ const impersonationError = ref('')
 const isSelf = (u: User) => u.id === auth.user?.id
 const roleText = (role: User['role']) => role.replace('_', ' ').toUpperCase()
 const canImpersonate = (u: User) => auth.isSuperAdmin && !auth.impersonation && !isSelf(u) && u.status === 'active'
+
+// ── Lifecycle status filter (active / inactive / deleted) ──────────────────
+// The whole user lifecycle lives on this one screen: create → edit → disable
+// → delete → restore, switched via this filter instead of a separate Trash.
+type StatusFilter = 'active' | 'inactive' | 'deleted'
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'active',   label: 'Active'   },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'deleted',  label: 'Deleted'  },
+]
+const statusFilter = ref<StatusFilter>('active')
+const statusCounts = computed(() => ({
+  active:   users.value.filter(u => u.status === 'active').length,
+  inactive: users.value.filter(u => u.status === 'inactive').length,
+  deleted:  users.value.filter(u => u.status === 'deleted').length,
+}))
+const visibleUsers = computed(() => users.value.filter(u => u.status === statusFilter.value))
 
 // Inline nickname editing
 const nickEditId  = ref<number | null>(null)
@@ -80,7 +104,7 @@ function relativeTime(ts: string): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-const { sorted: sortedUsers, sortIndicator: userSortInd, thProps: userThProps } = useSort(users, {
+const { sorted: sortedUsers, sortIndicator: userSortInd, thProps: userThProps } = useSort(visibleUsers, {
   username:   { value: u => u.username,   type: 'string' },
   role:       { value: u => u.role,       type: { order: ['super_admin','admin','member','external'] } },
   rate:       { value: u => u.internal_rate_hourly ?? 0, type: 'number' },
@@ -208,63 +232,105 @@ async function addRow() {
 
 async function loadUsers() {
   if (usersLoaded.value) return
-  users.value = await api.get<User[]>('/users')
+  // Active + inactive come from the default list; deleted are fetched
+  // alongside so the entire lifecycle is filterable on this one screen.
+  const [live, deleted] = await Promise.all([
+    api.get<User[]>('/users'),
+    api.get<User[]>('/users?status=deleted'),
+  ])
+  users.value = [...live, ...deleted]
   usersLoaded.value = true
 }
-function openEditUser(u: User) {
-  editUserTarget.value = u
-  editUserForm.value = { username: u.username, nickname: u.nickname || '', email: u.email || '', password: '', role: u.role, internal_rate_hourly: u.internal_rate_hourly ?? null, locale: u.locale || 'en' }
-  editUserError.value = ''
+
+function openCreateUser() {
+  userFormMode.value = 'create'
+  userFormTarget.value = null
+  userForm.value = blankUserForm()
+  userFormError.value = ''
   resetTotpConfirm.value = false
+  userFormOpen.value = true
 }
-async function createUser() {
-  createUserError.value = ''
-  if (!createUserForm.value.username || !createUserForm.value.password) { createUserError.value = 'Username and password required.'; return }
-  creatingUser.value = true
-  try {
-    const u = await api.post<User>('/users', createUserForm.value)
-    users.value.push(u); showCreateUser.value = false
-    createUserForm.value = { username: '', password: '', role: 'member', must_change_password: true }
-  } catch (e: unknown) { createUserError.value = errMsg(e) }
-  finally { creatingUser.value = false }
+function openEditUser(u: User) {
+  userFormMode.value = 'edit'
+  userFormTarget.value = u
+  // Default the force-change gate ON when resetting someone else's
+  // password, OFF when editing your own (a deliberate self-set).
+  userForm.value = {
+    username: u.username, role: u.role, password: '',
+    must_change_password: !isSelf(u),
+    nickname: u.nickname || '', email: u.email || '',
+    internal_rate_hourly: u.internal_rate_hourly ?? null, locale: u.locale || 'en',
+  }
+  userFormError.value = ''
+  resetTotpConfirm.value = false
+  userFormOpen.value = true
 }
-async function updateUser() {
-  if (!editUserTarget.value) return
-  editUserError.value = ''; updatingUser.value = true
+function closeUserForm() {
+  userFormOpen.value = false
+  userFormTarget.value = null
+}
+
+async function saveUser() {
+  userFormError.value = ''
+  const f = userForm.value
+  if (!f.username) { userFormError.value = 'Username is required.'; return }
+  if (!isEditing.value && !f.password) { userFormError.value = 'Username and password required.'; return }
+  savingUser.value = true
   try {
-    const payload: Record<string, string | number | null> = {}
-    if (editUserForm.value.username !== editUserTarget.value.username)       payload.username = editUserForm.value.username
-    if (editUserForm.value.nickname !== (editUserTarget.value.nickname || '')) payload.nickname = editUserForm.value.nickname
-    if (editUserForm.value.email    !== (editUserTarget.value.email    || '')) payload.email    = editUserForm.value.email
-    if (editUserForm.value.role     !== editUserTarget.value.role)            payload.role     = editUserForm.value.role
-    if (editUserForm.value.password)                                          payload.password  = editUserForm.value.password
-    if (editUserForm.value.internal_rate_hourly !== editUserTarget.value.internal_rate_hourly)
-      payload.internal_rate_hourly = editUserForm.value.internal_rate_hourly
-    if (editUserForm.value.locale !== (editUserTarget.value.locale || 'en'))
-      payload.locale = editUserForm.value.locale
-    const u = await api.put<User>(`/users/${editUserTarget.value.id}`, payload)
-    const idx = users.value.findIndex(x => x.id === u.id)
-    if (idx >= 0) users.value[idx] = u
-    editUserTarget.value = null
-  } catch (e: unknown) { editUserError.value = errMsg(e) }
-  finally { updatingUser.value = false }
+    if (isEditing.value) {
+      const t = userFormTarget.value!
+      // Send only what changed so an edit never clobbers untouched fields.
+      const payload: Record<string, string | number | boolean | null> = {}
+      if (f.username !== t.username)                          payload.username = f.username
+      if (f.role !== t.role)                                 payload.role = f.role
+      if (f.nickname !== (t.nickname || ''))                 payload.nickname = f.nickname
+      if (f.email !== (t.email || ''))                       payload.email = f.email
+      if (f.internal_rate_hourly !== t.internal_rate_hourly) payload.internal_rate_hourly = f.internal_rate_hourly
+      if (f.locale !== (t.locale || 'en'))                   payload.locale = f.locale
+      if (f.password) {
+        payload.password = f.password
+        // Carry the force-change choice only when actually setting a password.
+        payload.must_change_password = f.must_change_password
+      }
+      const u = await api.put<User>(`/users/${t.id}`, payload)
+      const idx = users.value.findIndex(x => x.id === u.id)
+      if (idx >= 0) users.value[idx] = u
+    } else {
+      const u = await api.post<User>('/users', {
+        username: f.username, role: f.role, password: f.password,
+        must_change_password: f.must_change_password,
+        nickname: f.nickname, email: f.email,
+        internal_rate_hourly: f.internal_rate_hourly, locale: f.locale,
+      })
+      users.value.push(u)
+    }
+    closeUserForm()
+  } catch (e: unknown) { userFormError.value = errMsg(e) }
+  finally { savingUser.value = false }
 }
 async function resetUserTOTP() {
-  if (!editUserTarget.value) return
+  if (!userFormTarget.value) return
   resetTotpLoading.value = true
   try {
-    await api.post(`/users/${editUserTarget.value.id}/reset-totp`, {})
-    const idx = users.value.findIndex(x => x.id === editUserTarget.value!.id)
+    await api.post(`/users/${userFormTarget.value.id}/reset-totp`, {})
+    const idx = users.value.findIndex(x => x.id === userFormTarget.value!.id)
     if (idx >= 0) users.value[idx] = { ...users.value[idx], totp_enabled: false }
-    editUserTarget.value = { ...editUserTarget.value, totp_enabled: false }
+    userFormTarget.value = { ...userFormTarget.value, totp_enabled: false }
     resetTotpConfirm.value = false
-  } catch (e: unknown) { editUserError.value = errMsg(e, 'Failed to reset 2FA.') }
+  } catch (e: unknown) { userFormError.value = errMsg(e, 'Failed to reset 2FA.') }
   finally { resetTotpLoading.value = false }
 }
 async function enableUser(u: User) {
   await api.put<User>(`/users/${u.id}`, { status: 'active' })
   const idx = users.value.findIndex(x => x.id === u.id)
   if (idx >= 0) users.value[idx] = { ...users.value[idx], status: 'active' }
+}
+async function restoreUser(u: User) {
+  // Deleted → inactive: bring the account back disabled, then it can be
+  // re-enabled from the Inactive filter. Mirrors the old Trash behavior.
+  await api.put<User>(`/users/${u.id}`, { status: 'inactive' })
+  const idx = users.value.findIndex(x => x.id === u.id)
+  if (idx >= 0) users.value[idx] = { ...users.value[idx], status: 'inactive' }
 }
 async function confirmDisableUser() {
   if (!disableUserTarget.value) return
@@ -282,7 +348,10 @@ async function confirmDeleteUser() {
   deletingUser.value = true
   try {
     await api.delete(`/users/${deleteUserTarget.value.id}`)
-    users.value = users.value.filter(x => x.id !== deleteUserTarget.value!.id)
+    // Soft-delete: keep the row so it shows under the Deleted filter and
+    // can be restored, rather than vanishing from the screen.
+    const idx = users.value.findIndex(x => x.id === deleteUserTarget.value!.id)
+    if (idx >= 0) users.value[idx] = { ...users.value[idx], status: 'deleted' }
     deleteUserTarget.value = null
   } catch (e: unknown) { /* swallow */ }
   finally { deletingUser.value = false }
@@ -313,9 +382,21 @@ loadUsers()
         <h2 class="section-title">Users</h2>
         <p class="section-desc">Manage team members and their roles.</p>
       </div>
-      <button class="btn btn-primary btn-sm" @click="showCreateUser=true">+ New user</button>
+      <button class="btn btn-primary btn-sm" @click="openCreateUser">+ New user</button>
     </div>
     <div v-if="impersonationError" class="form-error impersonation-error">{{ impersonationError }}</div>
+
+    <div class="user-status-filter" role="tablist" aria-label="User status">
+      <button
+        v-for="s in STATUS_FILTERS" :key="s.value"
+        type="button" role="tab"
+        class="user-status-filter__opt"
+        :class="{ 'is-active': statusFilter === s.value }"
+        :aria-selected="statusFilter === s.value"
+        @click="statusFilter = s.value"
+      >{{ s.label }} <span class="user-status-filter__count">{{ statusCounts[s.value] }}</span></button>
+    </div>
+
     <div class="card" style="padding:0;overflow:hidden">
       <table class="settings-table">
         <thead>
@@ -368,21 +449,29 @@ loadUsers()
             <td class="muted">{{ u.created_at.slice(0,10) }}</td>
             <td class="muted" :title="u.last_login_at ?? ''">{{ u.last_login_at ? relativeTime(u.last_login_at) : 'Never' }}</td>
             <td class="actions-cell">
-              <button
-                v-if="canImpersonate(u)"
-                class="btn btn-ghost btn-sm"
-                :disabled="impersonatingUserId === u.id"
-                @click="impersonateUser(u)"
-                title="Act as this user in the current session"
-              >{{ impersonatingUserId === u.id ? 'Starting…' : 'Act as' }}</button>
-              <button class="btn btn-ghost btn-sm" @click="openEditUser(u)">Edit</button>
-              <button v-if="!isSelf(u)" class="btn btn-ghost btn-sm" @click="openMemberships(u)" title="Per-project access levels">Access</button>
-              <template v-if="!isSelf(u)">
-                <button v-if="u.status === 'active'" class="btn btn-ghost btn-sm" @click="disableUserTarget=u" title="Disable account">Disable</button>
-                <button v-if="u.status === 'inactive'" class="btn btn-ghost btn-sm" @click="enableUser(u)" title="Re-enable account">Enable</button>
-                <button class="btn btn-ghost btn-sm danger" @click="deleteUserTarget=u" title="Soft-delete account">Delete</button>
+              <template v-if="u.status === 'deleted'">
+                <button class="btn btn-ghost btn-sm" @click="restoreUser(u)" title="Restore to disabled">Restore</button>
+              </template>
+              <template v-else>
+                <button
+                  v-if="canImpersonate(u)"
+                  class="btn btn-ghost btn-sm"
+                  :disabled="impersonatingUserId === u.id"
+                  @click="impersonateUser(u)"
+                  title="Act as this user in the current session"
+                >{{ impersonatingUserId === u.id ? 'Starting…' : 'Act as' }}</button>
+                <button class="btn btn-ghost btn-sm" @click="openEditUser(u)">Edit</button>
+                <button v-if="!isSelf(u)" class="btn btn-ghost btn-sm" @click="openMemberships(u)" title="Per-project access levels">Access</button>
+                <template v-if="!isSelf(u)">
+                  <button v-if="u.status === 'active'" class="btn btn-ghost btn-sm" @click="disableUserTarget=u" title="Disable account">Disable</button>
+                  <button v-if="u.status === 'inactive'" class="btn btn-ghost btn-sm" @click="enableUser(u)" title="Re-enable account">Enable</button>
+                  <button class="btn btn-ghost btn-sm danger" @click="deleteUserTarget=u" title="Soft-delete account">Delete</button>
+                </template>
               </template>
             </td>
+          </tr>
+          <tr v-if="usersLoaded && sortedUsers.length === 0">
+            <td colspan="8" class="users-empty">No {{ statusFilter }} users.</td>
           </tr>
         </tbody>
       </table>
@@ -410,53 +499,38 @@ loadUsers()
     </div>
   </AppModal>
 
-  <AppModal title="New User" :open="showCreateUser" @close="showCreateUser=false; createUserForm={username:'',password:'',role:'member',must_change_password:true}">
-    <form @submit.prevent="createUser" class="form">
-      <div class="field"><label>Username</label><input v-model="createUserForm.username" type="text" required autofocus /></div>
-      <div class="field"><label>Password</label><input v-model="createUserForm.password" type="password" required /></div>
-      <div class="field"><label>Role</label><MetaSelect v-model="createUserForm.role" :options="ROLE_OPTIONS" /></div>
-      <!-- PAI-321: first-login password-change gate. Default ON; admins can uncheck for service / test accounts. -->
-      <div class="field field-check">
-        <label class="check-row">
-          <input v-model="createUserForm.must_change_password" type="checkbox" />
-          <span>
-            Force password change on first login
-            <span class="check-hint">— recommended; uncheck only for automation accounts</span>
-          </span>
-        </label>
-      </div>
-      <div v-if="createUserError" class="form-error">{{ createUserError }}</div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-ghost" @click="showCreateUser=false">Cancel</button>
-        <button type="submit" class="btn btn-primary" :disabled="creatingUser">{{ creatingUser ? 'Creating…' : 'Create user' }}</button>
-      </div>
-    </form>
-  </AppModal>
-
-  <AppModal :title="`Edit ${editUserTarget?.username}`" :open="!!editUserTarget" @close="editUserTarget=null">
-    <form @submit.prevent="updateUser" class="form">
+  <!-- Unified create / edit user form — identical fields for both flows. -->
+  <AppModal :title="isEditing ? `Edit ${userFormTarget?.username}` : 'New user'" :open="userFormOpen" @close="closeUserForm">
+    <form @submit.prevent="saveUser" class="form">
       <div class="edit-user-grid">
-        <div class="field"><label>Username</label><input v-model="editUserForm.username" type="text" required /></div>
+        <div class="field"><label>Username</label><input v-model="userForm.username" type="text" required /></div>
         <div class="field"><label>Nickname <span class="label-hint">— up to 3 chars</span></label>
-          <input v-model="editUserForm.nickname" type="text" maxlength="3" placeholder="abc" style="width:80px" />
+          <input v-model="userForm.nickname" type="text" maxlength="3" placeholder="abc" style="width:80px" />
         </div>
-        <div class="field"><label>Email</label><input v-model="editUserForm.email" type="email" placeholder="user@example.com" /></div>
-        <div class="field"><label>Role</label><MetaSelect v-model="editUserForm.role" :options="ROLE_OPTIONS" /></div>
-        <div class="field"><label>New password <span class="label-hint">— leave blank to keep</span></label>
-          <input v-model="editUserForm.password" type="password" autocomplete="new-password" placeholder="••••••••" />
+        <div class="field"><label>Email</label><input v-model="userForm.email" type="email" placeholder="user@example.com" /></div>
+        <div class="field"><label>Role</label><MetaSelect v-model="userForm.role" :options="ROLE_OPTIONS" /></div>
+        <div class="field">
+          <label>{{ isEditing ? 'New password' : 'Password' }}<span v-if="isEditing" class="label-hint"> — leave blank to keep</span></label>
+          <input v-model="userForm.password" type="password" autocomplete="new-password" :placeholder="isEditing ? '••••••••' : 'At least 8 characters'" :required="!isEditing" />
+          <!-- Setting a password drops the user's other sessions and (by
+               default) forces them to choose their own on next login. -->
+          <label v-if="userForm.password" class="check-row check-inline">
+            <input v-model="userForm.must_change_password" type="checkbox" />
+            <span>Force password change on {{ isEditing ? 'next' : 'first' }} login</span>
+          </label>
         </div>
         <div class="field"><label>Internal rate <span class="label-hint">— €/h</span></label>
-          <input v-model.number="editUserForm.internal_rate_hourly" type="number" step="0.01" min="0" placeholder="e.g. 95.00" style="width:120px" />
+          <input v-model.number="userForm.internal_rate_hourly" type="number" step="0.01" min="0" placeholder="e.g. 95.00" style="width:120px" />
         </div>
         <div class="field"><label>Locale</label>
-          <select v-model="editUserForm.locale" style="width:120px">
+          <select v-model="userForm.locale" style="width:120px">
             <option value="en">English</option>
             <option value="de">Deutsch</option>
           </select>
         </div>
       </div>
 
-      <div v-if="editUserTarget?.totp_enabled" class="edit-user-totp">
+      <div v-if="isEditing && userFormTarget?.totp_enabled" class="edit-user-totp">
         <div class="edit-user-totp-info">
           <AppIcon name="shield-check" :size="14" class="totp-icon" />
           <span>2FA is <strong>active</strong> for this user.</span>
@@ -465,16 +539,16 @@ loadUsers()
           <button type="button" class="btn btn-ghost btn-sm danger" @click="resetTotpConfirm=true">Reset 2FA…</button>
         </template>
         <template v-else>
-          <span class="totp-confirm-text">This will disable 2FA for {{ editUserTarget?.username }}. Continue?</span>
+          <span class="totp-confirm-text">This will disable 2FA for {{ userFormTarget?.username }}. Continue?</span>
           <button type="button" class="btn btn-sm btn-danger" :disabled="resetTotpLoading" @click="resetUserTOTP">{{ resetTotpLoading ? 'Resetting…' : 'Yes, disable 2FA' }}</button>
           <button type="button" class="btn btn-ghost btn-sm" @click="resetTotpConfirm=false">Cancel</button>
         </template>
       </div>
 
-      <div v-if="editUserError" class="form-error">{{ editUserError }}</div>
+      <div v-if="userFormError" class="form-error">{{ userFormError }}</div>
       <div class="form-actions">
-        <button type="button" class="btn btn-ghost" @click="editUserTarget=null">Cancel</button>
-        <button type="submit" class="btn btn-primary" :disabled="updatingUser">{{ updatingUser ? 'Saving…' : 'Save changes' }}</button>
+        <button type="button" class="btn btn-ghost" @click="closeUserForm">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="savingUser">{{ savingUser ? 'Saving…' : (isEditing ? 'Save changes' : 'Create user') }}</button>
       </div>
     </form>
   </AppModal>
@@ -610,6 +684,25 @@ loadUsers()
 <style scoped>
 .user-avatar-row { display: flex; align-items: center; gap: .6rem; }
 .impersonation-error { margin: 0 0 .75rem; }
+
+/* Lifecycle status filter — segmented pill above the table. */
+.user-status-filter {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-card); padding: 2px; margin-bottom: .9rem;
+}
+.user-status-filter__opt {
+  border: none; background: transparent; color: var(--text-muted);
+  font-size: 12px; font-weight: 600; letter-spacing: .02em;
+  padding: .35rem .9rem; border-radius: 999px; cursor: pointer;
+  white-space: nowrap; transition: background .12s ease, color .12s ease;
+}
+.user-status-filter__opt:hover:not(.is-active) { color: var(--text); }
+.user-status-filter__opt.is-active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.user-status-filter__count {
+  font-size: 11px; font-weight: 700; opacity: .65; margin-left: .15rem;
+}
+.users-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 1.5rem; }
 .you-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: .1rem .45rem; }
 .role-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
 .role-admin    { color: #d97706; }
@@ -627,6 +720,7 @@ loadUsers()
   accent-color: var(--bp-blue);
 }
 .check-hint { color: var(--text-muted); font-size: 12px; }
+.check-inline { margin-top: .5rem; font-size: 12px; }
 .edit-user-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1.25rem; }
 .edit-user-totp {
   display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;

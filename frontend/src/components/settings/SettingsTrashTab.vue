@@ -3,8 +3,6 @@ import LoadingText from "@/components/LoadingText.vue";
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useConfirm } from '@/composables/useConfirm'
-import type { User } from '@/types'
-import UserAvatar from '@/components/UserAvatar.vue'
 
 type TrashedIssue = {
   id: number
@@ -16,30 +14,24 @@ type TrashedIssue = {
   deleted_by_name?: string
 }
 
-const deletedUsers    = ref<User[]>([])
 const deletedProjects = ref<{ id: number; name: string; status: string; created_at: string }[]>([])
 const deletedIssues   = ref<TrashedIssue[]>([])
 const trashLoading    = ref(false)
 const { confirm }     = useConfirm()
 
+// Deleted users live on the Users tab now (status filter → Deleted), so
+// Trash only covers projects and issues.
 async function loadTrash() {
   trashLoading.value = true
   try {
-    const [du, dp, di] = await Promise.all([
-      api.get<User[]>('/users?status=deleted'),
+    const [dp, di] = await Promise.all([
       api.get<{ id: number; name: string; status: string; created_at: string }[]>('/projects?status=deleted'),
       api.get<TrashedIssue[]>('/issues/trash'),
     ])
-    deletedUsers.value    = du
     deletedProjects.value = dp
     deletedIssues.value   = di ?? []
   } catch { /* swallow */ }
   finally { trashLoading.value = false }
-}
-
-async function restoreUser(u: User) {
-  await api.put<User>(`/users/${u.id}`, { status: 'inactive' })
-  deletedUsers.value = deletedUsers.value.filter(x => x.id !== u.id)
 }
 
 async function restoreProject(p: { id: number; name: string }) {
@@ -71,39 +63,11 @@ loadTrash()
   <div class="section">
     <div class="section-header">
       <h2 class="section-title">Trash</h2>
-      <p class="section-desc">Soft-deleted users, projects and issues. Restore to bring them back, or delete forever to wipe them permanently.</p>
+      <p class="section-desc">Soft-deleted projects and issues. Restore to bring them back, or delete forever to wipe them permanently. <span class="muted">Deleted users live on the Users tab (filter → Deleted).</span></p>
     </div>
 
     <LoadingText v-if="trashLoading" class="empty-hint" label="Loading…" />
     <template v-else>
-
-      <!-- Deleted users -->
-      <div class="trash-sub-section">
-        <h3 class="trash-sub-title">Deleted Users</h3>
-        <div v-if="deletedUsers.length === 0" class="empty-hint">No deleted users.</div>
-        <div v-else class="card" style="padding:0;overflow:hidden">
-          <table class="settings-table">
-            <thead>
-              <tr><th>Username</th><th>Role</th><th>Deleted</th><th></th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="u in deletedUsers" :key="u.id">
-                <td>
-                  <div class="user-avatar-row">
-                    <UserAvatar :user="u" size="sm" />
-                    <span class="fw500">{{ u.username }}</span>
-                  </div>
-                </td>
-                <td><span class="badge badge-archived">{{ u.role }}</span></td>
-                <td class="muted">{{ u.created_at.slice(0,10) }}</td>
-                <td class="actions-cell">
-                  <button class="btn btn-ghost btn-sm" @click="restoreUser(u)" title="Restore to disabled">Restore</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       <!-- Deleted projects -->
       <div class="trash-sub-section">
@@ -168,7 +132,6 @@ loadTrash()
 <style scoped>
 .trash-sub-section { margin-bottom: 1.5rem; }
 .trash-sub-title { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .6rem; }
-.user-avatar-row { display: flex; align-items: center; gap: .6rem; }
 .btn-sm.danger { color: #c0392b; }
 .btn-sm.danger:hover { background: #fef2f2; color: #991b1b; }
 </style>

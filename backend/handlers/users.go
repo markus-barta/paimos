@@ -17,6 +17,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -86,17 +87,35 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	// frontend's create-user form ships the checkbox checked by
 	// default.
 	var body struct {
-		Username           string `json:"username"`
-		Password           string `json:"password"`
-		Role               string `json:"role"`
-		MustChangePassword *bool  `json:"must_change_password"`
+		Username           string   `json:"username"`
+		Password           string   `json:"password"`
+		Role               string   `json:"role"`
+		MustChangePassword *bool    `json:"must_change_password"`
+		Nickname           string   `json:"nickname"`
+		Email              string   `json:"email"`
+		InternalRateHourly *float64 `json:"internal_rate_hourly"`
+		Locale             string   `json:"locale"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" || body.Password == "" {
 		jsonError(w, "username and password required", http.StatusBadRequest)
 		return
 	}
+	if len(body.Password) < auth.MinPasswordLen {
+		jsonError(w, fmt.Sprintf("password must be at least %d characters", auth.MinPasswordLen), http.StatusBadRequest)
+		return
+	}
+	// Nickname shares the same 3-rune cap as UpdateUser so create/edit
+	// validate the field identically.
+	if len([]rune(body.Nickname)) > 3 {
+		jsonError(w, "nickname must be 3 characters or fewer", http.StatusBadRequest)
+		return
+	}
 	if body.Role == "" {
 		body.Role = "member"
+	}
+	locale := body.Locale
+	if locale == "" {
+		locale = "en"
 	}
 	publicRole, legacyRole, superAdminFlag, ok := normalizeUserRole(body.Role)
 	if !ok {
@@ -128,9 +147,10 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(r.Context(),
-		`INSERT INTO users(username,password,role,role_key,is_super_admin,status,must_change_password)
-		 VALUES(?,?,?,?,?,'active',?)`,
+		`INSERT INTO users(username,password,role,role_key,is_super_admin,status,must_change_password,nickname,email,internal_rate_hourly,locale)
+		 VALUES(?,?,?,?,?,'active',?,?,?,?,?)`,
 		body.Username, hash, legacyRole, publicRole, superAdminFlag, mustChange,
+		body.Nickname, body.Email, body.InternalRateHourly, locale,
 	)
 	if handleDBError(w, err, "username") {
 		return
@@ -170,6 +190,7 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username           *string  `json:"username"`
 		Password           *string  `json:"password"`
+		MustChangePassword *bool    `json:"must_change_password"`
 		Role               *string  `json:"role"`
 		Status             *string  `json:"status"`
 		Nickname           *string  `json:"nickname"`
@@ -357,13 +378,66 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.Password != nil && *body.Password != "" {
+		if len(*body.Password) < auth.MinPasswordLen {
+			jsonError(w, fmt.Sprintf("new password must be at least %d characters", auth.MinPasswordLen), http.StatusBadRequest)
+			return
+		}
 		hash, err := auth.HashPassword(*body.Password)
 		if err != nil {
 			jsonError(w, "hash failed", http.StatusInternalServerError)
 			return
 		}
-		if _, err := db.DB.Exec("UPDATE users SET password=? WHERE id=?", hash, id); err != nil {
+
+		// An admin resetting another user's password forces that user to
+		// rotate the admin-known value on next login (matches the
+		// must_change_password=ON default on creation, PAI-321) and must
+		// invalidate their live sessions so the reset actually locks them
+		// out — the way the self-service reset and self-change flows
+		// already behave. When admins edit their OWN password it's a
+		// deliberate set, so we neither force a re-change nor kill the
+		// session they're acting from. An explicit must_change_password in
+		// the request always wins.
+		actorIsTarget := actor != nil && actor.ID == id
+		forceChange := 1
+		if actorIsTarget {
+			forceChange = 0
+		}
+		if body.MustChangePassword != nil {
+			if *body.MustChangePassword {
+				forceChange = 1
+			} else {
+				forceChange = 0
+			}
+		}
+
+		ptx, err := db.DB.BeginTx(r.Context(), nil)
+		if err != nil {
+			log.Printf("UpdateUser: begin pw tx user=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		defer ptx.Rollback()
+		if _, err := ptx.ExecContext(r.Context(),
+			"UPDATE users SET password=?, must_change_password=? WHERE id=?", hash, forceChange, id); err != nil {
+			log.Printf("UpdateUser: password update user=%d: %v", id, err)
 			jsonError(w, "password update failed", http.StatusInternalServerError)
+			return
+		}
+		// Drop the target's sessions. Keep the actor's current session
+		// only when they are resetting their own password.
+		if keepSID := auth.CurrentSessionID(r); actorIsTarget && keepSID != "" {
+			_, err = ptx.ExecContext(r.Context(), "DELETE FROM sessions WHERE user_id=? AND id != ?", id, keepSID)
+		} else {
+			_, err = ptx.ExecContext(r.Context(), "DELETE FROM sessions WHERE user_id=?", id)
+		}
+		if err != nil {
+			log.Printf("UpdateUser: prune sessions user=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := ptx.Commit(); err != nil {
+			log.Printf("UpdateUser: commit pw tx user=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 	}
