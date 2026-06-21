@@ -5,7 +5,7 @@ import IssueList from '@/components/IssueList.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useIssueQuery } from '@/composables/useIssueQuery'
-import { createInternalFetcher } from '@/composables/issueQueryFetchers'
+import { createInternalFetcher, controllerFreshnessPath } from '@/composables/issueQueryFetchers'
 import { isIssueListV2 } from '@/config/featureFlags'
 import { useSearchStore } from '@/stores/search'
 import { provideIssueContext } from '@/composables/useIssueContext'
@@ -161,8 +161,15 @@ function applyFreshIssues(envelope: IssueListEnvelope<Issue>) {
   })
 }
 
-const freshness = useFreshness<IssueListEnvelope<Issue>>(issuesPath, {
-  apply: applyFreshIssues,
+// v2 polls the controller's current window; v1 keeps its own path.
+const freshnessPath = computed(() =>
+  V2 ? controllerFreshnessPath(ctrl.query, ctrl.loaded.value, PAGE) : issuesPath.value,
+)
+const freshness = useFreshness<IssueListEnvelope<Issue>>(freshnessPath, {
+  apply: (env) => {
+    if (V2) ctrl.reconcile(env.issues ?? [], env.total, env.revision)
+    else applyFreshIssues(env)
+  },
   count: (payload) => payload.total,
 })
 const freshnessStale = computed(() => freshness.stale.value)
@@ -175,7 +182,6 @@ function refreshIssueListFromHeader() {
 watch(
   [freshnessStale, freshnessCount],
   ([stale, count]) => {
-    if (V2) return // v2 refresh is controller-driven (PAI-568 follow-up)
     if (stale) issueRefreshPrompt.show(count, refreshIssueListFromHeader)
     else issueRefreshPrompt.clear(refreshIssueListFromHeader)
   },
@@ -249,6 +255,7 @@ async function load() {
   error.value = ''
   issueWindowMode.value = 'page'
   await Promise.all([V2 ? ctrl.start() : fetchIssues(PAGE, true), fetchMeta()])
+  if (V2) await freshness.prime().catch(() => {}) // baseline the poll; never block load
   loading.value = false
   // Apply first tab
   if (displayTabs.value.length && activeTabId.value == null) {

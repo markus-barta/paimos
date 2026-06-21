@@ -21,7 +21,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
 import { useIssueQuery } from '@/composables/useIssueQuery'
-import { createInternalFetcher } from '@/composables/issueQueryFetchers'
+import { createInternalFetcher, controllerFreshnessPath } from '@/composables/issueQueryFetchers'
 import { isIssueListV2 } from '@/config/featureFlags'
 import {
   buildProjectUpdatePayload,
@@ -662,6 +662,7 @@ async function load() {
   if (V2) {
     projectCtrl.query.projectId = projectId.value
     await projectCtrl.start()
+    await issueFreshness.prime().catch(() => {}) // baseline the poll; never block load
   } else if (
     loadQuery === projectIssueQuery.value
     && loadFilters === projectServerFilterQuery.value
@@ -887,8 +888,14 @@ function applyFreshProjectIssues(env: IssueListEnvelope<Issue>) {
   })
 }
 
-const issueFreshness = useFreshness<IssueListEnvelope<Issue>>(issueListPath, {
-  apply: applyFreshProjectIssues,
+const projectFreshnessPath = computed(() =>
+  V2 ? controllerFreshnessPath(projectCtrl.query, projectCtrl.loaded.value, PROJECT_ISSUE_PAGE) : issueListPath.value,
+)
+const issueFreshness = useFreshness<IssueListEnvelope<Issue>>(projectFreshnessPath, {
+  apply: (env) => {
+    if (V2) projectCtrl.reconcile(env.issues ?? [], env.total, env.revision)
+    else applyFreshProjectIssues(env)
+  },
   count: (payload) => payload.total,
 })
 const issueFreshnessStale = computed(() => issueFreshness.stale.value)
@@ -901,7 +908,6 @@ function refreshProjectIssueListFromHeader() {
 watch(
   [issueFreshnessStale, issueFreshnessCount],
   ([stale, count]) => {
-    if (V2) return // v2 refresh is controller-driven (PAI-568 follow-up)
     if (stale) issueRefreshPrompt.show(count, refreshProjectIssueListFromHeader)
     else issueRefreshPrompt.clear(refreshProjectIssueListFromHeader)
   },

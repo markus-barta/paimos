@@ -418,6 +418,29 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     return 'patched'
   }
 
+  /**
+   * Reconcile a freshly-fetched full window (e.g. from a freshness poll)
+   * against the loaded one: patch changed rows and remove gone ones in place
+   * (preserving order/identity → scroll + selection survive). Falls back to a
+   * full reload when new rows appeared, since they can't be placed in the
+   * current sort order deterministically.
+   */
+  function reconcile(fresh: T[], totalCount?: number, revisionVal?: string): DeltaResult {
+    if (fresh.some((r) => !win.has(r.id))) {
+      void refresh()
+      return 'reload'
+    }
+    const freshIds = new Set(fresh.map((r) => r.id))
+    const deletes = win.rows().map((r) => r.id).filter((id) => !freshIds.has(id))
+    return applyDelta({
+      fingerprint: fingerprint.value,
+      upserts: fresh,
+      deletes,
+      total: totalCount ?? fresh.length,
+      revision: revisionVal,
+    })
+  }
+
   /** Initial load — call from the host's onMounted. */
   function start(): Promise<void> {
     return reload()
@@ -442,6 +465,7 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     confirmMutation,
     rejectMutation,
     applyDelta,
+    reconcile,
     reload,
     refresh,
     setFilter,

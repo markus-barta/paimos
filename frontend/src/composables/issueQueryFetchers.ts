@@ -110,6 +110,16 @@ export function internalIssuePath(q: IssueQuery): string {
     : `/issues?${qs}`
 }
 
+/**
+ * Path a freshness poll should hit to re-fetch the *current loaded window* at
+ * offset 0 (limit grows with what's loaded, mirroring v1's freshnessLimit) so
+ * the poll compares like-for-like against what the user sees.
+ */
+export function controllerFreshnessPath(q: IssueQuery, loaded: number, pageSize: number): string {
+  const limit = q.window.mode === 'all' ? 0 : Math.max(pageSize, loaded)
+  return internalIssuePath({ ...q, window: { mode: q.window.mode, limit, offset: 0 } })
+}
+
 /** Fetcher for the internal global/project lists (IssueList-driven). */
 export function createInternalFetcher(): IssueFetcher<Issue> {
   return async (q, signal) => {

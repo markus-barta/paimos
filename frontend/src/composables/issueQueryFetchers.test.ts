@@ -5,7 +5,7 @@ vi.mock('@/api/client', () => ({ api: { get: vi.fn() } }))
 import { api } from '@/api/client'
 import {
   buildIssueQueryParams, issuePath, createIssueFetcher,
-  buildInternalParams, internalIssuePath,
+  buildInternalParams, internalIssuePath, controllerFreshnessPath,
 } from './issueQueryFetchers'
 import { emptyFilters, type IssueQuery } from './useIssueQuery'
 
@@ -101,6 +101,14 @@ describe('buildInternalParams / internalIssuePath', () => {
   it('sets envelope=1 only for project mode', () => {
     expect(buildInternalParams(q()).has('envelope')).toBe(false)
     expect(buildInternalParams(q({ mode: 'internal-project', projectId: 5 })).get('envelope')).toBe('1')
+  })
+
+  it('controllerFreshnessPath polls offset 0 with limit growing to loaded', () => {
+    const p1 = new URL('http://x' + controllerFreshnessPath(q(), 30, 100))
+    expect(p1.searchParams.get('offset')).toBe('0')
+    expect(p1.searchParams.get('limit')).toBe('100') // max(100, 30)
+    const p2 = new URL('http://x' + controllerFreshnessPath(q(), 250, 100))
+    expect(p2.searchParams.get('limit')).toBe('250') // grows with loaded
   })
 })
 

@@ -249,4 +249,28 @@ describe('useIssueQuery delta refresh (PAI-568)', () => {
     c.applyDelta({ fingerprint: c.fingerprint.value, upserts: [{ id: 1, status: 'server' }] })
     expect(c.issues.value).toEqual([{ id: 1, status: 'local' }])
   })
+
+  it('reconcile patches changed rows and removes gone ones in place', async () => {
+    const c = ctrl([{ id: 1, status: 'a' }, { id: 2, status: 'a' }, { id: 3, status: 'a' }])
+    await c.start()
+    // fresh poll: id 2 changed, id 3 gone (id 1 unchanged)
+    const res = c.reconcile([{ id: 1, status: 'a' }, { id: 2, status: 'b' }], 2)
+    expect(res).toBe('patched')
+    expect(c.issues.value.map((r) => `${r.id}:${r.status}`)).toEqual(['1:a', '2:b'])
+    expect(c.total.value).toBe(2)
+  })
+
+  it('reconcile full-reloads when a new row appears', async () => {
+    let serverRows: R[] = [{ id: 1 }]
+    const fetcher = vi.fn(async (): Promise<IssueListResult<R>> => ({
+      issues: serverRows, total: serverRows.length, hasMore: false,
+    }))
+    const c = useIssueQuery<R>({ initial: { mode: 'internal-global' }, fetcher })
+    await c.start()
+    serverRows = [{ id: 1 }, { id: 2 }] // a new row exists server-side now
+    const res = c.reconcile([{ id: 1 }, { id: 2 }])
+    expect(res).toBe('reload')
+    await Promise.resolve(); await Promise.resolve() // let refresh() settle
+    expect(c.issues.value.map((r) => r.id)).toEqual([1, 2])
+  })
 })
