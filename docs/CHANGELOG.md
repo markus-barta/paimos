@@ -5,6 +5,27 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.5] — 2026-06-21
+
+### Added
+
+- **IssueList v2 engine — staged behind `ff_issuelist_v2` (PAI-560).** A
+  reusable, canonical issue-list controller (`useIssueQuery`) that, when the
+  flag is enabled, powers the internal Issues and Project lists: one typed
+  query model with a stable fingerprint; a fetch lifecycle guarded by a
+  monotonic request id + AbortController + fingerprint (no overlapping or
+  out-of-order results); a normalized by-id row-window cache (precise
+  loaded-vs-all-matching, dedup, stable order); optimistic inline-edit
+  reconciliation (PAI-567); fingerprint-bound selection across lazy-loaded
+  sets (PAI-565); and controller-driven incremental refresh / delta
+  reconciliation (PAI-568). Mode-agnostic fetchers let the internal and
+  customer-portal lists share one engine (PAI-570).
+
+  **Disabled by default — no behavior change to the shipped lists.** This
+  release stages the engine in production for canary (enable
+  `localStorage.ff_issuelist_v2=1`) before it becomes the default and the v1
+  paths are removed (PAI-575).
+
 ## [3.10.4] — 2026-06-21
 
 ### Added
