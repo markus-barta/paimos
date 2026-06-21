@@ -82,7 +82,30 @@ export interface IssueListResult<T> {
   issues: T[]
   total: number
   hasMore: boolean
+  /** server revision after this window, for delta reconciliation (PAI-568). */
+  revision?: string
 }
+
+/** PAI-568: an incremental refresh patch for the current query. */
+export interface IssueListDelta<T> {
+  /** the query fingerprint this delta was computed for. */
+  fingerprint: string
+  /** the revision this delta builds on; a mismatch forces a full reload. */
+  baseRevision?: string
+  /** the revision after applying this delta. */
+  revision?: string
+  /** changed/updated rows that are already in the loaded window. */
+  upserts?: T[]
+  /** ids removed or no longer matching the query. */
+  deletes?: number[]
+  /** new total matching count (authoritative if present). */
+  total?: number
+  /** server signal: too many changes / reorder — caller should full-reload. */
+  full?: boolean
+}
+
+/** Outcome of applyDelta: rows patched, caller must full-reload, or ignored. */
+export type DeltaResult = 'patched' | 'reload' | 'ignored'
 
 export type IssueFetcher<T> = (
   query: IssueQuery,
@@ -162,6 +185,7 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
 
   const win = new IssueRowWindow<T>()
   const rev = ref(0) // bumped on every window mutation to drive the computeds
+  const revision = ref('') // server revision of the loaded window (PAI-568)
   const loading = ref(false)
   const error = ref<unknown>(null)
   const fingerprint = computed(() => queryFingerprint(query))
@@ -204,6 +228,7 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
       if (fingerprint.value !== fp) return    // query mutated mid-flight
       if (replace) win.setWindow(res.issues, res.total, res.hasMore, fp)
       else win.appendWindow(res.issues, res.total, res.hasMore)
+      if (res.revision !== undefined) revision.value = res.revision
       reassertPending() // optimistic edits win over a freshly loaded snapshot
       rev.value++
     } catch (e) {
@@ -332,6 +357,43 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     rev.value++
   }
 
+  // ── PAI-568: incremental refresh / delta reconciliation ──────────────────
+
+  /**
+   * Apply an incremental refresh delta to the loaded window. Patches changed
+   * rows and removes deleted/no-longer-matching ones in place (preserving row
+   * identity + order, which is what lets the host keep scroll, selection, the
+   * side panel, and pending edits). Falls back to a full reload when the delta
+   * can't be applied deterministically: stale query, server `full` flag, a
+   * revision gap, or a moved-in row that can't be placed in sort order.
+   */
+  function applyDelta(delta: IssueListDelta<T>): DeltaResult {
+    if (delta.fingerprint !== fingerprint.value) return 'ignored'
+    if (delta.full) return 'reload'
+    if (delta.baseRevision !== undefined && revision.value && delta.baseRevision !== revision.value) {
+      return 'reload' // we missed intermediate changes
+    }
+    const upserts = delta.upserts ?? []
+    // A row not already loaded is a moved-in/new match — we can't place it in
+    // the current sort order deterministically, so defer to a full reload.
+    for (const row of upserts) {
+      if (!win.has(row.id)) return 'reload'
+    }
+    for (const row of upserts) {
+      if (pending.has(row.id)) continue // a newer local edit wins
+      win.patch(row)
+    }
+    for (const id of delta.deletes ?? []) {
+      pending.delete(id)
+      win.remove(id, { decrementTotal: delta.total === undefined })
+    }
+    if (delta.total !== undefined) win.setTotal(delta.total)
+    if (delta.revision !== undefined) revision.value = delta.revision
+    reassertPending()
+    rev.value++
+    return 'patched'
+  }
+
   /** Initial load — call from the host's onMounted. */
   function start(): Promise<void> {
     return reload()
@@ -346,12 +408,14 @@ export function useIssueQuery<T extends { id: number }>(opts: UseIssueQueryOptio
     hasMore,
     complete,
     rowErrors,
+    revision: readonly(revision),
     loading: readonly(loading),
     error: readonly(error),
     start,
     mutateRow,
     confirmMutation,
     rejectMutation,
+    applyDelta,
     reload,
     refresh,
     setFilter,

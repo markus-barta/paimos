@@ -62,6 +62,13 @@ describe('IssueRowWindow', () => {
     expect(w.remove(2)).toBe(false) // already gone
   })
 
+  it('setTotal overrides the matching count', () => {
+    const w = new IssueRowWindow<Row>()
+    w.setWindow([{ id: 1 }], 1, false, 'fp')
+    w.setTotal(42)
+    expect(w.total).toBe(42)
+  })
+
   it('reset clears everything and rebinds the fingerprint', () => {
     const w = new IssueRowWindow<Row>()
     w.setWindow([{ id: 1 }], 1, false, 'fp')

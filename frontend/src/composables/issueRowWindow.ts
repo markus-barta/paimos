@@ -87,6 +87,9 @@ export class IssueRowWindow<T extends { id: number }> {
     }
   }
 
+  /** Set the server-authoritative total matching count. */
+  setTotal(total: number): void { this._total = total }
+
   /** Replace a loaded row in place. Returns false if the id isn't loaded. */
   patch(row: T): boolean {
     if (!this.byId.has(row.id)) return false

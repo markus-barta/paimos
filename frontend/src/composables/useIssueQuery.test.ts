@@ -195,3 +195,58 @@ describe('useIssueQuery inline reconciliation (PAI-567)', () => {
     expect(c.issues.value).toEqual([{ id: 1, status: 'b' }])
   })
 })
+
+describe('useIssueQuery delta refresh (PAI-568)', () => {
+  type R = { id: number; status?: string }
+  function ctrl(rows: R[], revision = 'r1') {
+    const fetcher = vi.fn(async (): Promise<IssueListResult<R>> => ({
+      issues: rows, total: rows.length, hasMore: false, revision,
+    }))
+    return useIssueQuery<R>({ initial: { mode: 'internal-global' }, fetcher })
+  }
+
+  it('patches a changed row in place, preserving order', async () => {
+    const c = ctrl([{ id: 1, status: 'a' }, { id: 2, status: 'a' }, { id: 3, status: 'a' }])
+    await c.start()
+    const res = c.applyDelta({ fingerprint: c.fingerprint.value, upserts: [{ id: 2, status: 'b' }] })
+    expect(res).toBe('patched')
+    expect(c.issues.value.map((r) => `${r.id}:${r.status}`)).toEqual(['1:a', '2:b', '3:a'])
+  })
+
+  it('removes a deleted row and decrements total', async () => {
+    const c = ctrl([{ id: 1 }, { id: 2 }, { id: 3 }])
+    await c.start()
+    expect(c.applyDelta({ fingerprint: c.fingerprint.value, deletes: [2] })).toBe('patched')
+    expect(c.issues.value.map((r) => r.id)).toEqual([1, 3])
+    expect(c.total.value).toBe(2)
+  })
+
+  it('falls back to reload for a moved-in (unloaded) row', async () => {
+    const c = ctrl([{ id: 1 }])
+    await c.start()
+    expect(c.applyDelta({ fingerprint: c.fingerprint.value, upserts: [{ id: 99 }] })).toBe('reload')
+    expect(c.issues.value.map((r) => r.id)).toEqual([1]) // unchanged
+  })
+
+  it('reloads on the full flag and ignores a stale fingerprint', async () => {
+    const c = ctrl([{ id: 1 }])
+    await c.start()
+    expect(c.applyDelta({ fingerprint: c.fingerprint.value, full: true })).toBe('reload')
+    expect(c.applyDelta({ fingerprint: 'other', deletes: [1] })).toBe('ignored')
+    expect(c.issues.value.map((r) => r.id)).toEqual([1])
+  })
+
+  it('reloads on a revision gap', async () => {
+    const c = ctrl([{ id: 1 }], 'r1')
+    await c.start()
+    expect(c.applyDelta({ fingerprint: c.fingerprint.value, baseRevision: 'r0', upserts: [{ id: 1 }] })).toBe('reload')
+  })
+
+  it('a delta cannot clobber a newer pending edit', async () => {
+    const c = ctrl([{ id: 1, status: 'todo' }])
+    await c.start()
+    c.mutateRow(1, { status: 'local' })
+    c.applyDelta({ fingerprint: c.fingerprint.value, upserts: [{ id: 1, status: 'server' }] })
+    expect(c.issues.value).toEqual([{ id: 1, status: 'local' }])
+  })
+})

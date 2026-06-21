@@ -106,6 +106,6 @@ export function createIssueFetcher(): IssueFetcher<Issue> {
     const issues = env.issues ?? []
     const total = env.total ?? issues.length
     const hasMore = env.has_more ?? total > issues.length
-    return { issues, total, hasMore }
+    return { issues, total, hasMore, revision: env.revision }
   }
 }
