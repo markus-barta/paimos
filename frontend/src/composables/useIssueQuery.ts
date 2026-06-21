@@ -37,6 +37,9 @@ import type { Ref, DeepReadonly } from 'vue'
 export type IssueQueryMode = 'internal-global' | 'internal-project' | 'portal'
 export type SortDir = 'asc' | 'desc'
 
+// All list filters hold signed string values matching the v1 representation
+// (a leading "!" negates, e.g. "!done" / "!7"). Numeric lists (tags, sprints,
+// projects, epic) carry id strings and are validated when encoded.
 export interface IssueFilters {
   status: string[]
   priority: string[]
@@ -44,10 +47,10 @@ export interface IssueFilters {
   costUnit: string[]
   release: string[]
   assignee: string[]
-  tags: number[]
-  projects: number[]
-  sprints: number[]
-  epic: number[]
+  tags: string[]
+  projects: string[]
+  sprints: string[]
+  epic: string[]
   dateField: string | null
   dateFrom: string | null
   dateTo: string | null

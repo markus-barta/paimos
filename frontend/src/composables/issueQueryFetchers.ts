@@ -1,0 +1,111 @@
+/*
+ * PAIMOS — Your Professional & Personal AI Project OS
+ * Copyright (C) 2026 Markus Barta <markus@barta.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public
+ * License along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * issueQueryFetchers — PAI-563.
+ *
+ * Maps a canonical IssueQuery onto the existing issue-list API, byte-for-byte
+ * matching the v1 param encoding (IssueList.vue `serverFilterQuery` +
+ * IssuesView/ProjectDetailView path builders) so migrating hosts onto
+ * useIssueQuery preserves behavior. One fetcher serves all three modes; only
+ * the base path differs, which is what lets internal and portal lists share
+ * the same engine (PAI-570/474).
+ */
+
+import { api } from '@/api/client'
+import { isNeg, posOf } from './useIssueFilter'
+import type { Issue, IssueListEnvelope } from '@/types'
+import type { IssueQuery, IssueFetcher } from './useIssueQuery'
+
+function appendSignedList(
+  params: URLSearchParams,
+  key: string,
+  values: string[],
+  opts: { numeric?: boolean } = {},
+) {
+  const out: string[] = []
+  for (const raw of values) {
+    const neg = isNeg(raw)
+    const value = posOf(raw)
+    if (opts.numeric) {
+      const n = Number(value)
+      if (!Number.isInteger(n) || n <= 0) continue
+    }
+    out.push(neg ? `!${value}` : value)
+  }
+  if (out.length > 0) params.set(key, out.join(','))
+}
+
+/** Encode a query as the URLSearchParams the issue-list endpoints expect. */
+export function buildIssueQueryParams(q: IssueQuery): URLSearchParams {
+  const p = new URLSearchParams()
+  const f = q.filters
+  appendSignedList(p, 'status', f.status)
+  appendSignedList(p, 'priority', f.priority)
+  appendSignedList(p, 'type', f.type)
+  appendSignedList(p, 'cost_unit', f.costUnit)
+  appendSignedList(p, 'release', f.release)
+  appendSignedList(p, 'tags', f.tags, { numeric: true })
+  appendSignedList(p, 'sprints', f.sprints, { numeric: true })
+  appendSignedList(p, 'assignee_id', f.assignee)
+  appendSignedList(p, 'project_ids', f.projects, { numeric: true })
+  appendSignedList(p, 'parent_id', f.epic, { numeric: true })
+  if (f.dateFrom || f.dateTo) {
+    p.set('date_field', f.dateField || 'completed')
+    if (f.dateFrom) p.set('date_from', f.dateFrom)
+    if (f.dateTo) p.set('date_to', f.dateTo)
+  }
+  p.set('fields', 'list')
+  p.set('limit', String(q.window.mode === 'all' ? 0 : q.window.limit))
+  p.set('offset', String(q.window.offset))
+  if (q.sort.key) {
+    p.set('sort', q.sort.key)
+    p.set('order', q.sort.dir)
+  }
+  const search = q.search.trim()
+  if (search.length >= 2) p.set('q', search)
+  return p
+}
+
+/** Endpoint for a query's mode. */
+export function issuePath(q: IssueQuery): string {
+  const qs = buildIssueQueryParams(q).toString()
+  switch (q.mode) {
+    case 'internal-project':
+      return `/projects/${q.projectId}/issues?${qs}`
+    case 'portal':
+      return `/portal/projects/${q.projectId}/issues?${qs}`
+    case 'internal-global':
+    default:
+      return `/issues?${qs}`
+  }
+}
+
+/**
+ * Real fetcher backed by the HTTP API. The AbortSignal from useIssueQuery is
+ * forwarded to api.get so a superseded request is actually cancelled, not just
+ * ignored on arrival.
+ */
+export function createIssueFetcher(): IssueFetcher<Issue> {
+  return async (q, signal) => {
+    const env = await api.get<IssueListEnvelope<Issue>>(issuePath(q), { signal })
+    const issues = env.issues ?? []
+    const total = env.total ?? issues.length
+    const hasMore = env.has_more ?? total > issues.length
+    return { issues, total, hasMore }
+  }
+}
