@@ -89,6 +89,9 @@ export function buildIssueQueryParams(q: IssueQuery): URLSearchParams {
 export function buildInternalParams(q: IssueQuery): URLSearchParams {
   const p = new URLSearchParams(q.rawFilter || '')
   p.set('fields', 'list')
+  // The project endpoint returns a plain array unless envelope=1; the global
+  // /issues endpoint always returns the envelope. Match v1 buildProjectIssuesUrl.
+  if (q.mode === 'internal-project') p.set('envelope', '1')
   p.set('limit', String(q.window.mode === 'all' ? 0 : q.window.limit))
   p.set('offset', String(q.window.offset))
   if (q.sort.key) {

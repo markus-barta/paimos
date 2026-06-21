@@ -97,6 +97,11 @@ describe('buildInternalParams / internalIssuePath', () => {
     expect(internalIssuePath(q({ mode: 'internal-project', projectId: 5 }))).toMatch(/^\/projects\/5\/issues\?/)
     expect(buildInternalParams(q({ window: { mode: 'all', limit: 0, offset: 0 } })).get('limit')).toBe('0')
   })
+
+  it('sets envelope=1 only for project mode', () => {
+    expect(buildInternalParams(q()).has('envelope')).toBe(false)
+    expect(buildInternalParams(q({ mode: 'internal-project', projectId: 5 })).get('envelope')).toBe('1')
+  })
 })
 
 describe('issuePath', () => {

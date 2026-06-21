@@ -20,6 +20,9 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
+import { useIssueQuery } from '@/composables/useIssueQuery'
+import { createInternalFetcher } from '@/composables/issueQueryFetchers'
+import { isIssueListV2 } from '@/config/featureFlags'
 import {
   buildProjectUpdatePayload,
   emptyProjectEditForm,
@@ -169,6 +172,30 @@ const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
 let projectLoadRequestSeq = 0
 let projectIssueRequestSeq = 0
 let projectSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+// PAI-570: IssueList v2 behind a flag for the project list. The controller owns
+// fetch + cache + orchestration; a mirror watcher syncs its outputs into the
+// existing refs so the many `issues` readers and the template stay unchanged.
+const V2 = isIssueListV2()
+const projectCtrl = useIssueQuery<Issue>({
+  initial: { mode: 'internal-project', projectId: projectId.value },
+  fetcher: createInternalFetcher(),
+})
+watch(
+  () => [
+    projectCtrl.issues.value, projectCtrl.total.value, projectCtrl.hasMore.value,
+    projectCtrl.loading.value, projectCtrl.serverFingerprint.value, projectCtrl.selectionFingerprint.value,
+  ],
+  () => {
+    if (!V2) return
+    issues.value = projectCtrl.issues.value
+    projectIssueTotal.value = projectCtrl.total.value
+    projectIssueHasMore.value = projectCtrl.hasMore.value
+    projectIssuesLoadingMore.value = projectCtrl.loading.value
+    projectIssueFingerprint.value = projectCtrl.serverFingerprint.value
+    projectIssueSelectionFingerprint.value = projectCtrl.selectionFingerprint.value
+  },
+)
 
 // PAI-246: header ⋯ menu (Export / Import). PAI-508 — the Edit project
 // item moved out to the admin-only Settings footer tab.
@@ -632,7 +659,10 @@ async function load() {
   })
   if (request !== projectLoadRequestSeq) return
   project.value = data.project
-  if (
+  if (V2) {
+    projectCtrl.query.projectId = projectId.value
+    await projectCtrl.start()
+  } else if (
     loadQuery === projectIssueQuery.value
     && loadFilters === projectServerFilterQuery.value
     && loadSortKey === projectIssueSortKey.value
@@ -700,6 +730,7 @@ async function replaceProjectIssues(q: string): Promise<boolean> {
 }
 
 async function loadMoreProjectIssues(limit: number) {
+  if (V2) { await projectCtrl.loadMore(); return }
   if (projectIssuesLoadingMore.value) return
   projectIssuesLoadingMore.value = true
   const request = ++projectIssueRequestSeq
@@ -733,6 +764,7 @@ async function loadMoreProjectIssues(limit: number) {
 }
 
 async function loadAllProjectIssues() {
+  if (V2) { await projectCtrl.setWindow('all'); return }
   if (projectIssuesLoadingMore.value) return
   projectIssuesLoadingMore.value = true
   projectIssueWindowMode.value = 'all'
@@ -745,6 +777,7 @@ async function loadAllProjectIssues() {
 
 // Re-fetch issues when search query changes (search-as-filter overlay).
 watch(trimmedProjectIssueQuery, (q) => {
+  if (V2) { projectCtrl.setSearch(q); return }
   if (projectSearchTimer) clearTimeout(projectSearchTimer)
   projectSearchTimer = setTimeout(() => {
     void replaceProjectIssues(q)
@@ -752,12 +785,14 @@ watch(trimmedProjectIssueQuery, (q) => {
 })
 
 function onServerFilterChange(query: string) {
+  if (V2) { void projectCtrl.setRawFilter(query); return }
   if (projectServerFilterQuery.value === query) return
   projectServerFilterQuery.value = query
   void replaceProjectIssues(projectIssueQuery.value)
 }
 
 function onServerSortChange(key: string, dir: 'asc' | 'desc') {
+  if (V2) { void projectCtrl.setSort(key, dir); return }
   if (projectIssueSortKey.value === key && projectIssueSortDir.value === dir) return
   projectIssueSortKey.value = key
   projectIssueSortDir.value = dir
@@ -804,8 +839,10 @@ function applyLieferberichtHandoffFromRoute() {
 watch(() => route.query.report, () => nextTick(applyLieferberichtHandoffFromRoute))
 
 function onCreated(issue: Issue) {
-  issues.value.push(issue)
-  projectIssueTotal.value += 1
+  if (V2) { void projectCtrl.refresh() } else {
+    issues.value.push(issue)
+    projectIssueTotal.value += 1
+  }
   if (issue.cost_unit && !costUnits.value.includes(issue.cost_unit))
     costUnits.value = [...costUnits.value, issue.cost_unit].sort()
   const releaseLabel = issue.type === 'release' ? issue.title : issue.release
@@ -814,11 +851,13 @@ function onCreated(issue: Issue) {
 }
 
 function onUpdated(issue: Issue) {
+  if (V2) { projectCtrl.confirmMutation(issue.id, issue); return }
   const idx = issues.value.findIndex(i => i.id === issue.id)
   if (idx >= 0) issues.value[idx] = issue
 }
 
 function onDeleted(id: number) {
+  if (V2) { void projectCtrl.refresh(); return }
   issues.value = issues.value.filter(i => i.id !== id)
   projectIssueTotal.value = Math.max(0, projectIssueTotal.value - 1)
 }
@@ -862,6 +901,7 @@ function refreshProjectIssueListFromHeader() {
 watch(
   [issueFreshnessStale, issueFreshnessCount],
   ([stale, count]) => {
+    if (V2) return // v2 refresh is controller-driven (PAI-568 follow-up)
     if (stale) issueRefreshPrompt.show(count, refreshProjectIssueListFromHeader)
     else issueRefreshPrompt.clear(refreshProjectIssueListFromHeader)
   },
