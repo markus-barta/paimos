@@ -58,11 +58,15 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sum estimate/AR across group members (issue_relations type='groups', source=container).
-	// Members of a cross-project container (e.g. an orphan sprint) can live
-	// in any project. Filter the members by the caller's accessible project
-	// set so totals never leak hours/amounts from projects the caller
-	// cannot view.
+	// Sum estimate/AR across container members. PAI-584 P2: membership now
+	// spans the `parent` edge (epic→ticket WBS, the new SSOT) AND legacy
+	// `groups` (cost_unit/release containers, until P7–P9 relationizes
+	// them). A DISTINCT-by-id IN subquery dedups members linked by both so
+	// COUNT/SUM never double-count an epic child that still has a legacy
+	// groups row. Members of a cross-project container (e.g. an orphan
+	// sprint) can live in any project — filter by the caller's accessible
+	// project set so totals never leak hours/amounts from projects the
+	// caller cannot view.
 	aggAccessFilter, aggAccessArgs := projectIDFilter(r, "i.project_id", true)
 	aggArgs := append([]any{id}, aggAccessArgs...)
 	var agg IssueAggregation
@@ -72,8 +76,10 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		       SUM(i.estimate_hours), SUM(i.estimate_lp),
 		       SUM(i.ar_hours), SUM(i.ar_lp)
 		FROM issues i
-		JOIN issue_relations ir ON ir.target_id = i.id
-		WHERE ir.source_id = ? AND ir.type = 'groups' AND i.deleted_at IS NULL`+aggAccessFilter,
+		WHERE i.id IN (
+			SELECT target_id FROM issue_relations
+			WHERE source_id = ? AND type IN ('parent','groups')
+		) AND i.deleted_at IS NULL`+aggAccessFilter,
 		aggArgs...).Scan(&agg.MemberCount, &agg.EstimateHours, &agg.EstimateLp, &agg.ArHours, &agg.ArLp)
 	if err != nil {
 		jsonError(w, "aggregation query failed", http.StatusInternalServerError)
@@ -141,7 +147,7 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		WHERE te.issue_id IN (
 			SELECT i.id FROM issue_relations ir
 			JOIN issues i ON i.id = ir.target_id
-			WHERE ir.source_id = ? AND ir.type = 'groups'`+aggAccessFilter+`
+			WHERE ir.source_id = ? AND ir.type IN ('parent','groups')`+aggAccessFilter+`
 			UNION ALL SELECT ?
 		)
 	`, actArgs...).Scan(&actualHours, &actualInternalCost)

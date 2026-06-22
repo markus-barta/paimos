@@ -128,8 +128,11 @@ func evaluateLessonCapturePrompt(issueID int64) (LessonCapturePromptResponse, er
 		parentID sql.NullInt64
 		issueKey string
 	)
+	// PAI-584 P2: parent comes from the `parent` edge, not i.parent_id.
 	err := db.DB.QueryRow(`
-		SELECT i.title, i.parent_id,
+		SELECT i.title,
+		       (SELECT source_id FROM issue_relations
+		         WHERE target_id = i.id AND type='parent') AS parent_id,
 		       COALESCE(p.key,'') || '-' || CAST(i.issue_number AS TEXT) AS issue_key
 		  FROM issues i
 		  LEFT JOIN projects p ON p.id = i.project_id
@@ -209,15 +212,17 @@ func lessonCaptureMatchAncestorEpic(parentID sql.NullInt64) (string, error) {
 	current := parentID.Int64
 	for hops := 0; hops < 5 && current > 0; hops++ {
 		var (
-			title    string
-			pType    string
-			nextPar  sql.NullInt64
+			title   string
+			pType   string
+			nextPar sql.NullInt64
 		)
 		err := db.DB.QueryRow(`
-			SELECT title, type, parent_id
-			  FROM issues
-			 WHERE id = ?
-			   AND deleted_at IS NULL
+			SELECT i.title, i.type,
+			       (SELECT source_id FROM issue_relations
+			         WHERE target_id = i.id AND type='parent') AS parent_id
+			  FROM issues i
+			 WHERE i.id = ?
+			   AND i.deleted_at IS NULL
 		`, current).Scan(&title, &pType, &nextPar)
 		if err == sql.ErrNoRows {
 			return "", nil

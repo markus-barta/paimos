@@ -304,7 +304,8 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN customers c ON c.id = p.customer_id
-		LEFT JOIN issues epic ON epic.id = i.parent_id AND epic.type = 'epic'` + windowJoin + `
+		LEFT JOIN issue_relations ep ON ep.target_id = i.id AND ep.type = 'parent'
+		LEFT JOIN issues epic ON epic.id = ep.source_id AND epic.type = 'epic'` + windowJoin + `
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY ` + orderBy + `
 	`

@@ -114,13 +114,15 @@ SELECT
   i.title,
   i.description,
   i.acceptance_criteria,
-  i.parent_id,
+  ep.source_id                                       AS parent_id,
   COALESCE(pp.key, '') || CASE WHEN pp.id IS NULL THEN '' ELSE '-' END
     || COALESCE(parent.issue_number, '')             AS parent_key,
   COALESCE(parent.title, '')                         AS parent_title
 FROM issues i
 LEFT JOIN projects p      ON p.id = i.project_id
-LEFT JOIN issues   parent ON parent.id = i.parent_id
+-- PAI-584 P2: parent comes from the parent edge, not i.parent_id.
+LEFT JOIN issue_relations ep ON ep.target_id = i.id AND ep.type='parent'
+LEFT JOIN issues   parent ON parent.id = ep.source_id
 LEFT JOIN projects pp     ON pp.id = parent.project_id
 WHERE i.id = ? AND i.deleted_at IS NULL
 `

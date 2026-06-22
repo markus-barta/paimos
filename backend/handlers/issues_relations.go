@@ -293,10 +293,23 @@ func ListIssuesByRelation(w http.ResponseWriter, r *http.Request) {
 		relType = "groups"
 	}
 
-	rows, err := db.DB.Query(
-		issueSelectCore+` JOIN issue_relations ir ON ir.target_id = i.id WHERE ir.source_id = ? AND ir.type = ? AND `+liveIssuesWhere+` ORDER BY ir.rank ASC, i.issue_number ASC`,
-		id, relType,
-	)
+	var rows *sql.Rows
+	if relType == "groups" {
+		// PAI-584 P2: container membership spans the `parent` edge
+		// (epic→ticket, the new SSOT) AND legacy `groups` (cost_unit /
+		// release containers, until P7–P9). Union via a DISTINCT IN
+		// subquery so a member linked by both isn't listed twice. rank
+		// ordering doesn't apply to groups membership — order by number.
+		rows, err = db.DB.Query(
+			issueSelectCore+` WHERE i.id IN (SELECT target_id FROM issue_relations WHERE source_id = ? AND type IN ('parent','groups')) AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`,
+			id,
+		)
+	} else {
+		rows, err = db.DB.Query(
+			issueSelectCore+` JOIN issue_relations ir ON ir.target_id = i.id WHERE ir.source_id = ? AND ir.type = ? AND `+liveIssuesWhere+` ORDER BY ir.rank ASC, i.issue_number ASC`,
+			id, relType,
+		)
+	}
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return

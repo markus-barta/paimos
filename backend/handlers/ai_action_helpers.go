@@ -150,7 +150,8 @@ SELECT
   COALESCE(p.key, '') || '-' || i.issue_number AS issue_key,
   i.type,
   COALESCE(i.title, ''),
-  i.parent_id,
+  -- PAI-584 P2: hierarchy comes from the parent edge, not i.parent_id.
+  (SELECT source_id FROM issue_relations WHERE target_id = i.id AND type='parent') AS parent_id,
   COALESCE(SUBSTR(i.description, 1, 200), '')
 FROM issues i
 JOIN projects p ON p.id = i.project_id

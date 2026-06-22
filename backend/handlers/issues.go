@@ -597,30 +597,40 @@ func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
 				posIDs = append(posIDs, v)
 			}
 		}
+		// PAI-584 P2: epic membership now reads the `parent` edge
+		// (source=parent, target=child) instead of i.parent_id. Semantics
+		// preserved exactly, incl. the signed-list "none" handling.
+		noParent := "NOT EXISTS (SELECT 1 FROM issue_relations ir_par WHERE ir_par.target_id = i.id AND ir_par.type='parent')"
+		hasParent := "EXISTS (SELECT 1 FROM issue_relations ir_par WHERE ir_par.target_id = i.id AND ir_par.type='parent')"
+		parentIn := func(ph string) string {
+			return "EXISTS (SELECT 1 FROM issue_relations ir_par WHERE ir_par.target_id = i.id AND ir_par.type='parent' AND ir_par.source_id IN (" + ph + "))"
+		}
 		if len(posIDs) > 0 && hasPosNone {
 			ph := buildPlaceholders(len(posIDs))
-			query += " AND (i.parent_id IN (" + ph + ") OR i.parent_id IS NULL)"
+			query += " AND (" + parentIn(ph) + " OR " + noParent + ")"
 			for _, id := range posIDs {
 				args = append(args, id)
 			}
 		} else if len(posIDs) > 0 {
 			ph := buildPlaceholders(len(posIDs))
-			query += " AND i.parent_id IN (" + ph + ")"
+			query += " AND " + parentIn(ph)
 			for _, id := range posIDs {
 				args = append(args, id)
 			}
 		} else if hasPosNone {
-			query += " AND i.parent_id IS NULL"
+			query += " AND " + noParent
 		}
 		if len(negIDs) > 0 {
 			ph := buildPlaceholders(len(negIDs))
-			query += " AND (i.parent_id IS NULL OR i.parent_id NOT IN (" + ph + "))"
+			// "parent not in neg list" — covers both null-parent and
+			// parent-not-in-list (matches the old IS NULL OR NOT IN).
+			query += " AND NOT " + parentIn(ph)
 			for _, id := range negIDs {
 				args = append(args, id)
 			}
 		}
 		if hasNegNone {
-			query += " AND i.parent_id IS NOT NULL"
+			query += " AND " + hasParent
 		}
 	}
 	if v := strings.TrimSpace(q.Get("portal_visibility")); v != "" {
