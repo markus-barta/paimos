@@ -120,7 +120,15 @@ func Open() error {
 	}
 
 	dbPath := filepath.Join(dataDir, brand.Default.DBFilename)
-	db, err := sql.Open("sqlite", dbPath)
+	// PAI-596: `_txlock=immediate` makes every transaction issue BEGIN IMMEDIATE,
+	// acquiring the write lock up front instead of lazily upgrading a deferred
+	// read→write transaction. Lazy upgrades fail instantly with SQLITE_BUSY when
+	// another connection has written since the read (snapshot conflict) — and
+	// busy_timeout CANNOT rescue that (waiting would deadlock). Grabbing the
+	// lock up front means busy_timeout actually applies, so concurrent writers
+	// queue (up to 5s) instead of erroring. Fixes intermittent 500s on
+	// PUT /api/issues and POST .../comments under concurrent writes.
+	db, err := sql.Open("sqlite", dbPath+"?_txlock=immediate")
 	if err != nil {
 		return fmt.Errorf("open sqlite: %w", err)
 	}
