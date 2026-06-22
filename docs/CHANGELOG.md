@@ -5,6 +5,22 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.7] — 2026-06-22
+
+### Fixed
+
+- **Intermittent `SQLITE_BUSY` 500s on issue writes (PAI-596).** `PUT /api/issues`
+  and `POST …/comments` could fail (~20% under concurrent writes) with "database
+  is locked". A deferred read→write transaction that has to upgrade its lock fails
+  instantly on a snapshot conflict, and `busy_timeout` can't rescue it. The DB now
+  opens with `_txlock=immediate`, so every transaction takes the write lock up
+  front (BEGIN IMMEDIATE) and `busy_timeout` applies — concurrent writers queue
+  instead of erroring. Verified: a mixed concurrent-write repro went from 10/50
+  failing to 0/50.
+- **Version-history keyboard navigation (PAI-382).** The history overlay now
+  supports ← / → to step through versions (Esc to close), with an always-visible
+  "← → navigate" hint beside the arrows.
+
 ## [3.10.6] — 2026-06-21
 
 ### Changed
