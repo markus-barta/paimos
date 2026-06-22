@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
 import { fmtShortDateTime } from '@/utils/formatTime'
@@ -36,6 +36,23 @@ defineExpose({ load })
 
 function historyPrev() { if (historyIndex.value > 0) historyIndex.value-- }
 function historyNext() { if (historyIndex.value < historyEntries.value.length - 1) historyIndex.value++ }
+
+// PAI-382: keyboard navigation through versions (left/right), with a visible
+// hint in the header. Listener is bound only while the overlay is open.
+function onHistoryKeydown(e: KeyboardEvent) {
+  if (!props.open) return
+  if (e.key === 'ArrowLeft') { e.preventDefault(); historyPrev() }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); historyNext() }
+  else if (e.key === 'Escape') { emit('close') }
+}
+watch(() => props.open, (open) => {
+  if (typeof window === 'undefined') return
+  if (open) window.addEventListener('keydown', onHistoryKeydown)
+  else window.removeEventListener('keydown', onHistoryKeydown)
+})
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('keydown', onHistoryKeydown)
+})
 
 const currentSnapshot  = computed(() => historyEntries.value[historyIndex.value]?.snapshot ?? null)
 const previousSnapshot = computed(() => historyIndex.value > 0 ? historyEntries.value[historyIndex.value - 1]?.snapshot ?? null : null)
@@ -102,6 +119,10 @@ function hasAttribution(entry: HistoryEntry | null): boolean {
                 Version {{ formatInteger(historyIndex + 1) }} of {{ formatInteger(historyEntries.length) }}
               </span>
               <button class="hist-arrow" :disabled="historyIndex === historyEntries.length - 1" @click="historyNext"><AppIcon name="chevron-right" :size="16" /></button>
+              <!-- PAI-382: keyboard navigation hint, always visible alongside the arrows. -->
+              <span class="history-kbd-hint" v-if="historyEntries.length > 1" aria-hidden="true">
+                <kbd>←</kbd><kbd>→</kbd> navigate
+              </span>
             </div>
             <div class="history-meta" v-if="currentEntry">
               <span class="history-by">{{ historyIndex === 0 ? 'Created' : 'Changed' }} by <strong>{{ currentEntry.changed_by_name || 'unknown' }}</strong></span>
@@ -226,6 +247,13 @@ function hasAttribution(entry: HistoryEntry | null): boolean {
 .hist-arrow:hover:not(:disabled) { background: var(--bg); border-color: var(--bp-blue); color: var(--bp-blue); }
 .hist-arrow:disabled { opacity: .35; cursor: default; }
 .history-pos { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
+/* PAI-382: always-visible keyboard navigation hint. */
+.history-kbd-hint { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.history-kbd-hint kbd {
+  display: inline-block; min-width: 16px; padding: 1px 4px; font-size: 11px; line-height: 1.4;
+  text-align: center; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; font-family: inherit;
+}
 .history-meta { display: flex; flex-direction: column; gap: .1rem; margin-left: auto; text-align: right; }
 .history-by  { font-size: 12px; color: var(--text-muted); }
 .history-by strong { color: var(--text); }
