@@ -258,6 +258,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
 			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/clone", handlers.CloneIssue)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}", handlers.DeleteIssue)
 			r.With(auth.RequireAdmin).Post("/issues/{id}/restore", handlers.RestoreIssue)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}/purge", handlers.PurgeIssue)

@@ -4906,6 +4906,134 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE entity_embeddings ADD COLUMN error TEXT NOT NULL DEFAULT ''`,
 			`CREATE INDEX IF NOT EXISTS idx_entity_embeddings_model_status ON entity_embeddings(project_id, model, status)`,
 		}},
+
+		// M118 / PAI-584 P1: introduce the 'parent' relation edge — the
+		// future single source of truth for the issue hierarchy
+		// (epic⊃ticket, ticket⊃task), replacing issues.parent_id. This
+		// phase is additive + reversible: existing rows are backfilled here,
+		// and from now on a pair of DB triggers mirrors every parent_id
+		// write into the edge. Reads stay on parent_id until P2/P3.
+		// Convention (per models.IssueRelation): source = parent,
+		// target = child — at most one parent per child.
+		//
+		// Why a trigger and not application-level dual-write: the whole
+		// point of an SSOT is that NO write path can diverge from it. A
+		// trigger can't be bypassed by handlers, batch ops, import,
+		// undo/redo replay, devseed, or raw SQL — whereas hand-wired
+		// dual-write must be remembered at every call site (and silently
+		// rots when a new one appears). This matches the codebase's
+		// existing derived-state-via-trigger pattern (content_rev).
+		//
+		// 'parent' is added to the DB CHECK but intentionally NOT to
+		// contracts.RelationTypes — the public relation/MCP API keeps
+		// rejecting type=parent until P4.
+		//
+		// SQLite can't ALTER a CHECK, so the usual rename+recreate+copy
+		// dance — same pattern as M67/M97.
+		{118, []string{
+			`ALTER TABLE issue_relations RENAME TO issue_relations_old117`,
+			`CREATE TABLE issue_relations (
+				source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				type      TEXT NOT NULL
+				          CHECK(type IN ('parent','groups','sprint','depends_on','impacts',
+				                         'follows_from','blocks','related',
+				                         'applies_to_memory')),
+				rank      INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (source_id, target_id, type)
+			)`,
+			`INSERT OR IGNORE INTO issue_relations
+			 SELECT source_id, target_id, type, rank FROM issue_relations_old117`,
+			`DROP TABLE issue_relations_old117`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_source
+			 ON issue_relations(source_id, type)`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
+			 ON issue_relations(target_id, type)`,
+			// Backfill (a): every issues.parent_id → parent edge (covers
+			// epic→ticket AND ticket→task). parent_id is an FK with
+			// ON DELETE SET NULL, so it can never dangle; the EXISTS is
+			// belt-and-suspenders. The <> guard drops any self-reference so
+			// the new table's PK/FK never rejects a degenerate row.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT i.parent_id, i.id, 'parent'
+			 FROM issues i
+			 WHERE i.parent_id IS NOT NULL
+			   AND i.parent_id <> i.id
+			   AND EXISTS (SELECT 1 FROM issues p WHERE p.id = i.parent_id)`,
+			// Backfill (b): EPIC-sourced groups relations → parent edge, but
+			// ONLY for children that (a) didn't already give a parent.
+			//
+			// `groups` is polymorphic container membership (epic→ticket,
+			// cost_unit→ticket, release→ticket). Only the EPIC→ticket links
+			// are part of the WBS tree the `parent` edge owns — cost_unit /
+			// release groupings are orthogonal axes (relationized later in
+			// P7–P9), so they must NOT be folded into `parent`. Hence the
+			// JOIN to src.type='epic'.
+			//
+			// This catches epic→ticket links created via the relation API
+			// alone (no parent_id) — the orphans invisible to reads, the
+			// original PAI-584 bug — while guaranteeing one-parent-per-child:
+			// parent_id always wins (NOT EXISTS), and multiple divergent epic
+			// sources collapse to one (MIN+GROUP BY). Without this a
+			// parent_id/groups disagreement would seed two parent edges,
+			// fanning out reports and blocking P5's unique index.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT MIN(g.source_id), g.target_id, 'parent'
+			 FROM issue_relations g
+			 JOIN issues src ON src.id = g.source_id AND src.type = 'epic'
+			 WHERE g.type='groups'
+			   AND NOT EXISTS (
+			       SELECT 1 FROM issue_relations existing
+			       WHERE existing.target_id = g.target_id
+			         AND existing.type = 'parent')
+			 GROUP BY g.target_id`,
+			// Recreate the content_rev list-freshness triggers (added in
+			// M115). RENAME-ing then DROP-ing the old table took its triggers
+			// with it; without these, relation changes (sprint membership,
+			// the new parent edges) would stop bumping issues.content_rev and
+			// SSE/list caches would go stale. Identical bodies to M115. Done
+			// after the backfill so the one-time edge seeding doesn't churn
+			// content_rev for every issue.
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ai
+				AFTER INSERT ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_au
+				AFTER UPDATE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id, NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ad
+				AFTER DELETE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id);
+				END`,
+			// Parent-edge mirror triggers — the dual-write bridge. They keep
+			// the `parent` edge (source=parent, target=child) in lockstep
+			// with issues.parent_id for every write, unbypassably.
+			//   ai: a new issue with a parent_id gets its edge.
+			//   au: a parent_id change rewrites the edge (clear → no edge).
+			// The WHEN guards skip no-op updates and self-references; the FK
+			// ON DELETE CASCADE on issue_relations cleans edges when a row is
+			// hard-deleted, so no delete trigger is needed. recursive_triggers
+			// is OFF (default), so these edge writes do NOT cascade to the
+			// content_rev listrev triggers above — matching pre-P1 behavior
+			// where a bare parent_id change didn't bump content_rev.
+			`CREATE TRIGGER IF NOT EXISTS trg_parent_edge_ai
+				AFTER INSERT ON issues
+				WHEN NEW.parent_id IS NOT NULL AND NEW.parent_id <> NEW.id
+				BEGIN
+					INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+						VALUES (NEW.parent_id, NEW.id, 'parent');
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_parent_edge_au
+				AFTER UPDATE OF parent_id ON issues
+				WHEN OLD.parent_id IS NOT NEW.parent_id
+				BEGIN
+					DELETE FROM issue_relations WHERE target_id = NEW.id AND type='parent';
+					INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+						SELECT NEW.parent_id, NEW.id, 'parent'
+						WHERE NEW.parent_id IS NOT NULL AND NEW.parent_id <> NEW.id;
+				END`,
+		}},
 	}
 
 	for _, m := range migrations {
