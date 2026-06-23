@@ -803,15 +803,22 @@ func PortalRejectIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAI-584 P6: parent_id column dropped — the rejection task's parent (the
+	// rejected issue) is written as a `parent` edge via setParentEdge below.
 	sqlRes, err := tx.ExecContext(r.Context(), `
-		INSERT INTO issues (project_id, issue_number, type, parent_id, title, description,
+		INSERT INTO issues (project_id, issue_number, type, title, description,
 			status, priority, assignee_id, created_by, created_at, updated_at, notes)
-		VALUES (?, ?, 'task', ?, ?, ?, 'backlog', ?, ?, ?, ?, ?, '[portal rejection]')
-	`, projectID, nextNum, issueID, title, description, priority, assigneeID, user.ID, now, now)
+		VALUES (?, ?, 'task', ?, ?, 'backlog', ?, ?, ?, ?, ?, '[portal rejection]')
+	`, projectID, nextNum, title, description, priority, assigneeID, user.ID, now, now)
 	if handleDBError(w, err, "issue") {
 		return
 	}
 	childID, _ := sqlRes.LastInsertId()
+
+	if err := setParentEdge(r.Context(), tx, childID, &issueID); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	// Reopen parent to in-progress, clear accepted_at/accepted_by
 	if _, err := tx.ExecContext(r.Context(), "UPDATE issues SET status='in-progress', accepted_at=NULL, accepted_by=NULL, updated_at=? WHERE id=?", now, issueID); err != nil {
@@ -892,8 +899,11 @@ func PortalUndoReject(w http.ResponseWriter, r *http.Request) {
 	// Find today's rejection child task
 	today := time.Now().UTC().Format("2006-01-02")
 	var childID int64
+	// PAI-584 P6: children via the `parent` edge, not parent_id.
 	err = db.DB.QueryRow(
-		"SELECT id FROM issues WHERE parent_id=? AND notes='[portal rejection]' AND created_at LIKE ? LIMIT 1",
+		`SELECT id FROM issues
+		 WHERE id IN (SELECT target_id FROM issue_relations WHERE source_id=? AND type='parent')
+		   AND notes='[portal rejection]' AND created_at LIKE ? LIMIT 1`,
 		issueID, today+"%",
 	).Scan(&childID)
 	if err != nil {
@@ -982,7 +992,9 @@ func AcceptanceLog(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(pp.key || '-' || i.issue_number, ''),
 		       i.title, COALESCE(u.username, ''), i.created_at
 		FROM issues i
-		JOIN issues parent ON parent.id = i.parent_id
+		-- PAI-584 P6: parent via the parent edge, not i.parent_id.
+		JOIN issue_relations pr ON pr.target_id = i.id AND pr.type='parent'
+		JOIN issues parent ON parent.id = pr.source_id
 		LEFT JOIN projects pp ON pp.id = i.project_id
 		LEFT JOIN users u ON u.id = i.created_by
 		WHERE i.project_id = ? AND i.notes = '[portal rejection]' AND i.deleted_at IS NULL

@@ -771,7 +771,9 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 		if !ok {
 			continue
 		}
-		if _, err := db.DB.Exec("UPDATE issues SET parent_id=? WHERE id=?", parentID, issueID); err != nil {
+		// PAI-584 P6: parent_id column dropped — write the `parent` edge.
+		pid := parentID
+		if err := setParentEdge(context.Background(), db.DB, issueID, &pid); err != nil {
 			log.Printf("JiraImport: set parent id=%d parent=%d: %v", issueID, parentID, err)
 		}
 	}

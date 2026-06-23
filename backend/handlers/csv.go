@@ -64,7 +64,7 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 	// Optional ?ids=1,2,3 filter — only export selected issues
 	query := `
 		SELECT
-			i.id, i.issue_number, i.type, i.parent_id, p.issue_number,
+			i.id, i.issue_number, i.type, pr.source_id, p.issue_number,
 			i.title, i.description, i.acceptance_criteria, i.notes,
 			i.status, i.priority, i.cost_unit, i.release,
 			COALESCE(u.username, ''),
@@ -81,7 +81,9 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 			), 0),
 			i.time_override
 		FROM issues i
-		LEFT JOIN issues p   ON p.id = i.parent_id
+		-- PAI-584 P6: parent via the parent edge, not i.parent_id.
+		LEFT JOIN issue_relations pr ON pr.target_id = i.id AND pr.type='parent'
+		LEFT JOIN issues p   ON p.id = pr.source_id
 		LEFT JOIN users u    ON u.id = i.assignee_id
 		LEFT JOIN projects proj ON proj.id = i.project_id
 		WHERE i.project_id = ? AND i.deleted_at IS NULL`
@@ -458,11 +460,11 @@ func ImportCSVGlobal(w http.ResponseWriter, r *http.Request) {
 	// Include project_id in response so frontend can navigate to it
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"project_id": projectID,
+		"project_id":  projectID,
 		"project_key": projKey,
-		"imported":   result.Imported,
-		"updated":    result.Updated,
-		"skipped":    result.Skipped,
-		"errors":     result.Errors,
+		"imported":    result.Imported,
+		"updated":     result.Updated,
+		"skipped":     result.Skipped,
+		"errors":      result.Errors,
 	})
 }

@@ -63,9 +63,9 @@ func AcceptanceReport(w http.ResponseWriter, r *http.Request) {
 		Key   string
 		Title string
 		// rejection details
-		TaskKey     string
-		TaskTitle   string
-		IsRejected  bool
+		TaskKey    string
+		TaskTitle  string
+		IsRejected bool
 	}
 
 	var accepted []reportItem
@@ -98,7 +98,9 @@ func AcceptanceReport(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(pp.key || '-' || i.issue_number, ''),
 		       i.title
 		FROM issues i
-		JOIN issues parent ON parent.id = i.parent_id
+		-- PAI-584 P6: parent via the parent edge, not i.parent_id.
+		JOIN issue_relations pr ON pr.target_id = i.id AND pr.type='parent'
+		JOIN issues parent ON parent.id = pr.source_id
 		LEFT JOIN projects pp ON pp.id = i.project_id
 		WHERE i.project_id = ? AND i.notes = '[portal rejection]' AND i.created_at LIKE ? AND i.deleted_at IS NULL
 		ORDER BY i.created_at

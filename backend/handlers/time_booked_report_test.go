@@ -58,7 +58,8 @@ func TestTimeBookedReport_MoneyPaths(t *testing.T) {
 
 	epicID := mkEpic("Epic")
 	aID := mkIssue("A", "delivered")
-	if _, err := db.DB.Exec("UPDATE issues SET parent_id=? WHERE id=?", epicID, aID); err != nil {
+	// PAI-584 P6: parent_id column dropped — link via the parent edge.
+	if _, err := db.DB.Exec("INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,'parent')", epicID, aID); err != nil {
 		t.Fatalf("link epic: %v", err)
 	}
 	bID := mkIssue("B", "delivered")

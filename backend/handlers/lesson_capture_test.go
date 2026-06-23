@@ -139,10 +139,14 @@ func TestLessonCapturePrompt_AncestorEpicChain(t *testing.T) {
 	epicID, _ := res.LastInsertId()
 
 	res, _ = db.DB.Exec(`
-		INSERT INTO issues(project_id, issue_number, type, title, status, priority, parent_id)
-		VALUES(?, 101, 'epic', 'Sub-epic', 'backlog', 'medium', ?)
-	`, projID, epicID)
+		INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+		VALUES(?, 101, 'epic', 'Sub-epic', 'backlog', 'medium')
+	`, projID)
 	subEpicID, _ := res.LastInsertId()
+	// PAI-584 P6: parent_id column dropped — chain via the parent edge.
+	if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,'parent')`, epicID, subEpicID); err != nil {
+		t.Fatalf("seed sub-epic parent edge: %v", err)
+	}
 
 	ticketID := seedTicketRow(t, projID, 1, "Patch leak", &subEpicID, "")
 

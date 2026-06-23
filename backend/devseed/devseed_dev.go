@@ -134,7 +134,7 @@ func Run() error {
 }
 
 // seedUsers idempotently inserts dev_admin / dev_editor / dev_viewer /
-// dev_outsider with pinned ids. password='' so the normal /api/auth/login
+// dev_outsider with pinned ids. password=” so the normal /api/auth/login
 // flow's bcrypt compare always fails — the only way in is dev-login.
 func seedUsers(tx *sql.Tx) error {
 	for _, u := range devUsers {
@@ -440,8 +440,8 @@ func seedRichACME(tx *sql.Tx, pid int64) error {
 				if e%2 == 1 {
 					user = devEditor
 				}
-				start := daysAgo(28 - i - e*3)             // spread out chronologically
-				stopOffset := 30 + rng.Intn(150)            // 30–180 minutes per entry
+				start := daysAgo(28 - i - e*3)   // spread out chronologically
+				stopOffset := 30 + rng.Intn(150) // 30–180 minutes per entry
 				stop := time.Now().Add(-time.Duration(28-i-e*3) * 24 * time.Hour).
 					Add(time.Duration(stopOffset) * time.Minute).UTC().
 					Format("2006-01-02 15:04:05")
@@ -527,20 +527,25 @@ func seedRichBUGZ(tx *sql.Tx, pid int64) error {
 		childCount := 3 + rng.Intn(2)
 		for c := 0; c < childCount; c++ {
 			res, err := tx.Exec(`
-				INSERT INTO issues (project_id, title, status, priority, type, issue_number, assignee_id, parent_id)
-				VALUES (?, ?, ?, ?, 'ticket', ?, ?, ?)
+				INSERT INTO issues (project_id, title, status, priority, type, issue_number, assignee_id)
+				VALUES (?, ?, ?, ?, 'ticket', ?, ?)
 			`, pid,
 				fmt.Sprintf("child of #%d — sub-task %d", eid, c+1),
 				statuses[rng.Intn(len(statuses))],
 				priorities[rng.Intn(len(priorities))],
 				num,
-				users[rng.Intn(len(users))],
-				eid)
+				users[rng.Intn(len(users))])
 			if err != nil {
 				return fmt.Errorf("insert BUGZ child of epic=%d: %w", eid, err)
 			}
 			num++
-			_ = res
+			// PAI-584 P6: hierarchy is the `parent` edge (parent_id dropped).
+			childID, _ := res.LastInsertId()
+			if _, err := tx.Exec(
+				`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?,?,'parent')`,
+				eid, childID); err != nil {
+				return fmt.Errorf("insert BUGZ child parent edge epic=%d: %w", eid, err)
+			}
 		}
 	}
 

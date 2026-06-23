@@ -88,13 +88,14 @@ func TestPerf_ListIssues(t *testing.T) {
 	insertIssue := func(iType, title string, parentID *int64, assigneeID int64) int64 {
 		num := issueNum
 		issueNum++
+		// PAI-584 P6: parent_id column dropped — hierarchy via the parent edge.
 		res, err := tx.Exec(`INSERT INTO issues(
-			project_id, issue_number, type, parent_id, title,
+			project_id, issue_number, type, title,
 			description, acceptance_criteria, notes,
 			status, priority, cost_unit, release, assignee_id,
 			estimate_hours, ar_hours, created_by
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			projectID, num, iType, parentID, title,
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			projectID, num, iType, title,
 			fmt.Sprintf("Description for %s — lorem ipsum dolor sit amet", title),
 			"- [ ] AC item 1\n- [ ] AC item 2\n- [ ] AC item 3",
 			"Some notes here",
@@ -110,6 +111,11 @@ func TestPerf_ListIssues(t *testing.T) {
 			t.Fatalf("insert issue %d: %v", num, err)
 		}
 		id, _ := res.LastInsertId()
+		if parentID != nil {
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,'parent')`, *parentID, id); err != nil {
+				t.Fatalf("insert parent edge for %d: %v", num, err)
+			}
+		}
 		allIDs = append(allIDs, id)
 		return id
 	}

@@ -425,8 +425,12 @@ func fetchIssueMutationSnapshotTx(tx *sql.Tx, issueID int64) (issueMutationSnaps
 	var billingType, startDate, endDate, groupState, sprintState, jiraID, jiraVersion, jiraText, color, deletedAt sql.NullString
 	var totalBudget, rateHourly, rateLp, estimateHours, estimateLp, arHours, arLp, timeOverride sql.NullFloat64
 	var assigneeID sql.NullInt64
+	// PAI-584 P6: parent_id column dropped — capture the parent from the
+	// `parent` edge so undo/redo can restore it via setParentEdge.
 	err := tx.QueryRow(`
-		SELECT id, project_id, type, parent_id, title, description, acceptance_criteria, notes,
+		SELECT id, project_id, type,
+		       (SELECT source_id FROM issue_relations WHERE target_id = issues.id AND type='parent'),
+		       title, description, acceptance_criteria, notes,
 		       report_summary,
 		       status, priority, cost_unit, release, billing_type, total_budget, rate_hourly, rate_lp,
 		       start_date, end_date, group_state, sprint_state, jira_id, jira_version, jira_text,
@@ -611,7 +615,7 @@ func nullFloat64Ptr(v sql.NullFloat64) *float64 {
 func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot) error {
 	_, err := tx.Exec(`
 		UPDATE issues SET
-			type = ?, parent_id = ?, title = ?, description = ?, acceptance_criteria = ?, notes = ?,
+			type = ?, title = ?, description = ?, acceptance_criteria = ?, notes = ?,
 			report_summary = ?,
 			status = ?, priority = ?, cost_unit = ?, release = ?, billing_type = ?, total_budget = ?,
 			rate_hourly = ?, rate_lp = ?, start_date = ?, end_date = ?, group_state = ?, sprint_state = ?,
@@ -619,7 +623,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 			ar_lp = ?, time_override = ?, color = ?, assignee_id = ?, deleted_at = ?, updated_at = ?
 		WHERE id = ?
 	`,
-		snap.Type, snap.ParentID, snap.Title, snap.Description, snap.AcceptanceCriteria, snap.Notes,
+		snap.Type, snap.Title, snap.Description, snap.AcceptanceCriteria, snap.Notes,
 		snap.ReportSummary,
 		snap.Status, snap.Priority, snap.CostUnit, snap.Release, snap.BillingType, snap.TotalBudget,
 		snap.RateHourly, snap.RateLp, snap.StartDate, snap.EndDate, snap.GroupState, snap.SprintState,
@@ -627,7 +631,12 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 		snap.ArLp, snap.TimeOverride, snap.Color, snap.AssigneeID, snap.DeletedAt, time.Now().UTC().Format("2006-01-02 15:04:05"),
 		issueID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	// PAI-584 P6: restore the hierarchy via the `parent` edge (parent_id
+	// column dropped). snap.ParentID was captured from the edge.
+	return setParentEdge(context.Background(), tx, issueID, snap.ParentID)
 }
 
 func applyIssueTagSnapshotTx(ctx context.Context, tx *sql.Tx, snap issueTagMutationSnapshot) error {

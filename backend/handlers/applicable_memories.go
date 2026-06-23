@@ -59,8 +59,8 @@ type ApplicableMemory struct {
 	Title      string   `json:"title"`
 	Preview    string   `json:"preview,omitempty"` // first non-empty body line
 	IssueKey   string   `json:"issue_key,omitempty"`
-	Score      int      `json:"score,omitempty"`     // suggest=1 only
-	Matched    []string `json:"matched,omitempty"`   // suggest=1 only
+	Score      int      `json:"score,omitempty"`   // suggest=1 only
+	Matched    []string `json:"matched,omitempty"` // suggest=1 only
 }
 
 // ListApplicableMemories powers GET /api/issues/:id/applicable-memories.
@@ -198,8 +198,11 @@ func loadSuggestContext(issueID int64) (suggestContext, error) {
 		parentID  sql.NullInt64
 		release   sql.NullString
 	)
+	// PAI-584 P6: parent via the parent edge, not i.parent_id.
 	err := db.DB.QueryRow(`
-		SELECT i.project_id, i.parent_id, i.release
+		SELECT i.project_id,
+		       (SELECT source_id FROM issue_relations WHERE target_id = i.id AND type='parent'),
+		       i.release
 		  FROM issues i
 		 WHERE i.id = ?
 		   AND i.deleted_at IS NULL

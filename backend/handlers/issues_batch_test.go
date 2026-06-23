@@ -301,37 +301,44 @@ func TestBatchUpdate_AllScalarFields(t *testing.T) {
 	}
 
 	type expect struct {
+		id   int64
 		col  string
 		want any
 	}
+	// PAI-584 P6: parent_id is the `parent` edge now (column dropped) — checked
+	// separately below, not as a column in this scalar loop. Cases carry their
+	// own id so dropping the parent_id column case doesn't misalign indexing.
 	cases := []expect{
-		{"status", "in-progress"},
-		{"priority", "high"},
-		{"assignee_id", adminID},
-		{"parent_id", epicID},
-		{"cost_unit", "ENG-A"},
-		{"release", "v1.2"},
+		{ids[0], "status", "in-progress"},
+		{ids[1], "priority", "high"},
+		{ids[2], "assignee_id", adminID},
+		{ids[4], "cost_unit", "ENG-A"},
+		{ids[5], "release", "v1.2"},
 	}
-	for i, c := range cases {
+	for _, c := range cases {
 		var got any
 		if err := db.DB.QueryRow(
-			"SELECT "+c.col+" FROM issues WHERE id=?", ids[i],
+			"SELECT "+c.col+" FROM issues WHERE id=?", c.id,
 		).Scan(&got); err != nil {
-			t.Errorf("read %s for id=%d: %v", c.col, ids[i], err)
+			t.Errorf("read %s for id=%d: %v", c.col, c.id, err)
 			continue
 		}
 		// SQLite returns int64 for INTEGER columns; coerce ints for compare.
 		if g, ok := got.(int64); ok {
 			if w, ok := c.want.(int64); ok && g != w {
-				t.Errorf("id=%d %s = %d, want %d", ids[i], c.col, g, w)
+				t.Errorf("id=%d %s = %d, want %d", c.id, c.col, g, w)
 			}
 			continue
 		}
 		gs := strings.TrimSpace(toStr(got))
 		ws := toStr(c.want)
 		if gs != ws {
-			t.Errorf("id=%d %s = %q, want %q", ids[i], c.col, gs, ws)
+			t.Errorf("id=%d %s = %q, want %q", c.id, c.col, gs, ws)
 		}
+	}
+	// parent_id case (ids[3]) → verify the parent edge to the epic.
+	if got := parentEdgeSources(t, ids[3]); len(got) != 1 || got[0] != epicID {
+		t.Errorf("batch parent_id update: parent edge for %d = %v, want [%d]", ids[3], got, epicID)
 	}
 }
 
@@ -473,10 +480,14 @@ func TestBatchUpdate_ExplicitNullClearsAssigneeAndParent(t *testing.T) {
 		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
 		projID, 1, "epic", "Epic", "backlog")
 	epicID, _ := epicRes.LastInsertId()
+	// PAI-584 P6: parent_id column dropped — seed the parent edge.
 	r, _ := db.DB.Exec(
-		`INSERT INTO issues(project_id,issue_number,type,parent_id,title,status,assignee_id) VALUES(?,?,?,?,?,?,?)`,
-		projID, 2, "ticket", epicID, "T", "backlog", adminID)
+		`INSERT INTO issues(project_id,issue_number,type,title,status,assignee_id) VALUES(?,?,?,?,?,?)`,
+		projID, 2, "ticket", "T", "backlog", adminID)
 	id1, _ := r.LastInsertId()
+	if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,'parent')`, epicID, id1); err != nil {
+		t.Fatalf("seed parent edge: %v", err)
+	}
 
 	body := []map[string]any{
 		{"ref": itoa(id1), "fields": map[string]any{
@@ -490,14 +501,14 @@ func TestBatchUpdate_ExplicitNullClearsAssigneeAndParent(t *testing.T) {
 		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
 	}
 
-	// Verify both columns went to NULL.
-	var assignee, parent any
-	_ = db.DB.QueryRow(`SELECT assignee_id, parent_id FROM issues WHERE id=?`, id1).Scan(&assignee, &parent)
+	// Verify assignee column cleared and the parent edge removed.
+	var assignee any
+	_ = db.DB.QueryRow(`SELECT assignee_id FROM issues WHERE id=?`, id1).Scan(&assignee)
 	if assignee != nil {
 		t.Errorf("assignee_id = %v (want nil after explicit-null clear)", assignee)
 	}
-	if parent != nil {
-		t.Errorf("parent_id = %v (want nil after explicit-null clear)", parent)
+	if got := parentEdgeSources(t, id1); len(got) != 0 {
+		t.Errorf("parent edge = %v (want none after explicit-null clear)", got)
 	}
 }
 
@@ -514,10 +525,14 @@ func TestBatchUpdate_AbsentKeysDoNotClear(t *testing.T) {
 		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
 		projID, 1, "epic", "Epic", "backlog")
 	epicID, _ := epicRes.LastInsertId()
+	// PAI-584 P6: parent_id column dropped — seed the parent edge.
 	r, _ := db.DB.Exec(
-		`INSERT INTO issues(project_id,issue_number,type,parent_id,title,status,assignee_id) VALUES(?,?,?,?,?,?,?)`,
-		projID, 2, "ticket", epicID, "T", "backlog", adminID)
+		`INSERT INTO issues(project_id,issue_number,type,title,status,assignee_id) VALUES(?,?,?,?,?,?)`,
+		projID, 2, "ticket", "T", "backlog", adminID)
 	id1, _ := r.LastInsertId()
+	if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,'parent')`, epicID, id1); err != nil {
+		t.Fatalf("seed parent edge: %v", err)
+	}
 
 	body := []map[string]any{
 		{"ref": itoa(id1), "fields": map[string]any{"status": "in-progress"}},
@@ -527,13 +542,13 @@ func TestBatchUpdate_AbsentKeysDoNotClear(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
 	}
-	var assignee, parent sql.NullInt64
-	_ = db.DB.QueryRow(`SELECT assignee_id, parent_id FROM issues WHERE id=?`, id1).Scan(&assignee, &parent)
+	var assignee sql.NullInt64
+	_ = db.DB.QueryRow(`SELECT assignee_id FROM issues WHERE id=?`, id1).Scan(&assignee)
 	if !assignee.Valid || assignee.Int64 != adminID {
 		t.Errorf("assignee_id=%v (want %d) — absent key wrongly cleared the column", assignee, adminID)
 	}
-	if !parent.Valid || parent.Int64 != epicID {
-		t.Errorf("parent_id=%v (want %d) — absent key wrongly cleared the column", parent, epicID)
+	if got := parentEdgeSources(t, id1); len(got) != 1 || got[0] != epicID {
+		t.Errorf("parent edge = %v (want [%d]) — absent key wrongly cleared it", got, epicID)
 	}
 }
 
@@ -671,10 +686,14 @@ func TestSinglePut_ExplicitNullClearsAssigneeAndParent(t *testing.T) {
 		`INSERT INTO issues(project_id,issue_number,type,title,status) VALUES(?,?,?,?,?)`,
 		projID, 1, "epic", "Epic", "backlog")
 	epicID, _ := epicRes.LastInsertId()
+	// PAI-584 P6: parent_id column dropped — seed the parent edge.
 	r, _ := db.DB.Exec(
-		`INSERT INTO issues(project_id,issue_number,type,parent_id,title,status,assignee_id) VALUES(?,?,?,?,?,?,?)`,
-		projID, 2, "ticket", epicID, "T", "backlog", adminID)
+		`INSERT INTO issues(project_id,issue_number,type,title,status,assignee_id) VALUES(?,?,?,?,?,?)`,
+		projID, 2, "ticket", "T", "backlog", adminID)
 	id1, _ := r.LastInsertId()
+	if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,'parent')`, epicID, id1); err != nil {
+		t.Fatalf("seed parent edge: %v", err)
+	}
 
 	resp := ts.put(t, "/api/issues/"+itoa(id1), ts.adminCookie, map[string]any{
 		"assignee_id": nil,
@@ -684,13 +703,13 @@ func TestSinglePut_ExplicitNullClearsAssigneeAndParent(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status=%d, body=%s", resp.StatusCode, b)
 	}
-	var assignee, parent any
-	_ = db.DB.QueryRow(`SELECT assignee_id, parent_id FROM issues WHERE id=?`, id1).Scan(&assignee, &parent)
+	var assignee any
+	_ = db.DB.QueryRow(`SELECT assignee_id FROM issues WHERE id=?`, id1).Scan(&assignee)
 	if assignee != nil {
 		t.Errorf("assignee_id = %v (want nil)", assignee)
 	}
-	if parent != nil {
-		t.Errorf("parent_id = %v (want nil)", parent)
+	if got := parentEdgeSources(t, id1); len(got) != 0 {
+		t.Errorf("parent edge = %v (want none after clear)", got)
 	}
 }
 

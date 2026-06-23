@@ -37,12 +37,14 @@ func TestParentEdgeReads(t *testing.T) {
 	ts := newTestServer(t)
 	pid := seedBatchProject(t, "PAI", "PAI")
 
-	mk := func(num int, typ, title string, parent any, estHours any) int64 {
+	// PAI-584 P6: parent_id column dropped — issues are seeded parentless and
+	// the hierarchy is established via parent edges (rel).
+	mk := func(num int, typ, title string, estHours any) int64 {
 		t.Helper()
 		res, err := db.DB.Exec(
-			`INSERT INTO issues(project_id,issue_number,type,title,status,priority,estimate_hours,parent_id)
-			 VALUES(?,?,?,?,'backlog','medium',?,?)`,
-			pid, num, typ, title, estHours, parent)
+			`INSERT INTO issues(project_id,issue_number,type,title,status,priority,estimate_hours)
+			 VALUES(?,?,?,?,'backlog','medium',?)`,
+			pid, num, typ, title, estHours)
 		if err != nil {
 			t.Fatalf("seed issue %d: %v", num, err)
 		}
@@ -57,22 +59,17 @@ func TestParentEdgeReads(t *testing.T) {
 		}
 	}
 
-	epic := mk(1, "epic", "Epic", nil, nil)
-	// Orphan: parent edge only, parent_id NULL (the PAI-584 bug scenario).
-	orphan := mk(2, "ticket", "Edge-only child", nil, 3.0)
+	epic := mk(1, "epic", "Epic", nil)
+	// Orphan: linked to its epic ONLY via the parent edge (the PAI-584 bug
+	// scenario — no parent_id was ever set; the column no longer exists).
+	orphan := mk(2, "ticket", "Edge-only child", 3.0)
 	rel(epic, orphan, "parent")
-	// Stale column: parent_id set but NO parent edge → must be invisible now.
-	// The parent-sync trigger auto-creates the edge on insert, so delete it
-	// to force the divergent state this assertion needs (proving reads follow
-	// the edge, not the column).
-	staleEpic := mk(3, "epic", "Stale epic", nil, nil)
-	stale := mk(4, "ticket", "Column-only child", staleEpic, 7.0)
-	if _, err := db.DB.Exec("DELETE FROM issue_relations WHERE target_id=? AND type='parent'", stale); err != nil {
-		t.Fatalf("clear stale edge: %v", err)
-	}
+	// A genuinely parentless ticket — must appear under no epic and report a
+	// null parent in its payload.
+	noParent := mk(4, "ticket", "Top-level ticket", 7.0)
 	// cost_unit container with a `groups` member (orthogonal axis, not WBS).
-	cu := mk(5, "cost_unit", "Cost unit", nil, nil)
-	cuMember := mk(6, "ticket", "Cost unit member", nil, 5.0)
+	cu := mk(5, "cost_unit", "Cost unit", nil)
+	cuMember := mk(6, "ticket", "Cost unit member", 5.0)
 	rel(cu, cuMember, "groups")
 
 	idsFrom := func(t *testing.T, path string) map[int64]bool {
@@ -95,9 +92,8 @@ func TestParentEdgeReads(t *testing.T) {
 		if !got[orphan] {
 			t.Errorf("epic children missing edge-only orphan %d: %v", orphan, got)
 		}
-		staleGot := idsFrom(t, fmt.Sprintf("/api/issues/%d/children", staleEpic))
-		if staleGot[stale] {
-			t.Errorf("stale epic children wrongly include parent_id-only child %d (read still on column?)", stale)
+		if got[noParent] {
+			t.Errorf("epic children wrongly include parentless ticket %d", noParent)
 		}
 	})
 
@@ -143,14 +139,13 @@ func TestParentEdgeReads(t *testing.T) {
 		if orphanIssue.ParentID == nil || *orphanIssue.ParentID != epic {
 			t.Errorf("orphan payload parent_id=%v, want %d (edge-sourced)", orphanIssue.ParentID, epic)
 		}
-		// Stale: parent_id column set but NO edge → payload must report
-		// NULL, proving the field follows the edge, not the column.
-		var staleIssue struct {
+		// Parentless ticket → payload parent_id is null (no parent edge).
+		var noParentIssue struct {
 			ParentID *int64 `json:"parent_id"`
 		}
-		decode(t, ts.get(t, fmt.Sprintf("/api/issues/%d", stale), ts.adminCookie), &staleIssue)
-		if staleIssue.ParentID != nil {
-			t.Errorf("stale payload parent_id=%v, want null (payload follows edge, not column)", staleIssue.ParentID)
+		decode(t, ts.get(t, fmt.Sprintf("/api/issues/%d", noParent), ts.adminCookie), &noParentIssue)
+		if noParentIssue.ParentID != nil {
+			t.Errorf("parentless payload parent_id=%v, want null", noParentIssue.ParentID)
 		}
 	})
 

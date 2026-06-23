@@ -5055,6 +5055,31 @@ func migrate(db *sql.DB) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_parent
 			 ON issue_relations(target_id) WHERE type='parent'`,
 		}},
+
+		// M120 / PAI-584 P6 (DESTRUCTIVE): drop issues.parent_id — the `parent`
+		// edge is now the sole source of truth. All reads (P2/P3), the API
+		// payload (P3), every write path (P6 edge-direct), undo/redo, and
+		// invariants (P5) are off the column; this removes the vestigial copy.
+		//
+		// Order matters: SQLite ALTER TABLE DROP COLUMN refuses a column that
+		// is indexed or referenced by a trigger, so drop those first. The
+		// parent-sync mirror triggers (M118) read NEW.parent_id and are no
+		// longer needed — writes go straight to the edge. The self-FK on
+		// parent_id goes away with the column.
+		//
+		// Then retire the now-redundant epic-sourced `groups` rows: M118
+		// backfilled them into `parent` edges and the P4 auto-translate stopped
+		// creating new ones, so they are pure duplication. cost_unit/release
+		// `groups` are left intact (P7–P9).
+		{120, []string{
+			`DROP TRIGGER IF EXISTS trg_parent_edge_ai`,
+			`DROP TRIGGER IF EXISTS trg_parent_edge_au`,
+			`DROP INDEX IF EXISTS idx_issues_parent`,
+			`ALTER TABLE issues DROP COLUMN parent_id`,
+			`DELETE FROM issue_relations
+			 WHERE type='groups'
+			   AND source_id IN (SELECT id FROM issues WHERE type='epic')`,
+		}},
 	}
 
 	for _, m := range migrations {

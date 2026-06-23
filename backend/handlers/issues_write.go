@@ -121,16 +121,18 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		createdByID = &user.ID
 	}
 
+	// PAI-584 P6: parent_id column dropped — hierarchy is the `parent` edge,
+	// written via setParentEdge below.
 	res, err := tx.ExecContext(r.Context(), `
-		INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
+		INSERT INTO issues(project_id,issue_number,type,title,description,
 		                   acceptance_criteria,notes,report_summary,
 		                   status,priority,cost_unit,release,
 		                   billing_type,total_budget,rate_hourly,rate_lp,
 		                   start_date,end_date,group_state,sprint_state,jira_id,jira_version,jira_text,
 		                   estimate_hours,estimate_lp,ar_hours,ar_lp,time_override,
 		                   color,assignee_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	`, projectID, nextNum, body.Type, body.ParentID, body.Title, body.Description,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	`, projectID, nextNum, body.Type, body.Title, body.Description,
 		body.AcceptanceCriteria, body.Notes, body.ReportSummary,
 		body.Status, body.Priority,
 		body.CostUnit, body.Release,
@@ -143,6 +145,11 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+
+	if err := setParentEdge(r.Context(), tx, id, body.ParentID); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	// Sprint membership: source=sprint, target=member issue.
 	for _, sid := range body.SprintIDs {
@@ -209,16 +216,18 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 		createdByID = &user.ID
 	}
 
+	// PAI-584 P6: parent_id column dropped — clone inherits the source's parent
+	// via the `parent` edge (setParentEdge below).
 	res, err := tx.ExecContext(r.Context(), `
-		INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
+		INSERT INTO issues(project_id,issue_number,type,title,description,
 		                   acceptance_criteria,notes,report_summary,
 		                   status,priority,cost_unit,release,
 		                   billing_type,total_budget,rate_hourly,rate_lp,
 		                   start_date,end_date,group_state,sprint_state,jira_id,jira_version,jira_text,
 		                   estimate_hours,estimate_lp,ar_hours,ar_lp,time_override,
 		                   color,assignee_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	`, src.ProjectID, nextNum, src.Type, src.ParentID,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	`, src.ProjectID, nextNum, src.Type,
 		"Copy of "+src.Title, src.Description,
 		src.AcceptanceCriteria, src.Notes, src.ReportSummary,
 		"backlog", src.Priority,
@@ -233,6 +242,11 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newID, _ := res.LastInsertId()
+
+	if err := setParentEdge(r.Context(), tx, newID, src.ParentID); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	// Copy tags
 	tagRows, err := tx.QueryContext(r.Context(), "SELECT tag_id FROM issue_tags WHERE issue_id=?", sourceID)
@@ -434,7 +448,6 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			notes               = COALESCE(?, notes),
 			report_summary      = COALESCE(?, report_summary),
 			type                = COALESCE(?, type),
-			parent_id           = CASE WHEN ? = 1 THEN ? ELSE parent_id END,
 			status              = COALESCE(?, status),
 			priority            = COALESCE(?, priority),
 			cost_unit           = COALESCE(?, cost_unit),
@@ -462,7 +475,6 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	`, body.Title, body.Description, body.AcceptanceCriteria, body.Notes,
 		body.ReportSummary,
 		body.Type,
-		parentPresent, body.ParentID,
 		body.Status, body.Priority, body.CostUnit, body.Release,
 		body.BillingType,
 		totalBudgetPresent, body.TotalBudget,
@@ -480,6 +492,14 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		now, id)
 	if handleDBError(w, err, "issue") {
 		return
+	}
+	// PAI-584 P6: hierarchy lives in the `parent` edge — write it directly
+	// when parent_id is part of this request (captured by afterSnap below).
+	if parentIDPresent {
+		if err := setParentEdge(r.Context(), tx, id, body.ParentID); err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 	afterSnap, err := fetchIssueMutationSnapshotTx(tx, id)
 	if err != nil {
@@ -569,13 +589,14 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 				shouldCascade = body.CascadeChildren != nil && *body.CascadeChildren
 			}
 			if shouldCascade {
-				if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE parent_id=? AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
+				// PAI-584 P6: children via the `parent` edge, not parent_id.
+				if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE id IN (SELECT target_id FROM issue_relations WHERE source_id=? AND type='parent') AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
 					*body.Status, nowTS, id); err != nil {
 					log.Printf("UpdateIssue: cascade children id=%d: %v", id, err)
 				}
 				// For epics, also cascade to grandchildren (tasks under tickets)
 				if issue.Type == "epic" {
-					if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE parent_id IN (SELECT id FROM issues WHERE parent_id=? AND deleted_at IS NULL) AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
+					if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE id IN (SELECT target_id FROM issue_relations WHERE source_id IN (SELECT target_id FROM issue_relations WHERE source_id=? AND type='parent') AND type='parent') AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
 						*body.Status, nowTS, id); err != nil {
 						log.Printf("UpdateIssue: cascade grandchildren id=%d: %v", id, err)
 					}
@@ -695,12 +716,14 @@ func DeleteIssue(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		deletedBy = &user.ID
 	}
+	// PAI-584 P6: walk descendants via the `parent` edge, not parent_id.
 	res, err := db.DB.Exec(`
 		WITH RECURSIVE descendants(id) AS (
 			SELECT id FROM issues WHERE id = ? AND deleted_at IS NULL
 			UNION ALL
 			SELECT i.id FROM issues i
-			JOIN descendants d ON i.parent_id = d.id
+			JOIN issue_relations pr ON pr.target_id = i.id AND pr.type='parent'
+			JOIN descendants d ON d.id = pr.source_id
 			WHERE i.deleted_at IS NULL
 		)
 		UPDATE issues
@@ -769,12 +792,14 @@ func PurgeIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	// PAI-584 P6: walk descendants via the `parent` edge, not parent_id.
 	rows, err := db.DB.Query(`
 		WITH RECURSIVE descendants(id) AS (
 			SELECT id FROM issues WHERE id = ? AND deleted_at IS NOT NULL
 			UNION ALL
 			SELECT i.id FROM issues i
-			JOIN descendants d ON i.parent_id = d.id
+			JOIN issue_relations pr ON pr.target_id = i.id AND pr.type='parent'
+			JOIN descendants d ON d.id = pr.source_id
 		)
 		SELECT id FROM descendants
 	`, id)

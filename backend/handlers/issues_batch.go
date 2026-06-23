@@ -225,14 +225,16 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 			parentID = it.ParentID
 		}
 
+		// PAI-584 P6: parent_id column dropped — hierarchy via the `parent`
+		// edge (setParentEdge below).
 		res, err := tx.Exec(`
-			INSERT INTO issues(project_id,issue_number,type,parent_id,title,description,
+			INSERT INTO issues(project_id,issue_number,type,title,description,
 			                   acceptance_criteria,notes,report_summary,
 			                   status,priority,cost_unit,release,
 			                   start_date,end_date,estimate_hours,estimate_lp,
 			                   assignee_id,created_by)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		`, projectID, nextNum, typ, parentID, it.Title, it.Description,
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		`, projectID, nextNum, typ, it.Title, it.Description,
 			it.AcceptanceCriteria, it.Notes, it.ReportSummary,
 			status, priority,
 			it.CostUnit, it.Release,
@@ -249,6 +251,13 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 		}
 		id, _ := res.LastInsertId()
 		insertedIDs[i] = id
+
+		if err := setParentEdge(r.Context(), tx, id, parentID); err != nil {
+			writeBatchError(w, []BatchError{{
+				Index: i, Error: cleanDBError(err),
+			}}, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -466,6 +475,13 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 			}}, http.StatusBadRequest)
 			return
 		}
+		// PAI-584 P6: hierarchy via the `parent` edge when this row touches it.
+		if rw.update.ParentIDPresent {
+			if err := setParentEdge(r.Context(), tx, rw.id, rw.update.ParentID); err != nil {
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
 		afterSnap, err := fetchIssueMutationSnapshotTx(tx, rw.id)
 		if err != nil {
 			jsonError(w, "internal error", http.StatusInternalServerError)
@@ -664,7 +680,6 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 			notes               = COALESCE(?, notes),
 			report_summary      = COALESCE(?, report_summary),
 			type                = COALESCE(?, type),
-			parent_id           = CASE WHEN ? = 1 THEN ? ELSE parent_id END,
 			status              = COALESCE(?, status),
 			priority            = COALESCE(?, priority),
 			cost_unit           = COALESCE(?, cost_unit),
@@ -680,7 +695,6 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 		upd.Title, upd.Description, upd.AcceptanceCriteria, upd.Notes,
 		upd.ReportSummary,
 		upd.Type,
-		flag(upd.ParentIDPresent), upd.ParentID,
 		upd.Status, upd.Priority, upd.CostUnit, upd.Release,
 		flag(upd.AssigneeIDPresent), upd.AssigneeID,
 		upd.StartDate, upd.EndDate,

@@ -16,6 +16,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -28,6 +29,35 @@ import (
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/models"
 )
+
+// parentEdgeExecer is satisfied by both *sql.Tx and *sql.DB so setParentEdge
+// can run inside a transaction (the common case) or against the pool.
+type parentEdgeExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// setParentEdge writes the issue hierarchy directly to the `parent` edge
+// (source=parent, target=child) — the single source of truth after P6 dropped
+// the issues.parent_id column. Idempotent delete-then-insert: clears any
+// existing parent for childID, then inserts the new one when parentID is set.
+// A nil/zero/self parentID leaves the child parentless. Callers still accept a
+// legacy `parent_id` input and pass it straight through here.
+func setParentEdge(ctx context.Context, ex parentEdgeExecer, childID int64, parentID *int64) error {
+	if childID <= 0 {
+		return nil
+	}
+	if _, err := ex.ExecContext(ctx,
+		`DELETE FROM issue_relations WHERE target_id=? AND type='parent'`, childID); err != nil {
+		return err
+	}
+	if parentID == nil || *parentID <= 0 || *parentID == childID {
+		return nil
+	}
+	_, err := ex.ExecContext(ctx,
+		`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?,?,'parent')`,
+		*parentID, childID)
+	return err
+}
 
 // wouldCycleParent reports whether making newParentID the parent of childID
 // would introduce a cycle — i.e. childID is already an ancestor of newParentID

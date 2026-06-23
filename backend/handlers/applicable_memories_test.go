@@ -64,13 +64,21 @@ func seedMemory(t *testing.T, projectID int64, slug, title, body string, meta st
 func seedTicketRow(t *testing.T, projectID int64, num int, title string, parentID *int64, release string) int64 {
 	t.Helper()
 	res, err := db.DB.Exec(`
-		INSERT INTO issues(project_id, issue_number, type, title, status, priority, parent_id, release)
-		VALUES(?, ?, 'ticket', ?, 'backlog', 'medium', ?, ?)
-	`, projectID, num, title, parentID, release)
+		INSERT INTO issues(project_id, issue_number, type, title, status, priority, release)
+		VALUES(?, ?, 'ticket', ?, 'backlog', 'medium', ?)
+	`, projectID, num, title, release)
 	if err != nil {
 		t.Fatalf("seed ticket %s: %v", title, err)
 	}
 	id, _ := res.LastInsertId()
+	// PAI-584 P6: parent_id column dropped — hierarchy via the parent edge.
+	if parentID != nil {
+		if _, err := db.DB.Exec(
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?,?,'parent')`,
+			*parentID, id); err != nil {
+			t.Fatalf("seed parent edge for %s: %v", title, err)
+		}
+	}
 	return id
 }
 

@@ -310,14 +310,16 @@ func insertIssue(projectID int64, row ImportRow, keyToID map[string]int64) (int6
 	if err != nil {
 		return 0, err
 	}
+	// PAI-584 P6: parent_id column dropped — hierarchy via the `parent` edge.
+	parent := resolveParent(row.ParentKey, keyToID)
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO issues(
-			project_id, issue_number, type, parent_id,
+			project_id, issue_number, type,
 			title, description, acceptance_criteria, notes,
 			status, priority, cost_unit, release, assignee_id
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 	`,
-		projectID, num, row.Type, resolveParent(row.ParentKey, keyToID),
+		projectID, num, row.Type,
 		row.Title, row.Description, row.AcceptanceCriteria, row.Notes,
 		status, priority, row.CostUnit, row.Release, resolveAssignee(row.Assignee),
 	)
@@ -326,6 +328,9 @@ func insertIssue(projectID int64, row ImportRow, keyToID map[string]int64) (int6
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
+		return 0, err
+	}
+	if err := setParentEdge(ctx, tx, id, parent); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -340,20 +345,25 @@ func overwriteIssue(id int64, row ImportRow, keyToID map[string]int64) error {
 	if priority == "" {
 		priority = "medium"
 	}
+	// PAI-584 P6: parent_id column dropped — hierarchy via the `parent` edge.
+	parent := resolveParent(row.ParentKey, keyToID)
 	_, err := db.DB.Exec(`
 		UPDATE issues SET
-			type=?, parent_id=?,
+			type=?,
 			title=?, description=?, acceptance_criteria=?, notes=?,
 			status=?, priority=?, cost_unit=?, release=?, assignee_id=?,
 			updated_at=datetime('now')
 		WHERE id=?
 	`,
-		row.Type, resolveParent(row.ParentKey, keyToID),
+		row.Type,
 		row.Title, row.Description, row.AcceptanceCriteria, row.Notes,
 		status, priority, row.CostUnit, row.Release, resolveAssignee(row.Assignee),
 		id,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return setParentEdge(context.Background(), db.DB, id, parent)
 }
 
 // normaliseImportStatus maps legacy/external status strings to canonical PAIMOS values.
