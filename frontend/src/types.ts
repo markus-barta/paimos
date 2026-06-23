@@ -523,6 +523,13 @@ export interface IssueRelation {
   direction?: 'outgoing' | 'incoming'
 }
 
+// PAI-599: edge-sourced cost_unit/release reference — the container issue's
+// id + its title (label). Set by sending a string label on create/update.
+export interface LabelRef {
+  id: number
+  label: string
+}
+
 export interface Issue {
   id: number
   project_id: number | null
@@ -540,8 +547,10 @@ export interface Issue {
   report_summary: string
   status: IssueStatus
   priority: IssuePriority
-  cost_unit: string
-  release: string
+  // PAI-599: edge-sourced container reference ({id,label}) or null. Set on
+  // create/update by sending a string label; returned as an object.
+  cost_unit: LabelRef | null
+  release: LabelRef | null
   // v2 group/sprint fields (nullable)
   billing_type: 'time_and_material' | 'fixed_price' | 'mixed' | null
   total_budget: number | null

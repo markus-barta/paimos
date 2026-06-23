@@ -357,12 +357,12 @@ async function save() {
       : null;
     editing.value = false;
     resetDetailDirty();
-    const cu = issue.value.cost_unit?.trim();
+    const cu = issue.value.cost_unit?.label?.trim();
     if (cu && !costUnits.value.includes(cu))
       costUnits.value = [...costUnits.value, cu].sort((a, b) =>
         a.localeCompare(b),
       );
-    const rel = issue.value.release?.trim();
+    const rel = issue.value.release?.label?.trim();
     if (rel && !releases.value.includes(rel))
       releases.value = [...releases.value, rel].sort((a, b) =>
         a.localeCompare(b),
@@ -995,7 +995,7 @@ const linkedBillingType = computed(() => {
   if (i.type === "cost_unit" || i.type === "epic")
     return i.billing_type || null;
   const cu = projectIssues.value.find(
-    (p) => p.type === "cost_unit" && p.title === i.cost_unit,
+    (p) => p.type === "cost_unit" && p.title === i.cost_unit?.label,
   );
   return cu?.billing_type || null;
 });

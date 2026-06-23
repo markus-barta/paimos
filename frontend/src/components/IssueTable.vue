@@ -505,7 +505,7 @@ onUnmounted(stopColumnResize)
             @keydown.enter.stop="emit('save-cell-edit', i, 'cost_unit', cellEditValue)"
             @keydown.escape.stop="emit('close-cell', false)"
           />
-          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'cost_unit', $event)">{{ i.cost_unit || '—' }}</span>
+          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'cost_unit', $event)">{{ i.cost_unit?.label || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('release')" class="meta-cell inline-edit-cell">
           <select
@@ -518,7 +518,7 @@ onUnmounted(stopColumnResize)
             <option value="">— None —</option>
             <option v-for="r in releases" :key="r" :value="r">{{ r }}</option>
           </select>
-          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release || '—' }}</span>
+          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release?.label || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('assignee')" class="meta-cell inline-edit-cell" :style="colStyle('assignee')">
           <div v-if="isEditing(i, 'assignee_id')" class="inline-control inline-control--assignee">

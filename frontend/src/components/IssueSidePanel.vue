@@ -448,8 +448,8 @@ function resetForm() {
     type: i.type,
     assignee_id: i.assignee_id != null ? String(i.assignee_id) : "",
     parent_id: i.parent_id != null ? String(i.parent_id) : "",
-    cost_unit: i.cost_unit,
-    release: i.release,
+    cost_unit: i.cost_unit?.label ?? "",
+    release: i.release?.label ?? "",
     estimate_hours: i.estimate_hours,
     estimate_lp: i.estimate_lp,
     ar_hours: i.ar_hours,
@@ -916,10 +916,10 @@ async function deleteTimeEntry(entry: TimeEntry) {
             <span
               v-if="issue.cost_unit && !readonly"
               class="sp-meta-item sp-meta-item--dim"
-              >{{ issue.cost_unit }}</span
+              >{{ issue.cost_unit?.label }}</span
             >
             <span v-if="issue.release && !readonly" class="sp-meta-item sp-meta-item--dim">{{
-              issue.release
+              issue.release?.label
             }}</span>
           </div>
           <div v-if="quickError" class="sp-quick-error">{{ quickError }}</div>

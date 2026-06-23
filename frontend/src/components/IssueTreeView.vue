@@ -59,8 +59,8 @@ function typeLabel(type: string): string {
         <span class="issue-priority" :style="{ color: PRIORITY_COLOR[epic.priority] }"><AppIcon :name="PRIORITY_ICON[epic.priority]" :size="12" :stroke-width="2.5" class="issue-priority-arrow" />{{ PRIORITY_LABEL[epic.priority] }}</span>
         <span v-if="epic.assignee" class="tree-assignee">{{ epic.assignee.username }}</span>
         <template v-if="epic.tags?.length"><TagChip v-for="t in epic.tags.slice(0,3)" :key="t.id" :tag="t" /></template>
-        <span v-if="epic.cost_unit" class="meta-pill">{{ epic.cost_unit }}</span>
-        <span v-if="epic.release" class="meta-pill release-pill">{{ epic.release }}</span>
+        <span v-if="epic.cost_unit" class="meta-pill">{{ epic.cost_unit?.label }}</span>
+        <span v-if="epic.release" class="meta-pill release-pill">{{ epic.release?.label }}</span>
         <span v-if="(epic.type === 'epic' || epic.type === 'cost_unit') && epic.total_budget != null" class="meta-pill budget-pill">{{ formatDecimalFlex(epic.total_budget, 2) }}</span>
         <span v-if="epic.type === 'release' && epic.group_state" :class="['v2-tree-badge', `v2-tree--${epic.group_state}`]">{{ epic.group_state }}</span>
         <span v-if="epic.type === 'sprint' && epic.sprint_state" :class="['v2-tree-badge', `v2-tree--${epic.sprint_state}`]">{{ epic.sprint_state }}</span>
@@ -87,8 +87,8 @@ function typeLabel(type: string): string {
           <span class="issue-priority" :style="{ color: PRIORITY_COLOR[ticket.priority] }"><AppIcon :name="PRIORITY_ICON[ticket.priority]" :size="12" :stroke-width="2.5" class="issue-priority-arrow" />{{ PRIORITY_LABEL[ticket.priority] }}</span>
           <span v-if="ticket.assignee" class="tree-assignee">{{ ticket.assignee.username }}</span>
           <template v-if="ticket.tags?.length"><TagChip v-for="t in ticket.tags.slice(0,3)" :key="t.id" :tag="t" /></template>
-          <span v-if="ticket.cost_unit" class="meta-pill">{{ ticket.cost_unit }}</span>
-          <span v-if="ticket.release" class="meta-pill release-pill">{{ ticket.release }}</span>
+          <span v-if="ticket.cost_unit" class="meta-pill">{{ ticket.cost_unit?.label }}</span>
+          <span v-if="ticket.release" class="meta-pill release-pill">{{ ticket.release?.label }}</span>
           <div class="tree-actions" @click.stop>
             <IssueRowActions :can-have-children="true" :issue-id="ticket.id" :issue-type="ticket.type" :booked-hours="ticket.booked_hours" :is-admin="isAdmin" @add-child="emit('open-create', ticket)" @edit="emit('open-side-panel', ticket, true)" @view="emit('open-side-panel', ticket, false)" @copy="emit('copy-key', ticket.issue_key)" @delete="emit('delete-row', ticket)" />
           </div>
@@ -111,8 +111,8 @@ function typeLabel(type: string): string {
           <span class="issue-priority" :style="{ color: PRIORITY_COLOR[task.priority] }"><AppIcon :name="PRIORITY_ICON[task.priority]" :size="12" :stroke-width="2.5" class="issue-priority-arrow" />{{ PRIORITY_LABEL[task.priority] }}</span>
           <span v-if="task.assignee" class="tree-assignee">{{ task.assignee.username }}</span>
           <template v-if="task.tags?.length"><TagChip v-for="t in task.tags.slice(0,3)" :key="t.id" :tag="t" /></template>
-          <span v-if="task.cost_unit" class="meta-pill">{{ task.cost_unit }}</span>
-          <span v-if="task.release" class="meta-pill release-pill">{{ task.release }}</span>
+          <span v-if="task.cost_unit" class="meta-pill">{{ task.cost_unit?.label }}</span>
+          <span v-if="task.release" class="meta-pill release-pill">{{ task.release?.label }}</span>
           <div class="tree-actions" @click.stop>
             <IssueRowActions :can-have-children="false" :issue-id="task.id" :issue-type="task.type" :booked-hours="task.booked_hours" :is-admin="isAdmin" @edit="emit('open-side-panel', task, true)" @view="emit('open-side-panel', task, false)" @copy="emit('copy-key', task.issue_key)" @delete="emit('delete-row', task)" />
           </div>

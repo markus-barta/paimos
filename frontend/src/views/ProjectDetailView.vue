@@ -844,9 +844,10 @@ function onCreated(issue: Issue) {
     issues.value.push(issue)
     projectIssueTotal.value += 1
   }
-  if (issue.cost_unit && !costUnits.value.includes(issue.cost_unit))
-    costUnits.value = [...costUnits.value, issue.cost_unit].sort()
-  const releaseLabel = issue.type === 'release' ? issue.title : issue.release
+  const cuLabel = issue.cost_unit?.label
+  if (cuLabel && !costUnits.value.includes(cuLabel))
+    costUnits.value = [...costUnits.value, cuLabel].sort()
+  const releaseLabel = issue.type === 'release' ? issue.title : issue.release?.label
   if (releaseLabel && !releases.value.includes(releaseLabel))
     releases.value = [...releases.value, releaseLabel].sort()
 }
