@@ -5,6 +5,25 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.10] — 2026-06-23
+
+### Added
+
+- **`parent` relation type — manage the issue hierarchy as a first-class
+  relation (PAI-584).** The relation API + MCP `paimos_relation_add` now accept
+  `type=parent` (source=parent, target=child) for epic⊃ticket / ticket⊃task
+  links, alongside the existing `parent_id` field. A legacy `type=groups`
+  relation with an epic source is auto-translated to `parent`, so older agent
+  calls produce a fully-visible link. Schema version → 1.6.0.
+
+### Changed
+
+- **One parent per child is now enforced (PAI-584, P5).** A second parent for
+  any issue is rejected (DB unique index + API 409), and reparenting that would
+  create a hierarchy cycle is refused (422) — on both the relation API and
+  `parent_id` updates. Documented the SSOT convention in the schema and agent
+  docs.
+
 ## [3.10.9] — 2026-06-23
 
 ### Fixed
