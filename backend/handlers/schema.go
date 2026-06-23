@@ -35,6 +35,10 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.7.0 (PAI-599): added the `cost_unit` and `release` relation types — typed
+// container-membership edges (source = cost_unit/release container issue,
+// target = ticket) that become the SSOT for those dimensions, replacing the
+// fragile by-title match against the issues.cost_unit/release string columns.
 // 1.6.0 (PAI-584): added the `parent` relation type — the issue-hierarchy
 // edge (epic⊃ticket, ticket⊃task) and SSOT for parentage. `groups` is now
 // only cost_unit/release membership; epic→ticket via groups is auto-translated
@@ -67,7 +71,7 @@ import (
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.6.0"
+const SchemaVersion = "1.7.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {

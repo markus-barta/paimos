@@ -5080,6 +5080,76 @@ func migrate(db *sql.DB) error {
 			 WHERE type='groups'
 			   AND source_id IN (SELECT id FROM issues WHERE type='epic')`,
 		}},
+
+		// M121 / PAI-599 (599-A): add `cost_unit` and `release` relation edge
+		// types. cost_unit/release are already first-class container issues
+		// (they carry rates and aggregate); the issues.cost_unit/release string
+		// columns are a fragile by-title reference to them. These typed edges
+		// (source = container issue, target = ticket) become the SSOT, mirroring
+		// the `parent` edge. SQLite can't ALTER a CHECK — rename+recreate+copy
+		// (pattern M118), recreating every index AND trigger the table carries
+		// (source/target indexes, the M119 one-parent partial-unique index, and
+		// the M115 content_rev list-freshness triggers).
+		//
+		// Backfill here is SQL-only and safe: fold existing groups rows whose
+		// source is a cost_unit/release issue into the new edge types, and edge
+		// tickets to any container that ALREADY matches their label by title.
+		// Creating containers for label-only strings (and edging those) is the
+		// idempotent Go boot-backfill EnsureCostUnitReleaseEdges — it needs
+		// per-project issue numbering, which is unsafe in raw migration SQL.
+		{121, []string{
+			`ALTER TABLE issue_relations RENAME TO issue_relations_old120`,
+			`CREATE TABLE issue_relations (
+				source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				type      TEXT NOT NULL
+				          CHECK(type IN ('parent','cost_unit','release','groups','sprint',
+				                         'depends_on','impacts','follows_from','blocks',
+				                         'related','applies_to_memory')),
+				rank      INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (source_id, target_id, type)
+			)`,
+			`INSERT OR IGNORE INTO issue_relations
+			 SELECT source_id, target_id, type, rank FROM issue_relations_old120`,
+			`DROP TABLE issue_relations_old120`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_source
+			 ON issue_relations(source_id, type)`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
+			 ON issue_relations(target_id, type)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_parent
+			 ON issue_relations(target_id) WHERE type='parent'`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ai
+				AFTER INSERT ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_au
+				AFTER UPDATE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id, NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ad
+				AFTER DELETE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id);
+				END`,
+			// Fold existing groups rows whose source is a cost_unit/release issue.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT g.source_id, g.target_id, src.type
+			 FROM issue_relations g
+			 JOIN issues src ON src.id = g.source_id AND src.type IN ('cost_unit','release')
+			 WHERE g.type='groups'`,
+			// Edge tickets to a container that already matches their label.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'cost_unit'
+			 FROM issues i
+			 JOIN issues c ON c.project_id = i.project_id AND c.type='cost_unit'
+			              AND c.title = i.cost_unit AND c.deleted_at IS NULL
+			 WHERE i.cost_unit != '' AND i.deleted_at IS NULL`,
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'release'
+			 FROM issues i
+			 JOIN issues c ON c.project_id = i.project_id AND c.type='release'
+			              AND c.title = i.release AND c.deleted_at IS NULL
+			 WHERE i.release != '' AND i.deleted_at IS NULL`,
+		}},
 	}
 
 	for _, m := range migrations {
