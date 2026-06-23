@@ -229,12 +229,29 @@ jobs:
             ditto -c -k --keepParent "$BIN" "$ZIP"
 
             echo "→ submit to Apple notary service (synchronous, ~1-5 min)"
+            # PAI-599: capture notarytool's exit code WITHOUT `set -e` aborting
+            # the command-substitution on a non-zero exit — otherwise an auth
+            # failure (bad/expired app-specific password, unaccepted Program
+            # License Agreement, etc.) kills the step before its error is ever
+            # printed, leaving "exit code 1" with no diagnostics. Now the real
+            # Apple error always reaches the log.
+            set +e
             SUBMIT_OUTPUT=$(xcrun notarytool submit "$ZIP" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
               --wait 2>&1)
+            SUBMIT_RC=$?
+            set -e
             echo "$SUBMIT_OUTPUT"
+            if [ "$SUBMIT_RC" -ne 0 ]; then
+              echo "❌ notarytool submit failed (exit $SUBMIT_RC). Common causes:"
+              echo "   • app-specific password (APPLE_PASSWORD) revoked/expired"
+              echo "   • Apple Developer Program License Agreement needs re-accepting"
+              echo "     (sign in to App Store Connect / developer.apple.com)"
+              echo "   • App Store Connect / notary service outage"
+              exit 1
+            fi
 
             # Pull the submission id so we can fetch the rejection log
             # if Apple says no — without this, "status: Invalid" is
