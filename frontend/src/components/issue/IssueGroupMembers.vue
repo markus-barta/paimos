@@ -24,7 +24,13 @@ async function load() {
   if (!props.issueId) return
   if (!isGroup.value && !isSprint.value) return
   groupMemLoading.value = true
-  const relType = isSprint.value ? 'sprint' : 'groups'
+  // PAI-584 P4: epic membership is the `parent` edge (SSOT). cost_unit/release
+  // containers still group via `groups` (orthogonal axis); sprints via `sprint`.
+  const relType = isSprint.value
+    ? 'sprint'
+    : props.issueType === 'epic'
+      ? 'parent'
+      : 'groups'
   try {
     groupMembers.value = await loadIssueGroupMembers(props.issueId, relType)
   } catch { groupMembers.value = [] }

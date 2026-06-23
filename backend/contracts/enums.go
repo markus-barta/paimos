@@ -14,7 +14,10 @@ var (
 	KnowledgeStatuses = []string{"new", "backlog", "proposed", "in-progress", "qa", "done", "delivered", "accepted", "invoiced", "cancelled"}
 	IssuePriorities   = []string{"low", "medium", "high"}
 	IssueTypes        = []string{"epic", "cost_unit", "release", "sprint", "ticket", "task"}
-	RelationTypes     = []string{"groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related", "applies_to_memory"}
+	// "parent" (PAI-584) is the issue-hierarchy edge (epic⊃ticket, ticket⊃task)
+	// and the SSOT for parentage; "groups" is now only cost_unit/release
+	// container membership (epic→ticket via groups is auto-translated to parent).
+	RelationTypes = []string{"parent", "groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related", "applies_to_memory"}
 )
 
 func Contains(values []string, raw string) bool {

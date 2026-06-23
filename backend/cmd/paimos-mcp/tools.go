@@ -288,7 +288,7 @@ func (s *Server) tools() []Tool {
 		},
 		{
 			Name:        "paimos_relation_add",
-			Description: "Adds a relation between two issues. Types: groups, sprint, depends_on, impacts, follows_from, blocks, related.",
+			Description: "Adds a relation between two issues (convention: source = container/parent, target = member/child). Types: parent (issue hierarchy epic⊃ticket, ticket⊃task — the SSOT for parentage; source=parent, target=child, one parent per child), groups (cost_unit/release membership), sprint, depends_on, impacts, follows_from, blocks, related. To place a ticket under an epic use type=parent with source=epic, target=ticket (legacy type=groups with an epic source is auto-translated to parent).",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

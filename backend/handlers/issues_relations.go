@@ -116,6 +116,17 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "source and target must be different issues", http.StatusBadRequest)
 		return
 	}
+	// PAI-584 P4: epic→ticket membership is the `parent` edge now. Legacy
+	// callers using type=groups against an EPIC source are auto-translated to
+	// `parent` so the link is fully visible everywhere (children/filter/
+	// reports read the parent edge, not groups). cost_unit/release containers
+	// keep type=groups — those are orthogonal grouping axes (P7–P9).
+	if body.Type == "groups" {
+		var srcType string
+		if db.DB.QueryRow("SELECT type FROM issues WHERE id=?", sourceID).Scan(&srcType) == nil && srcType == "epic" {
+			body.Type = "parent"
+		}
+	}
 	// Convention (after migration 32): source = container/owner, target = member.
 	// For sprint relations the URL param (:id) is the member issue and body.target_id
 	// is the sprint — so we store source=sprint, target=issue (swap for sprint type).
@@ -138,6 +149,26 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Type == "sprint" {
 		tx.QueryRow("SELECT COALESCE(MAX(rank),0)+1 FROM issue_relations WHERE source_id=? AND type='sprint'", dbSource).Scan(&rank)
+	}
+	// PAI-584 P4: enforce one parent per child. Adding a parent edge for a
+	// child that already has a different parent is rejected (remove it first /
+	// reparent via PUT parent_id) — matches the P5 unique index and avoids a
+	// silent reparent the mutation log wouldn't capture. Re-adding the same
+	// parent is idempotent.
+	if body.Type == "parent" {
+		var existingParent int64
+		switch err := tx.QueryRow(
+			`SELECT source_id FROM issue_relations WHERE target_id=? AND type='parent'`, dbTarget,
+		).Scan(&existingParent); {
+		case err == sql.ErrNoRows:
+			// no parent yet — proceed
+		case err != nil:
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		case existingParent != dbSource:
+			jsonError(w, "issue already has a parent; remove it first or reparent via parent_id", http.StatusConflict)
+			return
+		}
 	}
 	_, err = tx.Exec(
 		`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type, rank) VALUES(?,?,?,?)`,

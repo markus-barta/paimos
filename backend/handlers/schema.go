@@ -35,6 +35,10 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 1.6.0 (PAI-584): added the `parent` relation type — the issue-hierarchy
+// edge (epic⊃ticket, ticket⊃task) and SSOT for parentage. `groups` is now
+// only cost_unit/release membership; epic→ticket via groups is auto-translated
+// to parent. Convention: source=parent, target=child, one parent per child.
 // 1.5.0 (PAI-506): added the `agent` entity (create/update shape) and
 // the rich `agent` block (entry shape + route map) documenting the
 // project-scoped /api/projects/{id}/agents surface, plus the
@@ -63,7 +67,7 @@ import (
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.5.0"
+const SchemaVersion = "1.6.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -223,6 +227,7 @@ var Schema = SchemaPayload{
 		"multiline_inputs":       "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
 		"transitions_permissive": "status transitions are recommendations, not enforced; the backend accepts any→any to keep fix-by-hand flexible. Clients should surface the recommended list but allow override.",
 		"relation_direction":     "GET /api/issues/{id}/relations tags each row with direction=outgoing|incoming so clients can render inverse labels (e.g. 'follows up on X' vs 'followed up by Y') without a second DB row.",
+		"issue_hierarchy":        "Issue parentage (epic⊃ticket, ticket⊃task) is the `parent` relation edge (source=parent, target=child, at most one parent per child) — the single source of truth. To set a parent, either set parent_id on issue create/update OR add a type=parent relation (source=parent, target=child). The legacy parent_id column is kept in sync and still returned, but reads come from the edge. type=groups is now only cost_unit/release container membership; a type=groups relation with an epic source is auto-translated to a parent edge.",
 	},
 }
 

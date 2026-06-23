@@ -109,6 +109,13 @@ curl -s -H "Authorization: Bearer $KEY" \
 curl -s -H "Authorization: Bearer $KEY" \
   https://paimos.example.com/api/projects/2/issues/tree
 
+# Place a ticket under an epic. Hierarchy (epic⊃ticket, ticket⊃task) is the
+# `parent` relation edge — the single source of truth (one parent per child).
+# Equivalent to setting parent_id on issue create/update.
+curl -s -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"target_id": 123, "type": "parent"}' \
+  https://paimos.example.com/api/issues/100/relations   # 100=epic, 123=ticket
+
 # Search across all accessible projects
 curl -s -H "Authorization: Bearer $KEY" \
   "https://paimos.example.com/api/search?q=authentication+bug"

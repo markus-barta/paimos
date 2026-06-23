@@ -90,10 +90,16 @@ GET    /issues/:id/anchors
 
 ```
 GET    /issues/:id/relations
-POST   /issues/:id/relations        {target_id, type}   type: groups|sprint|depends_on|impacts
+POST   /issues/:id/relations        {target_id, type}   type: parent|groups|sprint|depends_on|impacts|...
 DELETE /issues/:id/relations        {target_id, type} — admin only
-GET    /issues/:id/members          list by relation
+GET    /issues/:id/members          list by relation (type=parent for an epic's tickets)
 ```
+
+`type=parent` is the issue hierarchy (epic⊃ticket, ticket⊃task) — source=parent,
+target=child, one parent per child. To put a ticket under an epic:
+`POST /issues/{epic}/relations {target_id: ticket, type: parent}`. Legacy
+`type=groups` with an epic source is auto-translated to `parent`. A second parent
+for a child is rejected (409) — reparent via `parent_id` on issue update instead.
 
 ## Time entries
 
@@ -424,11 +430,14 @@ POST   /import/csv                               admin only — global
 | `type` | `epic` `cost_unit` `release` `sprint` `ticket` `task` |
 | `status` | `new` `backlog` `in-progress` `qa` `done` `delivered` `accepted` `invoiced` `cancelled` |
 | `priority` | `low` `medium` `high` |
-| issue-relation `type` | `groups` `sprint` `depends_on` `impacts` `follows_from` `blocks` `related` |
+| issue-relation `type` | `parent` `groups` `sprint` `depends_on` `impacts` `follows_from` `blocks` `related` |
 
-Hierarchy: ticket → task via `parent_id` (strict 1:1). Group-level types
-(epic / cost_unit / release) link to tickets via `issue_relations` (M:N).
-Orphan tickets/tasks allowed. 422 on invalid parent.  
+Hierarchy (epic⊃ticket, ticket⊃task) is the `parent` relation edge — the single
+source of truth (source=parent, target=child, at most one parent per child). Set
+it via `parent_id` on issue create/update OR a `type=parent` relation. `parent_id`
+is kept in sync and still returned, but reads come from the edge. `groups` is
+cost_unit/release container membership (M:N, orthogonal axis). Orphan
+tickets/tasks allowed. 422 on invalid parent.  
 Issue key: `{PROJECT_KEY}-{n}` e.g. `PAI-1` — computed, not stored.  
 Project numeric IDs are assigned per-deployment in creation order — always `GET /projects` and match on `key` or `name` before POSTing. Do not hard-code project IDs from examples.
 

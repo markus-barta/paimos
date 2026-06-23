@@ -51,4 +51,4 @@ cases:
         status: 400
         code: enum_violation
         field: type
-        valid_values: [groups, sprint, depends_on, impacts, follows_from, blocks, related, applies_to_memory]
+        valid_values: [parent, groups, sprint, depends_on, impacts, follows_from, blocks, related, applies_to_memory]

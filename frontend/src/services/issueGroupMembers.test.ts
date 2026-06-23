@@ -18,4 +18,10 @@ describe('issueGroupMembers service', () => {
     expect(issues).toHaveLength(1)
     expect(api.get).toHaveBeenCalledWith('/issues/12/members?type=groups')
   })
+
+  it('supports the parent relation type (PAI-584 epic membership)', async () => {
+    vi.mocked(api.get).mockResolvedValue([] as never)
+    await loadIssueGroupMembers(7, 'parent')
+    expect(api.get).toHaveBeenCalledWith('/issues/7/members?type=parent')
+  })
 })
