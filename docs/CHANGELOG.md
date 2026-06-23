@@ -5,6 +5,18 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.11] — 2026-06-23
+
+### Changed
+
+- **Issue hierarchy fully migrated to the edge model (PAI-584, P6; internal).**
+  The legacy `issues.parent_id` column is dropped — the typed `parent` relation
+  edge is now the sole source of truth. All writes go directly to the edge,
+  undo/redo and every report/lookup read from it, and one-parent + no-cycle
+  invariants are enforced at the DB. **No API change**: the `parent_id` field is
+  still accepted on writes and returned on reads (sourced from the edge), so
+  clients are unaffected.
+
 ## [3.10.10] — 2026-06-23
 
 ### Added
