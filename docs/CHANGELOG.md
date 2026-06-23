@@ -5,6 +5,28 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.8] — 2026-06-23
+
+### Fixed
+
+- **Epic memberships created via the relation API are no longer invisible
+  (PAI-584).** An epic→ticket link added through the relation API alone (without
+  setting the ticket's `parent_id`) used to be missing from the issue list, epic
+  filter, children, reports, and AI context, while estimate rollups read the
+  other store — the two representations had silently diverged. Issue hierarchy
+  now reads from a single source of truth (a typed `parent` edge), so these links
+  surface consistently everywhere, including each issue's own parent badge.
+
+### Changed
+
+- **Issue hierarchy migrated to an edge-based single source of truth (PAI-584,
+  phases P1–P3; internal).** `parent_id` is now mirrored into a typed `parent`
+  relation by a DB trigger (unbypassable by any write path), every backend read
+  and the API payload are sourced from that edge, and existing links were
+  backfilled. Additive and backward-compatible — the `parent_id` field and its
+  API/MCP contract are unchanged. Lays the groundwork for graph-native hierarchy
+  (multi-membership, cost-unit/release relationization) in later phases.
+
 ## [3.10.7] — 2026-06-22
 
 ### Fixed
