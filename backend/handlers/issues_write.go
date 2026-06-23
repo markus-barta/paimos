@@ -407,6 +407,12 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// PAI-584 P5: a reparent must not create a cycle (set parent to one of the
+	// issue's own descendants). Only relevant when a new non-null parent is set.
+	if parentIDPresent && newParent != nil && wouldCycleParent(id, *newParent) {
+		jsonError(w, "reparent would create a parent cycle", http.StatusUnprocessableEntity)
+		return
+	}
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	tx, err := db.DB.BeginTx(r.Context(), nil)

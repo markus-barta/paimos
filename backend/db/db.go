@@ -5034,6 +5034,27 @@ func migrate(db *sql.DB) error {
 						WHERE NEW.parent_id IS NOT NULL AND NEW.parent_id <> NEW.id;
 				END`,
 		}},
+
+		// M119 / PAI-584 P5: enforce the one-parent-per-child invariant at the
+		// DB level — the structural guarantee the dropped parent_id FK used to
+		// give for free. A partial UNIQUE index on the `parent` edge's target
+		// makes a second parent for any child impossible (the relation API
+		// already returns 409; this is the unbypassable backstop and the
+		// constraint P6 relies on once the column is gone).
+		//
+		// Defensive dedup first: M118's backfill already guarantees ≤1 parent
+		// per child (parent_id wins; MIN-collapse), and the triggers + API
+		// maintain it — but if any stray duplicate slipped in, keep the lowest
+		// source_id per child so the unique index can always be created.
+		{119, []string{
+			`DELETE FROM issue_relations
+			 WHERE type='parent'
+			   AND (target_id, source_id) NOT IN (
+			       SELECT target_id, MIN(source_id) FROM issue_relations
+			       WHERE type='parent' GROUP BY target_id)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_parent
+			 ON issue_relations(target_id) WHERE type='parent'`,
+		}},
 	}
 
 	for _, m := range migrations {

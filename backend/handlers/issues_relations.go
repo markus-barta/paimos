@@ -29,6 +29,27 @@ import (
 	"github.com/markus-barta/paimos/backend/models"
 )
 
+// wouldCycleParent reports whether making newParentID the parent of childID
+// would introduce a cycle — i.e. childID is already an ancestor of newParentID
+// along the `parent` edge (PAI-584 P5). Walks up from newParentID; the 64-hop
+// cap is a belt-and-suspenders bound against pre-existing corrupt data.
+func wouldCycleParent(childID, newParentID int64) bool {
+	cur := newParentID
+	for hops := 0; hops < 64 && cur > 0; hops++ {
+		if cur == childID {
+			return true
+		}
+		var next sql.NullInt64
+		if err := db.DB.QueryRow(
+			`SELECT source_id FROM issue_relations WHERE target_id=? AND type='parent'`, cur,
+		).Scan(&next); err != nil || !next.Valid {
+			break
+		}
+		cur = next.Int64
+	}
+	return false
+}
+
 // ── Issue Relations endpoints ─────────────────────────────────────────────────
 
 // ListIssueRelations returns all relations where the issue is source or target.
@@ -133,6 +154,24 @@ func CreateIssueRelation(w http.ResponseWriter, r *http.Request) {
 	dbSource, dbTarget := sourceID, body.TargetID
 	if body.Type == "sprint" {
 		dbSource, dbTarget = body.TargetID, sourceID
+	}
+	// PAI-584 P5: validate the parent edge (source=parent, target=child) —
+	// hierarchy type rules (parity with the parent_id column path) and no
+	// cycles. The one-parent invariant is enforced below + by the DB index.
+	if body.Type == "parent" {
+		child := getIssueByID(dbTarget)
+		if child == nil {
+			jsonError(w, "target issue not found", http.StatusNotFound)
+			return
+		}
+		if err := validateParent(child.Type, &dbSource, child.ProjectID); err != nil {
+			jsonError(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		if wouldCycleParent(dbTarget, dbSource) {
+			jsonError(w, "relation would create a parent cycle", http.StatusUnprocessableEntity)
+			return
+		}
 	}
 	// For sprint relations, assign rank = max+1 so new items appear at the bottom
 	rank := 0
