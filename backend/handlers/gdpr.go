@@ -121,7 +121,10 @@ func runRetentionSweep() {
 		"DELETE FROM password_reset_tokens WHERE created_at < datetime('now', ?)",
 		p.ResetTokens)
 	sweepOlderThan("access_audit",
-		"DELETE FROM access_audit WHERE occurred_at < datetime('now', ?)",
+		// access_audit timestamps rows with created_at (only session_activity
+		// has occurred_at) — the wrong column name made this sweep error out
+		// every run ("no such column: occurred_at").
+		"DELETE FROM access_audit WHERE created_at < datetime('now', ?)",
 		p.AccessAudit)
 	sweepOlderThan("session_activity",
 		"DELETE FROM session_activity WHERE occurred_at < datetime('now', ?)",
