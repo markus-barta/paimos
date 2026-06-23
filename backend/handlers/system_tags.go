@@ -202,9 +202,11 @@ func EvaluateSystemTags(issueID int64) {
 	var status string
 	var bookedHours float64
 	var estimateHours, estimateLp, rateHourly, rateLp *float64
-	var costUnit string
+	var costUnitID *int64
 	var projectID *int64
 
+	// PAI-599: cost_unit is the edge to the container issue; read its id for
+	// the rate cascade (by-id, not the fragile former title match).
 	err = db.DB.QueryRow(`
 		SELECT i.status,
 			COALESCE((SELECT SUM(
@@ -216,9 +218,10 @@ func EvaluateSystemTags(issueID int64) {
 				     ELSE 0 END
 			) FROM time_entries te WHERE te.issue_id = i.id), 0),
 			i.estimate_hours, i.estimate_lp, i.rate_hourly, i.rate_lp,
-			COALESCE(i.cost_unit, ''), i.project_id
+			(SELECT source_id FROM issue_relations WHERE target_id = i.id AND type='cost_unit'),
+			i.project_id
 		FROM issues i WHERE i.id = ?
-	`, issueID).Scan(&status, &bookedHours, &estimateHours, &estimateLp, &rateHourly, &rateLp, &costUnit, &projectID)
+	`, issueID).Scan(&status, &bookedHours, &estimateHours, &estimateLp, &rateHourly, &rateLp, &costUnitID, &projectID)
 	if err != nil {
 		return
 	}
@@ -236,7 +239,7 @@ func EvaluateSystemTags(issueID int64) {
 		}
 
 		// Compute budget hours via rate cascade
-		budgetHours := computeBudgetHours(estimateHours, estimateLp, rateHourly, rateLp, costUnit, projectID)
+		budgetHours := computeBudgetHours(estimateHours, estimateLp, rateHourly, rateLp, costUnitID, projectID)
 		if budgetHours == nil || *budgetHours <= 0 {
 			removeSystemTag(issueID, r.tagID)
 			continue
@@ -252,7 +255,7 @@ func EvaluateSystemTags(issueID int64) {
 }
 
 // computeBudgetHours resolves the budget in hours using the rate cascade.
-func computeBudgetHours(estHours, estLp, issueRateH, issueRateLP *float64, costUnit string, projectID *int64) *float64 {
+func computeBudgetHours(estHours, estLp, issueRateH, issueRateLP *float64, costUnitID *int64, projectID *int64) *float64 {
 	// If estimate_hours is set directly, use that
 	if estHours != nil && *estHours > 0 {
 		return estHours
@@ -266,8 +269,10 @@ func computeBudgetHours(estHours, estLp, issueRateH, issueRateLP *float64, costU
 	tmp := models.Issue{
 		RateHourly: issueRateH,
 		RateLp:     issueRateLP,
-		CostUnit:   costUnit,
 		ProjectID:  projectID,
+	}
+	if costUnitID != nil {
+		tmp.CostUnit = &models.LabelRef{ID: *costUnitID}
 	}
 	ResolveRateCascade(&tmp)
 
@@ -286,13 +291,13 @@ func ResolveRateCascade(issue *models.Issue) {
 	if rh != nil && rl != nil {
 		return // both already set
 	}
-	// Try cost unit rates
-	if issue.CostUnit != "" && issue.ProjectID != nil {
+	// Try cost unit rates — PAI-599: look up the container by id from the
+	// edge (robust to renames), not the old fragile title match.
+	if issue.CostUnit != nil && issue.CostUnit.ID > 0 {
 		var cuRH, cuRL *float64
 		db.DB.QueryRow(`
-			SELECT rate_hourly, rate_lp FROM issues
-			WHERE project_id = ? AND type = 'cost_unit' AND title = ?
-		`, *issue.ProjectID, issue.CostUnit).Scan(&cuRH, &cuRL)
+			SELECT rate_hourly, rate_lp FROM issues WHERE id = ?
+		`, issue.CostUnit.ID).Scan(&cuRH, &cuRL)
 		if rh == nil {
 			rh = cuRH
 		}

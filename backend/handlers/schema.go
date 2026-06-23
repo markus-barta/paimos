@@ -35,6 +35,10 @@ import (
 //
 // The version doubles as cache key: clients refetch when the value changes.
 //
+// 2.0.0 (PAI-599 599-B, BREAKING): the issue payload now returns `cost_unit`
+// and `release` as objects ({id, label}) or null, sourced from their container
+// edges — not free-text strings. The string columns were dropped. Create/update
+// still ACCEPT a string label (the backend resolves/creates the container).
 // 1.7.0 (PAI-599): added the `cost_unit` and `release` relation types — typed
 // container-membership edges (source = cost_unit/release container issue,
 // target = ticket) that become the SSOT for those dimensions, replacing the
@@ -71,7 +75,7 @@ import (
 // discover which api-key scopes unlock which endpoints. The scope list
 // is populated at init() from auth.ScopeCatalog() — a single source of
 // truth shared with the runtime check.
-const SchemaVersion = "1.7.0"
+const SchemaVersion = "2.0.0"
 
 // SchemaPayload is the shape returned by GET /api/schema. See PAI-87.
 type SchemaPayload struct {
@@ -231,7 +235,8 @@ var Schema = SchemaPayload{
 		"multiline_inputs":       "description, acceptance_criteria and notes are markdown — prefer file inputs over shell-quoted strings (see paimos CLI).",
 		"transitions_permissive": "status transitions are recommendations, not enforced; the backend accepts any→any to keep fix-by-hand flexible. Clients should surface the recommended list but allow override.",
 		"relation_direction":     "GET /api/issues/{id}/relations tags each row with direction=outgoing|incoming so clients can render inverse labels (e.g. 'follows up on X' vs 'followed up by Y') without a second DB row.",
-		"issue_hierarchy":        "Issue parentage (epic⊃ticket, ticket⊃task) is the `parent` relation edge (source=parent, target=child, at most one parent per child) — the single source of truth. To set a parent, either set parent_id on issue create/update OR add a type=parent relation (source=parent, target=child). The legacy parent_id column is kept in sync and still returned, but reads come from the edge. type=groups is now only cost_unit/release container membership; a type=groups relation with an epic source is auto-translated to a parent edge.",
+		"issue_hierarchy":        "Issue parentage (epic⊃ticket, ticket⊃task) is the `parent` relation edge (source=parent, target=child, at most one parent per child) — the single source of truth. To set a parent, either set parent_id on issue create/update OR add a type=parent relation (source=parent, target=child). The legacy parent_id column was dropped; parent_id in the payload is sourced from the edge. A type=groups relation with an epic source is auto-translated to a parent edge.",
+		"cost_unit_release":      "An issue's cost_unit and release are `cost_unit`/`release` relation edges to a container issue (source=container, target=ticket; at most one of each per ticket) — the single source of truth (PAI-599). Set them by passing a string label on create/update (the backend resolves or creates the container); they are RETURNED as objects {id, label} or null. The former string columns were dropped.",
 	},
 }
 

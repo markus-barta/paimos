@@ -66,7 +66,7 @@ func ExportCSV(w http.ResponseWriter, r *http.Request) {
 		SELECT
 			i.id, i.issue_number, i.type, pr.source_id, p.issue_number,
 			i.title, i.description, i.acceptance_criteria, i.notes,
-			i.status, i.priority, i.cost_unit, i.release,
+			i.status, i.priority, ` + costUnitLabelExpr + `, ` + releaseLabelExpr + `,
 			COALESCE(u.username, ''),
 			proj.key,
 			COALESCE((

@@ -5150,6 +5150,116 @@ func migrate(db *sql.DB) error {
 			              AND c.title = i.release AND c.deleted_at IS NULL
 			 WHERE i.release != '' AND i.deleted_at IS NULL`,
 		}},
+
+		// M122 / PAI-599 (599-B): finish the backfill so EVERY cost_unit/release
+		// string has a container + edge BEFORE the column drop (M123). M121
+		// edged labels that already had a container; this creates a container
+		// for each remaining ("orphan") label and edges its tickets. Done in
+		// SQL (not the former Go boot backfill) because migrations run before
+		// app boot — a boot backfill would read the already-dropped column.
+		//
+		// Container issue numbers are assigned MAX(issue_number)+row_number per
+		// project (unique, gap-free from the current max); project_issue_counters
+		// is then advanced so the API's NextIssueNumber never collides. Finally
+		// the one-per-ticket invariant gets partial-unique indexes (mirrors the
+		// M119 parent index).
+		{122, []string{
+			// Orphan containers — cost_unit.
+			`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+			 SELECT l.project_id,
+			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id=l.project_id)
+			          + ROW_NUMBER() OVER (PARTITION BY l.project_id ORDER BY l.label),
+			        'cost_unit', l.label, 'backlog', 'medium'
+			 FROM (SELECT DISTINCT project_id, cost_unit AS label FROM issues
+			       WHERE cost_unit != '' AND deleted_at IS NULL AND type NOT IN ('cost_unit','release')) l
+			 WHERE NOT EXISTS (SELECT 1 FROM issues c
+			                   WHERE c.project_id=l.project_id AND c.type='cost_unit'
+			                     AND c.title=l.label AND c.deleted_at IS NULL)`,
+			// Orphan containers — release.
+			`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+			 SELECT l.project_id,
+			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id=l.project_id)
+			          + ROW_NUMBER() OVER (PARTITION BY l.project_id ORDER BY l.label),
+			        'release', l.label, 'backlog', 'medium'
+			 FROM (SELECT DISTINCT project_id, release AS label FROM issues
+			       WHERE release != '' AND deleted_at IS NULL AND type NOT IN ('cost_unit','release')) l
+			 WHERE NOT EXISTS (SELECT 1 FROM issues c
+			                   WHERE c.project_id=l.project_id AND c.type='release'
+			                     AND c.title=l.label AND c.deleted_at IS NULL)`,
+			// Advance per-project counters past the issue numbers just consumed.
+			`UPDATE project_issue_counters
+			 SET next_number = (SELECT MAX(issue_number)+1 FROM issues WHERE project_id = project_issue_counters.project_id)
+			 WHERE next_number <= (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id = project_issue_counters.project_id)`,
+			// Edge every labelled ticket to its (now guaranteed) container.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'cost_unit'
+			 FROM issues i
+			 JOIN issues c ON c.project_id = i.project_id AND c.type='cost_unit'
+			              AND c.title = i.cost_unit AND c.deleted_at IS NULL
+			 WHERE i.cost_unit != '' AND i.deleted_at IS NULL AND i.type NOT IN ('cost_unit','release')`,
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'release'
+			 FROM issues i
+			 JOIN issues c ON c.project_id = i.project_id AND c.type='release'
+			              AND c.title = i.release AND c.deleted_at IS NULL
+			 WHERE i.release != '' AND i.deleted_at IS NULL AND i.type NOT IN ('cost_unit','release')`,
+			// Defensive dedup (keep the lowest source per target) so the
+			// one-per-ticket invariant holds before the unique indexes.
+			`DELETE FROM issue_relations
+			 WHERE type='cost_unit' AND rowid NOT IN (
+			   SELECT MIN(rowid) FROM issue_relations WHERE type='cost_unit' GROUP BY target_id)`,
+			`DELETE FROM issue_relations
+			 WHERE type='release' AND rowid NOT IN (
+			   SELECT MIN(rowid) FROM issue_relations WHERE type='release' GROUP BY target_id)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_cost_unit
+			 ON issue_relations(target_id) WHERE type='cost_unit'`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_release
+			 ON issue_relations(target_id) WHERE type='release'`,
+		}},
+
+		// M123 / PAI-599 (599-B, DESTRUCTIVE): drop the issues.cost_unit and
+		// issues.release columns — the typed edges are the sole SSOT now. All
+		// reads (payload {id,label}, filters, sort, label lists, aggregation,
+		// reports, CSV, search, rate cascade) and writes (setLabelEdge) are off
+		// the columns; M122 guaranteed every label has a container + edge.
+		// Drop the column indexes first (DROP COLUMN refuses an indexed column),
+		// then retire the now-redundant cost_unit/release `groups` rows (M121
+		// folded them into the typed edges; the app no longer writes them).
+		{123, []string{
+			`DROP INDEX IF EXISTS idx_issues_costunit`,
+			`DROP INDEX IF EXISTS idx_issues_release`,
+			// The issue FTS triggers reference NEW.cost_unit/NEW.release, which
+			// blocks DROP COLUMN — drop them, drop the columns, then recreate
+			// the triggers without those fields. (Search by cost_unit/release
+			// label still works: the labels are container issue titles, indexed
+			// in their own right, and the structured cost_unit/release filter
+			// reads the edge.)
+			`DROP TRIGGER IF EXISTS trg_issues_ai`,
+			`DROP TRIGGER IF EXISTS trg_issues_au`,
+			`DROP TRIGGER IF EXISTS trg_issues_ad`,
+			`ALTER TABLE issues DROP COLUMN cost_unit`,
+			`ALTER TABLE issues DROP COLUMN release`,
+			`CREATE TRIGGER trg_issues_ai AFTER INSERT ON issues BEGIN
+				INSERT INTO search_index(entity_type, entity_id, content)
+				VALUES('issue', NEW.id,
+					COALESCE(NEW.title,'') || ' ' || COALESCE(NEW.description,'') || ' ' ||
+					COALESCE(NEW.acceptance_criteria,'') || ' ' || COALESCE(NEW.notes,'') || ' ' ||
+					COALESCE(NEW.jira_id,'') || ' ' || COALESCE(NEW.jira_version,'') || ' ' || COALESCE(NEW.jira_text,''));
+			END`,
+			`CREATE TRIGGER trg_issues_au AFTER UPDATE ON issues BEGIN
+				UPDATE search_index SET content =
+					COALESCE(NEW.title,'') || ' ' || COALESCE(NEW.description,'') || ' ' ||
+					COALESCE(NEW.acceptance_criteria,'') || ' ' || COALESCE(NEW.notes,'') || ' ' ||
+					COALESCE(NEW.jira_id,'') || ' ' || COALESCE(NEW.jira_version,'') || ' ' || COALESCE(NEW.jira_text,'')
+				WHERE entity_type='issue' AND entity_id=NEW.id;
+			END`,
+			`CREATE TRIGGER trg_issues_ad AFTER DELETE ON issues BEGIN
+				DELETE FROM search_index WHERE entity_type='issue' AND entity_id=OLD.id;
+			END`,
+			`DELETE FROM issue_relations
+			 WHERE type='groups'
+			   AND source_id IN (SELECT id FROM issues WHERE type IN ('cost_unit','release'))`,
+		}},
 	}
 
 	for _, m := range migrations {

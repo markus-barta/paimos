@@ -312,8 +312,6 @@ func TestBatchUpdate_AllScalarFields(t *testing.T) {
 		{ids[0], "status", "in-progress"},
 		{ids[1], "priority", "high"},
 		{ids[2], "assignee_id", adminID},
-		{ids[4], "cost_unit", "ENG-A"},
-		{ids[5], "release", "v1.2"},
 	}
 	for _, c := range cases {
 		var got any
@@ -340,6 +338,19 @@ func TestBatchUpdate_AllScalarFields(t *testing.T) {
 	if got := parentEdgeSources(t, ids[3]); len(got) != 1 || got[0] != epicID {
 		t.Errorf("batch parent_id update: parent edge for %d = %v, want [%d]", ids[3], got, epicID)
 	}
+	// PAI-599: cost_unit (ids[4]) / release (ids[5]) are container edges now.
+	assertLabelEdge := func(ticketID int64, dimension, want string) {
+		t.Helper()
+		var label string
+		err := db.DB.QueryRow(
+			`SELECT c.title FROM issue_relations r JOIN issues c ON c.id=r.source_id WHERE r.target_id=? AND r.type=?`,
+			ticketID, dimension).Scan(&label)
+		if err != nil || label != want {
+			t.Errorf("batch %s update: id=%d edge label=%q (err=%v), want %q", dimension, ticketID, label, err, want)
+		}
+	}
+	assertLabelEdge(ids[4], "cost_unit", "ENG-A")
+	assertLabelEdge(ids[5], "release", "v1.2")
 }
 
 // TestBatchUpdate_AssigneeFK_RollsBack — an unknown assignee_id must

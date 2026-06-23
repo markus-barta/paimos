@@ -256,8 +256,8 @@ func buildLieferbericht(projectID int64, scope, sprintIDs, fromDate, toDate stri
 	}
 	where, args = appendLBMultiFilter(where, args, "i.priority", filters.Priority)
 	where, args = appendLBMultiFilter(where, args, "i.type", filters.Type)
-	where, args = appendLBMultiFilter(where, args, "i.cost_unit", filters.CostUnit)
-	where, args = appendLBMultiFilter(where, args, "i.release", filters.Release)
+	where, args = appendLBMultiFilter(where, args, costUnitLabelExpr, filters.CostUnit)
+	where, args = appendLBMultiFilter(where, args, releaseLabelExpr, filters.Release)
 	where, args = appendLBAssigneeFilter(where, args, filters.AssigneeID)
 	if len(filters.IssueIDs) > 0 {
 		ph := make([]string, 0, len(filters.IssueIDs))

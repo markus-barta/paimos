@@ -59,14 +59,14 @@ func seedMemory(t *testing.T, projectID int64, slug, title, body string, meta st
 }
 
 // seedTicketRow seeds a ticket issue and returns its id. Lightweight —
-// only the columns the linking endpoint reads (project_id, type,
-// title, parent_id, release).
+// only what the linking endpoint reads (project_id, type, title, parent_id,
+// release). PAI-599: release is now a container edge, not a column.
 func seedTicketRow(t *testing.T, projectID int64, num int, title string, parentID *int64, release string) int64 {
 	t.Helper()
 	res, err := db.DB.Exec(`
-		INSERT INTO issues(project_id, issue_number, type, title, status, priority, release)
-		VALUES(?, ?, 'ticket', ?, 'backlog', 'medium', ?)
-	`, projectID, num, title, release)
+		INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+		VALUES(?, ?, 'ticket', ?, 'backlog', 'medium')
+	`, projectID, num, title)
 	if err != nil {
 		t.Fatalf("seed ticket %s: %v", title, err)
 	}
@@ -79,7 +79,34 @@ func seedTicketRow(t *testing.T, projectID int64, num int, title string, parentI
 			t.Fatalf("seed parent edge for %s: %v", title, err)
 		}
 	}
+	if release != "" {
+		seedLabelEdge(t, projectID, id, "release", release)
+	}
 	return id
+}
+
+// seedLabelEdge attaches a cost_unit/release container edge to a ticket in
+// tests (PAI-599), creating the container issue by label if needed.
+func seedLabelEdge(t *testing.T, projectID, ticketID int64, dimension, label string) int64 {
+	t.Helper()
+	var cid int64
+	_ = db.DB.QueryRow(`SELECT id FROM issues WHERE project_id=? AND type=? AND title=? AND deleted_at IS NULL`,
+		projectID, dimension, label).Scan(&cid)
+	if cid == 0 {
+		var num int
+		_ = db.DB.QueryRow(`SELECT COALESCE(MAX(issue_number),0)+1 FROM issues WHERE project_id=?`, projectID).Scan(&num)
+		res, err := db.DB.Exec(`INSERT INTO issues(project_id,issue_number,type,title,status,priority) VALUES(?,?,?,?,'backlog','medium')`,
+			projectID, num, dimension, label)
+		if err != nil {
+			t.Fatalf("seed %s container %q: %v", dimension, label, err)
+		}
+		cid, _ = res.LastInsertId()
+	}
+	if _, err := db.DB.Exec(`INSERT OR IGNORE INTO issue_relations(source_id,target_id,type) VALUES(?,?,?)`,
+		cid, ticketID, dimension); err != nil {
+		t.Fatalf("seed %s edge: %v", dimension, err)
+	}
+	return cid
 }
 
 // TestAppliesToMemoryRelationAccepted verifies the new relation type

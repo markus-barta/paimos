@@ -89,20 +89,19 @@ func TestPerf_ListIssues(t *testing.T) {
 		num := issueNum
 		issueNum++
 		// PAI-584 P6: parent_id column dropped — hierarchy via the parent edge.
+		// PAI-599: cost_unit/release columns dropped — omitted from the seed.
 		res, err := tx.Exec(`INSERT INTO issues(
 			project_id, issue_number, type, title,
 			description, acceptance_criteria, notes,
-			status, priority, cost_unit, release, assignee_id,
+			status, priority, assignee_id,
 			estimate_hours, ar_hours, created_by
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			projectID, num, iType, title,
 			fmt.Sprintf("Description for %s — lorem ipsum dolor sit amet", title),
 			"- [ ] AC item 1\n- [ ] AC item 2\n- [ ] AC item 3",
 			"Some notes here",
 			[]string{"new", "in-progress", "done"}[num%3],
 			[]string{"low", "medium", "high"}[num%3],
-			[]string{"", "internal", "external"}[num%3],
-			[]string{"", "v1.0", "v2.0"}[num%3],
 			assigneeID,
 			float64(num%20), float64(num%15),
 			1, // admin

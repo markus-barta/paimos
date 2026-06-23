@@ -75,12 +75,15 @@ func TestQuick_PortalIssueResponseHasNoCostFields(t *testing.T) {
 	// regression that re-introduces them lands a non-zero value into the
 	// payload (easier to spot in CI logs than a literal "null").
 	if _, err := db.DB.Exec(`UPDATE issues
-		SET cost_unit='secret-cu', release='secret-rel',
-		    estimate_hours=9.5, estimate_lp=12, ar_hours=7, ar_lp=8,
+		SET estimate_hours=9.5, estimate_lp=12, ar_hours=7, ar_lp=8,
 		    rate_hourly=150, rate_lp=80
 		WHERE id=?`, issueID); err != nil {
 		t.Fatalf("stuff issue: %v", err)
 	}
+	// PAI-599: cost_unit/release are edges now — attach secret-labelled
+	// containers so these dimensions are still exercised by the leak check.
+	seedLabelEdge(t, projectID, issueID, "cost_unit", "secret-cu")
+	seedLabelEdge(t, projectID, issueID, "release", "secret-rel")
 
 	// List endpoint
 	resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues", projectID), ts.externalCookie)

@@ -16,6 +16,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -227,17 +228,17 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 
 		// PAI-584 P6: parent_id column dropped — hierarchy via the `parent`
 		// edge (setParentEdge below).
+		// PAI-599: cost_unit/release columns dropped — written as edges below.
 		res, err := tx.Exec(`
 			INSERT INTO issues(project_id,issue_number,type,title,description,
 			                   acceptance_criteria,notes,report_summary,
-			                   status,priority,cost_unit,release,
+			                   status,priority,
 			                   start_date,end_date,estimate_hours,estimate_lp,
 			                   assignee_id,created_by)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		`, projectID, nextNum, typ, it.Title, it.Description,
 			it.AcceptanceCriteria, it.Notes, it.ReportSummary,
 			status, priority,
-			it.CostUnit, it.Release,
 			it.StartDate, it.EndDate,
 			it.EstimateHours, it.EstimateLp,
 			it.AssigneeID, createdByID)
@@ -256,6 +257,15 @@ func CreateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 			writeBatchError(w, []BatchError{{
 				Index: i, Error: cleanDBError(err),
 			}}, http.StatusInternalServerError)
+			return
+		}
+		// PAI-599: cost_unit/release set from string labels via container edges.
+		if err := setLabelEdge(r.Context(), tx, "cost_unit", id, projectID, it.CostUnit); err != nil {
+			writeBatchError(w, []BatchError{{Index: i, Error: cleanDBError(err)}}, http.StatusInternalServerError)
+			return
+		}
+		if err := setLabelEdge(r.Context(), tx, "release", id, projectID, it.Release); err != nil {
+			writeBatchError(w, []BatchError{{Index: i, Error: cleanDBError(err)}}, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -682,8 +692,6 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 			type                = COALESCE(?, type),
 			status              = COALESCE(?, status),
 			priority            = COALESCE(?, priority),
-			cost_unit           = COALESCE(?, cost_unit),
-			release             = COALESCE(?, release),
 			assignee_id         = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
 			start_date          = COALESCE(?, start_date),
 			end_date            = COALESCE(?, end_date),
@@ -695,13 +703,34 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 		upd.Title, upd.Description, upd.AcceptanceCriteria, upd.Notes,
 		upd.ReportSummary,
 		upd.Type,
-		upd.Status, upd.Priority, upd.CostUnit, upd.Release,
+		upd.Status, upd.Priority,
 		flag(upd.AssigneeIDPresent), upd.AssigneeID,
 		upd.StartDate, upd.EndDate,
 		flag(upd.EstimateHoursPresent), upd.EstimateHours,
 		flag(upd.EstimateLpPresent), upd.EstimateLp,
 		now, id)
-	return err
+	if err != nil {
+		return err
+	}
+	// PAI-599: cost_unit/release are edges now — set only when present in the
+	// update (mirrors the former COALESCE semantics). Resolve project for the
+	// container; an explicit empty string clears the edge.
+	if upd.CostUnit != nil || upd.Release != nil {
+		var projectID sql.NullInt64
+		if e := tx.QueryRow(`SELECT project_id FROM issues WHERE id=?`, id).Scan(&projectID); e == nil && projectID.Valid {
+			if upd.CostUnit != nil {
+				if e := setLabelEdge(context.Background(), tx, "cost_unit", id, projectID.Int64, *upd.CostUnit); e != nil {
+					return e
+				}
+			}
+			if upd.Release != nil {
+				if e := setLabelEdge(context.Background(), tx, "release", id, projectID.Int64, *upd.Release); e != nil {
+					return e
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // LookupIssuesByKeys implements GET /api/issues?keys=PAI-1,PAI-2,...

@@ -120,9 +120,9 @@ func issueListSortOrder(r *http.Request, defaultOrder string, searchTerm string)
 	case "priority":
 		return " ORDER BY CASE i.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END " + dir + tieBreaker, nil, sortKey, order, nil
 	case "cost_unit":
-		return " ORDER BY LOWER(COALESCE(i.cost_unit,'')) " + dir + tieBreaker, nil, sortKey, order, nil
+		return " ORDER BY LOWER(" + costUnitLabelExpr + ") " + dir + tieBreaker, nil, sortKey, order, nil
 	case "release":
-		return " ORDER BY LOWER(COALESCE(i.release,'')) " + dir + tieBreaker, nil, sortKey, order, nil
+		return " ORDER BY LOWER(" + releaseLabelExpr + ") " + dir + tieBreaker, nil, sortKey, order, nil
 	case "assignee":
 		return " ORDER BY LOWER(COALESCE(u.username,'')) " + dir + tieBreaker, nil, sortKey, order, nil
 	case "billing_type":
@@ -713,18 +713,13 @@ func ListCostUnits(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid project id", http.StatusBadRequest)
 		return
 	}
+	// PAI-599: the label namespace is the cost_unit container issues' titles
+	// (every label now has a container; the column was dropped).
 	rows, err := db.DB.Query(
-		`SELECT DISTINCT label
-		   FROM (
-		         SELECT title AS label
-		           FROM issues
-		          WHERE project_id=? AND type='cost_unit' AND title != '' AND deleted_at IS NULL
-		         UNION
-		         SELECT cost_unit AS label
-		           FROM issues
-		          WHERE project_id=? AND cost_unit != '' AND deleted_at IS NULL
-		        )
-		  ORDER BY label COLLATE NOCASE`, projectID, projectID,
+		`SELECT DISTINCT title
+		   FROM issues
+		  WHERE project_id=? AND type='cost_unit' AND title != '' AND deleted_at IS NULL
+		  ORDER BY title COLLATE NOCASE`, projectID,
 	)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -749,18 +744,13 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid project id", http.StatusBadRequest)
 		return
 	}
+	// PAI-599: the label namespace is the release container issues' titles
+	// (every label now has a container; the column was dropped).
 	rows, err := db.DB.Query(
-		`SELECT DISTINCT label
-		   FROM (
-		         SELECT title AS label
-		           FROM issues
-		          WHERE project_id=? AND type='release' AND title != '' AND deleted_at IS NULL
-		         UNION
-		         SELECT release AS label
-		           FROM issues
-		          WHERE project_id=? AND release != '' AND deleted_at IS NULL
-		        )
-		  ORDER BY label COLLATE NOCASE`, projectID, projectID,
+		`SELECT DISTINCT title
+		   FROM issues
+		  WHERE project_id=? AND type='release' AND title != '' AND deleted_at IS NULL
+		  ORDER BY title COLLATE NOCASE`, projectID,
 	)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -781,8 +771,9 @@ func ListReleases(w http.ResponseWriter, r *http.Request) {
 
 // ListAllCostUnits returns distinct cost_unit values across all projects.
 func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
+	// PAI-599: cost_unit column dropped — labels are the container titles.
 	query := `WITH allowed_issues AS (
-		SELECT i.title, i.type, i.cost_unit
+		SELECT i.title, i.type
 		  FROM issues i
 		 WHERE i.deleted_at IS NULL`
 	args := []any{}
@@ -792,12 +783,7 @@ func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
 	}
 	query += `
 	)
-	SELECT DISTINCT label
-	  FROM (
-	        SELECT title AS label FROM allowed_issues WHERE type='cost_unit' AND title != ''
-	        UNION
-	        SELECT cost_unit AS label FROM allowed_issues WHERE cost_unit != ''
-	       )
+	SELECT DISTINCT title AS label FROM allowed_issues WHERE type='cost_unit' AND title != ''
 	 ORDER BY label COLLATE NOCASE`
 	// #nosec G701 -- query uses fixed fragments only; access values are placeholders.
 	rows, err := db.DB.Query(query, args...)
@@ -820,8 +806,9 @@ func ListAllCostUnits(w http.ResponseWriter, r *http.Request) {
 
 // ListAllReleases returns distinct release values across all projects.
 func ListAllReleases(w http.ResponseWriter, r *http.Request) {
+	// PAI-599: release column dropped — labels are the container titles.
 	query := `WITH allowed_issues AS (
-		SELECT i.title, i.type, i.release
+		SELECT i.title, i.type
 		  FROM issues i
 		 WHERE i.deleted_at IS NULL`
 	args := []any{}
@@ -831,12 +818,7 @@ func ListAllReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	query += `
 	)
-	SELECT DISTINCT label
-	  FROM (
-	        SELECT title AS label FROM allowed_issues WHERE type='release' AND title != ''
-	        UNION
-	        SELECT release AS label FROM allowed_issues WHERE release != ''
-	       )
+	SELECT DISTINCT title AS label FROM allowed_issues WHERE type='release' AND title != ''
 	 ORDER BY label COLLATE NOCASE`
 	// #nosec G701 -- query uses fixed fragments only; access values are placeholders.
 	rows, err := db.DB.Query(query, args...)

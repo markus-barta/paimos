@@ -202,7 +202,7 @@ func loadSuggestContext(issueID int64) (suggestContext, error) {
 	err := db.DB.QueryRow(`
 		SELECT i.project_id,
 		       (SELECT source_id FROM issue_relations WHERE target_id = i.id AND type='parent'),
-		       i.release
+		       `+releaseLabelExpr+`
 		  FROM issues i
 		 WHERE i.id = ?
 		   AND i.deleted_at IS NULL

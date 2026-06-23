@@ -78,7 +78,7 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		FROM issues i
 		WHERE i.id IN (
 			SELECT target_id FROM issue_relations
-			WHERE source_id = ? AND type IN ('parent','groups')
+			WHERE source_id = ? AND type IN ('parent','groups','cost_unit','release')
 		) AND i.deleted_at IS NULL`+aggAccessFilter,
 		aggArgs...).Scan(&agg.MemberCount, &agg.EstimateHours, &agg.EstimateLp, &agg.ArHours, &agg.ArLp)
 	if err != nil {
@@ -147,7 +147,7 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		WHERE te.issue_id IN (
 			SELECT i.id FROM issue_relations ir
 			JOIN issues i ON i.id = ir.target_id
-			WHERE ir.source_id = ? AND ir.type IN ('parent','groups')`+aggAccessFilter+`
+			WHERE ir.source_id = ? AND ir.type IN ('parent','groups','cost_unit','release')`+aggAccessFilter+`
 			UNION ALL SELECT ?
 		)
 	`, actArgs...).Scan(&actualHours, &actualInternalCost)

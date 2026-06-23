@@ -37,7 +37,7 @@ var projKeyPattern = regexp.MustCompile(`(?i)^([A-Z][A-Z0-9]+)$`)
 
 const issueSelectCols = `i.id, i.issue_number, i.title, i.type, i.status, i.priority, i.project_id,
 		       COALESCE(p.key, ''),
-		       COALESCE(i.cost_unit, ''), COALESCE(i.release, ''),
+		       ` + costUnitLabelExpr + `, ` + releaseLabelExpr + `,
 		       i.assignee_id, COALESCE(u.username, '')`
 
 // SearchResults is the response shape for GET /api/search.

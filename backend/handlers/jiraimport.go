@@ -574,15 +574,16 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 		var issueID int64
 		if hasCollision && req.Options.Overwrite && existingID > 0 {
 			// Update existing
+			// PAI-599: release column dropped — set as an edge below from jiraVersion.
 			_, err := db.DB.Exec(`
 				UPDATE issues SET title=?, description=?, acceptance_criteria=?, notes=?, type=?, status=?, priority=?, assignee_id=?,
 				jira_id=?, jira_text=?, jira_version=?, estimate_hours=?, estimate_lp=?,
 				ar_lp=?, rate_lp=?,
-				end_date=?, release=?, updated_at=? WHERE id=?
+				end_date=?, updated_at=? WHERE id=?
 			`, title, description, acceptanceCriteria, notes, bpType, bpStatus, bpPriority, assigneeID,
 				ji.Key, jiraText, jiraVersion, estimateHours, estimateLp,
 				arLp, rateLp,
-				endDate, jiraVersion, updatedAt, existingID)
+				endDate, updatedAt, existingID)
 			if err != nil {
 				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
 				continue
@@ -603,15 +604,16 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 			}
 
 			// Insert new — full field parity with normal CREATE
+			// PAI-599: release column dropped — set as an edge below from jiraVersion.
 			sqlRes, err := tx.ExecContext(context.Background(), `
 				INSERT INTO issues(project_id, issue_number, title, description, acceptance_criteria, notes, type, status, priority,
 					assignee_id, jira_id, jira_text, jira_version,
-					estimate_hours, estimate_lp, ar_lp, rate_lp, end_date, release,
+					estimate_hours, estimate_lp, ar_lp, rate_lp, end_date,
 					created_by, created_at, updated_at)
-				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`, req.TargetProjectID, nextNum, title, description, acceptanceCriteria, notes, bpType, bpStatus, bpPriority, assigneeID,
 				ji.Key, jiraText, jiraVersion,
-				estimateHours, estimateLp, arLp, rateLp, endDate, jiraVersion,
+				estimateHours, estimateLp, arLp, rateLp, endDate,
 				actorID, createdAt, updatedAt)
 			if err != nil {
 				_ = tx.Rollback()
@@ -624,6 +626,17 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 				continue
 			}
 			res.Imported++
+		}
+
+		// PAI-599: set the release edge from the Jira version (column dropped).
+		if issueID > 0 && strings.TrimSpace(jiraVersion) != "" {
+			if etx, eerr := db.DB.BeginTx(context.Background(), nil); eerr == nil {
+				if e := setLabelEdge(context.Background(), etx, "release", issueID, req.TargetProjectID, jiraVersion); e != nil {
+					_ = etx.Rollback()
+				} else {
+					_ = etx.Commit()
+				}
+			}
 		}
 
 		jiraKeyToIssueID[ji.Key] = issueID

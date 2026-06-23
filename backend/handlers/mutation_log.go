@@ -432,7 +432,10 @@ func fetchIssueMutationSnapshotTx(tx *sql.Tx, issueID int64) (issueMutationSnaps
 		       (SELECT source_id FROM issue_relations WHERE target_id = issues.id AND type='parent'),
 		       title, description, acceptance_criteria, notes,
 		       report_summary,
-		       status, priority, cost_unit, release, billing_type, total_budget, rate_hourly, rate_lp,
+		       status, priority,
+		       COALESCE((SELECT c.title FROM issue_relations r JOIN issues c ON c.id=r.source_id WHERE r.target_id=issues.id AND r.type='cost_unit'), ''),
+		       COALESCE((SELECT c.title FROM issue_relations r JOIN issues c ON c.id=r.source_id WHERE r.target_id=issues.id AND r.type='release'), ''),
+		       billing_type, total_budget, rate_hourly, rate_lp,
 		       start_date, end_date, group_state, sprint_state, jira_id, jira_version, jira_text,
 		       estimate_hours, estimate_lp, ar_hours, ar_lp, time_override, color, assignee_id, deleted_at
 		FROM issues WHERE id = ?
@@ -617,7 +620,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 		UPDATE issues SET
 			type = ?, title = ?, description = ?, acceptance_criteria = ?, notes = ?,
 			report_summary = ?,
-			status = ?, priority = ?, cost_unit = ?, release = ?, billing_type = ?, total_budget = ?,
+			status = ?, priority = ?, billing_type = ?, total_budget = ?,
 			rate_hourly = ?, rate_lp = ?, start_date = ?, end_date = ?, group_state = ?, sprint_state = ?,
 			jira_id = ?, jira_version = ?, jira_text = ?, estimate_hours = ?, estimate_lp = ?, ar_hours = ?,
 			ar_lp = ?, time_override = ?, color = ?, assignee_id = ?, deleted_at = ?, updated_at = ?
@@ -625,7 +628,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 	`,
 		snap.Type, snap.Title, snap.Description, snap.AcceptanceCriteria, snap.Notes,
 		snap.ReportSummary,
-		snap.Status, snap.Priority, snap.CostUnit, snap.Release, snap.BillingType, snap.TotalBudget,
+		snap.Status, snap.Priority, snap.BillingType, snap.TotalBudget,
 		snap.RateHourly, snap.RateLp, snap.StartDate, snap.EndDate, snap.GroupState, snap.SprintState,
 		snap.JiraID, snap.JiraVersion, snap.JiraText, snap.EstimateHours, snap.EstimateLp, snap.ArHours,
 		snap.ArLp, snap.TimeOverride, snap.Color, snap.AssigneeID, snap.DeletedAt, time.Now().UTC().Format("2006-01-02 15:04:05"),
@@ -636,7 +639,20 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 	}
 	// PAI-584 P6: restore the hierarchy via the `parent` edge (parent_id
 	// column dropped). snap.ParentID was captured from the edge.
-	return setParentEdge(context.Background(), tx, issueID, snap.ParentID)
+	if err := setParentEdge(context.Background(), tx, issueID, snap.ParentID); err != nil {
+		return err
+	}
+	// PAI-599: restore cost_unit/release via their container edges (columns
+	// dropped). snap.CostUnit/Release hold the container labels.
+	if snap.ProjectID != nil {
+		if err := setLabelEdge(context.Background(), tx, "cost_unit", issueID, *snap.ProjectID, snap.CostUnit); err != nil {
+			return err
+		}
+		if err := setLabelEdge(context.Background(), tx, "release", issueID, *snap.ProjectID, snap.Release); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func applyIssueTagSnapshotTx(ctx context.Context, tx *sql.Tx, snap issueTagMutationSnapshot) error {

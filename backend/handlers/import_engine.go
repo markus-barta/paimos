@@ -23,6 +23,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"sort"
@@ -312,16 +313,17 @@ func insertIssue(projectID int64, row ImportRow, keyToID map[string]int64) (int6
 	}
 	// PAI-584 P6: parent_id column dropped — hierarchy via the `parent` edge.
 	parent := resolveParent(row.ParentKey, keyToID)
+	// PAI-599: cost_unit/release columns dropped — written as edges below.
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO issues(
 			project_id, issue_number, type,
 			title, description, acceptance_criteria, notes,
-			status, priority, cost_unit, release, assignee_id
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+			status, priority, assignee_id
+		) VALUES(?,?,?,?,?,?,?,?,?,?)
 	`,
 		projectID, num, row.Type,
 		row.Title, row.Description, row.AcceptanceCriteria, row.Notes,
-		status, priority, row.CostUnit, row.Release, resolveAssignee(row.Assignee),
+		status, priority, resolveAssignee(row.Assignee),
 	)
 	if err != nil {
 		return 0, err
@@ -331,6 +333,12 @@ func insertIssue(projectID int64, row ImportRow, keyToID map[string]int64) (int6
 		return 0, err
 	}
 	if err := setParentEdge(ctx, tx, id, parent); err != nil {
+		return 0, err
+	}
+	if err := setLabelEdge(ctx, tx, "cost_unit", id, projectID, row.CostUnit); err != nil {
+		return 0, err
+	}
+	if err := setLabelEdge(ctx, tx, "release", id, projectID, row.Release); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -346,24 +354,46 @@ func overwriteIssue(id int64, row ImportRow, keyToID map[string]int64) error {
 		priority = "medium"
 	}
 	// PAI-584 P6: parent_id column dropped — hierarchy via the `parent` edge.
+	// PAI-599: cost_unit/release columns dropped — written as edges. Wrap in a
+	// tx so container creation (reserved numbering) is atomic with the update.
 	parent := resolveParent(row.ParentKey, keyToID)
-	_, err := db.DB.Exec(`
+	ctx := context.Background()
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE issues SET
 			type=?,
 			title=?, description=?, acceptance_criteria=?, notes=?,
-			status=?, priority=?, cost_unit=?, release=?, assignee_id=?,
+			status=?, priority=?, assignee_id=?,
 			updated_at=datetime('now')
 		WHERE id=?
 	`,
 		row.Type,
 		row.Title, row.Description, row.AcceptanceCriteria, row.Notes,
-		status, priority, row.CostUnit, row.Release, resolveAssignee(row.Assignee),
+		status, priority, resolveAssignee(row.Assignee),
 		id,
-	)
-	if err != nil {
+	); err != nil {
 		return err
 	}
-	return setParentEdge(context.Background(), db.DB, id, parent)
+	if err := setParentEdge(ctx, tx, id, parent); err != nil {
+		return err
+	}
+	var projectID sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM issues WHERE id=?`, id).Scan(&projectID); err != nil {
+		return err
+	}
+	if projectID.Valid {
+		if err := setLabelEdge(ctx, tx, "cost_unit", id, projectID.Int64, row.CostUnit); err != nil {
+			return err
+		}
+		if err := setLabelEdge(ctx, tx, "release", id, projectID.Int64, row.Release); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // normaliseImportStatus maps legacy/external status strings to canonical PAIMOS values.
