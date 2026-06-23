@@ -86,6 +86,8 @@ function displayVal(snap: Record<string, any> | null, field: string): string {
   if (v === null || v === undefined || v === '') return '—'
   if (field === 'assignee_id') return snap.assignee?.username ?? String(v)
   if (field === 'parent_id')   return String(v)
+  // PAI-599: cost_unit/release snapshots are {id,label} objects — show label.
+  if (v && typeof v === 'object') return v.label ?? String(v)
   return String(v)
 }
 

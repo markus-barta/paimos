@@ -5080,6 +5080,203 @@ func migrate(db *sql.DB) error {
 			 WHERE type='groups'
 			   AND source_id IN (SELECT id FROM issues WHERE type='epic')`,
 		}},
+
+		// M121 / PAI-599 (599-A): add `cost_unit` and `release` relation edge
+		// types. cost_unit/release are already first-class container issues
+		// (they carry rates and aggregate); the issues.cost_unit/release string
+		// columns are a fragile by-title reference to them. These typed edges
+		// (source = container issue, target = ticket) become the SSOT, mirroring
+		// the `parent` edge. SQLite can't ALTER a CHECK — rename+recreate+copy
+		// (pattern M118), recreating every index AND trigger the table carries
+		// (source/target indexes, the M119 one-parent partial-unique index, and
+		// the M115 content_rev list-freshness triggers).
+		//
+		// Backfill here is SQL-only and safe: fold existing groups rows whose
+		// source is a cost_unit/release issue into the new edge types, and edge
+		// tickets to any container that ALREADY matches their label by title.
+		// Creating containers for label-only strings (and edging those) is the
+		// idempotent Go boot-backfill EnsureCostUnitReleaseEdges — it needs
+		// per-project issue numbering, which is unsafe in raw migration SQL.
+		{121, []string{
+			`ALTER TABLE issue_relations RENAME TO issue_relations_old120`,
+			`CREATE TABLE issue_relations (
+				source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				type      TEXT NOT NULL
+				          CHECK(type IN ('parent','cost_unit','release','groups','sprint',
+				                         'depends_on','impacts','follows_from','blocks',
+				                         'related','applies_to_memory')),
+				rank      INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (source_id, target_id, type)
+			)`,
+			`INSERT OR IGNORE INTO issue_relations
+			 SELECT source_id, target_id, type, rank FROM issue_relations_old120`,
+			`DROP TABLE issue_relations_old120`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_source
+			 ON issue_relations(source_id, type)`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_relations_target
+			 ON issue_relations(target_id, type)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_parent
+			 ON issue_relations(target_id) WHERE type='parent'`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ai
+				AFTER INSERT ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_au
+				AFTER UPDATE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id, NEW.source_id, NEW.target_id);
+				END`,
+			`CREATE TRIGGER IF NOT EXISTS trg_issue_relations_listrev_ad
+				AFTER DELETE ON issue_relations BEGIN
+					UPDATE issues SET content_rev = content_rev + 1 WHERE id IN (OLD.source_id, OLD.target_id);
+				END`,
+			// Fold existing groups rows whose source is a cost_unit/release issue.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT g.source_id, g.target_id, src.type
+			 FROM issue_relations g
+			 JOIN issues src ON src.id = g.source_id AND src.type IN ('cost_unit','release')
+			 WHERE g.type='groups'`,
+			// Edge tickets to a container that already matches their label.
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'cost_unit'
+			 FROM issues i
+			 JOIN issues c ON c.project_id = i.project_id AND c.type='cost_unit'
+			              AND c.title = i.cost_unit AND c.deleted_at IS NULL
+			 WHERE i.cost_unit != '' AND i.deleted_at IS NULL`,
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'release'
+			 FROM issues i
+			 JOIN issues c ON c.project_id = i.project_id AND c.type='release'
+			              AND c.title = i.release AND c.deleted_at IS NULL
+			 WHERE i.release != '' AND i.deleted_at IS NULL`,
+		}},
+
+		// M122 / PAI-599 (599-B): finish the backfill so EVERY cost_unit/release
+		// string has a container + edge BEFORE the column drop (M123). M121
+		// edged labels that already had a container; this creates a container
+		// for each remaining ("orphan") label and edges its tickets. Done in
+		// SQL (not the former Go boot backfill) because migrations run before
+		// app boot — a boot backfill would read the already-dropped column.
+		//
+		// Container issue numbers are assigned MAX(issue_number)+row_number per
+		// project (unique, gap-free from the current max); project_issue_counters
+		// is then advanced so the API's NextIssueNumber never collides. Finally
+		// the one-per-ticket invariant gets partial-unique indexes (mirrors the
+		// M119 parent index).
+		{122, []string{
+			// Orphan containers — cost_unit. Source includes soft-deleted AND
+			// project-less issues (project_id IS — NULL-safe) so NO label is
+			// lost on the M123 drop or on a later restore. `IS` matches the
+			// project-less (orphan-sprint) partition that `=` would skip.
+			`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+			 SELECT l.project_id,
+			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE issues.project_id IS l.project_id)
+			          + ROW_NUMBER() OVER (PARTITION BY l.project_id ORDER BY l.label),
+			        'cost_unit', l.label, 'backlog', 'medium'
+			 FROM (SELECT DISTINCT project_id, cost_unit AS label FROM issues
+			       WHERE cost_unit != '' AND type NOT IN ('cost_unit','release')) l
+			 WHERE NOT EXISTS (SELECT 1 FROM issues c
+			                   WHERE c.project_id IS l.project_id AND c.type='cost_unit'
+			                     AND c.title=l.label AND c.deleted_at IS NULL)`,
+			// Orphan containers — release.
+			`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+			 SELECT l.project_id,
+			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE issues.project_id IS l.project_id)
+			          + ROW_NUMBER() OVER (PARTITION BY l.project_id ORDER BY l.label),
+			        'release', l.label, 'backlog', 'medium'
+			 FROM (SELECT DISTINCT project_id, release AS label FROM issues
+			       WHERE release != '' AND type NOT IN ('cost_unit','release')) l
+			 WHERE NOT EXISTS (SELECT 1 FROM issues c
+			                   WHERE c.project_id IS l.project_id AND c.type='release'
+			                     AND c.title=l.label AND c.deleted_at IS NULL)`,
+			// Advance per-project counters past the issue numbers just consumed
+			// (only real projects have counter rows; project-less containers
+			// bypass NextIssueNumber so `=` is correct here).
+			`UPDATE project_issue_counters
+			 SET next_number = (SELECT MAX(issue_number)+1 FROM issues WHERE issues.project_id = project_issue_counters.project_id)
+			 WHERE next_number <= (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE issues.project_id = project_issue_counters.project_id)`,
+			// Edge every labelled issue (incl. soft-deleted + project-less) to
+			// its active container. Soft-deleted issues are edged too so a later
+			// restore keeps its cost_unit/release (the column is gone after M123).
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'cost_unit'
+			 FROM issues i
+			 JOIN issues c ON c.project_id IS i.project_id AND c.type='cost_unit'
+			              AND c.title = i.cost_unit AND c.deleted_at IS NULL
+			 WHERE i.cost_unit != '' AND i.type NOT IN ('cost_unit','release')`,
+			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
+			 SELECT c.id, i.id, 'release'
+			 FROM issues i
+			 JOIN issues c ON c.project_id IS i.project_id AND c.type='release'
+			              AND c.title = i.release AND c.deleted_at IS NULL
+			 WHERE i.release != '' AND i.type NOT IN ('cost_unit','release')`,
+			// Clean up any cost_unit/release edge whose TARGET is itself a
+			// container — M121's title-match lacked the type filter and could
+			// have produced self/inter-container edges. Targets are tickets only.
+			`DELETE FROM issue_relations
+			 WHERE type IN ('cost_unit','release')
+			   AND target_id IN (SELECT id FROM issues WHERE type IN ('cost_unit','release'))`,
+			// Deterministic dedup: keep the edge to the LOWEST-id container per
+			// ticket (matches resolveOrCreateLabelContainer's ORDER BY id), so
+			// the one-per-ticket invariant holds before the unique indexes and
+			// the survivor is stable, not insertion-order dependent.
+			`DELETE FROM issue_relations WHERE type='cost_unit' AND rowid NOT IN (
+			   SELECT e.rowid FROM issue_relations e WHERE e.type='cost_unit'
+			     AND e.source_id = (SELECT MIN(e2.source_id) FROM issue_relations e2
+			                        WHERE e2.type='cost_unit' AND e2.target_id=e.target_id))`,
+			`DELETE FROM issue_relations WHERE type='release' AND rowid NOT IN (
+			   SELECT e.rowid FROM issue_relations e WHERE e.type='release'
+			     AND e.source_id = (SELECT MIN(e2.source_id) FROM issue_relations e2
+			                        WHERE e2.type='release' AND e2.target_id=e.target_id))`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_cost_unit
+			 ON issue_relations(target_id) WHERE type='cost_unit'`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_release
+			 ON issue_relations(target_id) WHERE type='release'`,
+		}},
+
+		// M123 / PAI-599 (599-B, DESTRUCTIVE): drop the issues.cost_unit and
+		// issues.release columns — the typed edges are the sole SSOT now. All
+		// reads (payload {id,label}, filters, sort, label lists, aggregation,
+		// reports, CSV, search, rate cascade) and writes (setLabelEdge) are off
+		// the columns; M122 guaranteed every label has a container + edge.
+		// Drop the column indexes first (DROP COLUMN refuses an indexed column),
+		// then retire the now-redundant cost_unit/release `groups` rows (M121
+		// folded them into the typed edges; the app no longer writes them).
+		{123, []string{
+			`DROP INDEX IF EXISTS idx_issues_costunit`,
+			`DROP INDEX IF EXISTS idx_issues_release`,
+			// The issue FTS triggers reference NEW.cost_unit/NEW.release, which
+			// blocks DROP COLUMN — drop them, drop the columns, then recreate
+			// the triggers without those fields. (Search by cost_unit/release
+			// label still works: the labels are container issue titles, indexed
+			// in their own right, and the structured cost_unit/release filter
+			// reads the edge.)
+			`DROP TRIGGER IF EXISTS trg_issues_ai`,
+			`DROP TRIGGER IF EXISTS trg_issues_au`,
+			`DROP TRIGGER IF EXISTS trg_issues_ad`,
+			`ALTER TABLE issues DROP COLUMN cost_unit`,
+			`ALTER TABLE issues DROP COLUMN release`,
+			`CREATE TRIGGER trg_issues_ai AFTER INSERT ON issues BEGIN
+				INSERT INTO search_index(entity_type, entity_id, content)
+				VALUES('issue', NEW.id,
+					COALESCE(NEW.title,'') || ' ' || COALESCE(NEW.description,'') || ' ' ||
+					COALESCE(NEW.acceptance_criteria,'') || ' ' || COALESCE(NEW.notes,'') || ' ' ||
+					COALESCE(NEW.jira_id,'') || ' ' || COALESCE(NEW.jira_version,'') || ' ' || COALESCE(NEW.jira_text,''));
+			END`,
+			`CREATE TRIGGER trg_issues_au AFTER UPDATE ON issues BEGIN
+				UPDATE search_index SET content =
+					COALESCE(NEW.title,'') || ' ' || COALESCE(NEW.description,'') || ' ' ||
+					COALESCE(NEW.acceptance_criteria,'') || ' ' || COALESCE(NEW.notes,'') || ' ' ||
+					COALESCE(NEW.jira_id,'') || ' ' || COALESCE(NEW.jira_version,'') || ' ' || COALESCE(NEW.jira_text,'')
+				WHERE entity_type='issue' AND entity_id=NEW.id;
+			END`,
+			`CREATE TRIGGER trg_issues_ad AFTER DELETE ON issues BEGIN
+				DELETE FROM search_index WHERE entity_type='issue' AND entity_id=OLD.id;
+			END`,
+			`DELETE FROM issue_relations
+			 WHERE type='groups'
+			   AND source_id IN (SELECT id FROM issues WHERE type IN ('cost_unit','release'))`,
+		}},
 	}
 
 	for _, m := range migrations {

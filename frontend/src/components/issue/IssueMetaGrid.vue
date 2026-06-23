@@ -77,11 +77,11 @@ function issueRoute(issueId: number): string {
       </div>
       <div class="meta-item" v-if="['epic','ticket','task'].includes(issue.type)">
         <span class="meta-label">Cost Unit</span>
-        <span class="meta-value">{{ issue.cost_unit || '—' }}</span>
+        <span class="meta-value">{{ issue.cost_unit?.label || '—' }}</span>
       </div>
       <div class="meta-item" v-if="['epic','ticket','task'].includes(issue.type)">
         <span class="meta-label">Release</span>
-        <span class="meta-value">{{ issue.release || '—' }}</span>
+        <span class="meta-value">{{ issue.release?.label || '—' }}</span>
       </div>
       <div class="meta-item" v-if="issue.tags?.length">
         <span class="meta-label">Tags</span>

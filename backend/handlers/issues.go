@@ -33,7 +33,8 @@ const issueSelect = `
 	SELECT i.id, i.project_id, i.issue_number, i.type, pe.source_id AS parent_id,
 	       i.title, i.description, i.acceptance_criteria, i.notes,
 	       i.report_summary,
-	       i.status, i.priority, i.cost_unit, i.release,
+	       i.status, i.priority,
+	       cu.source_id, cu_issue.title, rel.source_id, rel_issue.title,
 	       i.billing_type, i.total_budget, i.rate_hourly, i.rate_lp,
 	       i.start_date, i.end_date, i.group_state, i.sprint_state,
 	       i.jira_id, i.jira_version, i.jira_text,
@@ -78,6 +79,13 @@ const issueSelect = `
 	-- orphans and survives P6's column drop. One parent per child means
 	-- the LEFT JOIN never fans out.
 	LEFT JOIN issue_relations pe ON pe.target_id = i.id AND pe.type = 'parent'
+	-- PAI-599: cost_unit/release in the payload are sourced from their
+	-- container edges (the SSOT), returned as {id,label}. One of each per
+	-- ticket (partial-unique index) so these LEFT JOINs never fan out.
+	LEFT JOIN issue_relations cu ON cu.target_id = i.id AND cu.type = 'cost_unit'
+	LEFT JOIN issues cu_issue ON cu_issue.id = cu.source_id
+	LEFT JOIN issue_relations rel ON rel.target_id = i.id AND rel.type = 'release'
+	LEFT JOIN issues rel_issue ON rel_issue.id = rel.source_id
 `
 
 // issueSelectCore is like issueSelect but without the 3 correlated subqueries
@@ -86,7 +94,8 @@ const issueSelectCore = `
 	SELECT i.id, i.project_id, i.issue_number, i.type, pe.source_id AS parent_id,
 	       i.title, i.description, i.acceptance_criteria, i.notes,
 	       i.report_summary,
-	       i.status, i.priority, i.cost_unit, i.release,
+	       i.status, i.priority,
+	       cu.source_id, cu_issue.title, rel.source_id, rel_issue.title,
 	       i.billing_type, i.total_budget, i.rate_hourly, i.rate_lp,
 	       i.start_date, i.end_date, i.group_state, i.sprint_state,
 	       i.jira_id, i.jira_version, i.jira_text,
@@ -113,6 +122,13 @@ const issueSelectCore = `
 	-- orphans and survives P6's column drop. One parent per child means
 	-- the LEFT JOIN never fans out.
 	LEFT JOIN issue_relations pe ON pe.target_id = i.id AND pe.type = 'parent'
+	-- PAI-599: cost_unit/release in the payload are sourced from their
+	-- container edges (the SSOT), returned as {id,label}. One of each per
+	-- ticket (partial-unique index) so these LEFT JOINs never fan out.
+	LEFT JOIN issue_relations cu ON cu.target_id = i.id AND cu.type = 'cost_unit'
+	LEFT JOIN issues cu_issue ON cu_issue.id = cu.source_id
+	LEFT JOIN issue_relations rel ON rel.target_id = i.id AND rel.type = 'release'
+	LEFT JOIN issues rel_issue ON rel_issue.id = rel.source_id
 `
 
 // liveIssuesWhere is the WHERE predicate every issue-listing query must apply
@@ -120,6 +136,14 @@ const issueSelectCore = `
 // `i.deleted_at IS NOT NULL` explicitly). Prefix with " AND " when appending
 // after an existing WHERE clause.
 const liveIssuesWhere = `i.deleted_at IS NULL`
+
+// PAI-599: SQL expressions yielding an issue's cost_unit/release label from
+// its container edge (or ” when none) — drop-in replacements for the former
+// i.cost_unit / i.release columns in filter/sort/export queries, preserving
+// exact semantics (including negation, which depends on ” not NULL). The
+// outer query MUST alias the issues table `i`.
+const costUnitLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='cost_unit'),'')`
+const releaseLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='release'),'')`
 
 func scanIssue(rows interface {
 	Scan(...any) error
@@ -132,13 +156,16 @@ func scanIssue(rows interface {
 	// treat empty string as nil for clean JSON output.
 	var billingType, startDate, endDate, groupState, sprintState string
 	var jiraID, jiraVersion, jiraText string
+	// PAI-599: cost_unit/release edge-sourced container id + title (nullable).
+	var cuID, relID sql.NullInt64
+	var cuTitle, relTitle sql.NullString
 	var sprintIDsCSV string
 	var archivedInt int
 	if err := rows.Scan(
 		&i.ID, &i.ProjectID, &i.IssueNumber, &i.Type, &i.ParentID,
 		&i.Title, &i.Description, &i.AcceptanceCriteria, &i.Notes,
 		&i.ReportSummary,
-		&i.Status, &i.Priority, &i.CostUnit, &i.Release,
+		&i.Status, &i.Priority, &cuID, &cuTitle, &relID, &relTitle,
 		&billingType, &i.TotalBudget, &i.RateHourly, &i.RateLp,
 		&startDate, &endDate, &groupState, &sprintState,
 		&jiraID, &jiraVersion, &jiraText,
@@ -203,6 +230,13 @@ func scanIssue(rows interface {
 	}
 	if jiraText != "" {
 		i.JiraText = &jiraText
+	}
+	// PAI-599: build the edge-sourced cost_unit/release refs (nil if no edge).
+	if cuID.Valid {
+		i.CostUnit = &models.LabelRef{ID: cuID.Int64, Label: cuTitle.String}
+	}
+	if relID.Valid {
+		i.Release = &models.LabelRef{ID: relID.Int64, Label: relTitle.String}
 	}
 	return &i, nil
 }
@@ -474,13 +508,13 @@ func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
 		}
 		query += " AND i.type NOT IN (" + ph + ")"
 	}
-	// cost_unit: multi-value
+	// cost_unit: multi-value (PAI-599: edge-sourced label)
 	if cu := q.Get("cost_unit"); cu != "" {
-		query, args = applyMultiFilter(query, args, "i.cost_unit", cu)
+		query, args = applyMultiFilter(query, args, costUnitLabelExpr, cu)
 	}
-	// release: multi-value
+	// release: multi-value (PAI-599: edge-sourced label)
 	if rel := q.Get("release"); rel != "" {
-		query, args = applyMultiFilter(query, args, "i.release", rel)
+		query, args = applyMultiFilter(query, args, releaseLabelExpr, rel)
 	}
 	// assignee_id: multi-value, optional ! negation, special "unassigned" sentinel
 	if aid := q.Get("assignee_id"); aid != "" {

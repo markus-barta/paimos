@@ -16,26 +16,29 @@
 package models
 
 type Issue struct {
-	ID                 int64   `json:"id"`
-	ProjectID          *int64  `json:"project_id"`
-	IssueNumber        int     `json:"issue_number"`
-	IssueKey           string  `json:"issue_key"` // computed: project.key + "-" + issue_number
-	Type               string  `json:"type"`
-	ParentID           *int64  `json:"parent_id"`
-	Parent             *Issue  `json:"parent,omitempty"`
-	Title              string  `json:"title"`
-	Description        string  `json:"description"`
-	AcceptanceCriteria string  `json:"acceptance_criteria"`
-	Notes              string  `json:"notes"`
+	ID                 int64  `json:"id"`
+	ProjectID          *int64 `json:"project_id"`
+	IssueNumber        int    `json:"issue_number"`
+	IssueKey           string `json:"issue_key"` // computed: project.key + "-" + issue_number
+	Type               string `json:"type"`
+	ParentID           *int64 `json:"parent_id"`
+	Parent             *Issue `json:"parent,omitempty"`
+	Title              string `json:"title"`
+	Description        string `json:"description"`
+	AcceptanceCriteria string `json:"acceptance_criteria"`
+	Notes              string `json:"notes"`
 	// PAI-418: customer-facing report-text used by Projektbericht.
 	// One field; the audience style (warm customer copy vs technical
 	// exec TL;DR) is picked at AI-generation time.
 	ReportSummary string `json:"report_summary"`
-	Status             string  `json:"status"`
-	Priority           string  `json:"priority"`
-	// Grouping free-text fields (still used for filter/export)
-	CostUnit string `json:"cost_unit"`
-	Release  string `json:"release"`
+	Status        string `json:"status"`
+	Priority      string `json:"priority"`
+	// PAI-599: cost_unit/release are edge-sourced references to their
+	// container issue ({id,label}), not free-text columns. nil when the
+	// issue carries no such edge. Set via a string label on create/update
+	// (the backend resolves/creates the container); returned as an object.
+	CostUnit *LabelRef `json:"cost_unit"`
+	Release  *LabelRef `json:"release"`
 	// v2 group/sprint fields (nullable; only meaningful on epic/cost_unit/release/sprint)
 	BillingType *string  `json:"billing_type"`
 	TotalBudget *float64 `json:"total_budget"`
@@ -49,11 +52,11 @@ type Issue struct {
 	ArHours       *float64 `json:"ar_hours"`
 	ArLp          *float64 `json:"ar_lp"`
 	TimeOverride  *float64 `json:"time_override"`
-	GroupState  *string  `json:"group_state"`
-	SprintState *string  `json:"sprint_state"`
-	JiraID      *string  `json:"jira_id"`
-	JiraVersion *string  `json:"jira_version"`
-	JiraText    *string  `json:"jira_text"`
+	GroupState    *string  `json:"group_state"`
+	SprintState   *string  `json:"sprint_state"`
+	JiraID        *string  `json:"jira_id"`
+	JiraVersion   *string  `json:"jira_version"`
+	JiraText      *string  `json:"jira_text"`
 	// epic color — optional visual accent for epic badges
 	Color *string `json:"color"`
 	// sprint membership — IDs of sprints this issue belongs to (source_id in issue_relations type=sprint)
@@ -86,9 +89,17 @@ type Issue struct {
 	// computed: budget in hours (estimate_hours or estimate_lp * rate conversion)
 	BudgetHours *float64 `json:"budget_hours"`
 	// Time tracking 4-field model
-	TimeLogged  float64 `json:"time_logged"`  // direct time entries on this issue
-	TimeRollup  float64 `json:"time_rollup"`  // sum of children's time_total
-	TimeTotal   float64 `json:"time_total"`   // override ?? (logged + rollup)
+	TimeLogged float64 `json:"time_logged"` // direct time entries on this issue
+	TimeRollup float64 `json:"time_rollup"` // sum of children's time_total
+	TimeTotal  float64 `json:"time_total"`  // override ?? (logged + rollup)
+}
+
+// LabelRef is the edge-sourced representation of an issue's cost_unit or
+// release (PAI-599): the container issue's id + its title. Replaces the
+// former free-text string columns; nil when the issue has no such edge.
+type LabelRef struct {
+	ID    int64  `json:"id"`
+	Label string `json:"label"`
 }
 
 // IssueRelation represents a row in issue_relations.

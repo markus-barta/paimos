@@ -19,9 +19,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -57,6 +59,82 @@ func setParentEdge(ctx context.Context, ex parentEdgeExecer, childID int64, pare
 		`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?,?,'parent')`,
 		*parentID, childID)
 	return err
+}
+
+// setLabelEdge sets (or clears) a ticket's cost_unit/release container edge
+// from a string label (PAI-599) — the single source of truth after the
+// string columns were dropped. Empty label clears the edge; a label with no
+// existing container creates one (reserved issue number, counter-synced).
+// Idempotent delete-then-insert, one edge of this type per ticket. dimension
+// is "cost_unit" or "release"; both double as the container issue type and the
+// edge type. Requires a *sql.Tx because container creation reserves a number.
+func setLabelEdge(ctx context.Context, tx *sql.Tx, dimension string, ticketID, projectID int64, label string) error {
+	if dimension != "cost_unit" && dimension != "release" {
+		return fmt.Errorf("setLabelEdge: invalid dimension %q", dimension)
+	}
+	if ticketID <= 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM issue_relations WHERE target_id=? AND type=?`, ticketID, dimension); err != nil {
+		return err
+	}
+	label = strings.TrimSpace(label)
+	if label == "" || projectID <= 0 {
+		return nil
+	}
+	containerID, err := resolveOrCreateLabelContainer(ctx, tx, dimension, projectID, label)
+	if err != nil {
+		return err
+	}
+	if containerID <= 0 || containerID == ticketID {
+		return nil
+	}
+	_, err = tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type) VALUES(?,?,?)`,
+		containerID, ticketID, dimension)
+	return err
+}
+
+// resolveOrCreateLabelContainer returns the id of the cost_unit/release
+// container issue with the given label in the project, creating it (with a
+// reserved, counter-synced issue number) if none exists. Used by the runtime
+// write path; the one-time migration backfill is done in SQL (M122).
+func resolveOrCreateLabelContainer(ctx context.Context, tx *sql.Tx, dimension string, projectID int64, label string) (int64, error) {
+	var id int64
+	// ORDER BY id keeps resolution deterministic if duplicate same-title
+	// containers ever exist (the issues table has no uniqueness on
+	// project_id+type+title): always reuse the lowest-id one, matching the
+	// M122 dedup rule, so tickets never split across duplicate containers.
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM issues WHERE project_id=? AND type=? AND title=? AND deleted_at IS NULL
+		 ORDER BY id LIMIT 1`,
+		projectID, dimension, label).Scan(&id)
+	switch {
+	case err == nil:
+		return id, nil
+	case !errors.Is(err, sql.ErrNoRows):
+		return 0, err
+	}
+	num, err := db.NextIssueNumber(ctx, tx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
+		 VALUES(?,?,?,?,'backlog','medium')`, projectID, num, dimension, label)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// labelOf returns the label of an edge-sourced cost_unit/release ref, or "".
+func labelOf(ref *models.LabelRef) string {
+	if ref == nil {
+		return ""
+	}
+	return ref.Label
 }
 
 // wouldCycleParent reports whether making newParentID the parent of childID

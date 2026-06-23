@@ -575,13 +575,13 @@ export function useIssueFilter(opts: UseIssueFilterOptions) {
       }
       if (filterCostUnit.value.length) {
         const { pos, neg } = splitFilter(filterCostUnit.value)
-        const costUnit = i.cost_unit ?? ''
+        const costUnit = i.cost_unit?.label ?? ''
         if (pos.length && !pos.includes(costUnit)) return false
         if (neg.includes(costUnit)) return false
       }
       if (filterRelease.value.length) {
         const { pos, neg } = splitFilter(filterRelease.value)
-        const release = i.release ?? ''
+        const release = i.release?.label ?? ''
         if (pos.length && !pos.includes(release)) return false
         if (neg.includes(release)) return false
       }

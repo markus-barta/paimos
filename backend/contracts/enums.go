@@ -15,9 +15,12 @@ var (
 	IssuePriorities   = []string{"low", "medium", "high"}
 	IssueTypes        = []string{"epic", "cost_unit", "release", "sprint", "ticket", "task"}
 	// "parent" (PAI-584) is the issue-hierarchy edge (epic⊃ticket, ticket⊃task)
-	// and the SSOT for parentage; "groups" is now only cost_unit/release
-	// container membership (epic→ticket via groups is auto-translated to parent).
-	RelationTypes = []string{"parent", "groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related", "applies_to_memory"}
+	// and the SSOT for parentage. "cost_unit"/"release" (PAI-599) are the
+	// container-membership edges (source = cost_unit/release container issue,
+	// target = ticket) — the SSOT for those dimensions, replacing the fragile
+	// by-title string match. "groups" is the legacy generic container relation,
+	// being retired as those typed edges take over.
+	RelationTypes = []string{"parent", "cost_unit", "release", "groups", "sprint", "depends_on", "impacts", "follows_from", "blocks", "related", "applies_to_memory"}
 )
 
 func Contains(values []string, raw string) bool {

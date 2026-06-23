@@ -425,7 +425,7 @@ func PortalListIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if v := q.Get("cost_unit"); v != "" {
-		where += " AND i.cost_unit = ?"
+		where += " AND " + costUnitLabelExpr + " = ?"
 		args = append(args, v)
 	}
 	searchTerm := strings.TrimSpace(q.Get("q"))

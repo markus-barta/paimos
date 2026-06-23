@@ -573,17 +573,33 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 
 		var issueID int64
 		if hasCollision && req.Options.Overwrite && existingID > 0 {
-			// Update existing
-			_, err := db.DB.Exec(`
+			// Update existing. PAI-599: the release column is dropped — set the
+			// release edge from jiraVersion in the SAME tx so the update + edge
+			// are atomic and any edge failure is surfaced (not silently lost).
+			tx, err := db.DB.BeginTx(context.Background(), nil)
+			if err != nil {
+				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
+				continue
+			}
+			if _, err := tx.ExecContext(context.Background(), `
 				UPDATE issues SET title=?, description=?, acceptance_criteria=?, notes=?, type=?, status=?, priority=?, assignee_id=?,
 				jira_id=?, jira_text=?, jira_version=?, estimate_hours=?, estimate_lp=?,
 				ar_lp=?, rate_lp=?,
-				end_date=?, release=?, updated_at=? WHERE id=?
+				end_date=?, updated_at=? WHERE id=?
 			`, title, description, acceptanceCriteria, notes, bpType, bpStatus, bpPriority, assigneeID,
 				ji.Key, jiraText, jiraVersion, estimateHours, estimateLp,
 				arLp, rateLp,
-				endDate, jiraVersion, updatedAt, existingID)
-			if err != nil {
+				endDate, updatedAt, existingID); err != nil {
+				_ = tx.Rollback()
+				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
+				continue
+			}
+			if err := setLabelEdge(context.Background(), tx, "release", existingID, req.TargetProjectID, jiraVersion); err != nil {
+				_ = tx.Rollback()
+				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: "release edge: " + err.Error()})
+				continue
+			}
+			if err := tx.Commit(); err != nil {
 				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
 				continue
 			}
@@ -602,16 +618,17 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 				continue
 			}
 
-			// Insert new — full field parity with normal CREATE
+			// Insert new — full field parity with normal CREATE.
+			// PAI-599: release column dropped — set as an edge in this tx below.
 			sqlRes, err := tx.ExecContext(context.Background(), `
 				INSERT INTO issues(project_id, issue_number, title, description, acceptance_criteria, notes, type, status, priority,
 					assignee_id, jira_id, jira_text, jira_version,
-					estimate_hours, estimate_lp, ar_lp, rate_lp, end_date, release,
+					estimate_hours, estimate_lp, ar_lp, rate_lp, end_date,
 					created_by, created_at, updated_at)
-				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`, req.TargetProjectID, nextNum, title, description, acceptanceCriteria, notes, bpType, bpStatus, bpPriority, assigneeID,
 				ji.Key, jiraText, jiraVersion,
-				estimateHours, estimateLp, arLp, rateLp, endDate, jiraVersion,
+				estimateHours, estimateLp, arLp, rateLp, endDate,
 				actorID, createdAt, updatedAt)
 			if err != nil {
 				_ = tx.Rollback()
@@ -619,6 +636,11 @@ func runJiraImport(cfg *jiraConfig, req importJiraRequest, actorID int64, job *i
 				continue
 			}
 			issueID, _ = sqlRes.LastInsertId()
+			if err := setLabelEdge(context.Background(), tx, "release", issueID, req.TargetProjectID, jiraVersion); err != nil {
+				_ = tx.Rollback()
+				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: "release edge: " + err.Error()})
+				continue
+			}
 			if err := tx.Commit(); err != nil {
 				res.Errors = append(res.Errors, importError{Key: ji.Key, Reason: err.Error()})
 				continue

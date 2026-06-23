@@ -78,12 +78,22 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
     return count
   }
 
+  // fieldEditString resolves the string the inline editor seeds/compares with.
+  // PAI-599: cost_unit/release are {id,label} objects now — edit by label.
+  function fieldEditString(issue: Issue, field: EditableField): string {
+    if (field === 'assignee_id') {
+      return issue.assignee_id !== null ? String(issue.assignee_id) : ''
+    }
+    if (field === 'cost_unit' || field === 'release') {
+      return (issue as any)[field]?.label ?? ''
+    }
+    return String((issue as any)[field] ?? '')
+  }
+
   function openCell(issue: Issue, field: EditableField, e: MouseEvent) {
     e.stopPropagation()
     editingCell.value  = { issueId: issue.id, field }
-    cellEditValue.value = field === 'assignee_id'
-      ? (issue.assignee_id !== null ? String(issue.assignee_id) : '')
-      : (String((issue as any)[field] ?? ''))
+    cellEditValue.value = fieldEditString(issue, field)
   }
 
   function closeCell(autoSave = false) {
@@ -91,7 +101,7 @@ export function useInlineEdit(opts: UseInlineEditOptions) {
       const { issueId, field } = editingCell.value
       if (AUTOSAVE_TEXT_FIELDS.has(field)) {
         const issue = opts.issues.value.find(i => i.id === issueId)
-        if (issue && cellEditValue.value !== String((issue as any)[field] ?? '')) {
+        if (issue && cellEditValue.value !== fieldEditString(issue, field)) {
           saveCellEdit(issue, field, cellEditValue.value)
           return
         }

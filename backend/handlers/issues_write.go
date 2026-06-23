@@ -123,19 +123,19 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 
 	// PAI-584 P6: parent_id column dropped — hierarchy is the `parent` edge,
 	// written via setParentEdge below.
+	// PAI-599: cost_unit/release columns dropped — written as edges below.
 	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO issues(project_id,issue_number,type,title,description,
 		                   acceptance_criteria,notes,report_summary,
-		                   status,priority,cost_unit,release,
+		                   status,priority,
 		                   billing_type,total_budget,rate_hourly,rate_lp,
 		                   start_date,end_date,group_state,sprint_state,jira_id,jira_version,jira_text,
 		                   estimate_hours,estimate_lp,ar_hours,ar_lp,time_override,
 		                   color,assignee_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`, projectID, nextNum, body.Type, body.Title, body.Description,
 		body.AcceptanceCriteria, body.Notes, body.ReportSummary,
 		body.Status, body.Priority,
-		body.CostUnit, body.Release,
 		body.BillingType, body.TotalBudget, body.RateHourly, body.RateLp,
 		body.StartDate, body.EndDate, body.GroupState, body.SprintState,
 		body.JiraID, body.JiraVersion, body.JiraText,
@@ -147,6 +147,15 @@ func CreateIssue(w http.ResponseWriter, r *http.Request) {
 	id, _ := res.LastInsertId()
 
 	if err := setParentEdge(r.Context(), tx, id, body.ParentID); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// PAI-599: cost_unit/release set from string labels via container edges.
+	if err := setLabelEdge(r.Context(), tx, "cost_unit", id, projectID, body.CostUnit); err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := setLabelEdge(r.Context(), tx, "release", id, projectID, body.Release); err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -218,20 +227,20 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 
 	// PAI-584 P6: parent_id column dropped — clone inherits the source's parent
 	// via the `parent` edge (setParentEdge below).
+	// PAI-599: cost_unit/release columns dropped — cloned as edges below.
 	res, err := tx.ExecContext(r.Context(), `
 		INSERT INTO issues(project_id,issue_number,type,title,description,
 		                   acceptance_criteria,notes,report_summary,
-		                   status,priority,cost_unit,release,
+		                   status,priority,
 		                   billing_type,total_budget,rate_hourly,rate_lp,
 		                   start_date,end_date,group_state,sprint_state,jira_id,jira_version,jira_text,
 		                   estimate_hours,estimate_lp,ar_hours,ar_lp,time_override,
 		                   color,assignee_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`, src.ProjectID, nextNum, src.Type,
 		"Copy of "+src.Title, src.Description,
 		src.AcceptanceCriteria, src.Notes, src.ReportSummary,
 		"backlog", src.Priority,
-		src.CostUnit, src.Release,
 		ptrOrEmpty(src.BillingType), src.TotalBudget, src.RateHourly, src.RateLp,
 		ptrOrEmpty(src.StartDate), ptrOrEmpty(src.EndDate),
 		ptrOrEmpty(src.GroupState), ptrOrEmpty(src.SprintState),
@@ -246,6 +255,17 @@ func CloneIssue(w http.ResponseWriter, r *http.Request) {
 	if err := setParentEdge(r.Context(), tx, newID, src.ParentID); err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	// PAI-599: clone inherits the source's cost_unit/release via edges.
+	if src.ProjectID != nil {
+		if err := setLabelEdge(r.Context(), tx, "cost_unit", newID, *src.ProjectID, labelOf(src.CostUnit)); err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := setLabelEdge(r.Context(), tx, "release", newID, *src.ProjectID, labelOf(src.Release)); err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Copy tags
@@ -450,8 +470,6 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			type                = COALESCE(?, type),
 			status              = COALESCE(?, status),
 			priority            = COALESCE(?, priority),
-			cost_unit           = COALESCE(?, cost_unit),
-			release             = COALESCE(?, release),
 			billing_type        = COALESCE(?, billing_type),
 			total_budget        = CASE WHEN ? = 1 THEN ? ELSE total_budget END,
 			rate_hourly         = CASE WHEN ? = 1 THEN ? ELSE rate_hourly END,
@@ -475,7 +493,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	`, body.Title, body.Description, body.AcceptanceCriteria, body.Notes,
 		body.ReportSummary,
 		body.Type,
-		body.Status, body.Priority, body.CostUnit, body.Release,
+		body.Status, body.Priority,
 		body.BillingType,
 		totalBudgetPresent, body.TotalBudget,
 		rateHourlyPresent, body.RateHourly,
@@ -499,6 +517,24 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		if err := setParentEdge(r.Context(), tx, id, body.ParentID); err != nil {
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+	}
+	// PAI-599: cost_unit/release are edges now. Only touch when the field is
+	// present in the request (mirrors the former COALESCE semantics); an
+	// explicit empty string clears the edge. Done before afterSnap so the
+	// mutation snapshot captures the new edge state.
+	if existing.ProjectID != nil {
+		if body.CostUnit != nil {
+			if err := setLabelEdge(r.Context(), tx, "cost_unit", id, *existing.ProjectID, *body.CostUnit); err != nil {
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
+		if body.Release != nil {
+			if err := setLabelEdge(r.Context(), tx, "release", id, *existing.ProjectID, *body.Release); err != nil {
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	afterSnap, err := fetchIssueMutationSnapshotTx(tx, id)
