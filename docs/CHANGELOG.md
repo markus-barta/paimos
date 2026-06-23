@@ -5,6 +5,29 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] — 2026-06-23
+
+### Changed (BREAKING)
+
+- **`cost_unit` and `release` are now relation edges, not string columns
+  (PAI-599; API schema 2.0.0).** Each ticket's cost_unit/release is a typed
+  edge to a container issue (the single source of truth), mirroring the PAI-584
+  `parent` edge. **Breaking API change:** the issue payload now returns
+  `cost_unit` and `release` as objects `{ "id": <container_id>, "label": "<name>" }`
+  (or `null`) instead of plain strings. **Writes are unchanged** — create/update
+  still accept a string label (`"cost_unit": "ENG-A"`); the backend resolves or
+  creates the container automatically, so the CLI, importers, and forms need no
+  changes. Clients that read `issue.cost_unit` / `issue.release` as strings must
+  switch to `.label`.
+- The `issues.cost_unit` / `issues.release` columns are dropped. A migration
+  backfills a container issue per existing label and edges every ticket before
+  the drop (no data loss); the rate cascade now resolves the cost_unit container
+  by id rather than a fragile title match.
+
+> **Deploy note (NIX-193):** this is a major version — watchtower will **not**
+> auto-pull `4.x`. It must be deployed manually (`scripts/deploy.sh ppm v4.0.0`),
+> which takes a DB backup first.
+
 ## [3.10.11] — 2026-06-23
 
 ### Changed

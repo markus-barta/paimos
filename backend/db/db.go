@@ -5164,53 +5164,70 @@ func migrate(db *sql.DB) error {
 		// the one-per-ticket invariant gets partial-unique indexes (mirrors the
 		// M119 parent index).
 		{122, []string{
-			// Orphan containers — cost_unit.
+			// Orphan containers — cost_unit. Source includes soft-deleted AND
+			// project-less issues (project_id IS — NULL-safe) so NO label is
+			// lost on the M123 drop or on a later restore. `IS` matches the
+			// project-less (orphan-sprint) partition that `=` would skip.
 			`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
 			 SELECT l.project_id,
-			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id=l.project_id)
+			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE issues.project_id IS l.project_id)
 			          + ROW_NUMBER() OVER (PARTITION BY l.project_id ORDER BY l.label),
 			        'cost_unit', l.label, 'backlog', 'medium'
 			 FROM (SELECT DISTINCT project_id, cost_unit AS label FROM issues
-			       WHERE cost_unit != '' AND deleted_at IS NULL AND type NOT IN ('cost_unit','release')) l
+			       WHERE cost_unit != '' AND type NOT IN ('cost_unit','release')) l
 			 WHERE NOT EXISTS (SELECT 1 FROM issues c
-			                   WHERE c.project_id=l.project_id AND c.type='cost_unit'
+			                   WHERE c.project_id IS l.project_id AND c.type='cost_unit'
 			                     AND c.title=l.label AND c.deleted_at IS NULL)`,
 			// Orphan containers — release.
 			`INSERT INTO issues(project_id, issue_number, type, title, status, priority)
 			 SELECT l.project_id,
-			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id=l.project_id)
+			        (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE issues.project_id IS l.project_id)
 			          + ROW_NUMBER() OVER (PARTITION BY l.project_id ORDER BY l.label),
 			        'release', l.label, 'backlog', 'medium'
 			 FROM (SELECT DISTINCT project_id, release AS label FROM issues
-			       WHERE release != '' AND deleted_at IS NULL AND type NOT IN ('cost_unit','release')) l
+			       WHERE release != '' AND type NOT IN ('cost_unit','release')) l
 			 WHERE NOT EXISTS (SELECT 1 FROM issues c
-			                   WHERE c.project_id=l.project_id AND c.type='release'
+			                   WHERE c.project_id IS l.project_id AND c.type='release'
 			                     AND c.title=l.label AND c.deleted_at IS NULL)`,
-			// Advance per-project counters past the issue numbers just consumed.
+			// Advance per-project counters past the issue numbers just consumed
+			// (only real projects have counter rows; project-less containers
+			// bypass NextIssueNumber so `=` is correct here).
 			`UPDATE project_issue_counters
-			 SET next_number = (SELECT MAX(issue_number)+1 FROM issues WHERE project_id = project_issue_counters.project_id)
-			 WHERE next_number <= (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE project_id = project_issue_counters.project_id)`,
-			// Edge every labelled ticket to its (now guaranteed) container.
+			 SET next_number = (SELECT MAX(issue_number)+1 FROM issues WHERE issues.project_id = project_issue_counters.project_id)
+			 WHERE next_number <= (SELECT COALESCE(MAX(issue_number),0) FROM issues WHERE issues.project_id = project_issue_counters.project_id)`,
+			// Edge every labelled issue (incl. soft-deleted + project-less) to
+			// its active container. Soft-deleted issues are edged too so a later
+			// restore keeps its cost_unit/release (the column is gone after M123).
 			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
 			 SELECT c.id, i.id, 'cost_unit'
 			 FROM issues i
-			 JOIN issues c ON c.project_id = i.project_id AND c.type='cost_unit'
+			 JOIN issues c ON c.project_id IS i.project_id AND c.type='cost_unit'
 			              AND c.title = i.cost_unit AND c.deleted_at IS NULL
-			 WHERE i.cost_unit != '' AND i.deleted_at IS NULL AND i.type NOT IN ('cost_unit','release')`,
+			 WHERE i.cost_unit != '' AND i.type NOT IN ('cost_unit','release')`,
 			`INSERT OR IGNORE INTO issue_relations(source_id, target_id, type)
 			 SELECT c.id, i.id, 'release'
 			 FROM issues i
-			 JOIN issues c ON c.project_id = i.project_id AND c.type='release'
+			 JOIN issues c ON c.project_id IS i.project_id AND c.type='release'
 			              AND c.title = i.release AND c.deleted_at IS NULL
-			 WHERE i.release != '' AND i.deleted_at IS NULL AND i.type NOT IN ('cost_unit','release')`,
-			// Defensive dedup (keep the lowest source per target) so the
-			// one-per-ticket invariant holds before the unique indexes.
+			 WHERE i.release != '' AND i.type NOT IN ('cost_unit','release')`,
+			// Clean up any cost_unit/release edge whose TARGET is itself a
+			// container — M121's title-match lacked the type filter and could
+			// have produced self/inter-container edges. Targets are tickets only.
 			`DELETE FROM issue_relations
-			 WHERE type='cost_unit' AND rowid NOT IN (
-			   SELECT MIN(rowid) FROM issue_relations WHERE type='cost_unit' GROUP BY target_id)`,
-			`DELETE FROM issue_relations
-			 WHERE type='release' AND rowid NOT IN (
-			   SELECT MIN(rowid) FROM issue_relations WHERE type='release' GROUP BY target_id)`,
+			 WHERE type IN ('cost_unit','release')
+			   AND target_id IN (SELECT id FROM issues WHERE type IN ('cost_unit','release'))`,
+			// Deterministic dedup: keep the edge to the LOWEST-id container per
+			// ticket (matches resolveOrCreateLabelContainer's ORDER BY id), so
+			// the one-per-ticket invariant holds before the unique indexes and
+			// the survivor is stable, not insertion-order dependent.
+			`DELETE FROM issue_relations WHERE type='cost_unit' AND rowid NOT IN (
+			   SELECT e.rowid FROM issue_relations e WHERE e.type='cost_unit'
+			     AND e.source_id = (SELECT MIN(e2.source_id) FROM issue_relations e2
+			                        WHERE e2.type='cost_unit' AND e2.target_id=e.target_id))`,
+			`DELETE FROM issue_relations WHERE type='release' AND rowid NOT IN (
+			   SELECT e.rowid FROM issue_relations e WHERE e.type='release'
+			     AND e.source_id = (SELECT MIN(e2.source_id) FROM issue_relations e2
+			                        WHERE e2.type='release' AND e2.target_id=e.target_id))`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_cost_unit
 			 ON issue_relations(target_id) WHERE type='cost_unit'`,
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_relations_one_release

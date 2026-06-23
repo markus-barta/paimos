@@ -77,6 +77,9 @@ func GetIssueAggregation(w http.ResponseWriter, r *http.Request) {
 		       SUM(i.ar_hours), SUM(i.ar_lp)
 		FROM issues i
 		WHERE i.id IN (
+			-- 'parent'/'groups' = epic/legacy members; 'cost_unit'/'release' =
+			-- PAI-599 container members (the typed edges replaced the groups
+			-- rows M123 retired). All four roll up into the container's totals.
 			SELECT target_id FROM issue_relations
 			WHERE source_id = ? AND type IN ('parent','groups','cost_unit','release')
 		) AND i.deleted_at IS NULL`+aggAccessFilter,

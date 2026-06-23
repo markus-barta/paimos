@@ -102,8 +102,13 @@ func setLabelEdge(ctx context.Context, tx *sql.Tx, dimension string, ticketID, p
 // write path; the one-time migration backfill is done in SQL (M122).
 func resolveOrCreateLabelContainer(ctx context.Context, tx *sql.Tx, dimension string, projectID int64, label string) (int64, error) {
 	var id int64
+	// ORDER BY id keeps resolution deterministic if duplicate same-title
+	// containers ever exist (the issues table has no uniqueness on
+	// project_id+type+title): always reuse the lowest-id one, matching the
+	// M122 dedup rule, so tickets never split across duplicate containers.
 	err := tx.QueryRowContext(ctx,
-		`SELECT id FROM issues WHERE project_id=? AND type=? AND title=? AND deleted_at IS NULL`,
+		`SELECT id FROM issues WHERE project_id=? AND type=? AND title=? AND deleted_at IS NULL
+		 ORDER BY id LIMIT 1`,
 		projectID, dimension, label).Scan(&id)
 	switch {
 	case err == nil:
