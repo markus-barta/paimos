@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.9] — 2026-06-23
+
+### Fixed
+
+- **GDPR access-audit retention now actually purges old rows.** The retention
+  sweep deleted from `access_audit` using a non-existent `occurred_at` column
+  (the table records `created_at`; only `session_activity` has `occurred_at`),
+  so it errored on every run (`no such column: occurred_at`) and silently never
+  trimmed old access-audit entries. Corrected the column — rows past the
+  configured `PAIMOS_RETENTION_DAYS_ACCESS_AUDIT` window are removed again.
+
 ## [3.10.8] — 2026-06-23
 
 ### Fixed
