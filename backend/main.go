@@ -87,6 +87,7 @@ func main() {
 	}
 	seedAdmin()
 	handlers.EnsureAtRiskTag()
+	handlers.EnsureCostUnitReleaseEdges() // PAI-599: backfill cost_unit/release container edges
 
 	if err := storage.Init(); err != nil {
 		log.Printf("WARN: MinIO init failed (attachments disabled): %v", err)
