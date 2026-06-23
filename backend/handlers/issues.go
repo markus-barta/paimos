@@ -30,7 +30,7 @@ import (
 
 // issueSelect is the standard SELECT + JOIN used for single-row queries (getIssueByID).
 const issueSelect = `
-	SELECT i.id, i.project_id, i.issue_number, i.type, i.parent_id,
+	SELECT i.id, i.project_id, i.issue_number, i.type, pe.source_id AS parent_id,
 	       i.title, i.description, i.acceptance_criteria, i.notes,
 	       i.report_summary,
 	       i.status, i.priority, i.cost_unit, i.release,
@@ -73,12 +73,17 @@ const issueSelect = `
 	LEFT JOIN projects p ON p.id = i.project_id
 	LEFT JOIN users cb ON cb.id = i.created_by
 	LEFT JOIN users du ON du.id = i.deleted_by
+	-- PAI-584 P3: parent_id in the payload is sourced from the parent
+	-- edge (the SSOT), not the column -- so the API reflects edge-only
+	-- orphans and survives P6's column drop. One parent per child means
+	-- the LEFT JOIN never fans out.
+	LEFT JOIN issue_relations pe ON pe.target_id = i.id AND pe.type = 'parent'
 `
 
 // issueSelectCore is like issueSelect but without the 3 correlated subqueries
 // (sprint_ids, last_changed_by, booked_hours). Use enrichIssues() to batch-load them.
 const issueSelectCore = `
-	SELECT i.id, i.project_id, i.issue_number, i.type, i.parent_id,
+	SELECT i.id, i.project_id, i.issue_number, i.type, pe.source_id AS parent_id,
 	       i.title, i.description, i.acceptance_criteria, i.notes,
 	       i.report_summary,
 	       i.status, i.priority, i.cost_unit, i.release,
@@ -103,6 +108,11 @@ const issueSelectCore = `
 	LEFT JOIN projects p ON p.id = i.project_id
 	LEFT JOIN users cb ON cb.id = i.created_by
 	LEFT JOIN users du ON du.id = i.deleted_by
+	-- PAI-584 P3: parent_id in the payload is sourced from the parent
+	-- edge (the SSOT), not the column -- so the API reflects edge-only
+	-- orphans and survives P6's column drop. One parent per child means
+	-- the LEFT JOIN never fans out.
+	LEFT JOIN issue_relations pe ON pe.target_id = i.id AND pe.type = 'parent'
 `
 
 // liveIssuesWhere is the WHERE predicate every issue-listing query must apply

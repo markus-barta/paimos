@@ -132,6 +132,28 @@ func TestParentEdgeReads(t *testing.T) {
 		}
 	})
 
+	t.Run("issue payload parent_id is edge-sourced (P3)", func(t *testing.T) {
+		// Orphan: parent_id column is NULL but a parent edge exists →
+		// payload must report the edge's parent (so the FE tree/badge
+		// place it correctly).
+		var orphanIssue struct {
+			ParentID *int64 `json:"parent_id"`
+		}
+		decode(t, ts.get(t, fmt.Sprintf("/api/issues/%d", orphan), ts.adminCookie), &orphanIssue)
+		if orphanIssue.ParentID == nil || *orphanIssue.ParentID != epic {
+			t.Errorf("orphan payload parent_id=%v, want %d (edge-sourced)", orphanIssue.ParentID, epic)
+		}
+		// Stale: parent_id column set but NO edge → payload must report
+		// NULL, proving the field follows the edge, not the column.
+		var staleIssue struct {
+			ParentID *int64 `json:"parent_id"`
+		}
+		decode(t, ts.get(t, fmt.Sprintf("/api/issues/%d", stale), ts.adminCookie), &staleIssue)
+		if staleIssue.ParentID != nil {
+			t.Errorf("stale payload parent_id=%v, want null (payload follows edge, not column)", staleIssue.ParentID)
+		}
+	})
+
 	t.Run("aggregation sums parent + groups members", func(t *testing.T) {
 		var aggEpic struct {
 			MemberCount   int      `json:"member_count"`

@@ -606,7 +606,8 @@ func CompleteEpic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.DB.Query(issueSelectCore+` WHERE i.parent_id=? AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`, id)
+	// PAI-584 P2/P3: children come from the `parent` edge (catches orphans).
+	rows, err := db.DB.Query(issueSelectCore+` WHERE i.id IN (SELECT target_id FROM issue_relations WHERE source_id=? AND type='parent') AND `+liveIssuesWhere+` ORDER BY i.issue_number ASC`, id)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
