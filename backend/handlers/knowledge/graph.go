@@ -74,11 +74,9 @@ func GraphHandler(w http.ResponseWriter, r *http.Request) {
 		for _, id := range knownIDs {
 			args = append(args, id)
 		}
-		q := `SELECT source_id, target_id, type
-		        FROM issue_relations
-		       WHERE type IN (` + placeholders(len(knowledgeEdgeTypes)) + `)
-		         AND (source_id IN (` + placeholders(len(knownIDs)) + `)
-		           OR target_id IN (` + placeholders(len(knownIDs)) + `))`
+		inEdgeTypes := placeholders(len(knowledgeEdgeTypes))
+		inIDs := placeholders(len(knownIDs))
+		q := "SELECT source_id, target_id, type FROM issue_relations WHERE type IN (" + inEdgeTypes + ") AND (source_id IN (" + inIDs + ") OR target_id IN (" + inIDs + "))" // #nosec G202 -- only ?-placeholders are concatenated into the IN clauses; every value is bound as a parameterized arg via args... below.
 		rows, err := db.DB.Query(q, args...)
 		if err != nil {
 			writeError(w, r, "query failed", http.StatusInternalServerError)
@@ -114,10 +112,7 @@ func GraphHandler(w http.ResponseWriter, r *http.Request) {
 			for id := range extra {
 				ids = append(ids, id)
 			}
-			nr, err := db.DB.Query(`SELECT id, type, COALESCE(slug,''), title
-			                          FROM issues
-			                         WHERE deleted_at IS NULL
-			                           AND id IN (`+placeholders(len(ids))+`)`, ids...)
+			nr, err := db.DB.Query("SELECT id, type, COALESCE(slug,''), title FROM issues WHERE deleted_at IS NULL AND id IN ("+placeholders(len(ids))+")", ids...) // #nosec G202 -- only ?-placeholders are concatenated; ids are bound as parameterized args.
 			if err != nil {
 				writeError(w, r, "query failed", http.StatusInternalServerError)
 				return
