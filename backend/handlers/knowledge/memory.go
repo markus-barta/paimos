@@ -15,13 +15,19 @@
 
 package knowledge
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // errInheritNotBool surfaces a mis-typed `inherit` field on memory
 // metadata. PAI-348 makes the flag optional — but when it is set, the
 // JSON value must be a real boolean so the resolver doesn't have to
 // guess what `"true"` (a string) or `1` (a number) means.
 var errInheritNotBool = errors.New("metadata.inherit must be a boolean")
+
+// errDependsOnShape surfaces a malformed `depends_on` field (PAI-351).
+var errDependsOnShape = errors.New("metadata.depends_on must be an array of {name, project_key?} objects with a non-empty name")
 
 // memoryModule implements PAI-338's `memory` knowledge type — the
 // declarative side of the knowledge plane. Memory entries hold
@@ -61,6 +67,26 @@ func (memoryModule) ValidateInput(in Input) error {
 	if raw, ok := in.Metadata["inherit"]; ok {
 		if _, isBool := raw.(bool); !isBool {
 			return errInheritNotBool
+		}
+	}
+	// PAI-351 — when `depends_on` is present it must be an array of
+	// {name, project_key?} references (this rule builds on those rules).
+	// Stored in category_metadata (no schema change). `dependents` is the
+	// reverse direction, computed on read — never stored.
+	if raw, ok := in.Metadata["depends_on"]; ok {
+		arr, isArr := raw.([]any)
+		if !isArr {
+			return errDependsOnShape
+		}
+		for _, item := range arr {
+			m, isMap := item.(map[string]any)
+			if !isMap {
+				return errDependsOnShape
+			}
+			name, _ := m["name"].(string)
+			if strings.TrimSpace(name) == "" {
+				return errDependsOnShape
+			}
 		}
 	}
 	return nil

@@ -48,6 +48,71 @@ draft is visible in the Knowledge tab's "Proposed" inbox; accept /
 edit / reject from there.`,
 	}
 	c.AddCommand(memoryProposeCmd())
+	c.AddCommand(memoryDepsCmd())
+	return c
+}
+
+// memoryDepsCmd implements `paimos memory deps <slug> --project <ref>` (PAI-351).
+// Lists the memory entries that declare a depends_on reference to <slug> — i.e.
+// who is downstream. Run it before editing a parent rule so you know which child
+// rules may need a re-review.
+func memoryDepsCmd() *cobra.Command {
+	var projectRef string
+	c := &cobra.Command{
+		Use:   "deps <slug>",
+		Short: "List memory entries that depend on a given memory (PAI-351)",
+		Long: `Lists the memory entries whose category_metadata declares a
+depends_on reference to <slug>. The reverse direction (dependents) is
+computed on read — useful before editing a parent rule, so you see who
+is downstream and may need re-review.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			slug := strings.TrimSpace(args[0])
+			if slug == "" {
+				return &usageError{msg: "memory slug is required"}
+			}
+			projectRef = strings.TrimSpace(projectRef)
+			if projectRef == "" {
+				return &usageError{msg: "--project is required"}
+			}
+			client, err := instanceClient()
+			if err != nil {
+				return err
+			}
+			projectID, err := resolveProjectRefToID(client, projectRef)
+			if err != nil {
+				return reportError(err)
+			}
+			respBody, err := client.do("GET", fmt.Sprintf("/api/projects/%d/knowledge/memory/%s/dependents", projectID, slug), nil)
+			if err != nil {
+				return reportError(err)
+			}
+			if flagJSON {
+				fmt.Fprintln(stdout, strings.TrimSpace(string(respBody)))
+				return nil
+			}
+			var out struct {
+				Slug       string `json:"slug"`
+				Dependents []struct {
+					Slug  string `json:"slug"`
+					Title string `json:"title"`
+				} `json:"dependents"`
+			}
+			if err := json.Unmarshal(respBody, &out); err != nil {
+				return err
+			}
+			if len(out.Dependents) == 0 {
+				fmt.Fprintf(stdout, "No memory entries depend on %q.\n", slug)
+				return nil
+			}
+			fmt.Fprintf(stdout, "Dependents of %s (%d):\n", slug, len(out.Dependents))
+			for _, d := range out.Dependents {
+				fmt.Fprintf(stdout, "  %-40s %s\n", d.Slug, d.Title)
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&projectRef, "project", "", "project key or numeric id (required)")
 	return c
 }
 

@@ -218,6 +218,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/proposed/stale", handlers.ListStaleProposedMemory)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/{slug}/dependents", knowledge.MemoryDependentsHandler)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}", knowledge.GetHandler)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}.rev", handlers.KnowledgeRevHandler)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/knowledge/{type}/{slug}", knowledge.UpdateHandler)
