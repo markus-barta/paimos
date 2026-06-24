@@ -1,7 +1,7 @@
 # PAIMOS Data Model
 
-**Status**: Current with known maintenance follow-up (active API schema `1.5.0`)
-**Last verified**: 2026-06-01 against `backend/db/db.go`, `backend/handlers/schema.go`, and live ppm/pmo `/api/schema`
+**Status**: Current with known maintenance follow-up (active API schema `2.0.0`)
+**Last verified**: 2026-06-24 against `backend/db/db.go`, `backend/handlers/schema.go`, and live ppm/pmo `/api/schema`
 **Schema source of truth**: `backend/db/db.go` — migrations run in order on startup.
 **Legacy**: `docs/archive/DATA_MODEL.md` captures the v0.3.5 pre-release baseline and is kept for archival reference only.
 
