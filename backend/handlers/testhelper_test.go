@@ -213,6 +213,7 @@ func buildRouter() http.Handler {
 
 			// PAI-394 — unified knowledge surface. Mirror main.go.
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge", knowledge.ListAllHandler)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/graph", knowledge.GraphHandler)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge", knowledge.CreateHandler)
 			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)

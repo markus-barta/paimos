@@ -306,6 +306,7 @@ func main() {
 			// and are guarded against shadowing by the reserved-
 			// slug check in knowledge.IsReservedSlug.
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge", knowledge.ListAllHandler)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/graph", knowledge.GraphHandler)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge", knowledge.CreateHandler)
 			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
