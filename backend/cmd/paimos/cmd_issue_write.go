@@ -220,7 +220,7 @@ Use --dry-run to print the request payload without hitting the API.`,
 	c.Flags().StringVar(&assignee, "assignee", "", "assignee user id")
 	c.Flags().StringVar(&costUnit, "cost-unit", "", "cost unit name")
 	c.Flags().StringVar(&release, "release", "", "release name")
-	c.Flags().StringVar(&desc, "description", "", "inline description (single-line only; use --description-file for markdown)")
+	c.Flags().StringVar(&desc, "description", "", "inline description (multi-line ok; use --description-file for long markdown or stdin)")
 	c.Flags().StringVar(&descFile, "description-file", "", "path to markdown description (or - for stdin)")
 	c.Flags().StringVar(&ac, "ac", "", "inline acceptance criteria")
 	c.Flags().StringVar(&acFile, "ac-file", "", "path to markdown acceptance-criteria file")
