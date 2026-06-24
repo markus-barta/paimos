@@ -68,6 +68,7 @@ import ProjectInventoriesSection from '@/components/project/ProjectInventoriesSe
 // supersedes the PAI-339 ProjectKnowledgeTab + KnowledgeCategoryPanel
 // pill-row pattern.
 import ProjectKnowledgeUnified from '@/components/project/knowledge/ProjectKnowledgeUnified.vue'
+import KnowledgeGraph from '@/components/project/knowledge/KnowledgeGraph.vue'
 import ProjectOverviewTab from '@/components/project/knowledge/ProjectOverviewTab.vue'
 // PAI-356 — bottom-anchored footer bar replaces the top tab strip
 // (Issues / Overview / Knowledge). Same identities, quieter chrome.
@@ -293,6 +294,15 @@ const initialKnowledgeSlug = computed<string>(() => {
 // Negative IDs ensure they never collide with real DB rows.
 const allViews    = ref<SavedView[]>([])
 const activeTabId = ref<number | null>(null)
+
+// PAI-350 — knowledge tab view mode (list ↔ graph), deep-linked via ?kview=graph.
+const knowledgeView = ref<'list' | 'graph'>(route.query.kview === 'graph' ? 'graph' : 'list')
+watch(knowledgeView, (v) => {
+  const q = { ...route.query }
+  if (v === 'graph') q.kview = 'graph'
+  else delete q.kview
+  void router.replace({ query: q })
+})
 
 // Tabs: admin-default (not hidden, or user-pinned) + pinned personal views
 const displayTabs = computed(() => buildProjectDisplayTabs(allViews.value))
@@ -1084,13 +1094,20 @@ watch(
         :issues="issues"
       />
 
-      <!-- Knowledge tab — PAI-360 unified list with type filter chips. -->
-      <ProjectKnowledgeUnified
-        v-else-if="primaryTab === 'knowledge'"
-        :project-id="projectId"
-        :can-write="isAdmin && canEditProject"
-        :initial-memory-slug="initialKnowledgeSlug"
-      />
+      <!-- Knowledge tab — PAI-360 unified list + PAI-350 graph view. -->
+      <template v-else-if="primaryTab === 'knowledge'">
+        <div class="knowledge-view-toggle">
+          <button type="button" :class="{ active: knowledgeView === 'list' }" @click="knowledgeView = 'list'">List</button>
+          <button type="button" :class="{ active: knowledgeView === 'graph' }" @click="knowledgeView = 'graph'">Graph</button>
+        </div>
+        <KnowledgeGraph v-if="knowledgeView === 'graph'" :project-id="projectId" />
+        <ProjectKnowledgeUnified
+          v-else
+          :project-id="projectId"
+          :can-write="isAdmin && canEditProject"
+          :initial-memory-slug="initialKnowledgeSlug"
+        />
+      </template>
 
       <!-- Agents tab — PAI-504 first-class peer of Knowledge. Wraps
            ProjectAgentsSection (the same inline editor that used to
@@ -1428,6 +1445,12 @@ watch(
 </template>
 
 <style scoped>
+/* PAI-350 — knowledge List/Graph view toggle. */
+.knowledge-view-toggle { display: inline-flex; gap: 0; margin: 0 0 12px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; overflow: hidden; }
+.knowledge-view-toggle button { padding: 5px 14px; font-size: 13px; background: var(--surface, #fff); border: none; border-left: 1px solid var(--border, #e5e7eb); cursor: pointer; color: var(--text-muted, #6b7280); }
+.knowledge-view-toggle button:first-child { border-left: none; }
+.knowledge-view-toggle button.active { background: var(--accent, #3b82f6); color: #fff; }
+
 /* PAI-146: per-field label row holds the label + the AI optimize
    button on the right. */
 .field-label-row {

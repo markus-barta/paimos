@@ -19,6 +19,7 @@
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "dompurify": "^3.3.3",
+    "force-graph": "^1.51.4",
     "lucide-vue-next": "^0.577.0",
     "marked": "^17.0.4",
     "pinia": "^3.0.4",
