@@ -117,6 +117,9 @@ func TestComputeBudgetHours_MoneyPaths(t *testing.T) {
 		{name: "negative lp yields nil", estLp: mpFptr(-3), rateH: mpFptr(100), rateL: mpFptr(1000), want: nil},
 		{name: "zero rate_hourly guards division", estLp: mpFptr(5), rateH: mpFptr(0), rateL: mpFptr(1000), want: nil},
 		{name: "null rates with no project yields nil", estLp: mpFptr(5), rateH: nil, rateL: nil, want: nil},
+		// Edge behavior locked (not guarded in computeBudgetHours by design):
+		{name: "zero rate_lp yields a zero-hour budget (0 LP cost, distinct from nil)", estLp: mpFptr(5), rateH: mpFptr(100), rateL: mpFptr(0), want: mpFptr(0)},
+		{name: "negative rate yields a negative budget — rate sign is validated upstream, not here", estLp: mpFptr(5), rateH: mpFptr(100), rateL: mpFptr(-50), want: mpFptr(-2.5)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,8 +1,10 @@
 # Money-paths test map (PAI-582)
 
-The billing/AR money paths are customer-facing and financial — **correctness is
-locked by tests, not manual checks.** Before changing anything near rates, hours,
-material, or the report/PDF money output, run this suite first and keep it green.
+The billing/AR money paths are customer-facing and financial, so the **core
+paths are regression-tested rather than left to manual checks** — see _Known
+gaps_ below for what is deliberately not yet covered. Before changing anything
+near rates, hours, material, or the report/PDF money output, run this suite first
+and keep it green.
 
 ```bash
 # the whole money-path suite (fast):
