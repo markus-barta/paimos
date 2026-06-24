@@ -159,7 +159,7 @@ paimos doctor
 #   ✓ config   ok — ppm (https://pm.barta.cm) [url=config:ppm, credential=keyring:paimos-cli/ppm]
 #   ✓ health   ok
 #   ✓ auth     ok — user=mba
-#   ✓ schema   ok — version=1.5.0
+#   ✓ schema   ok — version=2.0.0
 ```
 
 CI-safe; exit 0 all green, 1 warnings only, 2 any failure.
