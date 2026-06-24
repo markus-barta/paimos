@@ -20,7 +20,7 @@ import (
 )
 
 // readMultilineInput returns the value for a markdown-ish field that
-// accepts either --foo (inline, single-line) or --foo-file <path>
+// accepts either --foo (inline, multi-line ok) or --foo-file <path>
 // (multi-line from disk) or "-" to read stdin. Enforces "only one source"
 // so agents can't silently overwrite one with the other.
 //
@@ -222,9 +222,9 @@ Use --dry-run to print the request payload without hitting the API.`,
 	c.Flags().StringVar(&release, "release", "", "release name")
 	c.Flags().StringVar(&desc, "description", "", "inline description (multi-line ok; use --description-file for long markdown or stdin)")
 	c.Flags().StringVar(&descFile, "description-file", "", "path to markdown description (or - for stdin)")
-	c.Flags().StringVar(&ac, "ac", "", "inline acceptance criteria")
+	c.Flags().StringVar(&ac, "ac", "", "inline acceptance criteria (multi-line ok; use --ac-file for long markdown)")
 	c.Flags().StringVar(&acFile, "ac-file", "", "path to markdown acceptance-criteria file")
-	c.Flags().StringVar(&notes, "notes", "", "inline notes")
+	c.Flags().StringVar(&notes, "notes", "", "inline notes (multi-line ok; use --notes-file for long markdown)")
 	c.Flags().StringVar(&notesFile, "notes-file", "", "path to markdown notes file")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "print the payload without sending")
 	registerEnumCompletions(c, "status", "type", "priority")
@@ -470,9 +470,9 @@ Use --dry-run to print the payload without sending.`,
 	c.Flags().StringVar(&release, "release", "", "new release")
 	c.Flags().StringVar(&desc, "description", "", "inline description")
 	c.Flags().StringVar(&descFile, "description-file", "", "path to new description (or -)")
-	c.Flags().StringVar(&ac, "ac", "", "inline acceptance criteria")
+	c.Flags().StringVar(&ac, "ac", "", "inline acceptance criteria (multi-line ok; use --ac-file for long markdown)")
 	c.Flags().StringVar(&acFile, "ac-file", "", "path to new acceptance criteria (or -)")
-	c.Flags().StringVar(&notes, "notes", "", "inline notes")
+	c.Flags().StringVar(&notes, "notes", "", "inline notes (multi-line ok; use --notes-file for long markdown)")
 	c.Flags().StringVar(&notesFile, "notes-file", "", "path to new notes (or -)")
 	c.Flags().StringVar(&closeNote, "close-note", "", "single-line close-note (requires --status terminal)")
 	c.Flags().StringVar(&closeNoteFile, "close-note-file", "", "path to close-note file (requires --status terminal)")
@@ -579,7 +579,7 @@ func issueCommentCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&body, "body", "", "inline single-line comment")
+	c.Flags().StringVar(&body, "body", "", "inline comment (multi-line ok; use --body-file for long markdown)")
 	c.Flags().StringVar(&bodyFile, "body-file", "", "path to markdown comment (or -)")
 	return c
 }
