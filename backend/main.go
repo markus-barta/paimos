@@ -311,7 +311,11 @@ func main() {
 			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/proposed/stale", handlers.ListStaleProposedMemory)
+			// PAI-351 slice 2 — needs-review triage queue. Literal route MUST
+			// precede the {slug} wildcard (and "needs-review" is a reserved slug).
+			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/needs-review", knowledge.NeedsReviewHandler)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/{slug}/dependents", knowledge.MemoryDependentsHandler)
+			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/{slug}/reviewed", handlers.MarkMemoryReviewed)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}", knowledge.GetHandler)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}.rev", handlers.KnowledgeRevHandler)
 			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/knowledge/{type}/{slug}", knowledge.UpdateHandler)

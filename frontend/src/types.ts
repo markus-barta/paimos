@@ -441,6 +441,11 @@ export interface KnowledgeEntry {
   // server-side by bundle-include + auto-suggest paths.
   reference_count?: number
   last_referenced_at?: string | null
+  // PAI-351 slice 2 — derived "needs re-review" flag (a depends_on parent
+  // was revised after this entry's last review). Computed server-side on
+  // the knowledge list / graph / dependents paths; never stored.
+  needs_review?: boolean
+  review_reason?: string
   // PAI-348 — present only on entries that arrived via inheritance
   // through `paimos session start --bundle full`. The convenience
   // CRUD endpoints never set this — own entries on the project's

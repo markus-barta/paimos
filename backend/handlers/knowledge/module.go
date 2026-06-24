@@ -114,6 +114,17 @@ type Output struct {
 	UpdatedAt        string         `json:"updated_at"`
 	ReferenceCount   int64          `json:"reference_count"`
 	LastReferencedAt string         `json:"last_referenced_at,omitempty"`
+	// PAI-351 slice 2 — scanned columns backing the computed "needs
+	// re-review" signal. ContentRevisedAt is the parent's body-change
+	// clock; DepsReviewedAt is the dependent's acknowledge clock (internal,
+	// never serialised — the derived flag below is what clients consume).
+	ContentRevisedAt string `json:"content_revised_at,omitempty"`
+	DepsReviewedAt   string `json:"-"`
+	// Derived on read by computeNeedsReview (NOT scanned): a memory entry is
+	// flagged when a depends_on parent was revised after this entry was last
+	// reviewed. ReviewReason names the parent.
+	NeedsReview  bool   `json:"needs_review"`
+	ReviewReason string `json:"review_reason,omitempty"`
 }
 
 // Module is the per-type contract. Each of memory / runbook /

@@ -179,6 +179,13 @@ func createKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 	return out, nil
 }
 
+// normalizeBody canonicalises a knowledge body for change detection:
+// CRLF→LF then trim surrounding whitespace, so a pure line-ending or
+// trailing-whitespace edit doesn't trip the content-revised signal.
+func normalizeBody(s string) string {
+	return strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
+}
+
 // updateKnowledgeEntry mutates an existing knowledge entry, then
 // records the mutation_log + history snapshot identical to UpdateIssue.
 // The SQL is intentionally narrow — it touches the columns the
@@ -199,9 +206,10 @@ func updateKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 	defer tx.Rollback()
 
 	var existingID int64
+	var oldBody string
 	if err := tx.QueryRowContext(r.Context(),
-		`SELECT id FROM issues WHERE project_id=? AND type=? AND slug=? AND deleted_at IS NULL`,
-		projectID, mod.Type(), currentSlug).Scan(&existingID); err != nil {
+		`SELECT id, COALESCE(description,'') FROM issues WHERE project_id=? AND type=? AND slug=? AND deleted_at IS NULL`,
+		projectID, mod.Type(), currentSlug).Scan(&existingID, &oldBody); err != nil {
 		return knowledge.Output{}, err
 	}
 
@@ -210,23 +218,30 @@ func updateKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 		return knowledge.Output{}, err
 	}
 
+	// PAI-351 slice 2 — when a MEMORY entry's body meaningfully changes,
+	// stamp content_revised_at so its dependents recompute "needs re-review".
+	// Body-only on purpose: title / slug / status / metadata edits (incl. the
+	// parent editing its own depends_on) deliberately do not trip the signal.
+	bodyChanged := mod.Type() == "memory" && normalizeBody(oldBody) != normalizeBody(in.Body)
+
 	statusUpdate := strings.TrimSpace(in.Status)
-	args := []any{
-		strings.TrimSpace(in.Title), in.Body, in.Slug, metaJSON, now, existingID,
-	}
 	updateSQL := `UPDATE issues
 		   SET title             = ?,
 		       description       = ?,
 		       slug              = ?,
 		       category_metadata = ?,
 		       updated_at        = ?`
+	args := []any{strings.TrimSpace(in.Title), in.Body, in.Slug, metaJSON, now}
 	if statusUpdate != "" {
 		updateSQL += `, status = ?`
-		args = []any{
-			strings.TrimSpace(in.Title), in.Body, in.Slug, metaJSON, now, statusUpdate, existingID,
-		}
+		args = append(args, statusUpdate)
+	}
+	if bodyChanged {
+		updateSQL += `, content_revised_at = ?`
+		args = append(args, now)
 	}
 	updateSQL += ` WHERE id = ?`
+	args = append(args, existingID)
 
 	if _, err := tx.ExecContext(r.Context(), updateSQL, args...); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {

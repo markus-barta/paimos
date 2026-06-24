@@ -8,8 +8,10 @@ import (
 )
 
 type dependentEntry struct {
-	Slug  string `json:"slug"`
-	Title string `json:"title"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	NeedsReview  bool   `json:"needs_review"`
+	ReviewReason string `json:"review_reason,omitempty"`
 }
 
 // MemoryDependentsHandler is GET
@@ -37,7 +39,9 @@ func MemoryDependentsHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, "query failed", http.StatusInternalServerError)
 		return
 	}
+	computeNeedsReview(entries)
 	deps := []dependentEntry{}
+	needsReviewCount := 0
 	for _, e := range entries {
 		raw, ok := e.Metadata["depends_on"].([]any)
 		if !ok {
@@ -49,10 +53,13 @@ func MemoryDependentsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if name, _ := m["name"].(string); name == slug {
-				deps = append(deps, dependentEntry{Slug: e.Slug, Title: e.Title})
+				deps = append(deps, dependentEntry{Slug: e.Slug, Title: e.Title, NeedsReview: e.NeedsReview, ReviewReason: e.ReviewReason})
+				if e.NeedsReview {
+					needsReviewCount++
+				}
 				break
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"slug": slug, "dependents": deps})
+	writeJSON(w, http.StatusOK, map[string]any{"slug": slug, "dependents": deps, "needs_review_count": needsReviewCount})
 }

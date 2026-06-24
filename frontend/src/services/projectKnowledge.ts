@@ -187,6 +187,62 @@ export function bumpMemoryReferences(
   );
 }
 
+// ── PAI-351 slice 2 — memory dependencies + needs-review ──────────
+
+export interface MemoryDependent {
+  slug: string;
+  title: string;
+  needs_review?: boolean;
+  review_reason?: string;
+}
+
+export interface MemoryDependentsResponse {
+  slug: string;
+  dependents: MemoryDependent[];
+  needs_review_count: number;
+}
+
+export interface NeedsReviewEntry {
+  slug: string;
+  title: string;
+  review_reason: string;
+}
+
+export interface NeedsReviewResponse {
+  needs_review: NeedsReviewEntry[];
+  count: number;
+}
+
+/** Who declares depends_on this memory (the reverse direction, computed). */
+export function listMemoryDependents(
+  projectId: number,
+  slug: string,
+): Promise<MemoryDependentsResponse> {
+  return api.get<MemoryDependentsResponse>(
+    `/projects/${projectId}/knowledge/memory/${encodeURIComponent(slug)}/dependents`,
+  );
+}
+
+/** The triage queue: memory entries whose depends_on parent was revised. */
+export function listNeedsReview(
+  projectId: number,
+): Promise<NeedsReviewResponse> {
+  return api.get<NeedsReviewResponse>(
+    `/projects/${projectId}/knowledge/memory/needs-review`,
+  );
+}
+
+/** Acknowledge a memory's needs-review flag — stamps deps_reviewed_at = now. */
+export function acknowledgeMemoryReview(
+  projectId: number,
+  slug: string,
+): Promise<KnowledgeEntry> {
+  return api.post<KnowledgeEntry>(
+    `/projects/${projectId}/knowledge/memory/${encodeURIComponent(slug)}/reviewed`,
+    {},
+  );
+}
+
 // ── derived state helpers ─────────────────────────────────────────
 
 // Status mapping per PAI-346 §"Status values": knowledge entries
@@ -207,6 +263,17 @@ export function isArchived(entry: KnowledgeEntry): boolean {
 // flow. Only memory entries can be in this state for v1.
 export function isProposed(entry: KnowledgeEntry): boolean {
   return entry.status === PROPOSED_STATUS;
+}
+
+// PAI-351 slice 2 — a memory entry whose depends_on parent was revised after
+// its last review. The flag + reason ride as top-level fields on the entry
+// payload (derived server-side, never stored).
+export function needsReview(entry: KnowledgeEntry): boolean {
+  return entry.needs_review === true;
+}
+
+export function reviewReason(entry: KnowledgeEntry): string {
+  return entry.review_reason ?? "";
 }
 
 export function archivedStatusValue(): string {

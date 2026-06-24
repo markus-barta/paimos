@@ -228,6 +228,40 @@ func TestKnowledgeGetUpdateDelete_BuildsTypedSlugURL(t *testing.T) {
 	}
 }
 
+// TestKnowledgeUpdate_PreservesBodyOnTitleOnly guards against a partial-update
+// body wipe: `knowledge update memory <slug> --title X` (no --body) must carry
+// the existing body over on the full-replace PUT, not send an empty body. A
+// wipe would also (post PAI-351) falsely flag every dependent for re-review.
+func TestKnowledgeUpdate_PreservesBodyOnTitleOnly(t *testing.T) {
+	_, mu, reqs := startKnowledgeFakeAPI(t)
+
+	if _, _, err := executeCLIForTest(t,
+		"knowledge", "update", "memory", "feedback_alpha",
+		"--project", "KNW",
+		"--title", "Renamed",
+	); err != nil {
+		t.Fatalf("execute update: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	var put *knowledgeReq
+	for i := range *reqs {
+		if (*reqs)[i].Method == http.MethodPut {
+			put = &(*reqs)[i]
+		}
+	}
+	if put == nil {
+		t.Fatalf("no PUT recorded: %+v", *reqs)
+	}
+	if got, _ := put.Body["body"].(string); got != "existing body" {
+		t.Errorf("title-only update must preserve the body; PUT body=%q, want %q", got, "existing body")
+	}
+	if got, _ := put.Body["title"].(string); got != "Renamed" {
+		t.Errorf("PUT title=%q, want %q", got, "Renamed")
+	}
+}
+
 // TestKnowledgeMemoryBumpRefs_BuildsReferencesURL asserts the
 // memory subroute survives the URL collapse — the POST lands at
 // /knowledge/memory/references rather than the pre-PAI-394

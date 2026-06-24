@@ -114,9 +114,10 @@ func AllURLSegments() []string {
 // them at insert/rename time so the collision is surfaced loudly
 // rather than silently shadowing the data.
 var reservedMemorySlugs = map[string]struct{}{
-	"references": {},
-	"stale":      {},
-	"proposed":   {}, // shadows /memory/proposed/stale
+	"references":   {},
+	"stale":        {},
+	"proposed":     {}, // shadows /memory/proposed/stale
+	"needs-review": {}, // PAI-351 — shadows /memory/needs-review
 }
 
 // IsReservedSlug reports whether (typ, slug) is one of the
