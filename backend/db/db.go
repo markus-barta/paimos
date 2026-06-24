@@ -5277,6 +5277,21 @@ func migrate(db *sql.DB) error {
 			 WHERE type='groups'
 			   AND source_id IN (SELECT id FROM issues WHERE type IN ('cost_unit','release'))`,
 		}},
+
+		// M124 / PAI-351 (slice 2): two nullable timestamp columns powering the
+		// computed-on-read "needs re-review" signal for memory dependencies.
+		// content_revised_at = the parent memory's meaningful-change clock
+		// (stamped only when a memory's BODY changes, never on metadata/title/
+		// status edits); deps_reviewed_at = the dependent's acknowledge clock
+		// (set only by the .../reviewed endpoint). A dependent is flagged iff a
+		// depends_on parent's content_revised_at is later than the dependent's
+		// COALESCE(deps_reviewed_at, created_at) — derived on read, never
+		// stored, so it can't drift (mirrors PAI-347 stale-memory). Nullable,
+		// no backfill: existing rows stay NULL so nothing cold-starts a flood.
+		{124, []string{
+			`ALTER TABLE issues ADD COLUMN content_revised_at TEXT`,
+			`ALTER TABLE issues ADD COLUMN deps_reviewed_at TEXT`,
+		}},
 	}
 
 	for _, m := range migrations {

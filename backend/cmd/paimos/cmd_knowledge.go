@@ -345,13 +345,14 @@ func knowledgeUpdateCmd() *cobra.Command {
 				return reportError(err)
 			}
 
+			// PUT is full-replace: the server overwrites title + body with
+			// whatever we send. Carry over any field the user did NOT change
+			// (fetch the existing entry once if title or body needs it) so a
+			// partial update never silently wipes the body — and, post
+			// PAI-351, never trips the content-revised signal on an unchanged
+			// body (which would falsely flag every dependent for re-review).
 			payload := map[string]any{}
-			if titleChanged {
-				payload["title"] = strings.TrimSpace(title)
-			} else {
-				// PUT semantics on the server require a title; carry
-				// the existing one over so the partial-update feel
-				// is honored at the CLI layer.
+			if !titleChanged || !bodyChanged {
 				existing, err := client.do("GET",
 					fmt.Sprintf("/api/projects/%d/knowledge/%s/%s", projectID, typeSeg, slug), nil)
 				if err != nil {
@@ -361,11 +362,14 @@ func knowledgeUpdateCmd() *cobra.Command {
 				if err := json.Unmarshal(existing, &prev); err != nil {
 					return fmt.Errorf("decode existing entry: %w", err)
 				}
-				payload["title"] = prev.Title
+				if !titleChanged {
+					title = prev.Title
+				}
 				if !bodyChanged {
 					bodyContent = prev.Body
 				}
 			}
+			payload["title"] = strings.TrimSpace(title)
 			payload["body"] = bodyContent
 			if statusChanged {
 				payload["status"] = strings.TrimSpace(status)

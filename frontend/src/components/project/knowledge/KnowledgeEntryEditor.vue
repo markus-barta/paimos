@@ -44,6 +44,11 @@ const props = defineProps<{
   // create-mode + non-memory categories pass undefined.
   entryId?: number
   projectId?: number
+  // PAI-351 slice 2 — when this memory's depends_on parent was revised after
+  // its last review, the parent passes the derived flag + reason so the editor
+  // can show a banner + Acknowledge button.
+  needsReview?: boolean
+  reviewReason?: string
 }>()
 
 const emit = defineEmits<{
@@ -53,6 +58,9 @@ const emit = defineEmits<{
   // refresh the list / dismiss the editor (the source row is
   // soft-deleted, so staying on this view shows a stale entry).
   promoted: [scope: MemoryScope]
+  // PAI-351 slice 2 — emitted when the operator acknowledges the needs-review
+  // flag; the parent performs the API call + clears the flag in place.
+  reviewed: []
 }>()
 
 const slug = ref(props.initial.slug ?? '')
@@ -371,6 +379,19 @@ watch(
 
 <template>
   <div class="ke-form" :class="{ 'ke-form--archived': isArchived }">
+    <!-- PAI-351 slice 2 — a depends_on parent was revised after this entry's
+         last review. Acknowledge stamps deps_reviewed_at and clears the flag. -->
+    <div v-if="needsReview" class="ke-review-banner">
+      <span class="ke-review-banner__text">⚠ Needs re-review — {{ reviewReason || 'a dependency changed' }}</span>
+      <button
+        type="button"
+        class="ke-review-banner__btn"
+        :disabled="saving"
+        @click="emit('reviewed')"
+      >
+        Acknowledge / mark reviewed
+      </button>
+    </div>
     <div class="ke-row">
       <div class="ke-field">
         <label>Title</label>
@@ -639,6 +660,11 @@ watch(
 
 <style scoped>
 .ke-form { display: flex; flex-direction: column; gap: .65rem; padding: .75rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; }
+.ke-review-banner { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem .65rem; background: color-mix(in srgb, #f59e0b 14%, transparent); border: 1px solid color-mix(in srgb, #f59e0b 40%, transparent); border-radius: 6px; }
+.ke-review-banner__text { font-size: 12px; color: #b45309; font-weight: 600; }
+.ke-review-banner__btn { flex-shrink: 0; font-size: 12px; padding: .25rem .6rem; border: 1px solid #f59e0b; border-radius: 5px; background: var(--bg-card); color: #b45309; cursor: pointer; }
+.ke-review-banner__btn:hover:not(:disabled) { background: color-mix(in srgb, #f59e0b 12%, transparent); }
+.ke-review-banner__btn:disabled { opacity: .6; cursor: default; }
 .ke-row { display: flex; gap: .65rem; flex-wrap: wrap; }
 .ke-row > .ke-field { flex: 1 1 200px; }
 .ke-field { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }

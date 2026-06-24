@@ -64,6 +64,7 @@ const emit = defineEmits<{
   save: [payload: KnowledgeEntryInput]
   delete: []
   promoted: [scope: string]
+  reviewed: []
   'update:pinned': [v: boolean]
 }>()
 
@@ -191,9 +192,12 @@ function onBackdropClick() {
             :autosuggest-slug="creatingCategory !== null"
             :entry-id="entry?.id"
             :project-id="projectId"
+            :needs-review="entry?.needs_review === true"
+            :review-reason="entry?.review_reason ?? ''"
             @save="(p) => emit('save', p)"
             @cancel="emit('close')"
             @promoted="(s) => emit('promoted', s)"
+            @reviewed="emit('reviewed')"
           />
         </div>
         <div v-else class="sp-empty">

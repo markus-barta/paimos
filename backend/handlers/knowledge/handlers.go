@@ -73,6 +73,7 @@ func ListAllHandler(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, "query failed", http.StatusInternalServerError)
 			return
 		}
+		computeNeedsReview(out)
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
@@ -81,6 +82,7 @@ func ListAllHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, "query failed", http.StatusInternalServerError)
 		return
 	}
+	computeNeedsReview(out)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -111,6 +113,22 @@ func GetHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, r, "query failed", http.StatusInternalServerError)
 		return
+	}
+	// PAI-351 slice 2 — needs_review is cross-entry derived, so a single load
+	// can't carry it. For memory, recompute against the project's memory set
+	// and copy the flag onto this entry so the detail read agrees with the
+	// list / graph / dependents surfaces (and with any API/MCP consumer).
+	if out.Type == memoryModuleInstance.Type() {
+		if siblings, sErr := loadByType(projectID, memoryModuleInstance); sErr == nil {
+			computeNeedsReview(siblings)
+			for _, e := range siblings {
+				if e.Slug == out.Slug {
+					out.NeedsReview = e.NeedsReview
+					out.ReviewReason = e.ReviewReason
+					break
+				}
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -553,7 +571,8 @@ func loadByType(projectID int64, mod Module) ([]Output, error) {
 	rows, err := db.DB.Query(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
 		       status, COALESCE(category_metadata,''), created_at, updated_at,
-		       reference_count, COALESCE(last_referenced_at,'')
+		       reference_count, COALESCE(last_referenced_at,''),
+		       COALESCE(content_revised_at,''), COALESCE(deps_reviewed_at,'')
 		  FROM issues
 		 WHERE project_id = ?
 		   AND type       = ?
@@ -590,7 +609,8 @@ func loadAllTypes(projectID int64) ([]Output, error) {
 	rows, err := db.DB.Query(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
 		       status, COALESCE(category_metadata,''), created_at, updated_at,
-		       reference_count, COALESCE(last_referenced_at,'')
+		       reference_count, COALESCE(last_referenced_at,''),
+		       COALESCE(content_revised_at,''), COALESCE(deps_reviewed_at,'')
 		  FROM issues
 		 WHERE project_id = ?
 		   AND type IN ('memory','runbook','external_system','related_project','guideline')
@@ -620,7 +640,8 @@ func loadOneBySlug(projectID int64, mod Module, slug string) (Output, error) {
 	row := db.DB.QueryRow(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
 		       status, COALESCE(category_metadata,''), created_at, updated_at,
-		       reference_count, COALESCE(last_referenced_at,'')
+		       reference_count, COALESCE(last_referenced_at,''),
+		       COALESCE(content_revised_at,''), COALESCE(deps_reviewed_at,'')
 		  FROM issues
 		 WHERE project_id = ?
 		   AND type       = ?
@@ -641,7 +662,8 @@ func loadOneByID(id int64, mod Module) (Output, error) {
 	row := db.DB.QueryRow(`
 		SELECT id, project_id, type, COALESCE(slug,''), title, description,
 		       status, COALESCE(category_metadata,''), created_at, updated_at,
-		       reference_count, COALESCE(last_referenced_at,'')
+		       reference_count, COALESCE(last_referenced_at,''),
+		       COALESCE(content_revised_at,''), COALESCE(deps_reviewed_at,'')
 		  FROM issues
 		 WHERE id = ?
 	`, id)
@@ -665,6 +687,7 @@ func scanRowByType(s rowScanner, mod Module) (Output, error) {
 		&o.ID, &o.ProjectID, &o.Type, &o.Slug, &o.Title, &o.Body,
 		&o.Status, &metaRaw, &o.CreatedAt, &o.UpdatedAt,
 		&o.ReferenceCount, &o.LastReferencedAt,
+		&o.ContentRevisedAt, &o.DepsReviewedAt,
 	); err != nil {
 		return o, err
 	}
@@ -691,6 +714,7 @@ func scanRowAcrossTypes(s rowScanner) (Output, error) {
 		&o.ID, &o.ProjectID, &o.Type, &o.Slug, &o.Title, &o.Body,
 		&o.Status, &metaRaw, &o.CreatedAt, &o.UpdatedAt,
 		&o.ReferenceCount, &o.LastReferencedAt,
+		&o.ContentRevisedAt, &o.DepsReviewedAt,
 	); err != nil {
 		return o, err
 	}

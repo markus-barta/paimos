@@ -19,12 +19,15 @@ import AppIcon from '@/components/AppIcon.vue'
 import LoadingText from '@/components/LoadingText.vue'
 import KnowledgeSidePanel from './KnowledgeSidePanel.vue'
 import {
+  acknowledgeMemoryReview,
   activeStatusValue,
   createKnowledgeEntry,
   deleteKnowledgeEntry,
   isArchived,
   isProposed,
   listKnowledgeEntries,
+  needsReview,
+  reviewReason,
   updateKnowledgeEntry,
 } from '@/services/projectKnowledge'
 import { errMsg } from '@/api/client'
@@ -87,6 +90,7 @@ const entries = computed<KnowledgeEntry[]>(() =>
 const activeTypes = ref<Set<KnowledgeCategory>>(new Set())
 const search = ref('')
 const showArchived = ref(false)
+const showNeedsReviewOnly = ref(false)
 const showProposedOnly = ref(false)
 
 function toggleType(key: KnowledgeCategory, soloOverride: boolean) {
@@ -227,12 +231,14 @@ const filtered = computed<KnowledgeEntry[]>(() => {
   const types = activeTypes.value
   const wantArchived = showArchived.value
   const wantProposedOnly = showProposedOnly.value
+  const wantNeedsReviewOnly = showNeedsReviewOnly.value
 
   return entries.value
     .filter((e) => {
       if (types.size > 0 && !types.has(e.type)) return false
       if (!wantArchived && isArchived(e)) return false
       if (wantProposedOnly && !isProposed(e)) return false
+      if (wantNeedsReviewOnly && !needsReview(e)) return false
       if (s) {
         const hay = `${e.title} ${e.slug} ${e.body}`.toLowerCase()
         if (!hay.includes(s)) return false
@@ -285,6 +291,17 @@ async function onSave(payload: KnowledgeEntryInput) {
       byCategory.value[cat] = byCategory.value[cat].map((e) =>
         e.slug === oldSlug ? updated : e,
       )
+      // PAI-351 slice 2 — needs_review is cross-entry derived: editing a
+      // memory body revises content_revised_at and can flag/unflag dependents,
+      // and the convenience PUT response can't carry the recomputed flag. Re-
+      // fetch the memory list so every pill reflects the new state (best-effort
+      // — the optimistic swap above already applied if this refresh fails).
+      if (cat === 'memory') {
+        byCategory.value.memory = await listKnowledgeEntries(
+          props.projectId,
+          'memory',
+        ).catch(() => byCategory.value.memory)
+      }
       backToList()
     }
   } catch (e) {
@@ -307,6 +324,29 @@ async function onDelete() {
     backToList()
   } catch (e) {
     saveError.value = errMsg(e, 'Delete failed.')
+  } finally {
+    saving.value = false
+  }
+}
+
+// PAI-351 slice 2 — acknowledge the open memory's needs-review flag. The
+// server stamps deps_reviewed_at and returns the reloaded entry (flag
+// cleared); we swap it in place so the pill + editor banner drop without
+// closing the panel.
+async function onAcknowledgeReview() {
+  const entry = editingEntry.value
+  if (!entry) return
+  saving.value = true
+  saveError.value = ''
+  try {
+    const updated = await acknowledgeMemoryReview(props.projectId, entry.slug)
+    const cat = entry.type
+    byCategory.value[cat] = byCategory.value[cat].map((e) =>
+      e.slug === entry.slug ? updated : e,
+    )
+    editingEntry.value = updated
+  } catch (e) {
+    saveError.value = errMsg(e, 'Acknowledge failed.')
   } finally {
     saving.value = false
   }
@@ -418,6 +458,10 @@ watch(
             <input v-model="showProposedOnly" type="checkbox" />
             <span>Proposed only</span>
           </label>
+          <label class="pku-toggle">
+            <input v-model="showNeedsReviewOnly" type="checkbox" />
+            <span>Needs review</span>
+          </label>
         </div>
       </header>
 
@@ -429,6 +473,7 @@ watch(
           :class="{
             'pku-row--archived': isArchived(e),
             'pku-row--proposed': isProposed(e),
+            'pku-row--needs-review': needsReview(e),
             'pku-row--selected':
               editingEntry !== null
               && editingEntry.type === e.type
@@ -445,6 +490,11 @@ watch(
           </div>
           <span v-if="isProposed(e)" class="pku-row__pill">Proposed</span>
           <span v-if="isArchived(e)" class="pku-row__pill pku-row__pill--muted">Archived</span>
+          <span
+            v-if="needsReview(e)"
+            class="pku-row__pill pku-row__pill--review"
+            :title="reviewReason(e)"
+          >Needs review</span>
           <span class="pku-row__time">{{ formatRelative(e.updated_at) }}</span>
         </li>
       </ul>
@@ -474,6 +524,7 @@ watch(
       @save="onSave"
       @delete="onDelete"
       @promoted="backToList"
+      @reviewed="onAcknowledgeReview"
       @update:pinned="onPanelPinUpdate"
     />
   </div>
@@ -748,6 +799,14 @@ watch(
   border-radius: 4px;
   background: color-mix(in srgb, var(--bp-blue) 12%, transparent);
   color: var(--bp-blue-dark);
+}
+.pku-row__pill--review {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #b45309;
+  cursor: help;
+}
+.pku-row--needs-review {
+  box-shadow: inset 3px 0 0 #f59e0b;
 }
 .pku-row__pill--muted {
   background: var(--surface-2, var(--bg));
