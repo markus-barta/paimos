@@ -1,18 +1,11 @@
 import { api, type RequestOptions } from '@/api/client'
-import type { IssueRelation } from '@/types'
+import type { IssueRelation, RelationType } from '@/types'
 
-export type IssueRelationType =
-  | 'depends_on'
-  | 'impacts'
-  | 'follows_from'
-  | 'blocks'
-  | 'related'
-  | 'sprint'
-  | 'groups'
-  // PAI-342: ticket → memory link. Source is the ticket, target is the
-  // memory issue. The reverse direction surfaces in the same row when
-  // the memory side queries its own /relations endpoint.
-  | 'applies_to_memory'
+// Relation types valid for the relations API. Aliased to the generated
+// schema contract (RelationType) so it can never drift from the backend —
+// previously a hand-maintained union that fell behind parent/cost_unit/
+// release (PAI-490 / the schema:check CI gate now enforces this).
+export type IssueRelationType = RelationType
 
 export function loadIssueRelations(issueId: number): Promise<IssueRelation[]> {
   return api.get<IssueRelation[]>(`/issues/${issueId}/relations`)
