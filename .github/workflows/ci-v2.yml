@@ -127,6 +127,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm run schema:check   # generated enums must match the live backend schema (PAI-490)
           npm run typecheck
           npm test
 
