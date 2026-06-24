@@ -167,7 +167,11 @@ const isDirty = computed(() => {
 })
 
 function typeLabel(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1)
+  // title-case each underscore-separated word: cost_unit → "Cost Unit"
+  return type
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 function openCreate(parentIssue?: Issue, overrideType?: string, overrideParentId?: number) {
