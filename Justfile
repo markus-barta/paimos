@@ -84,3 +84,8 @@ doc-sync tag="":
 # command. See scripts/dev-up.sh for what it actually does.
 dev-up:
     @./scripts/dev-up.sh
+
+# Screenshot a route of the local dev UI to a PNG (needs `just dev-up` running).
+# Bootstraps headless Chromium on first run. See docs/VISUAL_VERIFY.md.
+shot route="" out="/tmp/paimos-shot.png":
+    @./scripts/visual-shot.sh "{{route}}" "{{out}}"

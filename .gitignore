@@ -6,6 +6,9 @@
 # PAI-267 — `just dev-up` artifacts (built backend + log dir).
 /.dev-up-backend
 /.dev-up-logs/
+
+# `just shot` — bootstrapped Playwright + Chromium tooling (not an app dep).
+/scripts/.visual-tooling/
 /.playwright-mcp/
 
 # ── Maintainer-local (not for contributors) ──────────────────────────────────
