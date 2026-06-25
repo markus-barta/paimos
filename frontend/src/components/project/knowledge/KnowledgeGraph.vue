@@ -35,6 +35,7 @@ const TYPE_COLOR: Record<string, string> = {
   ticket: '#6b7280',
   task: '#9ca3af',
   epic: '#6366f1',
+  agent: '#ec4899',
 }
 const colorFor = (t: string) => TYPE_COLOR[t] ?? '#94a3b8'
 const typeLabel = (t: string) =>
@@ -57,6 +58,9 @@ const legendTypes = ref<string[]>([])
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let graph: any = null
 let raw: { nodes: GraphNode[]; edges: GraphEdge[] } = { nodes: [], edges: [] }
+// Manual double-click detection (force-graph has no native double-click hook).
+let lastClickId = 0
+let lastClickAt = 0
 
 function applyData() {
   const s = search.value.trim().toLowerCase()
@@ -105,9 +109,21 @@ onMounted(async () => {
     .nodeRelSize(5)
     .nodeVal((n: GraphNode) => 1 + Math.min(n.reference_count, 12))
     .linkColor(() => 'rgba(148,163,184,0.5)')
+    .linkLabel((e: GraphEdge) => typeLabel(e.type))
     .linkDirectionalArrowLength(3)
     .linkDirectionalArrowRelPos(1)
     .onNodeClick((n: GraphNode) => {
+      // Single-click selects (side panel); a second click on the same node
+      // within 300ms navigates to it.
+      const now = Date.now()
+      if (n.id === lastClickId && now - lastClickAt < 300) {
+        lastClickId = 0
+        selected.value = n
+        openSelected()
+        return
+      }
+      lastClickId = n.id
+      lastClickAt = now
       selected.value = n
     })
     .onBackgroundClick(() => {
@@ -133,7 +149,9 @@ const selectedIsKnowledge = computed(
 function openSelected() {
   const n = selected.value
   if (!n) return
-  if (selectedIsKnowledge.value) {
+  if (n.type === 'agent') {
+    router.push({ query: { tab: 'agents' } })
+  } else if (selectedIsKnowledge.value) {
     router.push({ query: { tab: 'knowledge', memory: n.slug } })
   } else {
     router.push(`/projects/${props.projectId}/issues/${n.id}`)
