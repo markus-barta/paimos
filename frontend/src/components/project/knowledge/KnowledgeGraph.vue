@@ -9,6 +9,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { api, errMsg } from '@/api/client'
+import { getKnowledgeEntry } from '@/services/projectKnowledge'
+import { useMarkdown } from '@/composables/useMarkdown'
+import type { KnowledgeCategory } from '@/types'
 
 const props = defineProps<{ projectId: number }>()
 const router = useRouter()
@@ -43,6 +46,11 @@ const typeLabel = (t: string) =>
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
+// A very short on-canvas label for a node (title, else slug), truncated.
+const shortLabel = (n: { title?: string; slug?: string }) => {
+  const s = (n.title || n.slug || '').trim()
+  return s.length > 16 ? s.slice(0, 15) + '…' : s
+}
 
 const container = ref<HTMLDivElement | null>(null)
 const loading = ref(true)
@@ -54,6 +62,13 @@ const edgeCount = ref(0)
 
 // distinct node types present, for the legend
 const legendTypes = ref<string[]>([])
+
+// PAI-350 — the clicked node's body, fetched on demand + rendered as markdown
+// (read mode) in the side panel.
+const selectedBody = ref('')
+const bodyLoading = ref(false)
+const bodyError = ref('')
+const { html: bodyHtml } = useMarkdown(selectedBody, ref(true))
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let graph: any = null
@@ -108,6 +123,26 @@ onMounted(async () => {
     .nodeColor((n: GraphNode) => colorFor(n.type))
     .nodeRelSize(5)
     .nodeVal((n: GraphNode) => 1 + Math.min(n.reference_count, 12))
+    // Persistent short label drawn below each node ('after' = on top of the
+    // default circle, sitting clear of the connecting lines). A faint white
+    // halo keeps it legible without obstructing edges.
+    .nodeCanvasObjectMode(() => 'after')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .nodeCanvasObject((n: any, ctx: any, globalScale: number) => {
+      const label = shortLabel(n)
+      if (!label || globalScale < 0.25) return
+      const fontSize = 11 / globalScale
+      ctx.font = `${fontSize}px Sans-Serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      const r = Math.sqrt(1 + Math.min(n.reference_count ?? 0, 12)) * 5
+      const y = n.y + r + 1.5 / globalScale
+      const w = ctx.measureText(label).width
+      ctx.fillStyle = 'rgba(255,255,255,0.82)'
+      ctx.fillRect(n.x - w / 2 - 1.5, y - 0.5, w + 3, fontSize + 1.5)
+      ctx.fillStyle = '#334155'
+      ctx.fillText(label, n.x, y)
+    })
     .linkColor(() => 'rgba(148,163,184,0.5)')
     .linkLabel((e: GraphEdge) => typeLabel(e.type))
     .linkDirectionalArrowLength(3)
@@ -157,6 +192,38 @@ function openSelected() {
     router.push(`/projects/${props.projectId}/issues/${n.id}`)
   }
 }
+
+// PAI-350 — fetch the clicked node's body for the read-mode markdown panel.
+// Knowledge entries → their body; agents → their markdown body; issues → the
+// description.
+async function loadNodeBody(n: GraphNode): Promise<string> {
+  if (KNOWLEDGE_TYPES.includes(n.type)) {
+    const e = await getKnowledgeEntry(props.projectId, n.type as KnowledgeCategory, n.slug)
+    return e.body || ''
+  }
+  if (n.type === 'agent') {
+    const a = await api.get<{ body?: string; description?: string }>(
+      `/projects/${props.projectId}/agents/${encodeURIComponent(n.slug)}`,
+    )
+    return a.body || a.description || ''
+  }
+  const iss = await api.get<{ description?: string }>(`/issues/${n.id}`)
+  return iss.description || ''
+}
+
+watch(selected, async (n) => {
+  selectedBody.value = ''
+  bodyError.value = ''
+  if (!n) return
+  bodyLoading.value = true
+  try {
+    selectedBody.value = await loadNodeBody(n)
+  } catch (e) {
+    bodyError.value = errMsg(e, 'Could not load details.')
+  } finally {
+    bodyLoading.value = false
+  }
+})
 </script>
 
 <template>
@@ -178,12 +245,20 @@ function openSelected() {
         <div class="kg-panel-head">
           <span class="kg-dot" :style="{ background: colorFor(selected.type) }"></span>
           <span class="kg-panel-type">{{ typeLabel(selected.type) }}</span>
+          <button class="kg-panel-close" aria-label="Close" @click="selected = null">×</button>
         </div>
         <h4 class="kg-panel-title">{{ selected.title }}</h4>
         <code v-if="selected.slug" class="kg-panel-slug">{{ selected.slug }}</code>
         <p v-if="selected.reference_count" class="kg-panel-meta">
           referenced {{ selected.reference_count }}×
         </p>
+        <div class="kg-panel-body">
+          <p v-if="bodyLoading" class="kg-panel-muted">Loading…</p>
+          <p v-else-if="bodyError" class="kg-panel-muted kg-error">{{ bodyError }}</p>
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div v-else-if="bodyHtml" class="kg-md" v-html="bodyHtml"></div>
+          <p v-else class="kg-panel-muted">No content.</p>
+        </div>
         <button class="kg-open" @click="openSelected">Open entry →</button>
       </aside>
     </div>
@@ -206,12 +281,22 @@ function openSelected() {
 .kg-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .kg-body { position: relative; flex: 1; min-height: 420px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; overflow: hidden; }
 .kg-canvas { position: absolute; inset: 0; }
-.kg-panel { position: absolute; top: 12px; right: 12px; width: 260px; background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.kg-panel { position: absolute; top: 12px; right: 12px; width: 340px; max-height: calc(100% - 24px); display: flex; flex-direction: column; background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
 .kg-panel-head { display: flex; align-items: center; gap: 6px; }
 .kg-panel-type { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted, #6b7280); }
+.kg-panel-close { margin-left: auto; border: none; background: none; font-size: 17px; line-height: 1; cursor: pointer; color: var(--text-muted, #6b7280); padding: 0 2px; }
 .kg-panel-title { margin: 8px 0 4px; font-size: 14px; }
 .kg-panel-slug { font-size: 11px; color: var(--text-muted, #6b7280); }
 .kg-panel-meta { font-size: 12px; color: var(--text-muted, #6b7280); margin: 6px 0; }
+.kg-panel-body { margin: 8px 0; overflow-y: auto; flex: 1; min-height: 0; }
+.kg-panel-muted { font-size: 12px; color: var(--text-muted, #6b7280); margin: 4px 0; }
+.kg-md { font-size: 12.5px; line-height: 1.5; color: var(--text, #1f2937); word-break: break-word; }
+.kg-md :deep(h1), .kg-md :deep(h2), .kg-md :deep(h3) { font-size: 13px; margin: 8px 0 4px; }
+.kg-md :deep(p) { margin: 4px 0; }
+.kg-md :deep(ul), .kg-md :deep(ol) { margin: 4px 0; padding-left: 18px; }
+.kg-md :deep(code) { font-size: 11px; background: var(--surface-2, #f3f4f6); padding: 0 3px; border-radius: 3px; }
+.kg-md :deep(pre) { background: var(--surface-2, #f3f4f6); padding: 6px; border-radius: 4px; overflow-x: auto; }
+.kg-md :deep(a) { color: var(--accent, #3b82f6); }
 .kg-open { margin-top: 8px; padding: 6px 10px; font-size: 12px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; background: var(--surface, #fff); cursor: pointer; }
 .kg-open:hover { background: var(--hover, #f3f4f6); }
 .kg-status { padding: 12px 0; font-size: 13px; color: var(--text-muted, #6b7280); }
