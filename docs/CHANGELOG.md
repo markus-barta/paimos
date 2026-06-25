@@ -5,6 +5,26 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] — 2026-06-25
+
+### Added
+
+- **Knowledge graph governance + polish (PAI-350).** The graph now includes the
+  project's **agents** as nodes, with a `governed_by` edge to each memory their
+  `non_negotiable_rules` reference — surfacing *which agent is bound by which
+  rule*. Every node shows a short name label below it; clicking a node opens a
+  side panel rendering its full body as **markdown** in read mode; double-click
+  navigates to the entry; hovering an edge shows its relation type.
+
+### Changed
+
+- **Memory `content_revised_at` is now maintained on every write path
+  (PAI-351).** The "needs re-review" signal for memory dependencies fires
+  whether a memory's body is edited via the Knowledge tab, the generic issue
+  update (incl. MCP `update_issue`), or a batch update — and undo/redo
+  round-trips the timestamp, so undoing a body edit also clears the dependents'
+  flag instead of leaving a stale one.
+
 ## [4.1.0] — 2026-06-25
 
 ### Added
