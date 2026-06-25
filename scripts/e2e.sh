@@ -12,6 +12,15 @@ TOKDIR=$(mktemp -d)
 printf 'PAIMOS_DEV_LOGIN_TOKEN=%s\n' "$E2E_TOKEN" >"$TOKDIR/token.env"
 export PAIMOS_DEV_LOGIN_TOKEN_FILE="$TOKDIR/token.env"
 
+# The backend defaults DATA_DIR to /app/data (the container path), which isn't
+# writable on a CI runner with no direnv to point it elsewhere. Give it an
+# isolated, writable, throwaway dir so dev-seed can create the DB.
+if [[ -z "${DATA_DIR:-}" ]]; then
+  DATA_DIR=$(mktemp -d)
+  export DATA_DIR
+  CLEAN_DATA_DIR=1
+fi
+
 # Boot the stack (backend :8888 + vite :5173) in the background.
 echo "→ booting dev stack (log: $ROOT/.e2e-devup.log)"
 bash "$ROOT/scripts/dev-up.sh" >"$ROOT/.e2e-devup.log" 2>&1 &
@@ -24,6 +33,7 @@ cleanup() {
   pkill -f 'dev-up-backend' 2>/dev/null || true
   pkill -f 'vite' 2>/dev/null || true
   rm -rf "$TOKDIR"
+  [[ "${CLEAN_DATA_DIR:-}" == 1 ]] && rm -rf "$DATA_DIR"
 }
 trap cleanup EXIT
 
