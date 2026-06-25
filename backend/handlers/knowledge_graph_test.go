@@ -116,3 +116,77 @@ func TestKnowledgeGraph_EmptyProject(t *testing.T) {
 		t.Fatalf("empty project graph = %d nodes, %d edges; want 0/0", len(graph.Nodes), len(graph.Edges))
 	}
 }
+
+// PAI-350 — agent nodes + governance edges: a project agent whose
+// non_negotiable_rules reference a memory appears as a node (negative id so it
+// never collides with issue ids, type "agent") with a "governed_by" edge to
+// that memory. A rule with no memory_ref contributes no edge.
+func TestKnowledgeGraph_AgentNodesAndGovernanceEdges(t *testing.T) {
+	ts := newTestServer(t)
+	pid := createTestProject(t, ts, "AgentGraph", "AGRF")
+
+	mr := ts.post(t, knowledgeBaseURL(pid), ts.adminCookie, map[string]any{
+		"type": "memory", "slug": "safe_deploy", "title": "Safe deploy rule", "body": "always backup first",
+	})
+	assertStatus(t, mr, http.StatusCreated)
+	var mem knowledgeEntry
+	decode(t, mr, &mem)
+
+	ag := ts.post(t, fmt.Sprintf("/api/projects/%d/agents", pid), ts.adminCookie, map[string]any{
+		"name":               "ops",
+		"description":        "Infra agent.",
+		"slash_command_name": "ops",
+		"non_negotiable_rules": []map[string]any{
+			{"title": "Backups", "body": "back up first", "memory_ref": "safe_deploy"},
+			{"title": "No ref", "body": "general", "memory_ref": ""},
+		},
+	})
+	assertStatus(t, ag, http.StatusCreated)
+
+	resp := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/graph", pid), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	type gNode struct {
+		ID   int64  `json:"id"`
+		Type string `json:"type"`
+		Slug string `json:"slug"`
+	}
+	type gEdge struct {
+		Source int64  `json:"source"`
+		Target int64  `json:"target"`
+		Type   string `json:"type"`
+	}
+	var g struct {
+		Nodes []gNode `json:"nodes"`
+		Edges []gEdge `json:"edges"`
+	}
+	decode(t, resp, &g)
+
+	var agentNode *gNode
+	for i := range g.Nodes {
+		if g.Nodes[i].Type == "agent" {
+			agentNode = &g.Nodes[i]
+		}
+	}
+	if agentNode == nil {
+		t.Fatalf("expected an agent node, got %#v", g.Nodes)
+	}
+	if agentNode.ID >= 0 {
+		t.Errorf("agent node id must be negative (namespaced from issue ids), got %d", agentNode.ID)
+	}
+	if agentNode.Slug != "ops" {
+		t.Errorf("agent node slug = %q, want ops", agentNode.Slug)
+	}
+
+	governed := 0
+	for _, e := range g.Edges {
+		if e.Type == "governed_by" {
+			governed++
+			if e.Source != agentNode.ID || e.Target != mem.ID {
+				t.Errorf("governed_by edge = %d→%d, want %d→%d", e.Source, e.Target, agentNode.ID, mem.ID)
+			}
+		}
+	}
+	if governed != 1 {
+		t.Fatalf("expected exactly 1 governed_by edge (the empty memory_ref rule adds none), got %d", governed)
+	}
+}

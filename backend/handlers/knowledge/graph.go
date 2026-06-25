@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -178,6 +179,48 @@ func GraphHandler(w http.ResponseWriter, r *http.Request) {
 			edges = append(edges, graphEdge{Source: e.ID, Target: tgt, Type: "depends_on"})
 		}
 	}
+
+	// PAI-350 — surface the project's AGENTS as nodes, with an edge to each
+	// memory their non_negotiable_rules reference (the governance view: which
+	// agent is bound by which rule). Agents live in their own table with their
+	// own id sequence, so namespace them as NEGATIVE ids to never collide with
+	// the positive issue/memory node ids.
+	ar, err := db.DB.Query(`SELECT id, name, COALESCE(non_negotiable_rules,'[]') FROM project_agents WHERE project_id = ?`, projectID)
+	if err != nil {
+		writeError(w, r, "query failed", http.StatusInternalServerError)
+		return
+	}
+	for ar.Next() {
+		var aid int64
+		var name, rulesJSON string
+		if err := ar.Scan(&aid, &name, &rulesJSON); err != nil {
+			ar.Close()
+			writeError(w, r, "query failed", http.StatusInternalServerError)
+			return
+		}
+		nodeID := -aid
+		nodes[nodeID] = graphNode{ID: nodeID, Type: "agent", Slug: name, Title: name}
+		var rules []struct {
+			MemoryRef string `json:"memory_ref"`
+		}
+		_ = json.Unmarshal([]byte(rulesJSON), &rules)
+		for _, rule := range rules {
+			if rule.MemoryRef == "" {
+				continue
+			}
+			tgt, ok := memSlugToID[rule.MemoryRef]
+			if !ok {
+				continue
+			}
+			key := [3]any{nodeID, tgt, "governed_by"}
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			edges = append(edges, graphEdge{Source: nodeID, Target: tgt, Type: "governed_by"})
+		}
+	}
+	ar.Close()
 
 	// Drop edges whose endpoints didn't resolve to a live node (e.g. a
 	// soft-deleted ticket), so the graph never dangles.
