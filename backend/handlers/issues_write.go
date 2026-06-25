@@ -460,6 +460,16 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// PAI-351 — stamp content_revised_at when a MEMORY body meaningfully
+	// changes via this generic path too (MCP update_issue / scripts route
+	// here, not just the Knowledge-tab convenience PUT), so dependents flag
+	// for re-review no matter which write path edited the rule. Guarded:
+	// non-memory rows and non-body edits are untouched.
+	bodyRevised := 0
+	if existing.Type == "memory" && body.Description != nil &&
+		normalizeBody(existing.Description) != normalizeBody(*body.Description) {
+		bodyRevised = 1
+	}
 	_, err = tx.Exec(`
 		UPDATE issues SET
 			title               = COALESCE(?, title),
@@ -488,6 +498,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			time_override       = CASE WHEN ? = 1 THEN ? ELSE time_override END,
 			color               = CASE WHEN ? = 1 THEN ? ELSE color END,
 			assignee_id         = CASE WHEN ? = 1 THEN ? ELSE assignee_id END,
+			content_revised_at  = CASE WHEN ? = 1 THEN ? ELSE content_revised_at END,
 			updated_at          = ?
 		WHERE id=?
 	`, body.Title, body.Description, body.AcceptanceCriteria, body.Notes,
@@ -507,6 +518,7 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		timeOverridePresent, body.TimeOverride,
 		colorPresent, body.Color,
 		assigneePresent, body.AssigneeID,
+		bodyRevised, now,
 		now, id)
 	if handleDBError(w, err, "issue") {
 		return

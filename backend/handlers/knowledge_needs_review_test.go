@@ -201,6 +201,63 @@ func TestNeedsReview_AcknowledgeAndReflag(t *testing.T) {
 	assertStatus(t, ts.post(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/nope/reviewed", pid), ts.adminCookie, map[string]any{}), http.StatusNotFound)
 }
 
+// PAI-351 slice 3 — a memory body edited via the GENERIC issue path
+// (PUT /api/issues/{id} — the MCP update_issue surface) also stamps
+// content_revised_at and flags dependents, not just the Knowledge-tab PUT.
+func TestNeedsReview_GenericIssueUpdateStampsBody(t *testing.T) {
+	ts := newTestServer(t)
+	pid := createTestProject(t, ts, "NR5", "NR5")
+	mkID := func(slug string, meta map[string]any) int64 {
+		body := map[string]any{"type": "memory", "slug": slug, "title": slug, "body": "v1"}
+		if meta != nil {
+			body["metadata"] = meta
+		}
+		r := ts.post(t, knowledgeBaseURL(pid), ts.adminCookie, body)
+		assertStatus(t, r, http.StatusCreated)
+		var e knowledgeEntry
+		decode(t, r, &e)
+		return e.ID
+	}
+	parentID := mkID("parent", nil)
+	mkID("child", map[string]any{"depends_on": []any{map[string]any{"name": "parent"}}})
+	if _, err := db.DB.Exec(`UPDATE issues SET created_at='2020-01-01 00:00:00' WHERE project_id=? AND slug='child'`, pid); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+
+	flaggedCount := func() int {
+		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/needs-review", pid), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out nrResp
+		decode(t, resp, &out)
+		return out.Count
+	}
+
+	// Edit the parent's BODY via the generic issue endpoint (the MCP surface).
+	assertStatus(t, ts.put(t, fmt.Sprintf("/api/issues/%d", parentID), ts.adminCookie, map[string]any{
+		"description": "v2 revised via the generic issue path",
+	}), http.StatusOK)
+
+	var revised string
+	if err := db.DB.QueryRow(`SELECT COALESCE(content_revised_at,'') FROM issues WHERE id=?`, parentID).Scan(&revised); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if revised == "" {
+		t.Fatalf("generic issue-path body edit must stamp content_revised_at")
+	}
+	if flaggedCount() != 1 {
+		t.Fatalf("dependent must be flagged after a generic-path body edit")
+	}
+
+	// Guard: acknowledge, then a TITLE-ONLY generic edit must NOT re-flag.
+	assertStatus(t, ts.post(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/child/reviewed", pid), ts.adminCookie, map[string]any{}), http.StatusOK)
+	assertStatus(t, ts.put(t, fmt.Sprintf("/api/issues/%d", parentID), ts.adminCookie, map[string]any{
+		"title": "Parent retitled",
+	}), http.StatusOK)
+	if flaggedCount() != 0 {
+		t.Errorf("a title-only generic edit must NOT stamp content_revised_at / re-flag")
+	}
+}
+
 // Graph synthesises depends_on edges from metadata, deduped against a hand-made
 // issue_relations depends_on row, and reflects needs_review on memory nodes.
 func TestNeedsReview_GraphEdgesAndDedup(t *testing.T) {
