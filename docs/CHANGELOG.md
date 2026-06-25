@@ -5,6 +5,40 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] — 2026-06-25
+
+### Added
+
+- **Optimistic concurrency for issue edits (PAI-231).** `GET /api/issues/{id}`
+  now returns a strong per-row `ETag`; the edit form captures it and sends
+  `If-Match` on save. If the issue changed since it was loaded, the server
+  returns `412` with a structured conflict body naming the diverged fields, and
+  the editor shows a conflict banner with a **Reload latest** action instead of
+  silently overwriting the concurrent edit. Clients that don't send `If-Match`
+  (CLI, API-key) are unaffected — the guard is opt-in and backward compatible.
+
+### Fixed
+
+- **Soft-deleted cost_unit/release labels no longer leak onto member tickets
+  (PAI-602).** A trashed cost_unit/release container vanished from the picker
+  but its label still surfaced on member tickets and in filters. The payload
+  JOINs and filter expressions now guard `deleted_at`, returning a nil ref (not
+  a half-populated `{id, label:""}` ghost) once the container is soft-deleted.
+  The batch partial-update path now also threads the request context.
+
+### Internal
+
+- **Real frontend lint gate (PAI-295).** `npm run lint` now runs eslint (Vue 3
+  essential + typescript-eslint, prettier-compatible) in CI instead of just
+  `vue-tsc`. Error-level bug rules fail the build; existing high-volume debt is
+  surfaced as warnings to burn down incrementally. prettier is available via
+  `npm run format` (opt-in).
+- **E2E smoke suite (PAI-297).** A small, fast Playwright suite
+  (`npm run test:e2e`, or `scripts/e2e.sh`) boots the real backend + frontend
+  and drives the highest-value cross-boundary flows — dev-login, seeded
+  projects, the authenticated shell, and a project view rendering issues from
+  the API — wired into CI as a dedicated `e2e` job.
+
 ## [4.3.0] — 2026-06-25
 
 ### Added
