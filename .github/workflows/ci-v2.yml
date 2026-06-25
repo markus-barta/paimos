@@ -132,6 +132,38 @@ jobs:
           npm run typecheck
           npm test
 
+  e2e:
+    # PAI-297: E2E smoke — boots the real backend + vite stack and drives the
+    # cross-boundary flows with Playwright. Skipped on tag pushes (same
+    # reasoning as `test`).
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.11'
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E smoke (boots backend + vite, runs Playwright)
+        run: bash scripts/e2e.sh
+
   security-scan:
     # PAI-365: skip on tag pushes — same reasoning as `test` above.
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'

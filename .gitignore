@@ -11,6 +11,11 @@
 /scripts/.visual-tooling/
 /.playwright-mcp/
 
+# PAI-297 — E2E smoke run artifacts (Playwright report/results + boot log).
+/.e2e-devup.log
+/frontend/test-results/
+/frontend/playwright-report/
+
 # ── Maintainer-local (not for contributors) ──────────────────────────────────
 /scripts/brand-scan.sh
 /BRANDING_GUARD.md
