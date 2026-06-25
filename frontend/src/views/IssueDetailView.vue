@@ -40,6 +40,7 @@ import {
   removeIssueSprint,
   removeIssueTag,
   saveIssueDetail,
+  issueIfMatch,
   type IssueAggregation as Aggregation,
 } from "@/services/issueDetail";
 import { uploadInlineIssueAttachment } from "@/services/issueInlineAttachments";
@@ -154,6 +155,9 @@ const loadErrorRetryable = ref(false);
 const editing = ref(false);
 const saving = ref(false);
 const saveError = ref("");
+// PAI-231 — set when a save is rejected with 412 (the issue changed since it
+// was loaded). Drives the conflict banner + Reload action.
+const conflict = ref<{ fields: string[] } | null>(null);
 
 const issueTagIds = computed(() => issue.value?.tags?.map((t) => t.id) ?? []);
 
@@ -340,18 +344,33 @@ function enterEditMode() {
   });
 }
 
+// PAI-231 — recover from a save conflict: drop unsaved edits, re-fetch the
+// latest issue, and return to read mode so the user re-edits against current.
+async function reloadOnConflict() {
+  conflict.value = null;
+  saveError.value = "";
+  editing.value = false;
+  await load();
+}
+
 async function save() {
   if (pendingInlineUploads.value > 0) {
     saveError.value = `Please wait — ${pendingInlineUploads.value} attachment upload${pendingInlineUploads.value > 1 ? "s" : ""} still in progress.`;
     return;
   }
   saveError.value = "";
+  conflict.value = null;
   saving.value = true;
   // Capture prior status BEFORE the save so the post-save hook
   // (PAI-343 lesson capture) can detect a terminal-state transition.
   const prevStatus = issue.value?.status ?? "";
+  // PAI-231 — send the load-time version as If-Match so a concurrent edit is
+  // rejected (412) instead of silently overwritten.
+  const ifMatch = issue.value
+    ? issueIfMatch(issue.value.id, issue.value.updated_at)
+    : undefined;
   try {
-    issue.value = await saveIssueDetail(issueId.value, form.value);
+    issue.value = await saveIssueDetail(issueId.value, form.value, ifMatch);
     parentIssue.value = issue.value.parent_id
       ? await loadIssueParent(issue.value.parent_id)
       : null;
@@ -372,7 +391,17 @@ async function save() {
     // are silent — capturing is opt-in and additive.
     void maybeOfferLessonCapture(prevStatus, issue.value.status);
   } catch (e: unknown) {
-    saveError.value = errMsg(e, "Save failed.");
+    if (e instanceof ApiError && e.status === 412) {
+      const raw = (e as { diverged_fields?: unknown }).diverged_fields;
+      const fields = Array.isArray(raw) ? (raw as string[]) : [];
+      conflict.value = { fields };
+      saveError.value =
+        "This issue was changed by someone else since you opened it." +
+        (fields.length ? ` Changed: ${fields.join(", ")}.` : "") +
+        " Reload to get the latest, then re-apply your edit.";
+    } else {
+      saveError.value = errMsg(e, "Save failed.");
+    }
   } finally {
     saving.value = false;
   }
@@ -1083,6 +1112,24 @@ async function cancelEdit() {
     </div>
   </div>
   <template v-else-if="issue">
+    <!-- PAI-231 — optimistic-concurrency conflict banner. -->
+    <div v-if="conflict" class="idv-conflict" role="alert">
+      <AppIcon name="alert-circle" :size="16" />
+      <span class="idv-conflict__text">
+        This issue was changed by someone else since you opened it.
+        <template v-if="conflict.fields.length">
+          Changed: {{ conflict.fields.join(", ") }}.
+        </template>
+        Your unsaved edits weren't applied.
+      </span>
+      <button
+        class="btn btn-sm btn-primary"
+        type="button"
+        @click="reloadOnConflict"
+      >
+        Reload latest
+      </button>
+    </div>
     <!-- Breadcrumb -->
     <Teleport defer to="#app-header-left">
       <RouterLink :to="projectRoute" class="ah-back">
@@ -1650,6 +1697,22 @@ async function cancelEdit() {
 .loading {
   color: var(--text-muted);
   padding: 2rem 0;
+}
+/* PAI-231 — save-conflict banner */
+.idv-conflict {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, #f59e0b 45%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+.idv-conflict__text {
+  flex: 1;
 }
 
 .issue-load-state {
