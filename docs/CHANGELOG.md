@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] — 2026-06-25
+
+### Added
+
+- **Knowledge graph stays renderable at scale (PAI-350).** The graph endpoint
+  now caps the node count (`?limit`, default 500, keeping the most-connected
+  nodes) and can focus on a node's N-hop neighborhood (`?focus=<id>&hops=<n>`,
+  default 2). The graph view shows an "X of Y shown" indicator with Show-all /
+  Whole-graph controls and a Focus button on each node — so a project with
+  hundreds of knowledge entries no longer overwhelms the canvas.
+
 ## [4.2.0] — 2026-06-25
 
 ### Added
