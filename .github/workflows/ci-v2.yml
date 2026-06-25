@@ -123,11 +123,12 @@ jobs:
         working-directory: backend
         run: go run ./cmd/paimos anchors verify --repo-root .. --index ../.pmo/anchors.json
 
-      - name: Frontend — typecheck + test
+      - name: Frontend — lint + typecheck + test
         working-directory: frontend
         run: |
           npm ci
           npm run schema:check   # generated enums must match the live backend schema (PAI-490)
+          npm run lint           # PAI-295: eslint gate (errors fail; existing debt is warnings)
           npm run typecheck
           npm test
 
