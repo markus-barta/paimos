@@ -258,6 +258,109 @@ func TestNeedsReview_GenericIssueUpdateStampsBody(t *testing.T) {
 	}
 }
 
+// PAI-351 slice-3 tail — a memory body edited via the BATCH path
+// (PATCH /api/issues) also stamps content_revised_at + flags dependents.
+func TestNeedsReview_BatchUpdateStampsBody(t *testing.T) {
+	ts := newTestServer(t)
+	pid := createTestProject(t, ts, "NR6", "NR6")
+	mkID := func(slug string, meta map[string]any) int64 {
+		body := map[string]any{"type": "memory", "slug": slug, "title": slug, "body": "v1"}
+		if meta != nil {
+			body["metadata"] = meta
+		}
+		r := ts.post(t, knowledgeBaseURL(pid), ts.adminCookie, body)
+		assertStatus(t, r, http.StatusCreated)
+		var e knowledgeEntry
+		decode(t, r, &e)
+		return e.ID
+	}
+	parentID := mkID("parent", nil)
+	mkID("child", map[string]any{"depends_on": []any{map[string]any{"name": "parent"}}})
+	if _, err := db.DB.Exec(`UPDATE issues SET created_at='2020-01-01 00:00:00' WHERE project_id=? AND slug='child'`, pid); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+
+	batch := []map[string]any{
+		{"ref": itoa(parentID), "fields": map[string]any{"description": "v2 revised via batch"}},
+	}
+	assertStatus(t, ts.patch(t, "/api/issues", ts.adminCookie, batch), http.StatusOK)
+
+	var rev string
+	if err := db.DB.QueryRow(`SELECT COALESCE(content_revised_at,'') FROM issues WHERE id=?`, parentID).Scan(&rev); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if rev == "" {
+		t.Fatalf("batch body edit must stamp content_revised_at")
+	}
+	resp := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/needs-review", pid), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	var out nrResp
+	decode(t, resp, &out)
+	if out.Count != 1 {
+		t.Fatalf("dependent must flag after a batch body edit, got count=%d", out.Count)
+	}
+}
+
+// PAI-351 slice-3 tail — undoing a memory body edit ROUND-TRIPS
+// content_revised_at (resets it), so the dependent un-flags (no over-flag).
+func TestNeedsReview_UndoResetsContentRevisedAt(t *testing.T) {
+	ts := newTestServer(t)
+	var adminID int64
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID); err != nil {
+		t.Fatalf("admin id: %v", err)
+	}
+	pid := createTestProject(t, ts, "NR7", "NR7")
+	mkID := func(slug string, meta map[string]any) int64 {
+		body := map[string]any{"type": "memory", "slug": slug, "title": slug, "body": "v1"}
+		if meta != nil {
+			body["metadata"] = meta
+		}
+		r := ts.post(t, knowledgeBaseURL(pid), ts.adminCookie, body)
+		assertStatus(t, r, http.StatusCreated)
+		var e knowledgeEntry
+		decode(t, r, &e)
+		return e.ID
+	}
+	parentID := mkID("parent", nil)
+	mkID("child", map[string]any{"depends_on": []any{map[string]any{"name": "parent"}}})
+	if _, err := db.DB.Exec(`UPDATE issues SET created_at='2020-01-01 00:00:00' WHERE project_id=? AND slug='child'`, pid); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	flagged := func() int {
+		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/memory/needs-review", pid), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var out nrResp
+		decode(t, resp, &out)
+		return out.Count
+	}
+
+	requestID := "req-nr-undo"
+	seedAICall(t, adminID, parentID, requestID)
+	assertStatus(t, putWithHeaders(t, ts, "/api/issues/"+itoa(parentID), ts.adminCookie, map[string]any{
+		"description": "v2 revised",
+	}, map[string]string{
+		"X-PAIMOS-AI-Request-Id": requestID,
+		"X-PAIMOS-AI-Action":     "edit_rule",
+	}), http.StatusOK)
+	if flagged() != 1 {
+		t.Fatalf("child should be flagged after the body edit")
+	}
+
+	// Undo (clean, no drift) reverts body + content_revised_at via the snapshot.
+	assertStatus(t, ts.post(t, "/api/undo/request/"+requestID, ts.adminCookie, map[string]any{}), http.StatusOK)
+
+	var rev string
+	if err := db.DB.QueryRow(`SELECT COALESCE(content_revised_at,'') FROM issues WHERE id=?`, parentID).Scan(&rev); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if rev != "" {
+		t.Errorf("undo must reset content_revised_at, got %q", rev)
+	}
+	if flagged() != 0 {
+		t.Errorf("undo must un-flag the dependent (over-flag fixed)")
+	}
+}
+
 // Graph synthesises depends_on edges from metadata, deduped against a hand-made
 // issue_relations depends_on row, and reflects needs_review on memory nodes.
 func TestNeedsReview_GraphEdgesAndDedup(t *testing.T) {

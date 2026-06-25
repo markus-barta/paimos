@@ -485,6 +485,15 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 			}}, http.StatusBadRequest)
 			return
 		}
+		// PAI-351 — stamp content_revised_at when a memory body changes via the
+		// batch path too, before the after-snapshot so undo round-trips it.
+		if rw.existing.Type == "memory" && rw.update.Description != nil &&
+			normalizeBody(rw.existing.Description) != normalizeBody(*rw.update.Description) {
+			if _, err := tx.Exec(`UPDATE issues SET content_revised_at = ? WHERE id = ?`, now, rw.id); err != nil {
+				jsonError(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
 		// PAI-584 P6: hierarchy via the `parent` edge when this row touches it.
 		if rw.update.ParentIDPresent {
 			if err := setParentEdge(r.Context(), tx, rw.id, rw.update.ParentID); err != nil {

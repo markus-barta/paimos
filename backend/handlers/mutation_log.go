@@ -102,6 +102,10 @@ type issueMutationSnapshot struct {
 	Color              *string  `json:"color"`
 	AssigneeID         *int64   `json:"assignee_id"`
 	DeletedAt          *string  `json:"deleted_at"`
+	// PAI-351 — round-trip the body-change clock through undo/redo so undoing
+	// a memory body edit also resets content_revised_at (else the dependents
+	// stay flagged for a change that no longer exists).
+	ContentRevisedAt *string `json:"content_revised_at"`
 }
 
 type relationMutationSnapshot struct {
@@ -422,7 +426,7 @@ func fetchIssueMutationSnapshotTx(tx *sql.Tx, issueID int64) (issueMutationSnaps
 	var snap issueMutationSnapshot
 	var projectID sql.NullInt64
 	var parentID sql.NullInt64
-	var billingType, startDate, endDate, groupState, sprintState, jiraID, jiraVersion, jiraText, color, deletedAt sql.NullString
+	var billingType, startDate, endDate, groupState, sprintState, jiraID, jiraVersion, jiraText, color, deletedAt, contentRevisedAt sql.NullString
 	var totalBudget, rateHourly, rateLp, estimateHours, estimateLp, arHours, arLp, timeOverride sql.NullFloat64
 	var assigneeID sql.NullInt64
 	// PAI-584 P6: parent_id column dropped — capture the parent from the
@@ -437,14 +441,14 @@ func fetchIssueMutationSnapshotTx(tx *sql.Tx, issueID int64) (issueMutationSnaps
 		       COALESCE((SELECT c.title FROM issue_relations r JOIN issues c ON c.id=r.source_id WHERE r.target_id=issues.id AND r.type='release'), ''),
 		       billing_type, total_budget, rate_hourly, rate_lp,
 		       start_date, end_date, group_state, sprint_state, jira_id, jira_version, jira_text,
-		       estimate_hours, estimate_lp, ar_hours, ar_lp, time_override, color, assignee_id, deleted_at
+		       estimate_hours, estimate_lp, ar_hours, ar_lp, time_override, color, assignee_id, deleted_at, content_revised_at
 		FROM issues WHERE id = ?
 	`, issueID).Scan(
 		&snap.ID, &projectID, &snap.Type, &parentID, &snap.Title, &snap.Description, &snap.AcceptanceCriteria, &snap.Notes,
 		&snap.ReportSummary,
 		&snap.Status, &snap.Priority, &snap.CostUnit, &snap.Release, &billingType, &totalBudget, &rateHourly, &rateLp,
 		&startDate, &endDate, &groupState, &sprintState, &jiraID, &jiraVersion, &jiraText,
-		&estimateHours, &estimateLp, &arHours, &arLp, &timeOverride, &color, &assigneeID, &deletedAt,
+		&estimateHours, &estimateLp, &arHours, &arLp, &timeOverride, &color, &assigneeID, &deletedAt, &contentRevisedAt,
 	)
 	if err != nil {
 		return snap, err
@@ -470,6 +474,7 @@ func fetchIssueMutationSnapshotTx(tx *sql.Tx, issueID int64) (issueMutationSnaps
 	snap.Color = nullStringPtr(color)
 	snap.AssigneeID = nullInt64Ptr(assigneeID)
 	snap.DeletedAt = nullStringPtr(deletedAt)
+	snap.ContentRevisedAt = nullStringPtr(contentRevisedAt)
 	return snap, nil
 }
 
@@ -623,7 +628,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 			status = ?, priority = ?, billing_type = ?, total_budget = ?,
 			rate_hourly = ?, rate_lp = ?, start_date = ?, end_date = ?, group_state = ?, sprint_state = ?,
 			jira_id = ?, jira_version = ?, jira_text = ?, estimate_hours = ?, estimate_lp = ?, ar_hours = ?,
-			ar_lp = ?, time_override = ?, color = ?, assignee_id = ?, deleted_at = ?, updated_at = ?
+			ar_lp = ?, time_override = ?, color = ?, assignee_id = ?, deleted_at = ?, content_revised_at = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		snap.Type, snap.Title, snap.Description, snap.AcceptanceCriteria, snap.Notes,
@@ -631,7 +636,7 @@ func applyIssueSnapshotTx(tx *sql.Tx, issueID int64, snap issueMutationSnapshot)
 		snap.Status, snap.Priority, snap.BillingType, snap.TotalBudget,
 		snap.RateHourly, snap.RateLp, snap.StartDate, snap.EndDate, snap.GroupState, snap.SprintState,
 		snap.JiraID, snap.JiraVersion, snap.JiraText, snap.EstimateHours, snap.EstimateLp, snap.ArHours,
-		snap.ArLp, snap.TimeOverride, snap.Color, snap.AssigneeID, snap.DeletedAt, time.Now().UTC().Format("2006-01-02 15:04:05"),
+		snap.ArLp, snap.TimeOverride, snap.Color, snap.AssigneeID, snap.DeletedAt, snap.ContentRevisedAt, time.Now().UTC().Format("2006-01-02 15:04:05"),
 		issueID,
 	)
 	if err != nil {
