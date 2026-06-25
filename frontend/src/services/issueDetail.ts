@@ -97,8 +97,24 @@ export async function loadIssueDetailData(
   }
 }
 
-export function saveIssueDetail(issueId: number, payload: IssueDetailForm): Promise<Issue> {
-  return api.put<Issue>(`/issues/${issueId}`, payload)
+// PAI-231 — the strong per-row ETag, mirroring the backend
+// ("issue-<id>-<updated_at>"), reconstructed from data the client already
+// holds. Sent as If-Match so the server rejects (412) a save when the issue
+// changed since it was loaded.
+export function issueIfMatch(id: number, updatedAt: string): string {
+  return `"issue-${id}-${updatedAt.replace(/ /g, 'T')}"`
+}
+
+export function saveIssueDetail(
+  issueId: number,
+  payload: IssueDetailForm,
+  ifMatch?: string,
+): Promise<Issue> {
+  return api.put<Issue>(
+    `/issues/${issueId}`,
+    payload,
+    ifMatch ? { headers: { 'If-Match': ifMatch } } : undefined,
+  )
 }
 
 export function deleteIssueDetail(issueId: number): Promise<void> {

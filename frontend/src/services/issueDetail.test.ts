@@ -130,7 +130,7 @@ describe('issueDetail service', () => {
     await assignIssueSprint(9, 3)
     await removeIssueSprint(9, 3)
 
-    expect(api.put).toHaveBeenCalledWith('/issues/9', { title: 'x' })
+    expect(api.put).toHaveBeenCalledWith('/issues/9', { title: 'x' }, undefined)
     expect(api.delete).toHaveBeenCalledWith('/issues/9')
     expect(api.delete).toHaveBeenCalledWith('/issues/9/tags/2')
     expect(api.delete).toHaveBeenCalledWith('/issues/9/relations', { target_id: 3, type: 'sprint' })
