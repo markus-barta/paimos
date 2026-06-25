@@ -479,7 +479,7 @@ func UpdateIssuesBatch(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if err := applyPartialIssueUpdate(tx, rw.id, rw.update, now); err != nil {
+		if err := applyPartialIssueUpdate(r.Context(), tx, rw.id, rw.update, now); err != nil {
 			writeBatchError(w, []BatchError{{
 				Index: rw.index, Ref: rw.ref, Error: cleanDBError(err),
 			}}, http.StatusBadRequest)
@@ -684,7 +684,7 @@ func parsePartialIssueUpdate(raw json.RawMessage, existing *models.Issue) (parti
 // COALESCE on the other columns is fine because none of them have
 // "clear me" semantics from the bulk modal — those that do (budget /
 // dates / jira_*) need their own follow-up to switch off COALESCE.
-func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now string) error {
+func applyPartialIssueUpdate(ctx context.Context, tx *sql.Tx, id int64, upd partialIssueUpdate, now string) error {
 	flag := func(b bool) int {
 		if b {
 			return 1
@@ -728,12 +728,12 @@ func applyPartialIssueUpdate(tx *sql.Tx, id int64, upd partialIssueUpdate, now s
 		var projectID sql.NullInt64
 		if e := tx.QueryRow(`SELECT project_id FROM issues WHERE id=?`, id).Scan(&projectID); e == nil && projectID.Valid {
 			if upd.CostUnit != nil {
-				if e := setLabelEdge(context.Background(), tx, "cost_unit", id, projectID.Int64, *upd.CostUnit); e != nil {
+				if e := setLabelEdge(ctx, tx, "cost_unit", id, projectID.Int64, *upd.CostUnit); e != nil {
 					return e
 				}
 			}
 			if upd.Release != nil {
-				if e := setLabelEdge(context.Background(), tx, "release", id, projectID.Int64, *upd.Release); e != nil {
+				if e := setLabelEdge(ctx, tx, "release", id, projectID.Int64, *upd.Release); e != nil {
 					return e
 				}
 			}

@@ -34,7 +34,7 @@ const issueSelect = `
 	       i.title, i.description, i.acceptance_criteria, i.notes,
 	       i.report_summary,
 	       i.status, i.priority,
-	       cu.source_id, cu_issue.title, rel.source_id, rel_issue.title,
+	       cu_issue.id, cu_issue.title, rel_issue.id, rel_issue.title,
 	       i.billing_type, i.total_budget, i.rate_hourly, i.rate_lp,
 	       i.start_date, i.end_date, i.group_state, i.sprint_state,
 	       i.jira_id, i.jira_version, i.jira_text,
@@ -83,9 +83,12 @@ const issueSelect = `
 	-- container edges (the SSOT), returned as {id,label}. One of each per
 	-- ticket (partial-unique index) so these LEFT JOINs never fan out.
 	LEFT JOIN issue_relations cu ON cu.target_id = i.id AND cu.type = 'cost_unit'
-	LEFT JOIN issues cu_issue ON cu_issue.id = cu.source_id
+	-- PAI-602: a soft-deleted container must not surface its label/id on member
+	-- tickets (it's already gone from the picker) — so the id+title go NULL and
+	-- the {id,label} ref becomes nil, never a half-populated ghost.
+	LEFT JOIN issues cu_issue ON cu_issue.id = cu.source_id AND cu_issue.deleted_at IS NULL
 	LEFT JOIN issue_relations rel ON rel.target_id = i.id AND rel.type = 'release'
-	LEFT JOIN issues rel_issue ON rel_issue.id = rel.source_id
+	LEFT JOIN issues rel_issue ON rel_issue.id = rel.source_id AND rel_issue.deleted_at IS NULL
 `
 
 // issueSelectCore is like issueSelect but without the 3 correlated subqueries
@@ -95,7 +98,7 @@ const issueSelectCore = `
 	       i.title, i.description, i.acceptance_criteria, i.notes,
 	       i.report_summary,
 	       i.status, i.priority,
-	       cu.source_id, cu_issue.title, rel.source_id, rel_issue.title,
+	       cu_issue.id, cu_issue.title, rel_issue.id, rel_issue.title,
 	       i.billing_type, i.total_budget, i.rate_hourly, i.rate_lp,
 	       i.start_date, i.end_date, i.group_state, i.sprint_state,
 	       i.jira_id, i.jira_version, i.jira_text,
@@ -126,9 +129,12 @@ const issueSelectCore = `
 	-- container edges (the SSOT), returned as {id,label}. One of each per
 	-- ticket (partial-unique index) so these LEFT JOINs never fan out.
 	LEFT JOIN issue_relations cu ON cu.target_id = i.id AND cu.type = 'cost_unit'
-	LEFT JOIN issues cu_issue ON cu_issue.id = cu.source_id
+	-- PAI-602: a soft-deleted container must not surface its label/id on member
+	-- tickets (it's already gone from the picker) — so the id+title go NULL and
+	-- the {id,label} ref becomes nil, never a half-populated ghost.
+	LEFT JOIN issues cu_issue ON cu_issue.id = cu.source_id AND cu_issue.deleted_at IS NULL
 	LEFT JOIN issue_relations rel ON rel.target_id = i.id AND rel.type = 'release'
-	LEFT JOIN issues rel_issue ON rel_issue.id = rel.source_id
+	LEFT JOIN issues rel_issue ON rel_issue.id = rel.source_id AND rel_issue.deleted_at IS NULL
 `
 
 // liveIssuesWhere is the WHERE predicate every issue-listing query must apply
@@ -142,8 +148,11 @@ const liveIssuesWhere = `i.deleted_at IS NULL`
 // i.cost_unit / i.release columns in filter/sort/export queries, preserving
 // exact semantics (including negation, which depends on ” not NULL). The
 // outer query MUST alias the issues table `i`.
-const costUnitLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='cost_unit'),'')`
-const releaseLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='release'),'')`
+// PAI-602 — the `lc.deleted_at IS NULL` guard mirrors the picker lists
+// (ListCostUnits/ListReleases): a soft-deleted container's label must not leak
+// onto member tickets (or into filters) after it's gone from the dropdown.
+const costUnitLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='cost_unit' AND lc.deleted_at IS NULL),'')`
+const releaseLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='release' AND lc.deleted_at IS NULL),'')`
 
 func scanIssue(rows interface {
 	Scan(...any) error
