@@ -10,7 +10,10 @@
     "schema:generate": "cd .. && cd backend && go run ../scripts/generate-frontend-schema.go",
     "schema:check": "npm run schema:generate && git diff --exit-code -- src/types/generated/schema.ts",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "vue-tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -28,9 +31,15 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/dompurify": "^3.0.5",
     "@vitejs/plugin-vue": "^5.2.0",
+    "@vue/eslint-config-typescript": "^14.9.0",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.9.2",
     "happy-dom": "^20.9.0",
+    "prettier": "^3.8.4",
     "typescript": "^5.7.0",
     "vite": "^6.1.0",
     "vitest": "^3.2.4",
