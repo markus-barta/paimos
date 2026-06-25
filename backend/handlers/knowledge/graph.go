@@ -3,6 +3,8 @@ package knowledge
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -235,11 +237,100 @@ func GraphHandler(w http.ResponseWriter, r *http.Request) {
 		out = append(out, e)
 	}
 
-	nodeList := make([]graphNode, 0, len(nodes))
-	for _, n := range nodes {
-		nodeList = append(nodeList, n)
+	// PAI-350 — keep big graphs renderable: optionally focus on one node's
+	// N-hop neighborhood (?focus=<id>&hops=<n>, default 2), then cap the node
+	// count (?limit, default 500) by keeping the most-connected nodes. `total`
+	// + `truncated` let the UI say "showing X of Y".
+	q := r.URL.Query()
+	total := len(nodes)
+	limit := 500
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
+		limit = v
+		if limit > 5000 {
+			limit = 5000
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"nodes": nodeList, "edges": out})
+
+	// Adjacency (undirected) + degree from the live edges.
+	adj := make(map[int64][]int64, len(nodes))
+	degree := make(map[int64]int, len(nodes))
+	for _, e := range out {
+		adj[e.Source] = append(adj[e.Source], e.Target)
+		adj[e.Target] = append(adj[e.Target], e.Source)
+		degree[e.Source]++
+		degree[e.Target]++
+	}
+
+	keep := map[int64]struct{}{}
+	if focus, err := strconv.ParseInt(q.Get("focus"), 10, 64); err == nil {
+		if _, ok := nodes[focus]; ok {
+			hops := 2
+			if v, err := strconv.Atoi(q.Get("hops")); err == nil && v > 0 {
+				hops = v
+				if hops > 5 {
+					hops = 5
+				}
+			}
+			keep[focus] = struct{}{}
+			frontier := []int64{focus}
+			for h := 0; h < hops && len(frontier) > 0; h++ {
+				var next []int64
+				for _, n := range frontier {
+					for _, m := range adj[n] {
+						if _, seen := keep[m]; !seen {
+							keep[m] = struct{}{}
+							next = append(next, m)
+						}
+					}
+				}
+				frontier = next
+			}
+		}
+	}
+	if len(keep) == 0 { // no (valid) focus → every node is a candidate
+		for id := range nodes {
+			keep[id] = struct{}{}
+		}
+	}
+
+	// Cap to the most-connected nodes when over the limit.
+	if len(keep) > limit {
+		ids := make([]int64, 0, len(keep))
+		for id := range keep {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool {
+			if degree[ids[i]] != degree[ids[j]] {
+				return degree[ids[i]] > degree[ids[j]]
+			}
+			return ids[i] < ids[j] // stable tie-break
+		})
+		keep = make(map[int64]struct{}, limit)
+		for _, id := range ids[:limit] {
+			keep[id] = struct{}{}
+		}
+	}
+
+	nodeList := make([]graphNode, 0, len(keep))
+	for id := range keep {
+		nodeList = append(nodeList, nodes[id])
+	}
+	keptEdges := make([]graphEdge, 0, len(out))
+	for _, e := range out {
+		if _, okS := keep[e.Source]; !okS {
+			continue
+		}
+		if _, okT := keep[e.Target]; !okT {
+			continue
+		}
+		keptEdges = append(keptEdges, e)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"nodes":     nodeList,
+		"edges":     keptEdges,
+		"total":     total,
+		"truncated": len(nodeList) < total,
+	})
 }
 
 // placeholders returns "?,?,…" with n placeholders for a SQL IN clause.

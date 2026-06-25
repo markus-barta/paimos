@@ -60,6 +60,13 @@ const selected = ref<GraphNode | null>(null)
 const nodeCount = ref(0)
 const edgeCount = ref(0)
 
+// PAI-350 — cap/focus paging so large graphs stay renderable.
+const total = ref(0)
+const truncated = ref(false)
+const loadedCount = ref(0)
+const focusId = ref<number | null>(null)
+const limit = ref(500)
+
 // distinct node types present, for the legend
 const legendTypes = ref<string[]>([])
 
@@ -99,9 +106,21 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    raw = await api.get<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
-      `/projects/${props.projectId}/knowledge/graph`,
-    )
+    const params = new URLSearchParams({ limit: String(limit.value) })
+    if (focusId.value != null) {
+      params.set('focus', String(focusId.value))
+      params.set('hops', '2')
+    }
+    const res = await api.get<{
+      nodes: GraphNode[]
+      edges: GraphEdge[]
+      total: number
+      truncated: boolean
+    }>(`/projects/${props.projectId}/knowledge/graph?${params.toString()}`)
+    raw = { nodes: res.nodes, edges: res.edges }
+    total.value = res.total
+    truncated.value = res.truncated
+    loadedCount.value = res.nodes.length
     legendTypes.value = [...new Set(raw.nodes.map((n) => n.type))].sort()
     applyData()
   } catch (e) {
@@ -224,6 +243,25 @@ watch(selected, async (n) => {
     bodyLoading.value = false
   }
 })
+
+// PAI-350 — paging controls. Focus reloads to the node's 2-hop neighborhood;
+// Show all raises the cap to the full count; Whole graph clears the focus.
+function focusOn() {
+  if (!selected.value) return
+  focusId.value = selected.value.id
+  limit.value = 500
+  load()
+}
+function clearFocus() {
+  focusId.value = null
+  limit.value = 500
+  load()
+}
+function showAll() {
+  focusId.value = null
+  limit.value = Math.max(total.value + 1, 500)
+  load()
+}
 </script>
 
 <template>
@@ -231,6 +269,11 @@ watch(selected, async (n) => {
     <div class="kg-toolbar">
       <input v-model="search" class="kg-search" type="search" placeholder="Filter nodes by title, slug or type…" />
       <span class="kg-count">{{ nodeCount }} nodes · {{ edgeCount }} edges</span>
+      <span v-if="truncated" class="kg-trunc">
+        {{ loadedCount }} of {{ total }} shown
+        <button class="kg-link" @click="showAll">Show all</button>
+        <button v-if="focusId !== null" class="kg-link" @click="clearFocus">Whole graph</button>
+      </span>
       <span class="kg-legend">
         <span v-for="t in legendTypes" :key="t" class="kg-legend-item">
           <span class="kg-dot" :style="{ background: colorFor(t) }"></span>{{ typeLabel(t) }}
@@ -259,7 +302,10 @@ watch(selected, async (n) => {
           <div v-else-if="bodyHtml" class="kg-md" v-html="bodyHtml"></div>
           <p v-else class="kg-panel-muted">No content.</p>
         </div>
-        <button class="kg-open" @click="openSelected">Open entry →</button>
+        <div class="kg-panel-actions">
+          <button class="kg-open" @click="focusOn">Focus</button>
+          <button class="kg-open" @click="openSelected">Open entry →</button>
+        </div>
       </aside>
     </div>
 
@@ -276,6 +322,9 @@ watch(selected, async (n) => {
 .kg-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0 12px; }
 .kg-search { flex: 0 1 320px; padding: 6px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; font-size: 13px; }
 .kg-count { font-size: 12px; color: var(--text-muted, #6b7280); }
+.kg-trunc { font-size: 12px; color: var(--text-muted, #6b7280); display: inline-flex; align-items: center; gap: 6px; }
+.kg-link { border: none; background: none; color: var(--accent, #3b82f6); font-size: 12px; cursor: pointer; padding: 0; text-decoration: underline; }
+.kg-panel-actions { display: flex; gap: 6px; }
 .kg-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
 .kg-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted, #6b7280); }
 .kg-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }

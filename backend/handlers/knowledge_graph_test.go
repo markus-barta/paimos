@@ -190,3 +190,69 @@ func TestKnowledgeGraph_AgentNodesAndGovernanceEdges(t *testing.T) {
 		t.Fatalf("expected exactly 1 governed_by edge (the empty memory_ref rule adds none), got %d", governed)
 	}
 }
+
+// PAI-350 — focus (N-hop neighborhood) + limit (degree-cap) for large graphs.
+func TestKnowledgeGraph_FocusAndLimit(t *testing.T) {
+	ts := newTestServer(t)
+	pid := createTestProject(t, ts, "Paging", "PGNG")
+	mk := func(slug string) int64 {
+		r := ts.post(t, knowledgeBaseURL(pid), ts.adminCookie, map[string]any{"type": "memory", "slug": slug, "title": slug, "body": "x"})
+		assertStatus(t, r, http.StatusCreated)
+		var e knowledgeEntry
+		decode(t, r, &e)
+		return e.ID
+	}
+	a, b, c, d := mk("a"), mk("b"), mk("c"), mk("d")
+	rel := func(s, t2 int64) {
+		if _, err := db.DB.Exec(`INSERT INTO issue_relations(source_id,target_id,type) VALUES(?,?,'depends_on')`, s, t2); err != nil {
+			t.Fatalf("rel: %v", err)
+		}
+	}
+	rel(a, b)
+	rel(b, c)
+	rel(c, d) // chain a–b–c–d (degrees: a=1, b=2, c=2, d=1)
+
+	type gResp struct {
+		Nodes []struct {
+			ID int64 `json:"id"`
+		} `json:"nodes"`
+		Total     int  `json:"total"`
+		Truncated bool `json:"truncated"`
+	}
+	get := func(qs string) gResp {
+		resp := ts.get(t, fmt.Sprintf("/api/projects/%d/knowledge/graph%s", pid, qs), ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var g gResp
+		decode(t, resp, &g)
+		return g
+	}
+
+	full := get("")
+	if full.Total != 4 || len(full.Nodes) != 4 || full.Truncated {
+		t.Fatalf("full: nodes=%d total=%d trunc=%v, want 4/4/false", len(full.Nodes), full.Total, full.Truncated)
+	}
+
+	capped := get("?limit=2")
+	if len(capped.Nodes) != 2 || capped.Total != 4 || !capped.Truncated {
+		t.Fatalf("limit=2: nodes=%d total=%d trunc=%v, want 2/4/true", len(capped.Nodes), capped.Total, capped.Truncated)
+	}
+	kept := map[int64]bool{}
+	for _, n := range capped.Nodes {
+		kept[n.ID] = true
+	}
+	if !kept[b] || !kept[c] {
+		t.Errorf("limit=2 should keep the most-connected (b,c), got %#v", capped.Nodes)
+	}
+
+	foc := get(fmt.Sprintf("?focus=%d&hops=1", b))
+	if len(foc.Nodes) != 3 || !foc.Truncated {
+		t.Fatalf("focus=b hops=1: nodes=%d trunc=%v, want 3/true", len(foc.Nodes), foc.Truncated)
+	}
+	fids := map[int64]bool{}
+	for _, n := range foc.Nodes {
+		fids[n.ID] = true
+	}
+	if !fids[a] || !fids[b] || !fids[c] || fids[d] {
+		t.Errorf("focus=b hops=1 should be {a,b,c} not d, got %#v", foc.Nodes)
+	}
+}
