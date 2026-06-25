@@ -5,6 +5,43 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] — 2026-06-25
+
+### Added
+
+- **Knowledge graph + self-maintaining memory dependencies (PAI-350, PAI-351).**
+  The Knowledge tab gains a List/Graph toggle rendering an interactive
+  force-directed graph of the project's knowledge plane (memory, runbook,
+  external_system, related_project, guideline) plus the issues linked to them —
+  derived from existing relations, no schema change. Memory entries can declare
+  `depends_on` references; `GET …/knowledge/memory/:slug/dependents` and
+  `paimos memory deps <slug>` show who builds on a rule. When a memory's body
+  changes, its dependents are flagged **"needs re-review"** (a pill + filter on
+  the list, a banner + Acknowledge action in the editor) — computed on read from
+  two timestamp columns (`content_revised_at` / `deps_reviewed_at`), never
+  stored, so it can't drift. The flag is maintained whether the body is edited
+  via the Knowledge tab or the generic issue path (incl. MCP `update_issue`),
+  and declared `depends_on` also renders as graph edges.
+- **`just shot` — a headless Playwright screenshot harness for the dev UI**
+  (captures any authenticated route to a PNG; self-bootstraps Chromium).
+- **Money-path billing regression suite (PAI-582).**
+
+### Fixed
+
+- **Multi-word issue types now display title-cased** (`Cost_unit` → `Cost Unit`).
+- **CLI `knowledge update memory <slug> --title X` (no `--body`) no longer wipes
+  the body** — it carries the existing body over on the full-replace PUT (this
+  also prevented a false "needs re-review" cascade to every dependent).
+- CLI `--description` help text corrected (PAI-482).
+- gosec G202 false-positive on the knowledge-graph SQL suppressed (baseline 0).
+
+### Internal
+
+- **Frontend schema-drift gate (PAI-490) + canonical-enum guard (PAI-489):** the
+  generated frontend schema is regenerated and diff-checked in CI, and enum
+  option lists are kept canonical + schema-synced.
+- API schema version synced to 2.0.0 for the v4.0.0 line.
+
 ## [4.0.0] — 2026-06-23
 
 ### Changed (BREAKING)
