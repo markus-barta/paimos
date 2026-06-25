@@ -6,9 +6,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/markus-barta/paimos/backend/db"
 )
+
+// issueETag is the strong per-row ETag for optimistic concurrency (PAI-231).
+// id + updated_at uniquely identify a row version; updated_at is bumped on
+// every direct issue edit (and NOT by background time bookings, so it's the
+// right granularity for edit-vs-edit conflicts). The space in updated_at is
+// swapped to 'T' so the value is a clean single token inside the quotes.
+func issueETag(id int64, updatedAt string) string {
+	return `"issue-` + strconv.FormatInt(id, 10) + "-" + strings.ReplaceAll(updatedAt, " ", "T") + `"`
+}
 
 func computeIssueListETag(whereSQL string, args []any) (string, error) {
 	// PAI-577: contentRev = SUM(issues.content_rev) over the matched set.

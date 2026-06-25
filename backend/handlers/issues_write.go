@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -317,6 +318,7 @@ func GetIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	w.Header().Set("ETag", issueETag(issue.ID, issue.UpdatedAt))
 	jsonOK(w, issue)
 }
 func UpdateIssue(w http.ResponseWriter, r *http.Request) {
@@ -445,6 +447,37 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// issue's own descendants). Only relevant when a new non-null parent is set.
 	if parentIDPresent && newParent != nil && wouldCycleParent(id, *newParent) {
 		jsonError(w, "reparent would create a parent cycle", http.StatusUnprocessableEntity)
+		return
+	}
+
+	// PAI-231 — optimistic concurrency. When the client sends If-Match, reject
+	// the write (412) if the issue changed since they loaded it, so a concurrent
+	// edit never silently last-writer-wins. No If-Match → proceed unchanged
+	// (back-compat: CLI / API-key clients work without opting in).
+	if im := strings.TrimSpace(r.Header.Get("If-Match")); im != "" && im != issueETag(existing.ID, existing.UpdatedAt) {
+		diverged := []string{}
+		if body.Title != nil && *body.Title != existing.Title {
+			diverged = append(diverged, "title")
+		}
+		if body.Description != nil && *body.Description != existing.Description {
+			diverged = append(diverged, "description")
+		}
+		if body.Status != nil && *body.Status != existing.Status {
+			diverged = append(diverged, "status")
+		}
+		if body.Priority != nil && *body.Priority != existing.Priority {
+			diverged = append(diverged, "priority")
+		}
+		w.Header().Set("ETag", issueETag(existing.ID, existing.UpdatedAt))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusPreconditionFailed)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":           "conflict",
+			"message":         "This issue changed since you loaded it. Reload to see the latest, then re-apply your edit.",
+			"current_state":   existing,
+			"your_changes":    body,
+			"diverged_fields": diverged,
+		})
 		return
 	}
 
@@ -658,6 +691,9 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	// Re-fetch to include auto-set fields
 	issue = getIssueByID(id)
+	if issue != nil {
+		w.Header().Set("ETag", issueETag(issue.ID, issue.UpdatedAt))
+	}
 	jsonOK(w, issue)
 }
 
