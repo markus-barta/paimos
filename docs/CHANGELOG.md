@@ -5,6 +5,25 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.2] — 2026-06-29
+
+### Added
+
+- **Agent runs attach their log (PAI-617).** `paimos run-agent watch` captures
+  the spawned job's combined output, attaches it to the ticket, and stamps
+  `log_attachment_id` on the run — so a run is reviewable from PAIMOS, not just
+  the runner's terminal. Best-effort: a capture/upload failure never fails the run.
+
+### Changed
+
+- **Runner `--exec` runs through a shell (PAI-619).** Quoting, pipes, and
+  chaining now work (e.g. `--exec "claude --print 'do x' && npm test"`). The
+  `implement` capability is now a first-class SSE query parameter rather than a
+  string-concatenated suffix.
+- **Issue-list "Implement this" follow-through (PAI-618).** After queueing, the
+  inline confirmation becomes a one-click link that opens the issue's run panel —
+  no more dead-end.
+
 ## [4.6.1] — 2026-06-29
 
 ### Fixed
