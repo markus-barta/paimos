@@ -96,8 +96,6 @@ const props = defineProps<{
   isAdmin?: boolean
 }>()
 
-const isTimeable = computed(() => props.issueType === 'ticket' || props.issueType === 'task')
-
 // PAI-610/612: "Implement this" — hand the ticket to a local agent run.
 const isImplementable = computed(
   () =>
@@ -107,23 +105,26 @@ const isImplementable = computed(
 )
 const implementState = ref<'idle' | 'busy' | 'done' | 'error'>('idle')
 const implementMsg = ref('')
+let implementTimer: ReturnType<typeof setTimeout> | null = null
 
 async function implement() {
   if (implementState.value === 'busy') return
+  if (implementTimer) clearTimeout(implementTimer) // M3: don't let a prior reset fire mid-action
   implementState.value = 'busy'
   implementMsg.value = ''
   menuOpen.value = false
   try {
     await api.post(`/issues/${props.issueId}/implement`, {})
     implementState.value = 'done'
-    implementMsg.value = 'Queued'
+    implementMsg.value = 'Queued — see the Implement panel on the issue'
   } catch (e: unknown) {
     implementState.value = 'error'
     implementMsg.value = errMsg(e, 'Failed')
   }
-  window.setTimeout(() => {
+  implementTimer = setTimeout(() => {
     implementState.value = 'idle'
     implementMsg.value = ''
+    implementTimer = null
   }, 4000)
 }
 
@@ -191,7 +192,10 @@ watch(menuOpen, (open) => {
   if (open) document.addEventListener('mousedown', onOutsideClick)
   else      document.removeEventListener('mousedown', onOutsideClick)
 })
-onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onOutsideClick)
+  if (implementTimer) clearTimeout(implementTimer)
+})
 </script>
 
 <style scoped>

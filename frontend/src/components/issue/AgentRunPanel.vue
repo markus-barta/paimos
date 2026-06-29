@@ -47,11 +47,15 @@ const selectedDevice = ref("");
 const loading = ref(true);
 const busy = ref(false);
 const error = ref("");
+const runnersError = ref(""); // distinct from "no runners online" (M4)
 
 const TERMINAL = new Set(["deployed", "failed", "cancelled"]);
 const hasActiveRun = computed(() => runs.value.some((r) => !TERMINAL.has(r.status)));
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+// Monotonic tokens so an out-of-order response can't overwrite newer state (M2).
+let runsSeq = 0;
+let runnersSeq = 0;
 
 const STATUS_LABEL: Record<string, string> = {
   queued: "Queued",
@@ -67,12 +71,30 @@ function statusLabel(s: string): string {
   return STATUS_LABEL[s] ?? s;
 }
 
+// The API emits SQLite's "YYYY-MM-DD HH:MM:SS" (UTC). Parse it to a real Date
+// for a localized display string and a valid ISO `datetime` attribute (M6).
+function toDate(ts: string | null): Date | null {
+  if (!ts) return null;
+  const iso = ts.includes("T") ? ts : ts.replace(" ", "T") + "Z";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function isoAttr(ts: string): string {
+  return toDate(ts)?.toISOString() ?? ts;
+}
+function localTime(ts: string): string {
+  return toDate(ts)?.toLocaleString() ?? ts;
+}
+
 async function fetchRuns() {
+  const seq = ++runsSeq;
   try {
     const data = await api.get<{ runs: AgentRun[] }>(`/issues/${props.issueId}/runs`);
+    if (seq !== runsSeq) return; // a newer fetch already landed
     runs.value = data.runs ?? [];
     error.value = "";
   } catch (e: unknown) {
+    if (seq !== runsSeq) return;
     error.value = errMsg(e, "Could not load runs.");
   } finally {
     loading.value = false;
@@ -81,16 +103,21 @@ async function fetchRuns() {
 }
 
 async function fetchRunners() {
+  const seq = ++runnersSeq;
   try {
     const data = await api.get<{ runners: ProjectRunner[] }>(
       `/projects/${props.projectId}/runners`,
     );
+    if (seq !== runnersSeq) return;
     runners.value = data.runners ?? [];
+    runnersError.value = "";
     if (!selectedDevice.value && runners.value.length) {
       selectedDevice.value = runners.value[0].device_id;
     }
-  } catch {
+  } catch (e: unknown) {
+    if (seq !== runnersSeq) return;
     runners.value = [];
+    runnersError.value = errMsg(e, "Could not load runners."); // M4: don't masquerade as "none online"
   }
 }
 
@@ -101,7 +128,7 @@ async function implement() {
     await api.post(`/issues/${props.issueKey}/implement`, {
       device_id: selectedDevice.value,
     });
-    await fetchRuns();
+    await Promise.all([fetchRuns(), fetchRunners()]); // M5: refresh the picker too
   } catch (e: unknown) {
     error.value = errMsg(e, "Could not start the run.");
   } finally {
@@ -109,24 +136,40 @@ async function implement() {
   }
 }
 
-// Poll only while a run is in flight; stop once everything is terminal so an
-// idle ticket page isn't hitting the API on a timer.
+// Poll only while a run is in flight AND the tab is visible — a backgrounded
+// tab with a stuck queued run must not heartbeat forever (M1). Each tick also
+// refreshes runners so one that connects after load appears in the picker (M5).
+function pollTick() {
+  void fetchRuns();
+  void fetchRunners();
+}
 function syncPolling() {
-  if (hasActiveRun.value && !pollTimer) {
-    pollTimer = setInterval(fetchRuns, 4000);
-  } else if (!hasActiveRun.value && pollTimer) {
+  const shouldPoll = hasActiveRun.value && !document.hidden;
+  if (shouldPoll && !pollTimer) {
+    pollTimer = setInterval(pollTick, 4000);
+  } else if (!shouldPoll && pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
 }
 
+function onVisibility() {
+  if (!document.hidden && hasActiveRun.value) void fetchRuns();
+  syncPolling();
+}
+
 onMounted(() => {
   void fetchRuns();
   void fetchRunners();
+  document.addEventListener("visibilitychange", onVisibility);
 });
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  document.removeEventListener("visibilitychange", onVisibility);
 });
 </script>
 
@@ -159,19 +202,22 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <p v-if="!runners.length" class="arp-hint">
+    <p v-if="runnersError" class="arp-error" role="alert">
+      Couldn't check for runners: {{ runnersError }}
+    </p>
+    <p v-else-if="!runners.length" class="arp-hint">
       No runner is online for this project. The run will queue until a
       <code>paimos run-agent watch</code> picks it up.
     </p>
 
-    <p v-if="error" class="arp-error">{{ error }}</p>
+    <p v-if="error" class="arp-error" role="alert">{{ error }}</p>
 
     <p v-if="!loading && !runs.length" class="arp-empty">
       No runs yet. Click <strong>Implement this</strong> to hand
       {{ issueKey }} to your local agent.
     </p>
 
-    <ul v-if="runs.length" class="arp-runs">
+    <ul v-if="runs.length" class="arp-runs" aria-live="polite" aria-label="Agent runs">
       <li v-for="run in runs" :key="run.id" class="arp-run">
         <span class="arp-pill" :class="`arp-pill--${run.status}`">
           {{ statusLabel(run.status) }}
@@ -180,7 +226,7 @@ onUnmounted(() => {
           <span v-if="run.version" class="arp-ver">v{{ run.version }}</span>
           <span v-if="run.device_id" class="arp-dev">{{ run.device_id }}</span>
           <span v-if="run.deploy_target" class="arp-target">→ {{ run.deploy_target }}</span>
-          <time :datetime="run.created_at">{{ run.created_at }}</time>
+          <time :datetime="isoAttr(run.created_at)">{{ localTime(run.created_at) }}</time>
         </span>
         <span v-if="run.error" class="arp-run-err">{{ run.error }}</span>
       </li>
