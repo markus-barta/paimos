@@ -229,6 +229,22 @@ The trust-doc set was assembled in this six-month window (PAI-125 / 132 / 133 / 
 
 These gaps are tracked, not silent. Each has a ticket; each is named in either §1 (this doc) or one of the trust docs it's anchored in.
 
+### 2026-06-29 — structural change: remote-triggered execution boundary (PAI-605)
+
+The "Implement this" feature adds a new trust boundary — a web-UI click that
+spawns a coding agent (and, when triple-gated, a deploy) on a developer's
+workstation. Reviewed and documented under the structural-change trigger (§3.5):
+
+- New boundary **§2.7** + invariants **INV-RUNNER-01..04** in [`THREAT_MODEL.md`](THREAT_MODEL.md).
+- Posture: opt-in per-workstation, repo-scoped, consent-gated, one-job-at-a-time,
+  **report-back only by default — deploy requires `--allow-deploy` + `--deploy-exec`
+  + a run-level `deploy_target`** (three independent opt-ins).
+- Authorization: `POST /implement` is project-editor gated; run updates are
+  requester/admin only; all mutations are captured in the session audit trail.
+- Residual risk accepted: a compromised account with a live runner can trigger
+  work on that workstation; deploy stays off by default to bound the blast radius.
+  Revisit if deploy-by-default is ever considered (it is not today).
+
 ### 2026-10-26 — pending
 
 (To be filled in at the next review day.)

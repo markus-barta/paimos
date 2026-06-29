@@ -155,6 +155,47 @@ Defences:
   separate retrieved facts from instructions.
 - Audit lines go to stderr and redact/truncate parameters before logging.
 
+### 2.7 · Remote-triggered local execution boundary — `paimos run-agent`
+
+The "Implement this" feature (PAI-605) crosses the sharpest boundary in the
+system: a click in the *web UI* causes code to *execute on a developer's
+workstation*. `paimos run-agent watch` subscribes to a project's event stream
+and, on an `implement_requested` event, spawns a coding agent (Claude Code) in a
+local repo checkout — and, when explicitly enabled, can run a deploy. This is the
+inverse of the read-only `serve` broker (§2.6): it writes files, runs commands,
+and may ship to production.
+
+Defences:
+
+- **Opt-in, per-workstation.** Nothing runs unless the developer started
+  `paimos run-agent watch` themselves. The server never initiates a connection
+  to a workstation; the workstation dials out and holds the SSE stream.
+- **Capability is advertised, not assigned.** A runner sets `?implement=1` to
+  mark itself implement-capable; the registry (`GET /projects/{id}/runners`) only
+  lists runners that opted in AND are currently connected (live-presence
+  intersection, not a stale timestamp).
+- **Repo-scoped.** A runner only ever operates in its configured `--repo-root`.
+  The triggering event names a run, never a path or command.
+- **Consent-gated.** Each job prompts for confirmation before spawning unless the
+  operator passed `--yes`. The spawned command is the operator's own `--exec`
+  (default `claude`), never anything the server supplies.
+- **One job at a time.** A busy runner refuses new jobs rather than spawning
+  concurrent agents in the same checkout.
+- **Report-back only by default; deploy is triple-gated.** The runner never
+  deploys unless the operator passed BOTH `--allow-deploy` and a `--deploy-exec`
+  command AND the run carries a `deploy_target`. Absent any of the three it can
+  only move a run to `tests_passed` / `failed`.
+- **Authorized + audited.** `POST /implement` is project-editor gated; run
+  updates are requester/admin only; every mutation flows through the session
+  audit trail (§4.4). The structured `agent_runs` record + the auto-posted issue
+  comment make each run reviewable after the fact.
+
+The trust assumption is explicit: a developer who runs `paimos run-agent watch`
+delegates "run my coding agent (and optionally my deploy) when I click the
+button" to their own PAIMOS account. A compromised account can therefore trigger
+work on any workstation that account has a live runner on — which is precisely
+why deploy stays off by default and behind two further flags.
+
 ---
 
 ## 3 · Threat actors
@@ -259,6 +300,15 @@ PAI-110 shipped the **INV-FILES-03** application-layer fix end-to-end. Uploads n
 | **INV-BROKER-02** | Local broker file reads cannot traverse outside the repo root or follow symlinks outside it. | `cmd/paimos/cmd_serve.go:resolveRepoPath` | `cmd_serve_test.go` |
 | **INV-BROKER-03** | Local broker reads block obvious secret files and redact common token/password shapes in returned content. | `cmd/paimos/cmd_serve.go:denyUnsafeRepoRel`, `redactSensitiveTextWithFlag` | `cmd_serve_test.go` |
 | **INV-BROKER-04** | MCP stdio exposes the same read-only broker methods as HTTP mode; stdout carries JSON-RPC only. | `cmd/paimos/cmd_serve.go:serveMCP` | `cmd_serve_test.go` |
+
+### 4.8 · Remote-triggered execution (PAI-605)
+
+| ID | Statement | Code path | Verification |
+|---|---|---|---|
+| **INV-RUNNER-01** | A workstation runs implement jobs only when a developer started `paimos run-agent watch`; the server never dials a workstation. | `cmd/paimos/cmd_run_agent.go:runAgentWatch` | `cmd_run_agent_test.go` |
+| **INV-RUNNER-02** | The runner is repo-scoped, runs one job at a time, and prompts before spawning unless `--yes`. | `cmd_run_agent.go:agentRunner.handle` + busy guard | `cmd_run_agent_test.go` |
+| **INV-RUNNER-03** | Deploy is off by default — it requires `--allow-deploy` AND `--deploy-exec` AND a run-level `deploy_target`. | `cmd_run_agent.go:agentRunner.handle` | `cmd_run_agent_test.go` |
+| **INV-RUNNER-04** | `POST /implement` is project-editor gated; run reads/updates are requester or admin only. | `handlers/agent_runs.go:canManageAgentRun` + `main.go` routes | `agent_runs_test.go` |
 
 ---
 
