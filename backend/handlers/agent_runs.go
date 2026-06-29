@@ -317,6 +317,9 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, id)
+	// #nosec G202 -- `sets` holds only hardcoded column-assignment fragments
+	// (status=?, version=?, started_at=datetime('now'), …); every value is bound
+	// via ? placeholders in args, so no user input enters the SQL string.
 	if _, err := db.DB.Exec(`UPDATE agent_runs SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
