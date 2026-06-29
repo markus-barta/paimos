@@ -333,6 +333,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/runners", handlers.ListProjectRunners)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/runs", handlers.ListProjectRuns)
 
 			// Branding write endpoints — mirrors main.go. GET is in the
 			// public group above; writes are admin-gated.

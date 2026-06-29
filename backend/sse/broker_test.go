@@ -34,7 +34,7 @@ func drain(t *testing.T, s *Subscriber, n int) []Event {
 
 func TestBroker_PublishProjectFansOut(t *testing.T) {
 	b := NewBroker()
-	s := b.Subscribe(1, "dev-A", 7)
+	s := b.Subscribe(1, "dev-A", 7, false)
 	defer b.Close(s)
 
 	b.PublishProject(7, Event{Type: "agent_changed", Name: "qa", Rev: "abcd1234"})
@@ -53,8 +53,8 @@ func TestBroker_PublishProjectFansOut(t *testing.T) {
 
 func TestBroker_PublishProjectFiltersOnProject(t *testing.T) {
 	b := NewBroker()
-	s7 := b.Subscribe(1, "dev-A", 7)
-	s8 := b.Subscribe(1, "dev-A", 8)
+	s7 := b.Subscribe(1, "dev-A", 7, false)
+	s8 := b.Subscribe(1, "dev-A", 8, false)
 	defer b.Close(s7)
 	defer b.Close(s8)
 
@@ -70,7 +70,7 @@ func TestBroker_PublishProjectFiltersOnProject(t *testing.T) {
 
 func TestBroker_DisconnectClosesChannel(t *testing.T) {
 	b := NewBroker()
-	s := b.Subscribe(1, "dev-A", 7)
+	s := b.Subscribe(1, "dev-A", 7, false)
 
 	b.Disconnect(1, "dev-A", 7)
 
@@ -92,10 +92,10 @@ func TestBroker_DisconnectClosesChannel(t *testing.T) {
 
 func TestBroker_DisconnectScopedToUserDeviceProject(t *testing.T) {
 	b := NewBroker()
-	target := b.Subscribe(1, "dev-A", 7)
-	other := b.Subscribe(2, "dev-A", 7)            // different user
-	otherDev := b.Subscribe(1, "dev-B", 7)         // different device
-	otherProject := b.Subscribe(1, "dev-A", 8)     // different project
+	target := b.Subscribe(1, "dev-A", 7, false)
+	other := b.Subscribe(2, "dev-A", 7, false)            // different user
+	otherDev := b.Subscribe(1, "dev-B", 7, false)         // different device
+	otherProject := b.Subscribe(1, "dev-A", 8, false)     // different project
 	defer b.Close(other)
 	defer b.Close(otherDev)
 	defer b.Close(otherProject)
@@ -129,7 +129,7 @@ func TestBroker_DisconnectScopedToUserDeviceProject(t *testing.T) {
 
 func TestBroker_CloseIsIdempotent(t *testing.T) {
 	b := NewBroker()
-	s := b.Subscribe(1, "dev-A", 7)
+	s := b.Subscribe(1, "dev-A", 7, false)
 	b.Close(s)
 	b.Close(s) // Should not panic.
 	if b.SubscriberCount() != 0 {
@@ -139,7 +139,7 @@ func TestBroker_CloseIsIdempotent(t *testing.T) {
 
 func TestBroker_FullBufferDropsForSlowConsumer(t *testing.T) {
 	b := NewBroker()
-	s := b.Subscribe(1, "dev-A", 7)
+	s := b.Subscribe(1, "dev-A", 7, false)
 	defer b.Close(s)
 
 	// Spam more events than the buffer can hold without draining.

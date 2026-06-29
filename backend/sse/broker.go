@@ -75,6 +75,11 @@ type Subscriber struct {
 	DeviceID  string
 	ProjectID int64
 
+	// CanImplement marks a connection that advertised implement-capability
+	// (the runner's ?implement=1). Per-connection so a browser tab and a
+	// runner on the same device don't clobber each other's capability.
+	CanImplement bool
+
 	// ch is the per-subscriber fan-in channel. Sized so a brief
 	// publisher burst doesn't drop events on a single subscriber. New
 	// subscribers start with the buffer empty; if the buffer fills
@@ -139,12 +144,13 @@ func GlobalBroker() *Broker {
 
 // Subscribe registers a new connection. The caller MUST drain Events()
 // promptly and call Close() before letting its http handler return.
-func (b *Broker) Subscribe(userID int64, deviceID string, projectID int64) *Subscriber {
+func (b *Broker) Subscribe(userID int64, deviceID string, projectID int64, canImplement bool) *Subscriber {
 	s := &Subscriber{
-		UserID:    userID,
-		DeviceID:  deviceID,
-		ProjectID: projectID,
-		ch:        make(chan Event, subscriberBufferSize),
+		UserID:       userID,
+		DeviceID:     deviceID,
+		ProjectID:    projectID,
+		CanImplement: canImplement,
+		ch:           make(chan Event, subscriberBufferSize),
 	}
 	key := subKey{UserID: userID, DeviceID: deviceID, ProjectID: projectID}
 	b.mu.Lock()
@@ -223,25 +229,29 @@ func (b *Broker) PublishProject(projectID int64, ev Event) {
 	}
 }
 
-// Presence identifies a live subscriber connection by user + device.
+// Presence identifies a live subscriber connection by user + device, and
+// whether that connection advertised implement-capability.
 type Presence struct {
-	UserID   int64  `json:"user_id"`
-	DeviceID string `json:"device_id"`
+	UserID       int64  `json:"user_id"`
+	DeviceID     string `json:"device_id"`
+	CanImplement bool   `json:"can_implement"`
 }
 
-// ProjectSubscribers returns the (userID, deviceID) of every connection
-// currently subscribed for the project. PAI-607 uses it to surface the
-// online runners for a project — liveness comes from the in-memory
-// registry, not a stale last-seen timestamp.
+// ProjectSubscribers returns one Presence per live connection for the project.
+// PAI-607 uses it to surface the online, implement-capable runners — both
+// liveness AND capability come from the in-memory registry (per-connection), so
+// a browser tab can't mask a runner's capability and vice versa.
 func (b *Broker) ProjectSubscribers(projectID int64) []Presence {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	out := make([]Presence, 0, 4)
 	for key, set := range b.subs {
-		if key.ProjectID != projectID || len(set) == 0 {
+		if key.ProjectID != projectID {
 			continue
 		}
-		out = append(out, Presence{UserID: key.UserID, DeviceID: key.DeviceID})
+		for s := range set {
+			out = append(out, Presence{UserID: key.UserID, DeviceID: key.DeviceID, CanImplement: s.CanImplement})
+		}
 	}
 	return out
 }

@@ -106,8 +106,8 @@ func main() {
 	// (X-Frame-Options=SAMEORIGIN keeps the in-app PDF preview iframes
 	// working, CSP runs in Report-Only mode until PAI-118 lands).
 	r.Use(handlers.SecurityHeaders)
-	// PAI-97: session-scoped mutation audit. No-op unless
-	// PAIMOS_AUDIT_SESSIONS=true is set — off by default in v1.
+	// PAI-97 / PAI-116: session-scoped mutation audit. On by default; set
+	// PAIMOS_AUDIT_SESSIONS=false to disable.
 	r.Use(handlers.SessionAuditMiddleware)
 	r.Use(handlers.RequestIDMiddleware)
 
@@ -489,6 +489,7 @@ func mountAPI(r chi.Router) {
 		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
 		// PAI-607: online implement-capable runners for the device picker.
 		r.With(auth.RequireProjectView).Get("/projects/{id}/runners", handlers.ListProjectRunners)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/runs", handlers.ListProjectRuns)
 		// PAI-329 — project-level inventories (environments,
 		// deploy recipes). repos already exists at /repos.
 		r.With(auth.RequireProjectView).Get("/projects/{id}/environments", handlers.ListProjectEnvironments)

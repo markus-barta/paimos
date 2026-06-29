@@ -93,9 +93,12 @@ func getAgentRunByID(id int64) (*AgentRun, error) {
 	return scanAgentRun(db.DB.QueryRow(`SELECT `+agentRunCols+` FROM agent_runs WHERE id=?`, id))
 }
 
-// canManageAgentRun: an admin, or the user who requested the run, may read
-// and update a single run. The list endpoint is gated by issue access, so
-// any project member can watch a ticket's runs in the UI.
+// canManageAgentRun: an admin, the user who requested the run, OR a project
+// editor may read and update a single run. The project-editor case (PAI-605 M5)
+// is essential: the developer whose workstation runs the job is usually NOT the
+// person who clicked "Implement this", so without it the runner gets 403 on
+// every report-back. The list endpoint is gated by issue access, so any project
+// member can still watch a ticket's runs in the UI.
 func canManageAgentRun(r *http.Request, run *AgentRun) bool {
 	u := auth.GetUser(r)
 	if u == nil {
@@ -104,7 +107,10 @@ func canManageAgentRun(r *http.Request, run *AgentRun) bool {
 	if u.Role == auth.RoleAdmin || u.Role == auth.RoleSuperAdmin {
 		return true
 	}
-	return run.RequestedBy != nil && *run.RequestedBy == u.ID
+	if run.RequestedBy != nil && *run.RequestedBy == u.ID {
+		return true
+	}
+	return run.ProjectID != nil && auth.CanEditProject(r, *run.ProjectID)
 }
 
 // ImplementIssue — POST /api/issues/{id}/implement (RequireIssueEdit).
@@ -122,6 +128,18 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body) // body is optional
+	}
+	// Idempotency (PAI-605 M7): if the issue already has an active run, return it
+	// rather than queueing a duplicate — otherwise repeated clicks each become a
+	// separate run that the runner's catch-up would all execute.
+	var activeID int64
+	if err := db.DB.QueryRow(
+		`SELECT id FROM agent_runs WHERE issue_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
+		issueID).Scan(&activeID); err == nil && activeID > 0 {
+		if run, rerr := getAgentRunByID(activeID); rerr == nil {
+			jsonOK(w, run) // 200 (not 201): an existing run is returned
+			return
+		}
 	}
 	var projectID sql.NullInt64
 	_ = db.DB.QueryRow(`SELECT project_id FROM issues WHERE id=?`, issueID).Scan(&projectID)
@@ -185,18 +203,63 @@ func ListProjectRunners(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]ProjectRunner, 0, 4)
+	seen := map[string]bool{}
 	for _, p := range sse.GlobalBroker().ProjectSubscribers(projectID) {
-		var canImplement int
-		var lastSeen string
-		err := db.DB.QueryRow(
-			`SELECT can_implement, updated_at FROM auto_watch_subscriptions WHERE user_id=? AND device_id=? AND project_id=?`,
-			p.UserID, p.DeviceID, projectID).Scan(&canImplement, &lastSeen)
-		if err != nil || canImplement == 0 {
+		// Capability is per live connection (PAI-605 M8): a runner connection
+		// advertises it; a browser tab on the same device does not, and neither
+		// masks the other. Dedup multiple connections of the same runner device.
+		if !p.CanImplement {
 			continue
 		}
+		key := fmt.Sprintf("%d/%s", p.UserID, p.DeviceID)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		var lastSeen string
+		_ = db.DB.QueryRow(
+			`SELECT updated_at FROM auto_watch_subscriptions WHERE user_id=? AND device_id=? AND project_id=?`,
+			p.UserID, p.DeviceID, projectID).Scan(&lastSeen)
 		out = append(out, ProjectRunner{UserID: p.UserID, DeviceID: p.DeviceID, LastSeen: lastSeen})
 	}
 	jsonOK(w, map[string]any{"runners": out})
+}
+
+// ListProjectRuns — GET /api/projects/{id}/runs?status=queued (project-view
+// gated). The runner uses it on connect (and after each job) to drain runs it
+// missed while offline or busy, or that a server restart orphaned (PAI-605 M1).
+func ListProjectRuns(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	query := `SELECT ` + agentRunCols + ` FROM agent_runs WHERE project_id=?`
+	args := []any{projectID}
+	if status := strings.TrimSpace(r.URL.Query().Get("status")); status != "" {
+		if !agentRunStatuses[status] {
+			jsonError(w, "invalid status", http.StatusBadRequest)
+			return
+		}
+		query += ` AND status=?`
+		args = append(args, status)
+	}
+	query += ` ORDER BY id ASC LIMIT 200`
+	rows, err := db.DB.Query(query, args...)
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	out := make([]*AgentRun, 0, 8)
+	for rows.Next() {
+		ar, err := scanAgentRun(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, ar)
+	}
+	jsonOK(w, map[string]any{"runs": out})
 }
 
 // ListIssueRuns — GET /api/issues/{id}/runs (RequireIssueAccess). Newest first.
@@ -261,11 +324,13 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Status       *string `json:"status"`
-		Version      *string `json:"version"`
-		TestsSummary *string `json:"tests_summary"`
-		DeployTarget *string `json:"deploy_target"`
-		Error        *string `json:"error"`
+		Status          *string `json:"status"`
+		IfStatus        *string `json:"if_status"` // optimistic claim guard (PAI-605 H3)
+		Version         *string `json:"version"`
+		TestsSummary    *string `json:"tests_summary"`
+		DeployTarget    *string `json:"deploy_target"`
+		LogAttachmentID *int64  `json:"log_attachment_id"`
+		Error           *string `json:"error"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -274,12 +339,19 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 
 	sets := make([]string, 0, 8)
 	args := make([]any, 0, 8)
+	statusChanged := false
 	if body.Status != nil {
 		s := strings.TrimSpace(*body.Status)
 		if !agentRunStatuses[s] {
 			jsonError(w, "invalid status", http.StatusBadRequest)
 			return
 		}
+		// L1: a terminal run cannot be moved to a different status.
+		if agentRunIsTerminal(existing.Status) && s != existing.Status {
+			jsonError(w, "run is already in a terminal status", http.StatusConflict)
+			return
+		}
+		statusChanged = s != existing.Status
 		sets = append(sets, "status=?")
 		args = append(args, s)
 		if s == "running" && existing.StartedAt == nil {
@@ -301,6 +373,10 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		sets = append(sets, "deploy_target=?")
 		args = append(args, strings.TrimSpace(*body.DeployTarget))
 	}
+	if body.LogAttachmentID != nil {
+		sets = append(sets, "log_attachment_id=?")
+		args = append(args, *body.LogAttachmentID)
+	}
 	if body.Error != nil {
 		sets = append(sets, "error=?")
 		args = append(args, *body.Error)
@@ -318,23 +394,52 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "no fields to update", http.StatusBadRequest)
 		return
 	}
-	args = append(args, id)
+	// PAI-605 H3/M4/L1: when the status changes, transition optimistically on the
+	// status we just read, so two concurrent reporters — or two runners that both
+	// picked up an open (no-device) run — cannot both win. RowsAffected==0 means
+	// someone changed it first; the loser gets 409 and backs off. Non-status-only
+	// updates apply unconditionally.
 	// #nosec G202 -- `sets` holds only hardcoded column-assignment fragments
 	// (status=?, version=?, started_at=datetime('now'), …); every value is bound
 	// via ? placeholders in args, so no user input enters the SQL string.
-	if _, err := db.DB.Exec(`UPDATE agent_runs SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
+	// An explicit `if_status` (a runner claiming an open run sends
+	// {status:running, if_status:queued}) is a compare-and-set: the update
+	// applies only if the row is still in that status, so a second runner that
+	// re-reads "running" still loses the claim. Otherwise any status change is
+	// guarded on the status we just read.
+	query := `UPDATE agent_runs SET ` + strings.Join(sets, ", ") + ` WHERE id=?`
+	guarded := statusChanged
+	guardStatus := existing.Status
+	if body.IfStatus != nil {
+		guarded = true
+		guardStatus = strings.TrimSpace(*body.IfStatus)
+	}
+	if guarded {
+		query += ` AND status=?`
+		args = append(args, id, guardStatus)
+	} else {
+		args = append(args, id)
+	}
+	res, err := db.DB.Exec(query, args...)
+	if err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
+	}
+	if guarded {
+		if n, _ := res.RowsAffected(); n == 0 {
+			jsonError(w, "run changed concurrently (claim lost)", http.StatusConflict)
+			return
+		}
 	}
 	run, err := getAgentRunByID(id)
 	if err != nil {
 		jsonError(w, "reload failed", http.StatusInternalServerError)
 		return
 	}
-	// PAI-609: on the transition INTO a reportable terminal status, post a
-	// human-readable summary comment on the issue so the trail stays consistent
-	// with the structured run record. Best-effort — never fails the PATCH.
-	if run.Status != existing.Status && agentRunIsReportable(run.Status) {
+	// PAI-609: post the report exactly once — only the request that actually made
+	// the transition into a reportable terminal status (guaranteed by the
+	// statusChanged + RowsAffected check above). Best-effort.
+	if statusChanged && agentRunIsReportable(run.Status) {
 		postAgentRunReport(run.IssueID, run.RequestedBy, run)
 	}
 	jsonOK(w, run)

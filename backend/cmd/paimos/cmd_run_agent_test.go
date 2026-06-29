@@ -17,13 +17,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/markus-barta/paimos/backend/cmd/paimos/sync"
 )
 
 // newRunServer serves a canned run detail for GET /api/runs/{id} and records
-// the body of every PATCH so a test can assert the status transitions.
-func newRunServer(t *testing.T, detail string) (*httptest.Server, *[]map[string]any) {
+// the body of every PATCH so a test can assert the status transitions. PATCHes
+// to the claim (if_status) succeed; override patchStatus to simulate a lost
+// claim (409).
+func newRunServer(t *testing.T, detail string, patchStatus int) (*httptest.Server, *[]map[string]any) {
 	t.Helper()
 	patches := &[]map[string]any{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +36,7 @@ func newRunServer(t *testing.T, detail string) (*httptest.Server, *[]map[string]
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			*patches = append(*patches, body)
 			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(patchStatus)
 			_, _ = w.Write([]byte(`{}`))
 		default:
 			http.Error(w, `{"error":"unmocked"}`, http.StatusNotFound)
@@ -45,12 +46,10 @@ func newRunServer(t *testing.T, detail string) (*httptest.Server, *[]map[string]
 	return srv, patches
 }
 
-func implementEvent() sync.Event {
-	return sync.Event{Type: "implement_requested", Name: "PAI-5", Rev: "1"}
-}
+func aJob() runJob { return runJob{runID: 1, issueKey: "PAI-5"} }
 
 func TestAgentRunnerSuccess(t *testing.T) {
-	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"running"}`)
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
 	spawned := false
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp/repo",
@@ -66,25 +65,26 @@ func TestAgentRunnerSuccess(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.handle(context.Background(), implementEvent()); err != nil {
-		t.Fatalf("handle: %v", err)
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
 	}
 	if !spawned {
 		t.Error("spawn was not called")
 	}
-	if len(*patches) != 2 || (*patches)[0]["status"] != "running" || (*patches)[1]["status"] != "tests_passed" {
-		t.Fatalf("patches=%+v, want running then tests_passed", *patches)
+	// claim (running) then report (tests_passed).
+	if len(*patches) != 2 || (*patches)[0]["status"] != "running" || (*patches)[0]["if_status"] != "queued" || (*patches)[1]["status"] != "tests_passed" {
+		t.Fatalf("patches=%+v, want claim(running,if_status=queued) then tests_passed", *patches)
 	}
 }
 
 func TestAgentRunnerSpawnFailure(t *testing.T) {
-	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"running"}`)
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: true,
 		spawn:       func(_ context.Context, _, _ string, _ []string) error { return errors.New("exit 1") },
 	}
-	if err := a.handle(context.Background(), implementEvent()); err == nil {
+	if err := a.handleRun(context.Background(), aJob()); err == nil {
 		t.Fatal("expected an error when the spawned command fails")
 	}
 	if len(*patches) != 2 || (*patches)[0]["status"] != "running" || (*patches)[1]["status"] != "failed" {
@@ -92,16 +92,50 @@ func TestAgentRunnerSpawnFailure(t *testing.T) {
 	}
 }
 
-func TestAgentRunnerDeviceTargetingSkips(t *testing.T) {
-	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"other-device","status":"queued"}`)
+func TestAgentRunnerClaimLost(t *testing.T) {
+	// The claim PATCH returns 409 — another runner won. We must NOT spawn.
+	srv, _ := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusConflict)
 	spawned := false
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: true,
 		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
 	}
-	if err := a.handle(context.Background(), implementEvent()); err != nil {
-		t.Fatalf("handle: %v", err)
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("a lost claim should not be a hard error: %v", err)
+	}
+	if spawned {
+		t.Error("a run claimed by another runner must not spawn")
+	}
+}
+
+func TestAgentRunnerSkipsNonQueued(t *testing.T) {
+	// A run already past 'queued' (claimed/handled) is not ours.
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"running"}`, http.StatusOK)
+	spawned := false
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
+		autoConfirm: true,
+		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if spawned || len(*patches) != 0 {
+		t.Errorf("a non-queued run must be skipped (spawned=%v patches=%+v)", spawned, *patches)
+	}
+}
+
+func TestAgentRunnerDeviceTargetingSkips(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"other-device","status":"queued"}`, http.StatusOK)
+	spawned := false
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
+		autoConfirm: true,
+		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
 	}
 	if spawned {
 		t.Error("a run targeted at another device must not spawn")
@@ -112,7 +146,7 @@ func TestAgentRunnerDeviceTargetingSkips(t *testing.T) {
 }
 
 func TestAgentRunnerDeclineCancels(t *testing.T) {
-	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`)
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
 	spawned := false
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
@@ -120,8 +154,8 @@ func TestAgentRunnerDeclineCancels(t *testing.T) {
 		confirm:     func(_ string, _ int64, _ string) bool { return false },
 		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
 	}
-	if err := a.handle(context.Background(), implementEvent()); err != nil {
-		t.Fatalf("handle: %v", err)
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
 	}
 	if spawned {
 		t.Error("a declined run must not spawn")
@@ -131,41 +165,62 @@ func TestAgentRunnerDeclineCancels(t *testing.T) {
 	}
 }
 
-// TestAgentRunnerDeployGated covers PAI-613: with --allow-deploy + --deploy-exec
-// AND a run-level deploy_target, the runner deploys after the implement and
-// stamps deployed + the captured version.
 func TestAgentRunnerDeployGated(t *testing.T) {
-	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"running"}`)
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"queued"}`, http.StatusOK)
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("4.5.1\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("4.6.1\n"), 0o600); err != nil {
 		t.Fatalf("seed VERSION: %v", err)
 	}
 	var calls []string
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: root,
 		execCmd: "claude", autoConfirm: true,
-		allowDeploy: true, deployExec: "just deploy-ppm",
+		allowDeploy: true, deployExec: "just deploy-ppm", autoConfirmDep: true,
 		spawn: func(_ context.Context, _, cmd string, _ []string) error {
 			calls = append(calls, cmd)
 			return nil
 		},
 	}
-	if err := a.handle(context.Background(), implementEvent()); err != nil {
-		t.Fatalf("handle: %v", err)
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
 	}
 	if len(calls) != 2 || calls[0] != "claude" || calls[1] != "just deploy-ppm" {
 		t.Fatalf("spawn calls = %v, want [claude, just deploy-ppm]", calls)
 	}
 	last := (*patches)[len(*patches)-1]
-	if last["status"] != "deployed" || last["version"] != "4.5.1" || last["deploy_target"] != "ppm" {
-		t.Fatalf("final patch = %+v, want deployed v4.5.1 ppm", last)
+	if last["status"] != "deployed" || last["version"] != "4.6.1" || last["deploy_target"] != "ppm" {
+		t.Fatalf("final patch = %+v, want deployed v4.6.1 ppm", last)
 	}
 }
 
-// TestAgentRunnerDeployStaysGatedOff: a deploy_target + --deploy-exec alone do
-// NOT deploy — --allow-deploy is the third required gate.
+func TestAgentRunnerDeployNeedsItsOwnConsent(t *testing.T) {
+	// --allow-deploy + --deploy-exec + deploy_target, but the deploy confirm is
+	// declined (and --yes-deploy not set) → no deploy, report tests_passed.
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"queued"}`, http.StatusOK)
+	var calls []string
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: t.TempDir(),
+		execCmd: "claude", autoConfirm: true,
+		allowDeploy: true, deployExec: "just deploy-ppm", autoConfirmDep: false,
+		confirmDeploy: func(_ string, _ int64, _ string) bool { return false },
+		spawn: func(_ context.Context, _, cmd string, _ []string) error {
+			calls = append(calls, cmd)
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if len(calls) != 1 || calls[0] != "claude" {
+		t.Fatalf("spawn calls = %v, want just [claude] (deploy declined)", calls)
+	}
+	if last := (*patches)[len(*patches)-1]; last["status"] != "tests_passed" {
+		t.Fatalf("final patch = %+v, want tests_passed (deploy declined)", last)
+	}
+}
+
 func TestAgentRunnerDeployStaysGatedOff(t *testing.T) {
-	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"running"}`)
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"queued"}`, http.StatusOK)
 	var calls []string
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
@@ -176,8 +231,8 @@ func TestAgentRunnerDeployStaysGatedOff(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.handle(context.Background(), implementEvent()); err != nil {
-		t.Fatalf("handle: %v", err)
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
 	}
 	if len(calls) != 1 || calls[0] != "claude" {
 		t.Fatalf("spawn calls = %v, want just [claude] (deploy gated off)", calls)

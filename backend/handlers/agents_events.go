@@ -115,7 +115,7 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, ":connected\n\n")
 	flusher.Flush()
 
-	sub := sse.GlobalBroker().Subscribe(user.ID, deviceID, projectID)
+	sub := sse.GlobalBroker().Subscribe(user.ID, deviceID, projectID, canImplement)
 	defer sse.GlobalBroker().Close(sub)
 
 	heartbeat := time.NewTicker(sseHeartbeatInterval)

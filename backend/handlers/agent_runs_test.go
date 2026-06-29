@@ -95,10 +95,18 @@ func TestAgentRunsLifecycle(t *testing.T) {
 	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "bogus"})
 	assertStatus(t, resp, http.StatusBadRequest)
 
-	// A non-requester, non-admin member cannot read or write the run.
-	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{"status": "running"})
-	assertStatus(t, resp, http.StatusForbidden)
+	// PAI-605 M5: a project editor (the member) CAN manage the run even though
+	// they're neither admin nor the requester — this is what lets a developer's
+	// runner report back when someone else clicked "Implement this". (The run is
+	// terminal here, so a write is a 409, not a 403 — the point is the member got
+	// past the access gate; reads succeed.)
 	resp = ts.get(t, "/api/runs/"+itoa(runID), ts.memberCookie)
+	assertStatus(t, resp, http.StatusOK)
+
+	// A user with no access to the project (external) cannot read or write it.
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.externalCookie, map[string]any{"status": "running"})
+	assertStatus(t, resp, http.StatusForbidden)
+	resp = ts.get(t, "/api/runs/"+itoa(runID), ts.externalCookie)
 	assertStatus(t, resp, http.StatusForbidden)
 
 	// The requester (admin here) can fetch the single run.
@@ -150,6 +158,93 @@ func TestAgentRunReportComment(t *testing.T) {
 	ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "deployed"})
 	if n := commentCount(t, issueID); n != 1 {
 		t.Errorf("comments after redundant deployed = %d, want 1", n)
+	}
+}
+
+// TestImplementIsIdempotent covers PAI-605 M7: repeated "Implement this" clicks
+// while a run is active return the SAME run, not a pile of duplicates.
+func TestImplementIsIdempotent(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Once please", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusCreated)
+	var r1 map[string]any
+	decode(t, resp, &r1)
+
+	// Second click returns the existing run (200, not 201) with the same id.
+	resp = ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusOK)
+	var r2 map[string]any
+	decode(t, resp, &r2)
+	if r1["id"] != r2["id"] {
+		t.Fatalf("expected the same run id, got %v then %v", r1["id"], r2["id"])
+	}
+
+	resp = ts.get(t, "/api/issues/"+itoa(issueID)+"/runs", ts.adminCookie)
+	var list struct {
+		Runs []map[string]any `json:"runs"`
+	}
+	decode(t, resp, &list)
+	if len(list.Runs) != 1 {
+		t.Errorf("runs = %d, want 1 (idempotent)", len(list.Runs))
+	}
+}
+
+// TestAgentRunClaimGuard covers the atomic claim (if_status), terminal-status
+// enforcement, and the catch-up listing (PAI-605 H3 / L1 / M1).
+func TestAgentRunClaimGuard(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Claim me", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	runID := int64(run["id"].(float64))
+
+	var list struct {
+		Runs []map[string]any `json:"runs"`
+	}
+	// Catch-up endpoint lists the queued run.
+	resp = ts.get(t, "/api/projects/"+itoa(projID)+"/runs?status=queued", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &list)
+	if len(list.Runs) != 1 {
+		t.Fatalf("queued runs = %d, want 1", len(list.Runs))
+	}
+
+	// First claim (if_status=queued) wins; a second loses → 409.
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running", "if_status": "queued"})
+	assertStatus(t, resp, http.StatusOK)
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running", "if_status": "queued"})
+	assertStatus(t, resp, http.StatusConflict)
+
+	// Move to a terminal status; a transition out of it is rejected (L1).
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "deployed"})
+	assertStatus(t, resp, http.StatusOK)
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running"})
+	assertStatus(t, resp, http.StatusConflict)
+
+	// The queued list is now empty.
+	resp = ts.get(t, "/api/projects/"+itoa(projID)+"/runs?status=queued", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &list)
+	if len(list.Runs) != 0 {
+		t.Errorf("queued runs after claim = %d, want 0", len(list.Runs))
 	}
 }
 

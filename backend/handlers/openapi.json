@@ -4,24 +4,69 @@
     "title": "PAIMOS API",
     "description": "PAIMOS — Professional & Personal AI Project OS.\n\nThis is the **public, stable scriptable contract** for PAIMOS — the canonical resource surface used by the SPA, the paimos CLI, and custom integrations: auth, users, projects, issues, comments, time entries, attachments, documents, incidents, knowledge, and GDPR ops. It is intentionally a curated subset. Internal one-off admin tooling (CSV/Jira/mite imports, dev test reports, branding writes, SSO/TOTP management, AI operations, portal internals) is deliberately omitted and is NOT part of the stability contract — those endpoints exist but may change without notice. Authentication is either a session cookie (browser) or a `paimos_*` bearer API key (machine-to-machine). Coverage policy & contribution rule: PAI-294.",
     "version": "1.0.0",
-    "license": { "name": "AGPL-3.0-only" }
+    "license": {
+      "name": "AGPL-3.0-only"
+    }
   },
   "servers": [
-    { "url": "/", "description": "Same-origin (recommended)" }
+    {
+      "url": "/",
+      "description": "Same-origin (recommended)"
+    }
   ],
   "tags": [
-    { "name": "auth", "description": "Login, session, password reset, TOTP, profile" },
-    { "name": "users", "description": "User management (admin)" },
-    { "name": "projects", "description": "Projects" },
-    { "name": "issues", "description": "Issues — backlog items, sprints, tickets" },
-    { "name": "comments", "description": "Issue comments" },
-    { "name": "time-entries", "description": "Time tracking" },
-    { "name": "attachments", "description": "File attachments on issues" },
-    { "name": "documents", "description": "Customer- and project-scoped documents" },
-    { "name": "incidents", "description": "Incident log (PAI-116, NIS2 readiness)" },
-    { "name": "gdpr", "description": "Per-subject export / erasure (PAI-117)" },
-    { "name": "schema", "description": "Self-describing schema + health" },
-    { "name": "knowledge", "description": "Unified knowledge plane (memory, runbook, guideline, external-system, related-project)" }
+    {
+      "name": "auth",
+      "description": "Login, session, password reset, TOTP, profile"
+    },
+    {
+      "name": "users",
+      "description": "User management (admin)"
+    },
+    {
+      "name": "projects",
+      "description": "Projects"
+    },
+    {
+      "name": "issues",
+      "description": "Issues — backlog items, sprints, tickets"
+    },
+    {
+      "name": "comments",
+      "description": "Issue comments"
+    },
+    {
+      "name": "time-entries",
+      "description": "Time tracking"
+    },
+    {
+      "name": "attachments",
+      "description": "File attachments on issues"
+    },
+    {
+      "name": "documents",
+      "description": "Customer- and project-scoped documents"
+    },
+    {
+      "name": "incidents",
+      "description": "Incident log (PAI-116, NIS2 readiness)"
+    },
+    {
+      "name": "gdpr",
+      "description": "Per-subject export / erasure (PAI-117)"
+    },
+    {
+      "name": "schema",
+      "description": "Self-describing schema + health"
+    },
+    {
+      "name": "knowledge",
+      "description": "Unified knowledge plane (memory, runbook, guideline, external-system, related-project)"
+    },
+    {
+      "name": "agent-runs",
+      "description": "\"Implement this\" agent runs (PAI-605)"
+    }
   ],
   "components": {
     "securitySchemes": {
@@ -41,71 +86,204 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
-          "error": { "type": "string", "description": "Human-readable error message" }
+          "error": {
+            "type": "string",
+            "description": "Human-readable error message"
+          }
         }
       },
       "KnowledgeEntry": {
         "type": "object",
         "description": "PAI-394 unified knowledge entry shape. `type` is the SQL discriminator (snake_case). Returned by every read on /api/projects/{id}/knowledge.",
-        "required": ["id", "project_id", "type", "slug", "title", "status"],
+        "required": [
+          "id",
+          "project_id",
+          "type",
+          "slug",
+          "title",
+          "status"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "project_id": { "type": "integer", "format": "int64" },
-          "type": { "type": "string", "enum": ["memory", "runbook", "guideline", "external_system", "related_project"] },
-          "slug": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "maxLength": 64 },
-          "title": { "type": "string" },
-          "body": { "type": "string", "description": "Markdown body" },
-          "status": { "type": "string", "description": "Issue status enum value (typically backlog / proposed / cancelled)" },
-          "metadata": { "type": "object", "additionalProperties": true, "description": "Per-type tail fields (schemaless on the server; per-Module validation runs on write)" },
-          "created_at": { "type": "string" },
-          "updated_at": { "type": "string" },
-          "reference_count": { "type": "integer", "description": "PAI-347 decay counter (memory only; 0 for other types)" },
-          "last_referenced_at": { "type": "string" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "project_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "runbook",
+              "guideline",
+              "external_system",
+              "related_project"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "description": "Markdown body"
+          },
+          "status": {
+            "type": "string",
+            "description": "Issue status enum value (typically backlog / proposed / cancelled)"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Per-type tail fields (schemaless on the server; per-Module validation runs on write)"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "reference_count": {
+            "type": "integer",
+            "description": "PAI-347 decay counter (memory only; 0 for other types)"
+          },
+          "last_referenced_at": {
+            "type": "string"
+          }
         }
       },
       "KnowledgeEntryInput": {
         "type": "object",
         "description": "Write shape for POST / PUT on the unified knowledge surface. `type` is required on POST (either kebab URL segment or snake_case discriminator); on PUT, the URL pins the type and a body type must match.",
-        "required": ["slug", "title"],
+        "required": [
+          "slug",
+          "title"
+        ],
         "properties": {
-          "type": { "type": "string", "description": "Knowledge type — `memory`, `runbook`, `guideline`, `external-system`/`external_system`, `related-project`/`related_project`" },
-          "slug": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "maxLength": 64 },
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "status": { "type": "string", "description": "Optional; defaults to the type's DefaultStatus" },
-          "metadata": { "type": "object", "additionalProperties": true }
+          "type": {
+            "type": "string",
+            "description": "Knowledge type — `memory`, `runbook`, `guideline`, `external-system`/`external_system`, `related-project`/`related_project`"
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "Optional; defaults to the type's DefaultStatus"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
         }
       },
       "User": {
         "type": "object",
-        "required": ["id", "username", "role", "status"],
+        "required": [
+          "id",
+          "username",
+          "role",
+          "status"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "username": { "type": "string" },
-          "role": { "type": "string", "enum": ["admin", "member", "external"] },
-          "status": { "type": "string", "enum": ["active", "inactive", "deleted"] },
-          "first_name": { "type": "string" },
-          "last_name": { "type": "string" },
-          "nickname": { "type": "string" },
-          "email": { "type": "string", "format": "email" },
-          "locale": { "type": "string" },
-          "timezone": { "type": "string" },
-          "issue_auto_refresh_enabled": { "type": "boolean" },
-          "issue_auto_refresh_interval_seconds": { "type": "integer", "minimum": 10, "default": 60 },
-          "search_scope_shortcut": { "type": "string", "description": "JSON {ctrl,shift,alt,meta,code,key,label} or empty string when disabled. Must include Ctrl/Alt/Meta when set." },
-          "created_at": { "type": "string", "format": "date-time" },
-          "last_login_at": { "type": "string", "format": "date-time", "nullable": true }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member",
+              "external"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "deleted"
+            ]
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "issue_auto_refresh_enabled": {
+            "type": "boolean"
+          },
+          "issue_auto_refresh_interval_seconds": {
+            "type": "integer",
+            "minimum": 10,
+            "default": 60
+          },
+          "search_scope_shortcut": {
+            "type": "string",
+            "description": "JSON {ctrl,shift,alt,meta,code,key,label} or empty string when disabled. Must include Ctrl/Alt/Meta when set."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_login_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
         }
       },
       "AccessResponse": {
         "type": "object",
         "properties": {
-          "all_projects": { "type": "boolean" },
+          "all_projects": {
+            "type": "boolean"
+          },
           "levels": {
             "type": "object",
-            "additionalProperties": { "type": "string", "enum": ["viewer", "editor"] },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "viewer",
+                "editor"
+              ]
+            },
             "description": "project_id → access level"
           }
         }
@@ -113,545 +291,2167 @@
       "MeResponse": {
         "type": "object",
         "properties": {
-          "user": { "$ref": "#/components/schemas/User" },
-          "access": { "$ref": "#/components/schemas/AccessResponse" }
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AccessResponse"
+          }
         }
       },
       "Project": {
         "type": "object",
-        "required": ["id", "name", "key"],
+        "required": [
+          "id",
+          "name",
+          "key"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "name": { "type": "string" },
-          "key": { "type": "string", "description": "Short alphanumeric prefix (e.g. PAI)" },
-          "description": { "type": "string" },
-          "status": { "type": "string", "enum": ["active", "archived"] },
-          "customer_id": { "type": "integer", "format": "int64", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "Short alphanumeric prefix (e.g. PAI)"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          },
+          "customer_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Issue": {
         "type": "object",
-        "required": ["id", "project_id", "title", "type", "status"],
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "type",
+          "status"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "project_id": { "type": "integer", "format": "int64", "nullable": true },
-          "title": { "type": "string" },
-          "type": { "type": "string", "enum": ["epic", "cost_unit", "release", "sprint", "ticket", "task"] },
-          "status": { "type": "string", "enum": ["new", "backlog", "in-progress", "qa", "done", "delivered", "accepted", "invoiced", "cancelled"] },
-          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "description": { "type": "string" },
-          "acceptance_criteria": { "type": "string" },
-          "notes": { "type": "string" },
-          "parent_id": { "type": "integer", "format": "int64", "nullable": true },
-          "assignee_id": { "type": "integer", "format": "int64", "nullable": true },
-          "cost_unit": { "type": "string" },
-          "release": { "type": "string" },
-          "issue_number": { "type": "integer" },
-          "key": { "type": "string", "description": "Human-friendly identifier {project_key}-{issue_number}" },
-          "created_at": { "type": "string", "format": "date-time" },
-          "updated_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "project_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "epic",
+              "cost_unit",
+              "release",
+              "sprint",
+              "ticket",
+              "task"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "backlog",
+              "in-progress",
+              "qa",
+              "done",
+              "delivered",
+              "accepted",
+              "invoiced",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "acceptance_criteria": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "assignee_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "cost_unit": {
+            "type": "string"
+          },
+          "release": {
+            "type": "string"
+          },
+          "issue_number": {
+            "type": "integer"
+          },
+          "key": {
+            "type": "string",
+            "description": "Human-friendly identifier {project_key}-{issue_number}"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Comment": {
         "type": "object",
-        "required": ["id", "issue_id", "body", "created_at"],
+        "required": [
+          "id",
+          "issue_id",
+          "body",
+          "created_at"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "issue_id": { "type": "integer", "format": "int64" },
-          "author_id": { "type": "integer", "format": "int64", "nullable": true },
-          "body": { "type": "string" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "issue_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "author_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "TimeEntry": {
         "type": "object",
-        "required": ["id", "issue_id", "user_id", "started_at"],
+        "required": [
+          "id",
+          "issue_id",
+          "user_id",
+          "started_at"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "issue_id": { "type": "integer", "format": "int64" },
-          "user_id": { "type": "integer", "format": "int64" },
-          "started_at": { "type": "string", "format": "date-time" },
-          "stopped_at": { "type": "string", "format": "date-time", "nullable": true },
-          "comment": { "type": "string" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "issue_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stopped_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "comment": {
+            "type": "string"
+          }
         }
       },
       "Attachment": {
         "type": "object",
-        "required": ["id", "issue_id", "filename", "content_type", "size_bytes"],
+        "required": [
+          "id",
+          "issue_id",
+          "filename",
+          "content_type",
+          "size_bytes"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "issue_id": { "type": "integer", "format": "int64" },
-          "filename": { "type": "string" },
-          "content_type": { "type": "string" },
-          "size_bytes": { "type": "integer", "format": "int64" },
-          "uploaded_by": { "type": "integer", "format": "int64" },
-          "created_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "issue_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "uploaded_by": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Document": {
         "type": "object",
-        "required": ["id", "scope", "filename", "mime_type", "size_bytes"],
+        "required": [
+          "id",
+          "scope",
+          "filename",
+          "mime_type",
+          "size_bytes"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "scope": { "type": "string", "enum": ["customer", "project"] },
-          "customer_id": { "type": "integer", "format": "int64", "nullable": true },
-          "project_id": { "type": "integer", "format": "int64", "nullable": true },
-          "filename": { "type": "string" },
-          "mime_type": { "type": "string" },
-          "size_bytes": { "type": "integer", "format": "int64" },
-          "label": { "type": "string" },
-          "status": { "type": "string", "enum": ["draft", "active", "expired"] },
-          "valid_from": { "type": "string", "format": "date", "nullable": true },
-          "valid_until": { "type": "string", "format": "date", "nullable": true },
-          "uploaded_at": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "customer",
+              "project"
+            ]
+          },
+          "customer_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "project_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "filename": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "expired"
+            ]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "uploaded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Incident": {
         "type": "object",
-        "required": ["id", "severity", "kind", "title", "status", "detected_at"],
+        "required": [
+          "id",
+          "severity",
+          "kind",
+          "title",
+          "status",
+          "detected_at"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
-          "kind": { "type": "string" },
-          "title": { "type": "string" },
-          "summary": { "type": "string" },
-          "details": { "type": "string" },
-          "status": { "type": "string", "enum": ["open", "investigating", "resolved", "closed"] },
-          "reported_by": { "type": "integer", "format": "int64", "nullable": true },
-          "detected_at": { "type": "string", "format": "date-time" },
-          "resolved_at": { "type": "string", "format": "date-time", "nullable": true }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "details": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "investigating",
+              "resolved",
+              "closed"
+            ]
+          },
+          "reported_by": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "AgentRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "issue_id",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "issue_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "project_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "agent_name": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "tests_passed",
+              "tests_failed",
+              "deployed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "tests_summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "deploy_target": {
+            "type": "string"
+          },
+          "log_attachment_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "finished_at": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ProjectRunner": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          }
         }
       }
     },
     "responses": {
       "Unauthorized": {
         "description": "Missing or invalid credentials",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "Forbidden": {
         "description": "Authenticated but insufficient privilege",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "NotFound": {
         "description": "Resource not found, or hidden from caller for privacy",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       }
     }
   },
   "security": [
-    { "sessionCookie": [] },
-    { "bearerAPIKey": [] }
+    {
+      "sessionCookie": []
+    },
+    {
+      "bearerAPIKey": []
+    }
   ],
   "paths": {
     "/api/health": {
       "get": {
-        "tags": ["schema"],
+        "tags": [
+          "schema"
+        ],
         "summary": "Liveness probe",
         "security": [],
         "responses": {
           "200": {
             "description": "OK",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "service": { "type": "string" }, "version": { "type": "string", "description": "App version (semver) stamped at build time, or 'dev' for local builds." } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "App version (semver) stamped at build time, or 'dev' for local builds."
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/api/schema": {
       "get": {
-        "tags": ["schema"],
+        "tags": [
+          "schema"
+        ],
         "summary": "Self-describing schema (enums, transitions, entity shapes)",
         "security": [],
         "responses": {
-          "200": { "description": "Schema document" }
+          "200": {
+            "description": "Schema document"
+          }
         }
       }
     },
     "/api/openapi.json": {
       "get": {
-        "tags": ["schema"],
+        "tags": [
+          "schema"
+        ],
         "summary": "This OpenAPI document",
         "security": [],
-        "responses": { "200": { "description": "OpenAPI 3.1 JSON" } }
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON"
+          }
+        }
       }
     },
     "/api/auth/login": {
       "post": {
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "summary": "Username/password login",
         "security": [],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["username", "password"], "properties": { "username": { "type": "string" }, "password": { "type": "string" } } } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Logged in", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MeResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "429": { "description": "Rate-limited" }
+          "200": {
+            "description": "Logged in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "description": "Rate-limited"
+          }
         }
       }
     },
     "/api/auth/logout": {
       "post": {
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "summary": "Drop the current session",
-        "responses": { "204": { "description": "Logged out" } }
+        "responses": {
+          "204": {
+            "description": "Logged out"
+          }
+        }
       }
     },
     "/api/auth/me": {
       "get": {
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "summary": "Current authenticated user + project access summary",
         "responses": {
-          "200": { "description": "Current user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MeResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "patch": {
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "summary": "Update current user's profile and preferences",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Updated user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/api/auth/forgot": {
       "post": {
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "summary": "Begin password reset (always returns 202 to prevent enumeration)",
         "security": [],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["email"], "properties": { "email": { "type": "string", "format": "email" } } } } } },
-        "responses": { "202": { "description": "Accepted" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          }
+        }
       }
     },
     "/api/auth/reset": {
       "post": {
-        "tags": ["auth"],
+        "tags": [
+          "auth"
+        ],
         "summary": "Complete password reset",
         "security": [],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["token", "new_password"], "properties": { "token": { "type": "string" }, "new_password": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "Password updated" }, "400": { "description": "Invalid token or password" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "new_password"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "new_password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password updated"
+          },
+          "400": {
+            "description": "Invalid token or password"
+          }
+        }
       }
     },
     "/api/users": {
       "get": {
-        "tags": ["users"],
+        "tags": [
+          "users"
+        ],
         "summary": "List users",
         "responses": {
-          "200": { "description": "Users", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } } }
+          "200": {
+            "description": "Users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "post": {
-        "tags": ["users"],
+        "tags": [
+          "users"
+        ],
         "summary": "Create user (admin)",
-        "responses": { "201": { "description": "Created" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
       }
     },
     "/api/users/{id}/gdpr-export": {
       "get": {
-        "tags": ["gdpr", "users"],
+        "tags": [
+          "gdpr",
+          "users"
+        ],
         "summary": "Per-subject GDPR export (admin)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Subject export", "content": { "application/json": {} } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Subject export",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/api/users/{id}/gdpr-erase": {
       "post": {
-        "tags": ["gdpr", "users"],
+        "tags": [
+          "gdpr",
+          "users"
+        ],
         "summary": "Erase subject (anonymise + drop sessions/api keys)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "200": { "description": "Erased" }, "400": { "description": "Cannot erase self" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Erased"
+          },
+          "400": {
+            "description": "Cannot erase self"
+          }
+        }
       }
     },
     "/api/projects": {
       "get": {
-        "tags": ["projects"],
+        "tags": [
+          "projects"
+        ],
         "summary": "List projects",
-        "responses": { "200": { "description": "Projects", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } } } } } }
+        "responses": {
+          "200": {
+            "description": "Projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["projects"],
+        "tags": [
+          "projects"
+        ],
         "summary": "Create project (admin)",
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } } }
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/projects/{id}": {
       "get": {
-        "tags": ["projects"],
+        "tags": [
+          "projects"
+        ],
         "summary": "Get project",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "200": { "description": "Project", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       },
       "put": {
-        "tags": ["projects"],
+        "tags": [
+          "projects"
+        ],
         "summary": "Update project (admin)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "200": { "description": "Updated" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
       },
       "delete": {
-        "tags": ["projects"],
+        "tags": [
+          "projects"
+        ],
         "summary": "Soft-delete project (admin)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "204": { "description": "Deleted" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        }
       }
     },
     "/api/projects/{id}/issues": {
       "get": {
-        "tags": ["issues", "projects"],
+        "tags": [
+          "issues",
+          "projects"
+        ],
         "summary": "List issues in project",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "200": { "description": "Issues", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Issue" } } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Issues",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Issue"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["issues", "projects"],
+        "tags": [
+          "issues",
+          "projects"
+        ],
         "summary": "Create issue in project",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Issue" } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Issue"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/issues": {
       "get": {
-        "tags": ["issues"],
+        "tags": [
+          "issues"
+        ],
         "summary": "List or look up issues across projects",
-        "responses": { "200": { "description": "Issues", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Issue" } } } } } }
+        "responses": {
+          "200": {
+            "description": "Issues",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Issue"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/issues/{id}": {
       "get": {
-        "tags": ["issues"],
+        "tags": [
+          "issues"
+        ],
         "summary": "Get issue (numeric id or {project_key}-{n})",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Issue", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Issue" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Issue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Issue"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       },
       "put": {
-        "tags": ["issues"],
+        "tags": [
+          "issues"
+        ],
         "summary": "Update issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Updated" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
       },
       "patch": {
-        "tags": ["issues"],
+        "tags": [
+          "issues"
+        ],
         "summary": "Update issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Updated" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
       }
     },
     "/api/issues/{id}/comments": {
       "get": {
-        "tags": ["comments"],
+        "tags": [
+          "comments"
+        ],
         "summary": "List comments on issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Comments", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Comment" } } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Comment"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["comments"],
+        "tags": [
+          "comments"
+        ],
         "summary": "Create comment on issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "201": { "description": "Created" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/api/issues/{id}/time-entries": {
       "get": {
-        "tags": ["time-entries"],
+        "tags": [
+          "time-entries"
+        ],
         "summary": "List time entries on issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Time entries", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TimeEntry" } } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Time entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TimeEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["time-entries"],
+        "tags": [
+          "time-entries"
+        ],
         "summary": "Start a time entry on issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "201": { "description": "Started" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Started"
+          }
+        }
       }
     },
     "/api/issues/{id}/attachments": {
       "get": {
-        "tags": ["attachments"],
+        "tags": [
+          "attachments"
+        ],
         "summary": "List attachments on issue",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Attachments", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Attachment" } } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["attachments"],
+        "tags": [
+          "attachments"
+        ],
         "summary": "Upload attachment (multipart/form-data)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" } } } } } },
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Attachment" } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/documents/{id}/download": {
       "get": {
-        "tags": ["documents"],
+        "tags": [
+          "documents"
+        ],
         "summary": "Download a document (scope-aware authz, PAI-111)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Document bytes", "content": { "application/octet-stream": {} } },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Document bytes",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/api/incidents": {
       "get": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "List incidents (admin)",
         "parameters": [
-          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["open", "investigating", "resolved", "closed"] } },
-          { "name": "severity", "in": "query", "schema": { "type": "string", "enum": ["low", "medium", "high", "critical"] } },
-          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 100 } }
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "investigating",
+                "resolved",
+                "closed"
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
         ],
-        "responses": { "200": { "description": "Incidents", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Incident" } } } } } }
+        "responses": {
+          "200": {
+            "description": "Incidents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Incident"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Create an incident (admin)",
-        "responses": { "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Incident" } } } } }
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/incidents/{id}": {
       "get": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Get incident (admin)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "200": { "description": "Incident", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Incident" } } } } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incident",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          }
+        }
       },
       "patch": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Update incident (admin)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "200": { "description": "Updated" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
       },
       "delete": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Delete incident (admin)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }],
-        "responses": { "204": { "description": "Deleted" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        }
       }
     },
     "/api/incidents/export": {
       "get": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Export incidents (admin) — JSON or CSV for SIEM ingestion",
-        "parameters": [{ "name": "format", "in": "query", "schema": { "type": "string", "enum": ["json", "csv"], "default": "json" } }],
-        "responses": { "200": { "description": "Export" } }
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export"
+          }
+        }
       }
     },
     "/api/gdpr/retention": {
       "get": {
-        "tags": ["gdpr"],
+        "tags": [
+          "gdpr"
+        ],
         "summary": "Active retention policy (admin)",
-        "responses": { "200": { "description": "Policy" } }
+        "responses": {
+          "200": {
+            "description": "Policy"
+          }
+        }
       }
     },
     "/api/projects/{id}/knowledge": {
       "get": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "List knowledge entries (all types or filtered)",
         "description": "PAI-394 unified surface. Without `type`, returns every non-trashed knowledge entry across all five registered types. With `type=<segment>`, narrows to that type. Segments are kebab-singular: memory, runbook, guideline, external-system, related-project.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
-          { "name": "type", "in": "query", "required": false, "schema": { "type": "string", "enum": ["memory", "runbook", "guideline", "external-system", "related-project"] } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "runbook",
+                "guideline",
+                "external-system",
+                "related-project"
+              ]
+            }
+          }
         ],
-        "responses": { "200": { "description": "Array of knowledge entries", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/KnowledgeEntry" } } } } } }
+        "responses": {
+          "200": {
+            "description": "Array of knowledge entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Create a knowledge entry",
         "description": "Type travels either in the body (`type` field, kebab segment or snake_case discriminator) or as a `?type=` query parameter — body wins on conflict.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
-          { "name": "type", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Convenience: matches body.type when both are present" }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Convenience: matches body.type when both are present"
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntryInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeEntryInput"
+              }
+            }
+          }
         },
         "responses": {
-          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntry" } } } },
-          "400": { "description": "Invalid type, slug, or per-type metadata" },
-          "409": { "description": "Slug already exists for this type in this project" }
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid type, slug, or per-type metadata"
+          },
+          "409": {
+            "description": "Slug already exists for this type in this project"
+          }
         }
       }
     },
     "/api/projects/{id}/knowledge/{type}/{slug}": {
       "parameters": [
-        { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
-        { "name": "type", "in": "path", "required": true, "schema": { "type": "string", "enum": ["memory", "runbook", "guideline", "external-system", "related-project"] } },
-        { "name": "slug", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" } }
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        {
+          "name": "type",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "runbook",
+              "guideline",
+              "external-system",
+              "related-project"
+            ]
+          }
+        },
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        }
       ],
       "get": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Fetch a single knowledge entry",
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntry" } } } },
-          "404": { "description": "Not found" }
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
         }
       },
       "put": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Replace a knowledge entry (rename via body.slug)",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntryInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeEntryInput"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KnowledgeEntry" } } } },
-          "404": { "description": "Not found" },
-          "409": { "description": "Slug rename collides with an existing entry of the same type" }
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Slug rename collides with an existing entry of the same type"
+          }
         }
       },
       "delete": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Soft-delete (Trash) a knowledge entry",
         "responses": {
-          "204": { "description": "Deleted" },
-          "404": { "description": "Not found" }
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
         }
       }
     },
     "/api/projects/{id}/knowledge/memory/references": {
       "post": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Bump reference counters for memory entries (PAI-347)",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "source": { "type": "string" } }, "required": ["ids"] } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
         },
-        "responses": { "200": { "description": "Counter update summary" } }
+        "responses": {
+          "200": {
+            "description": "Counter update summary"
+          }
+        }
       }
     },
     "/api/projects/{id}/knowledge/memory/stale": {
       "get": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Decay-based memory archive proposals (PAI-347)",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
-          { "name": "days", "in": "query", "required": false, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Candidate memory entries" } }
+        "responses": {
+          "200": {
+            "description": "Candidate memory entries"
+          }
+        }
       }
     },
     "/api/projects/{id}/knowledge/memory/proposed/stale": {
       "get": {
-        "tags": ["knowledge"],
+        "tags": [
+          "knowledge"
+        ],
         "summary": "Stale bot-proposed memory drafts pending admin review (PAI-349)",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } },
-          { "name": "days", "in": "query", "required": false, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Aged-out proposed drafts" } }
+        "responses": {
+          "200": {
+            "description": "Aged-out proposed drafts"
+          }
+        }
+      }
+    },
+    "/api/issues/{id}/implement": {
+      "post": {
+        "tags": [
+          "agent-runs"
+        ],
+        "summary": "Create an agent run (\"Implement this\"). Project-editor gated.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "device_id": {
+                    "type": "string"
+                  },
+                  "deploy_target": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Run created (queued)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/issues/{id}/runs": {
+      "get": {
+        "tags": [
+          "agent-runs"
+        ],
+        "summary": "List a ticket's agent runs (newest first)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AgentRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{id}": {
+      "get": {
+        "tags": [
+          "agent-runs"
+        ],
+        "summary": "Fetch an agent run. Requester, project editor, or admin.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-runs"
+        ],
+        "summary": "Update an agent run — status transitions + structured report. Requester/editor/admin.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string"
+                  },
+                  "if_status": {
+                    "type": "string",
+                    "description": "optimistic claim guard — apply only if the run is still in this status"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "tests_summary": {
+                    "type": "string"
+                  },
+                  "deploy_target": {
+                    "type": "string"
+                  },
+                  "log_attachment_id": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Claim lost (if_status mismatch) or a transition out of a terminal status was rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/runs": {
+      "get": {
+        "tags": [
+          "agent-runs"
+        ],
+        "summary": "List a project's agent runs (runner catch-up). Optional ?status= filter.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AgentRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/runners": {
+      "get": {
+        "tags": [
+          "agent-runs"
+        ],
+        "summary": "List online, implement-capable runners for a project (device picker)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runners": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProjectRunner"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

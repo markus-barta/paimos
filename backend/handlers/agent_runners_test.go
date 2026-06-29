@@ -46,12 +46,12 @@ func TestProjectRunnersAndImplementPublish(t *testing.T) {
 		}
 	}
 
-	// A live, implement-capable runner...
-	runner := sse.GlobalBroker().Subscribe(adminID, "runner-1", projID)
+	// A live, implement-capable runner... (capability is per-connection now)
+	runner := sse.GlobalBroker().Subscribe(adminID, "runner-1", projID, true)
 	defer sse.GlobalBroker().Close(runner)
 	insertWatch("runner-1", 1)
 	// ...and a live browser tab that is NOT a runner.
-	browser := sse.GlobalBroker().Subscribe(adminID, "browser-1", projID)
+	browser := sse.GlobalBroker().Subscribe(adminID, "browser-1", projID, false)
 	defer sse.GlobalBroker().Close(browser)
 	insertWatch("browser-1", 0)
 
