@@ -31,6 +31,9 @@ func issueCmd() *cobra.Command {
 	c.AddCommand(issueCommentCmd())
 	c.AddCommand(issueBatchUpdateCmd())
 	c.AddCommand(issueTagCmd())
+	c.AddCommand(issueDeleteCmd())
+	c.AddCommand(issueRestoreCmd())
+	c.AddCommand(issueTrashCmd())
 	return c
 }
 
