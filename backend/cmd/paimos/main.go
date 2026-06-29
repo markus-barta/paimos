@@ -144,6 +144,7 @@ Get started:
 	// PAI-331: generic sync verbs (init/pull/watch/check) over the
 	// resource registry. PAI-341 will register additional kinds.
 	cmd.AddCommand(syncCmd())
+	cmd.AddCommand(runAgentCmd()) // PAI-608: local "Implement this" runner
 	// PAI-358: migrateCmd removed; the only verb (manifest-to-knowledge)
 	// is meaningless now that the project_manifests table is gone.
 
