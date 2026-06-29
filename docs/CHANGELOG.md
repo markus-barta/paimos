@@ -5,6 +5,35 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.3] — 2026-06-29
+
+### Fixed
+
+- **"Implement this" — second-audit hardening (PAI-605).** A four-agent
+  adversarial audit plus a full QA pass (including the race detector) of the
+  v4.6.1/v4.6.2 work found real defects; all are fixed and now proven by tests:
+  - **Atomic idempotency.** "One active run per issue" is now enforced by a DB
+    partial unique index (migration 127). The previous `SELECT`-then-`INSERT`
+    could let two concurrent "Implement this" clicks create duplicate runs that
+    the runner executed twice (a double-deploy risk). Verified by a concurrent
+    test; the atomic claim is likewise now proven under real goroutine concurrency.
+  - **Lifecycle integrity.** Run status changes must follow a legal edge (a run
+    can no longer jump straight to `deployed` with a fabricated version), and a
+    terminal run (`deployed`/`failed`/`cancelled`) is immutable.
+  - **Attribution & access.** The auto-posted report comment is attributed to the
+    user who actually reported (previously forgeable as the requester);
+    `log_attachment_id` must belong to the run's issue; advertising runner
+    capability (`implement=1`) requires project-edit rights.
+  - **Stale-orphan recovery.** A run a crashed runner left wedged in `running`
+    is reaped on the next implement, so the pipeline can't get stuck.
+  - **Runner.** Log attachment is now **opt-in** (`--attach-logs`, off by
+    default — agent output can contain secrets visible to all project members).
+    The reconnect backoff resets after a healthy connection instead of ratcheting
+    to the cap; catch-up poll failures are logged instead of swallowed.
+  - **Frontend.** Fixed a post-unmount polling/timer leak that accumulated across
+    navigations, and a zone-less-timestamp edge. Closed several audited test
+    false-greens (concurrency, visibility-polling, device selection, timestamps).
+
 ## [4.6.2] — 2026-06-29
 
 ### Added
