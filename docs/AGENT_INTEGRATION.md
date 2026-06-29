@@ -352,8 +352,7 @@ issue key in `name`.
 paimos run-agent watch --project PAI --repo-root .
 #   subscribes advertising implement-capability (?implement=1), and on an
 #   implement_requested event: claims the run, spawns `claude` (override with
-#   --exec) in --repo-root, then reports tests_passed / failed and attaches the
-#   run's captured output to the ticket as a log.
+#   --exec) in --repo-root, then reports tests_passed / failed.
 #   It reconnects on a dropped stream, processes one job at a time, and
 #   periodically catches up on queued runs it missed; prompts before each run
 #   unless --yes. Two runners never double-execute the same run (atomic claim).
@@ -361,6 +360,15 @@ paimos run-agent watch --project PAI --repo-root .
 
 `--exec` runs through a shell (`sh -c`), so quoting, pipes, and chaining work,
 e.g. `--exec "claude --print 'do the ticket' && npm test"`.
+
+`--attach-logs` (OFF by default) captures the job's combined output and attaches
+it to the ticket as a log, stamping `log_attachment_id`. It is opt-in because
+agent output can contain secrets, and a ticket attachment is visible to every
+project member — only enable it for repos/tickets where that's acceptable.
+
+The run lifecycle is enforced server-side: status changes must follow a legal
+edge (e.g. a run can't jump straight to `deployed`), and a terminal run
+(`deployed`/`failed`/`cancelled`) is immutable.
 
 Enabling deploy is **triple-gated** and off by default — it runs only when all
 three hold: `--allow-deploy` AND `--deploy-exec "<cmd>"` AND the run carries a
@@ -376,10 +384,9 @@ paimos run-agent watch --project PAI --yes \
 
 The spawned command sees `PAIMOS_RUN_ID` and `PAIMOS_ISSUE_KEY` in its
 environment, so the agent can PATCH richer progress itself (e.g. capture the
-version, advance to `deployed`). The runner already attaches the captured run
-output as a log and stamps `log_attachment_id`; an agent may override it. On any
-transition into a terminal status the server auto-posts a summary comment on the
-ticket — so the human-readable trail always matches the structured run record.
+version, advance to `deployed`). On any transition into a terminal status the
+server auto-posts a summary comment on the ticket — attributed to the reporting
+user — so the human-readable trail always matches the structured run record.
 
 ---
 
