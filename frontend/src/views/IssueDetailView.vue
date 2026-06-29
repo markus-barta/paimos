@@ -68,6 +68,7 @@ import IssueTimeEntries from "@/components/issue/IssueTimeEntries.vue";
 import IssueHistory from "@/components/issue/IssueHistory.vue";
 import IssueRelations from "@/components/issue/IssueRelations.vue";
 import IssueApplicableMemories from "@/components/issue/IssueApplicableMemories.vue";
+import AgentRunPanel from "@/components/issue/AgentRunPanel.vue";
 import IssueAttachments from "@/components/issue/IssueAttachments.vue";
 import IssueComments from "@/components/issue/IssueComments.vue";
 import IssueAnchors from "@/components/issue/IssueAnchors.vue";
@@ -1622,6 +1623,19 @@ async function cancelEdit() {
       :issue-id="issueId"
       :project-id="effectiveProjectId"
       :project-issues="projectIssues"
+    />
+
+    <!-- PAI-610: "Implement this" button + live run-status card. -->
+    <AgentRunPanel
+      v-if="
+        issue.issue_key &&
+        (issue.type === 'ticket' ||
+          issue.type === 'task' ||
+          issue.type === 'epic')
+      "
+      :issue-id="issueId"
+      :issue-key="issue.issue_key"
+      :project-id="effectiveProjectId ?? 0"
     />
 
     <!-- PAI-342: Applicable memories. Same gate as IssueRelations —
