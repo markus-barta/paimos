@@ -5,6 +5,49 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] — 2026-06-29
+
+### Added
+
+- **"Implement this" — UI-triggered agent runs (epic PAI-605).** A button on a
+  ticket hands it to a coding agent running on the developer's own workstation,
+  which implements it and reports back — end to end.
+  - **Run lifecycle API (PAI-606/607).** `POST /api/issues/{key}/implement`
+    creates a queued run and publishes an `implement_requested` SSE event;
+    `GET /api/issues/{id}/runs`, `GET|PATCH /api/runs/{id}`, and
+    `GET /api/projects/{id}/runners` (online, implement-capable devices) round it
+    out. New `agent_runs` table (migrations 125/126).
+  - **Local runner (PAI-608).** `paimos run-agent watch` subscribes over SSE and,
+    on a job, spawns Claude Code (override with `--exec`) in `--repo-root` and
+    reports `tests_passed` / `failed`. Opt-in, repo-scoped, one job at a time,
+    prompts before each run unless `--yes` — report-back only.
+  - **Deploy gating (PAI-613, off by default).** The runner deploys only when
+    `--allow-deploy` AND `--deploy-exec` AND a run-level `deploy_target` are all
+    set, then captures the version and marks the run `deployed`.
+  - **UI (PAI-610).** An "Implement this" panel on the issue detail view (button +
+    device picker + live run-status card) and a quick "Implement this" action in
+    the issue-list row menu.
+  - **Report-back (PAI-609).** On a terminal transition the server auto-posts a
+    summary comment on the ticket, keeping the human trail consistent with the
+    structured run record.
+
+### Internal
+
+- **Dormant v1 issue-list paths removed (PAI-595).** IssueList v2 has been the
+  production default since v3.10.6; the v1 fallback fetch paths and the
+  `ff_issuelist_v2` off-switch are deleted (−387 lines), collapsing IssuesView /
+  ProjectDetailView / PortalProjectView to the single controller path. The shared
+  `components/issue-list/` renderer stays (its replacement is PAI-476).
+
+### Security
+
+- **Threat model for remote-triggered execution (PAI-611).** New trust boundary
+  §2.7 and invariants INV-RUNNER-01..04 in [`THREAT_MODEL.md`](THREAT_MODEL.md);
+  the structural-change review is logged in `SECURITY_GOVERNANCE.md`. Posture:
+  opt-in per-workstation, repo-scoped, consent-gated, report-back only by default,
+  deploy triple-gated, project-editor gated + audited. Operator + protocol docs in
+  [`AGENT_INTEGRATION.md`](AGENT_INTEGRATION.md) (PAI-612).
+
 ## [4.5.0] — 2026-06-29
 
 ### Added
