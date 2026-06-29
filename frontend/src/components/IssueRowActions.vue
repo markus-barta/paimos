@@ -114,6 +114,7 @@ const isImplementable = computed(
 const implementState = ref<'idle' | 'busy' | 'done' | 'error'>('idle')
 const implementMsg = ref('')
 let implementTimer: ReturnType<typeof setTimeout> | null = null
+let alive = true // guards post-await writes/timer after unmount (M3)
 
 async function implement() {
   if (implementState.value === 'busy') return
@@ -123,12 +124,15 @@ async function implement() {
   menuOpen.value = false
   try {
     await api.post(`/issues/${props.issueId}/implement`, {})
+    if (!alive) return
     implementState.value = 'done'
     implementMsg.value = 'Queued — view'
   } catch (e: unknown) {
+    if (!alive) return
     implementState.value = 'error'
     implementMsg.value = errMsg(e, 'Failed')
   }
+  if (!alive) return
   implementTimer = setTimeout(() => {
     implementState.value = 'idle'
     implementMsg.value = ''
@@ -201,6 +205,7 @@ watch(menuOpen, (open) => {
   else      document.removeEventListener('mousedown', onOutsideClick)
 })
 onUnmounted(() => {
+  alive = false
   document.removeEventListener('mousedown', onOutsideClick)
   if (implementTimer) clearTimeout(implementTimer)
 })

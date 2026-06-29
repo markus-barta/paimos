@@ -56,6 +56,8 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 // Monotonic tokens so an out-of-order response can't overwrite newer state (M2).
 let runsSeq = 0;
 let runnersSeq = 0;
+// Guards against a fetch that resolves AFTER unmount re-arming the poll timer (H1).
+let alive = true;
 
 const STATUS_LABEL: Record<string, string> = {
   queued: "Queued",
@@ -75,8 +77,11 @@ function statusLabel(s: string): string {
 // for a localized display string and a valid ISO `datetime` attribute (M6).
 function toDate(ts: string | null): Date | null {
   if (!ts) return null;
-  const iso = ts.includes("T") ? ts : ts.replace(" ", "T") + "Z";
-  const d = new Date(iso);
+  let s = ts.trim().replace(" ", "T");
+  // Treat a zone-less timestamp as UTC (the API emits UTC). A present zone is a
+  // trailing Z or ±HH:MM — only append Z when neither is there (L1).
+  if (!/[Zz]$|[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
+  const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 function isoAttr(ts: string): string {
@@ -90,14 +95,14 @@ async function fetchRuns() {
   const seq = ++runsSeq;
   try {
     const data = await api.get<{ runs: AgentRun[] }>(`/issues/${props.issueId}/runs`);
-    if (seq !== runsSeq) return; // a newer fetch already landed
+    if (!alive || seq !== runsSeq) return; // unmounted, or a newer fetch landed
     runs.value = data.runs ?? [];
     error.value = "";
   } catch (e: unknown) {
-    if (seq !== runsSeq) return;
+    if (!alive || seq !== runsSeq) return;
     error.value = errMsg(e, "Could not load runs.");
   } finally {
-    loading.value = false;
+    if (alive) loading.value = false;
   }
   syncPolling();
 }
@@ -108,14 +113,14 @@ async function fetchRunners() {
     const data = await api.get<{ runners: ProjectRunner[] }>(
       `/projects/${props.projectId}/runners`,
     );
-    if (seq !== runnersSeq) return;
+    if (!alive || seq !== runnersSeq) return;
     runners.value = data.runners ?? [];
     runnersError.value = "";
     if (!selectedDevice.value && runners.value.length) {
       selectedDevice.value = runners.value[0].device_id;
     }
   } catch (e: unknown) {
-    if (seq !== runnersSeq) return;
+    if (!alive || seq !== runnersSeq) return;
     runners.value = [];
     runnersError.value = errMsg(e, "Could not load runners."); // M4: don't masquerade as "none online"
   }
@@ -144,6 +149,13 @@ function pollTick() {
   void fetchRunners();
 }
 function syncPolling() {
+  if (!alive) {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    return;
+  }
   const shouldPoll = hasActiveRun.value && !document.hidden;
   if (shouldPoll && !pollTimer) {
     pollTimer = setInterval(pollTick, 4000);
@@ -165,6 +177,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  alive = false;
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;

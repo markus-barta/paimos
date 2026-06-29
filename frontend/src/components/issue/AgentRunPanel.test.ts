@@ -134,13 +134,35 @@ describe("AgentRunPanel — PAI-610", () => {
     const picker = el.querySelector<HTMLSelectElement>(".arp-device");
     expect(picker).toBeTruthy();
     expect(picker!.options.length).toBe(2);
+    // Actually change the selection to prove v-model drives the payload (M1).
+    picker!.value = "desktop";
+    picker!.dispatchEvent(new Event("change"));
+    await settle();
 
     el.querySelector<HTMLButtonElement>(".btn-primary")!.click();
     await settle();
     expect(api.post).toHaveBeenCalledWith(
       "/issues/PAI-5/implement",
-      expect.objectContaining({ device_id: "laptop" }),
+      expect.objectContaining({ device_id: "desktop" }),
     );
+    unmount();
+  });
+
+  it("renders a timestamp as a valid ISO datetime + a local label (M2/M6)", async () => {
+    vi.mocked(api.get).mockImplementation(async (path: string) => {
+      if (path === "/issues/5/runs") return { runs: [run("deployed")] };
+      if (path === "/projects/9/runners") return { runners: [] };
+      return {};
+    });
+    const { el, unmount } = mountPanel();
+    await settle();
+    const t = el.querySelector("time");
+    expect(t).toBeTruthy();
+    const dt = t!.getAttribute("datetime")!;
+    expect(dt.endsWith("Z")).toBe(true); // UTC, not shifted to local
+    expect(Number.isNaN(Date.parse(dt))).toBe(false);
+    expect(t!.textContent).not.toContain("Invalid Date");
+    expect(t!.textContent!.trim().length).toBeGreaterThan(0);
     unmount();
   });
 });
@@ -185,5 +207,72 @@ describe("AgentRunPanel — polling lifecycle (H2)", () => {
     expect(runsCalls).toBe(callsAfterTerminal);
 
     unmount();
+  });
+});
+
+describe("AgentRunPanel — visibility + leak (H1/H2)", () => {
+  let hidden = false;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(api.get).mockReset();
+    vi.mocked(api.post).mockReset();
+    hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("pauses polling while the tab is hidden and catches up on re-show (H2)", async () => {
+    let runsCalls = 0;
+    vi.mocked(api.get).mockImplementation(async (path: string) => {
+      if (path === "/issues/5/runs") {
+        runsCalls += 1;
+        return { runs: [run("queued")] };
+      }
+      if (path === "/projects/9/runners") return { runners: [] };
+      return {};
+    });
+    const { unmount } = mountPanel();
+    await vi.advanceTimersByTimeAsync(0);
+    const afterMount = runsCalls;
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(runsCalls).toBeGreaterThan(afterMount); // polling while visible
+
+    hidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    const afterHide = runsCalls;
+    await vi.advanceTimersByTimeAsync(12000);
+    expect(runsCalls).toBe(afterHide); // paused while hidden
+
+    hidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runsCalls).toBeGreaterThan(afterHide); // caught up on re-show
+    unmount();
+  });
+
+  it("leaves no polling timer after unmounting mid-fetch (H1)", async () => {
+    let landRun: () => void = () => {};
+    let runsCalls = 0;
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/issues/5/runs") {
+        runsCalls += 1;
+        return new Promise((r) => {
+          landRun = () => r({ runs: [run("queued")] });
+        });
+      }
+      return Promise.resolve({ runners: [] });
+    });
+    const { unmount } = mountPanel(); // onMounted → fetchRuns is pending
+    await Promise.resolve();
+    unmount(); // unmount before the fetch resolves
+    landRun(); // the fetch now lands on a dead component
+    await vi.advanceTimersByTimeAsync(0);
+    const settled = runsCalls;
+    await vi.advanceTimersByTimeAsync(20000); // an orphan interval would poll here
+    expect(runsCalls).toBe(settled); // no leak
   });
 });
