@@ -123,40 +123,23 @@ describe('IssuesView search summary', () => {
   })
 
   it('states capped search results and can load the remaining matches', async () => {
-    // v1 fallback path (asserts exact request URLs). v2 (the default) is
-    // covered by issueListV2Matrix.test.ts + runtime QA; opt this off the flag.
-    localStorage.setItem('ff_issuelist_v2', '0')
+    // IssueList v2 controller path (the only path since PAI-595). Asserts the
+    // controller's request URLs. v2 applies its search via the post-mount
+    // watch (not at mount) and carries a default created_at sort.
     const issueUrls: string[] = []
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url.startsWith('/issues?')) {
         issueUrls.push(url)
-        if (url.includes('limit=0')) {
-          return {
-            issues: Array.from({ length: 123 }, (_, i) => makeIssue(i + 1)),
-            total: 123,
-            offset: 0,
-            limit: 0,
-            returned: 123,
-            has_more: false,
-          }
-        }
-        if (url.includes('offset=0')) {
-          return {
-            issues: Array.from({ length: 100 }, (_, i) => makeIssue(i + 1)),
-            total: 123,
-            offset: 0,
-            limit: 100,
-            returned: 100,
-            has_more: true,
-          }
-        }
+        const issues = url.includes('limit=0')
+          ? Array.from({ length: 123 }, (_, i) => makeIssue(i + 1))
+          : Array.from({ length: 100 }, (_, i) => makeIssue(i + 1))
         return {
-          issues: Array.from({ length: 23 }, (_, i) => makeIssue(i + 101)),
+          issues,
           total: 123,
-          offset: 100,
-          limit: 23,
-          returned: 23,
-          has_more: false,
+          offset: 0,
+          limit: url.includes('limit=0') ? 0 : 100,
+          returned: issues.length,
+          has_more: issues.length < 123,
         }
       }
       return []
@@ -165,34 +148,36 @@ describe('IssuesView search summary', () => {
     document.body.innerHTML = '<div id="app-header-left"></div><div id="root"></div>'
     const pinia = createPinia()
     setActivePinia(pinia)
-    useSearchStore(pinia).setQuery('ma')
+    const searchStore = useSearchStore(pinia)
 
     const app = createApp(IssuesView)
     app.use(pinia)
     app.mount(document.getElementById('root')!)
     await settle()
 
+    // Initial browse load: capped page of 100 / 123, default created_at sort.
     const header = document.getElementById('app-header-left')!
-    expect(header.textContent).toContain(
-      'Showing first 100 of 123 matches for "ma" · best matches first',
-    )
-    expect(issueUrls).toEqual(['/issues?fields=list&limit=100&offset=0&q=ma'])
+    expect(issueUrls[0]).toBe('/issues?fields=list&limit=100&offset=0&sort=created_at&order=desc')
+    expect(header.textContent).toContain('123 issues · 100 loaded')
 
+    // Search summary is view-level reactive (the controller search itself is
+    // debounced and covered by issueListV2Matrix.test.ts).
+    searchStore.setQuery('ma')
+    await settle()
+    expect(header.textContent).toContain('Showing first 100 of 123 matches for "ma"')
+
+    // Load-all widens the controller window to limit=0.
     const loadAll = header.querySelector<HTMLButtonElement>('.load-all-link')
     expect(loadAll).toBeTruthy()
     loadAll!.click()
     await settle()
+    expect(issueUrls[issueUrls.length - 1]).toContain('limit=0')
+    expect(header.textContent).toContain('123 matches for "ma"')
 
-    expect(issueUrls).toEqual([
-      '/issues?fields=list&limit=100&offset=0&q=ma',
-      '/issues?fields=list&limit=0&offset=0&q=ma',
-    ])
-    expect(header.textContent).toContain('123 matches for "ma" · best matches first')
-
+    // Sort routes through the controller too.
     document.querySelector<HTMLButtonElement>('.sort-stub')!.click()
     await settle()
-
-    expect(issueUrls[issueUrls.length - 1]).toBe('/issues?fields=list&limit=0&offset=0&sort=title&order=asc&q=ma')
+    expect(issueUrls[issueUrls.length - 1]).toContain('sort=title&order=asc')
 
     app.unmount()
   })

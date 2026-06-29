@@ -22,7 +22,6 @@ import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
 import { useIssueQuery } from '@/composables/useIssueQuery'
 import { createInternalFetcher, controllerFreshnessPath } from '@/composables/issueQueryFetchers'
-import { isIssueListV2 } from '@/config/featureFlags'
 import {
   buildProjectUpdatePayload,
   emptyProjectEditForm,
@@ -35,13 +34,11 @@ import type { IssueListEnvelope } from '@/types'
 import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import {
   addProjectTag as addProjectTagRequest,
-  buildProjectIssuesUrl,
   buildProjectCsvExportUrl,
   deleteProjectDetail,
   deleteProjectLogo,
   executeProjectTimeEntryPurge,
   loadProjectDetailData,
-  loadProjectIssuesEnvelope,
   loadProjectPurgeUsers,
   preflightProjectCsvImport,
   previewProjectTimeEntryPurge,
@@ -151,33 +148,12 @@ const projectIssuesLoadingMore = ref(false)
 const projectIssueWindowMode = ref<'page' | 'all'>('page')
 const projectIssueSortKey = ref('')
 const projectIssueSortDir = ref<'asc' | 'desc'>('asc')
-const issueListPath = computed(() => buildProjectIssuesUrl(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value, {
-  envelope: true,
-  limit: projectWindowLimit(),
-  offset: 0,
-  sort: projectIssueSortKey.value || undefined,
-  order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
-}))
-
-function applyProjectIssueEnvelopeMeta(env: IssueListEnvelope<Issue>) {
-  projectIssueTotal.value = env.total
-  projectIssueHasMore.value = env.has_more ?? (env.total > issues.value.length)
-  projectIssueFingerprint.value = env.fingerprint ?? ''
-  projectIssueSelectionFingerprint.value = env.selection_fingerprint ?? ''
-}
-
-function projectWindowLimit() {
-  return projectIssueWindowMode.value === 'all' ? 0 : PROJECT_ISSUE_PAGE
-}
 const trimmedProjectIssueQuery = computed(() => projectIssueQuery.value.trim())
 let projectLoadRequestSeq = 0
-let projectIssueRequestSeq = 0
-let projectSearchTimer: ReturnType<typeof setTimeout> | null = null
 
-// PAI-570: IssueList v2 behind a flag for the project list. The controller owns
-// fetch + cache + orchestration; a mirror watcher syncs its outputs into the
-// existing refs so the many `issues` readers and the template stay unchanged.
-const V2 = isIssueListV2()
+// PAI-570: the IssueList controller owns fetch + cache + orchestration for the
+// project list; a mirror watcher syncs its outputs into the existing refs so the
+// many `issues` readers and the template stay unchanged.
 const projectCtrl = useIssueQuery<Issue>({
   initial: { mode: 'internal-project', projectId: projectId.value },
   fetcher: createInternalFetcher(),
@@ -188,7 +164,6 @@ watch(
     projectCtrl.loading.value, projectCtrl.serverFingerprint.value, projectCtrl.selectionFingerprint.value,
   ],
   () => {
-    if (!V2) return
     issues.value = projectCtrl.issues.value
     projectIssueTotal.value = projectCtrl.total.value
     projectIssueHasMore.value = projectCtrl.hasMore.value
@@ -308,12 +283,9 @@ watch(knowledgeView, (v) => {
 const displayTabs = computed(() => buildProjectDisplayTabs(allViews.value))
 
 async function selectTab(view: SavedView) {
-  const isReclick = activeTabId.value === view.id
   activeTabId.value = view.id
-  // Re-fetch issues on tab switch or re-click
-  if (await replaceProjectIssues(projectIssueQuery.value)) {
-    nextTick(() => issueListRef.value?.applyView(view))
-  }
+  // applyView drives IssueList -> server-filter-change -> the controller fetch.
+  nextTick(() => issueListRef.value?.applyView(view))
 }
 
 function onViewApplied(viewId: number) {
@@ -349,7 +321,6 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onOverflowKey)
   window.removeEventListener('resize', recomputeOverflowPosition)
   window.removeEventListener('scroll', recomputeOverflowPosition, true)
-  if (projectSearchTimer) clearTimeout(projectSearchTimer)
   issueRefreshPrompt.clear(refreshProjectIssueListFromHeader)
 })
 
@@ -669,38 +640,9 @@ async function load() {
   })
   if (request !== projectLoadRequestSeq) return
   project.value = data.project
-  if (V2) {
-    projectCtrl.query.projectId = projectId.value
-    await projectCtrl.start()
-    await issueFreshness.prime().catch(() => {}) // baseline the poll; never block load
-  } else if (
-    loadQuery === projectIssueQuery.value
-    && loadFilters === projectServerFilterQuery.value
-    && loadSortKey === projectIssueSortKey.value
-    && loadSortDir === projectIssueSortDir.value
-  ) {
-    issues.value = data.issues
-    if (data.issueEnvelope) {
-      applyProjectIssueEnvelopeMeta(data.issueEnvelope)
-    } else {
-      projectIssueTotal.value = data.issueTotal
-      projectIssueHasMore.value = false
-      projectIssueFingerprint.value = ''
-      projectIssueSelectionFingerprint.value = ''
-    }
-    await issueFreshness.prime({
-      issues: data.issues,
-      total: data.issueTotal,
-      offset: 0,
-      limit: data.issues.length,
-      has_more: projectIssueHasMore.value,
-      returned: data.issues.length,
-      fingerprint: projectIssueFingerprint.value,
-      selection_fingerprint: projectIssueSelectionFingerprint.value,
-    })
-  } else {
-    await replaceProjectIssues(projectIssueQuery.value)
-  }
+  projectCtrl.query.projectId = projectId.value
+  await projectCtrl.start()
+  await issueFreshness.prime().catch(() => {}) // baseline the poll; never block load
   users.value = data.users
   costUnits.value = data.costUnits
   releases.value = data.releases
@@ -725,89 +667,21 @@ watch(() => route.params.id, (newId, oldId) => {
   }
 })
 
-async function replaceProjectIssues(q: string): Promise<boolean> {
-  const request = ++projectIssueRequestSeq
-  const env = await loadProjectIssuesEnvelope(projectId.value, q, projectServerFilterQuery.value, {
-    limit: projectWindowLimit(),
-    offset: 0,
-    sort: projectIssueSortKey.value || undefined,
-    order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
-  })
-  if (request !== projectIssueRequestSeq) return false
-  issues.value = env.issues
-  applyProjectIssueEnvelopeMeta(env)
-  await issueFreshness.prime(env)
-  return true
-}
-
-async function loadMoreProjectIssues(limit: number) {
-  if (V2) { await projectCtrl.loadMore(); return }
-  if (projectIssuesLoadingMore.value) return
-  projectIssuesLoadingMore.value = true
-  const request = ++projectIssueRequestSeq
-  try {
-    const env = await loadProjectIssuesEnvelope(projectId.value, projectIssueQuery.value, projectServerFilterQuery.value, {
-      limit,
-      offset: issues.value.length,
-      sort: projectIssueSortKey.value || undefined,
-      order: projectIssueSortKey.value ? projectIssueSortDir.value : undefined,
-    })
-    if (request !== projectIssueRequestSeq) return
-    issues.value = [...issues.value, ...env.issues]
-    applyProjectIssueEnvelopeMeta(env)
-    await issueFreshness.prime({
-      issues: issues.value,
-      total: env.total,
-      offset: 0,
-      limit: issues.value.length,
-      returned: issues.value.length,
-      has_more: projectIssueHasMore.value,
-      sort: env.sort,
-      order: env.order,
-      query: env.query,
-      revision: env.revision,
-      fingerprint: projectIssueFingerprint.value,
-      selection_fingerprint: projectIssueSelectionFingerprint.value,
-    })
-  } finally {
-    if (request === projectIssueRequestSeq) projectIssuesLoadingMore.value = false
-  }
-}
-
 async function loadAllProjectIssues() {
-  if (V2) { await projectCtrl.setWindow('all'); return }
-  if (projectIssuesLoadingMore.value) return
-  projectIssuesLoadingMore.value = true
-  projectIssueWindowMode.value = 'all'
-  try {
-    await replaceProjectIssues(projectIssueQuery.value)
-  } finally {
-    projectIssuesLoadingMore.value = false
-  }
+  await projectCtrl.setWindow('all')
 }
 
 // Re-fetch issues when search query changes (search-as-filter overlay).
 watch(trimmedProjectIssueQuery, (q) => {
-  if (V2) { projectCtrl.setSearch(q); return }
-  if (projectSearchTimer) clearTimeout(projectSearchTimer)
-  projectSearchTimer = setTimeout(() => {
-    void replaceProjectIssues(q)
-  }, 150)
+  projectCtrl.setSearch(q)
 })
 
 function onServerFilterChange(query: string) {
-  if (V2) { void projectCtrl.setRawFilter(query); return }
-  if (projectServerFilterQuery.value === query) return
-  projectServerFilterQuery.value = query
-  void replaceProjectIssues(projectIssueQuery.value)
+  void projectCtrl.setRawFilter(query)
 }
 
 function onServerSortChange(key: string, dir: 'asc' | 'desc') {
-  if (V2) { void projectCtrl.setSort(key, dir); return }
-  if (projectIssueSortKey.value === key && projectIssueSortDir.value === dir) return
-  projectIssueSortKey.value = key
-  projectIssueSortDir.value = dir
-  void replaceProjectIssues(projectIssueQuery.value)
+  void projectCtrl.setSort(key, dir)
 }
 
 function applyLieferberichtHandoffFromRoute() {
@@ -850,10 +724,7 @@ function applyLieferberichtHandoffFromRoute() {
 watch(() => route.query.report, () => nextTick(applyLieferberichtHandoffFromRoute))
 
 function onCreated(issue: Issue) {
-  if (V2) { void projectCtrl.refresh() } else {
-    issues.value.push(issue)
-    projectIssueTotal.value += 1
-  }
+  void projectCtrl.refresh()
   const cuLabel = issue.cost_unit?.label
   if (cuLabel && !costUnits.value.includes(cuLabel))
     costUnits.value = [...costUnits.value, cuLabel].sort()
@@ -863,15 +734,11 @@ function onCreated(issue: Issue) {
 }
 
 function onUpdated(issue: Issue) {
-  if (V2) { projectCtrl.confirmMutation(issue.id, issue); return }
-  const idx = issues.value.findIndex(i => i.id === issue.id)
-  if (idx >= 0) issues.value[idx] = issue
+  projectCtrl.confirmMutation(issue.id, issue)
 }
 
-function onDeleted(id: number) {
-  if (V2) { void projectCtrl.refresh(); return }
-  issues.value = issues.value.filter(i => i.id !== id)
-  projectIssueTotal.value = Math.max(0, projectIssueTotal.value - 1)
+function onDeleted() {
+  void projectCtrl.refresh()
 }
 
 // ── Last change metadata ───────────────────────────────────────────────────────
@@ -885,28 +752,11 @@ const lastChanged = computed(() => {
   return { id: latest.id, key: latest.issue_key, when, title: latest.title }
 })
 
-function currentMainScroll(): HTMLElement | null {
-  return document.querySelector('.main-content')
-}
-
-function applyFreshProjectIssues(env: IssueListEnvelope<Issue>) {
-  const scroller = currentMainScroll()
-  const top = scroller?.scrollTop ?? 0
-  issues.value = env.issues
-  applyProjectIssueEnvelopeMeta(env)
-  void nextTick(() => {
-    if (scroller) scroller.scrollTop = top
-  })
-}
-
 const projectFreshnessPath = computed(() =>
-  V2 ? controllerFreshnessPath(projectCtrl.query, projectCtrl.loaded.value, PROJECT_ISSUE_PAGE) : issueListPath.value,
+  controllerFreshnessPath(projectCtrl.query, projectCtrl.loaded.value, PROJECT_ISSUE_PAGE),
 )
 const issueFreshness = useFreshness<IssueListEnvelope<Issue>>(projectFreshnessPath, {
-  apply: (env) => {
-    if (V2) projectCtrl.reconcile(env.issues ?? [], env.total, env.revision)
-    else applyFreshProjectIssues(env)
-  },
+  apply: (env) => projectCtrl.reconcile(env.issues ?? [], env.total, env.revision),
   count: (payload) => payload.total,
 })
 const issueFreshnessStale = computed(() => issueFreshness.stale.value)

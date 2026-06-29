@@ -36,10 +36,8 @@ import type {
   RowAction,
   SharedFilterState,
 } from '@/components/issue-list/types'
-import type { IssueListEnvelope } from '@/types'
 import { useIssueQuery } from '@/composables/useIssueQuery'
 import { createPortalFetcher } from '@/composables/issueQueryFetchers'
-import { isIssueListV2 } from '@/config/featureFlags'
 import AppIcon from '@/components/AppIcon.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
@@ -95,15 +93,10 @@ const portalIssueFingerprint = ref('')
 const portalIssueSelectionFingerprint = ref('')
 const loading = ref(true)
 const loadingMore = ref(false)
-const PORTAL_PAGE = 100
-const portalIssueWindowMode = ref<'page' | 'all'>('page')
-let portalIssueRequestSeq = 0
 
-// PAI-570: portal on the shared core. Behind ff_issuelist_v2, useIssueQuery
-// (portal mode) owns fetch + orchestration; a mirror watcher syncs its outputs
-// into the existing refs so the table, tabs, and client-side search are
-// unchanged. v1 path (own fetchIssues) stays the default until flip.
-const V2 = isIssueListV2()
+// PAI-570: portal on the shared core. useIssueQuery (portal mode) owns fetch +
+// orchestration; a mirror watcher syncs its outputs into the existing refs so
+// the table, tabs, and client-side search are unchanged.
 const portalCtrl = useIssueQuery<PortalIssue>({
   initial: { mode: 'portal', projectId },
   fetcher: createPortalFetcher<PortalIssue>(),
@@ -114,7 +107,6 @@ watch(
     portalCtrl.loading.value, portalCtrl.serverFingerprint.value, portalCtrl.selectionFingerprint.value,
   ],
   () => {
-    if (!V2) return
     issues.value = portalCtrl.issues.value
     totalIssues.value = portalCtrl.total.value
     portalIssueHasMore.value = portalCtrl.hasMore.value
@@ -202,38 +194,13 @@ const PRIORITY_OPTIONS: FilterOption[] = [
 // no tag filter exists in the portal bar (see enabledFilters above).
 
 // ── Data fetching ────────────────────────────────────────────────────────
-async function fetchIssues(opts: { replace?: boolean; limit?: number; offset?: number } = {}) {
-  const request = ++portalIssueRequestSeq
-  const params = new URLSearchParams()
-  params.set('envelope', '1')
-  params.set('limit', String(opts.limit ?? (portalIssueWindowMode.value === 'all' ? 0 : PORTAL_PAGE)))
-  params.set('offset', String(opts.offset ?? (opts.replace === false ? issues.value.length : 0)))
-  if (filters.value.status.length) params.set('status', filters.value.status.join(','))
-  if (filters.value.type.length) params.set('type', filters.value.type.join(','))
-  if (filters.value.priority.length) params.set('priority', filters.value.priority.join(','))
-  if (filters.value.tagIds.length) params.set('tag_ids', filters.value.tagIds.join(','))
-  if (filters.value.q.trim()) params.set('q', filters.value.q.trim())
-  if (sortCol.value) params.set('sort', sortCol.value)
-  if (sortDir.value) params.set('order', sortDir.value)
-  const qs = params.toString()
-  const url = `/portal/projects/${projectId}/issues${qs ? '?' + qs : ''}`
-  const env = await api.get<IssueListEnvelope<PortalIssue>>(url)
-  if (request !== portalIssueRequestSeq) return
-  issues.value = opts.replace === false ? [...issues.value, ...env.issues] : env.issues
-  totalIssues.value = env.total
-  portalIssueHasMore.value = env.has_more ?? (env.total > issues.value.length)
-  portalIssueFingerprint.value = env.fingerprint ?? ''
-  portalIssueSelectionFingerprint.value = env.selection_fingerprint ?? ''
-}
-
 async function loadAll() {
   loading.value = true
-  portalIssueWindowMode.value = 'page'
   try {
-    if (V2) copyFiltersToCtrl()
+    copyFiltersToCtrl()
     const [p] = await Promise.all([
       api.get<PortalProject>(`/portal/projects/${projectId}`),
-      V2 ? portalCtrl.start() : fetchIssues({ replace: true }),
+      portalCtrl.start(),
     ])
     project.value = p
   } catch {
@@ -275,14 +242,12 @@ function writeUrlState() {
 
 watch(filters, () => {
   writeUrlState()
-  if (V2) applyPortalQueryToCtrl()
-  else void fetchIssues({ replace: true })
+  applyPortalQueryToCtrl()
 }, { deep: true })
 
 watch([sortCol, sortDir], () => {
   writeUrlState()
-  if (V2) applyPortalQueryToCtrl()
-  else void fetchIssues({ replace: true })
+  applyPortalQueryToCtrl()
 })
 
 watch(activeTab, writeUrlState)
@@ -345,18 +310,7 @@ const portalHasMore = computed(() => portalIssueHasMore.value || totalIssues.val
 
 async function loadMoreIssues() {
   if (loadingMore.value || !portalHasMore.value) return
-  if (V2) { await portalCtrl.setWindow('all'); return }
-  loadingMore.value = true
-  portalIssueWindowMode.value = 'all'
-  try {
-    await fetchIssues({
-      replace: true,
-      limit: 0,
-      offset: 0,
-    })
-  } finally {
-    loadingMore.value = false
-  }
+  await portalCtrl.setWindow('all')
 }
 
 // ── KPI stat bar ────────────────────────────────────────────────────────
@@ -402,7 +356,7 @@ async function acceptIssue(issue: PortalIssue) {
     // the UX consistent with v3.5.3.
     issues.value = issues.value.filter((i) => i.id !== issue.id)
   } catch {
-    void fetchIssues({ replace: true })
+    void portalCtrl.refresh()
   }
 }
 
@@ -413,7 +367,7 @@ async function rejectIssue(issue: PortalIssue) {
     })
     issues.value = issues.value.filter((i) => i.id !== issue.id)
   } catch {
-    void fetchIssues({ replace: true })
+    void portalCtrl.refresh()
   }
 }
 
@@ -608,10 +562,10 @@ useSidebarSelectionUrl({
 // and the tab counts / KPIs update. The panel reloads its own copy
 // internally so the in-place pill update is already done.
 async function onIssueAccepted(_id: number) {
-  await fetchIssues({ replace: true })
+  await portalCtrl.refresh()
 }
 async function onIssueRejected(_id: number) {
-  await fetchIssues({ replace: true })
+  await portalCtrl.refresh()
 }
 
 // ── New Request modal ───────────────────────────────────────────────────
@@ -627,7 +581,7 @@ async function submitRequest() {
     showRequestModal.value = false
     requestTitle.value = ''
     requestDesc.value = ''
-    await fetchIssues({ replace: true })
+    await portalCtrl.refresh()
   } catch (e: unknown) {
     requestError.value = errMsg(e, 'Failed')
   } finally {

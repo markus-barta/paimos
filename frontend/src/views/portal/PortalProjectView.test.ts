@@ -121,10 +121,8 @@ describe('PortalProjectView IssueList v2 query windows', () => {
   })
 
   it('preserves show-all window mode across portal sort and filter changes', async () => {
-    // v1 fallback path (asserts exact request URLs). The same show-all
-    // preservation under the v2 controller is covered by
-    // issueListV2Matrix.test.ts + runtime QA; opt this off the flag.
-    localStorage.setItem('ff_issuelist_v2', '0')
+    // IssueList v2 controller path (the only path since PAI-595). Asserts the
+    // show-all window (limit=0) is preserved across sort + filter changes.
     const issueUrls: string[] = []
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url === '/portal/projects/42') {
@@ -163,19 +161,29 @@ describe('PortalProjectView IssueList v2 query windows', () => {
     app.mount(document.getElementById('root')!)
     await settle()
 
-    expect(issueUrls[0]).toBe('/portal/projects/42/issues?envelope=1&limit=100&offset=0&sort=updated_at&order=desc')
+    expect(issueUrls[0]).toContain('/portal/projects/42/issues?')
+    expect(issueUrls[0]).toContain('limit=100')
 
     document.querySelector<HTMLButtonElement>('.pv__load-more-btn')!.click()
     await settle()
-    expect(issueUrls[issueUrls.length - 1]).toBe('/portal/projects/42/issues?envelope=1&limit=0&offset=0&sort=updated_at&order=desc')
+    expect(issueUrls[issueUrls.length - 1]).toContain('limit=0')
 
     document.querySelector<HTMLButtonElement>('.sort-title')!.click()
     await settle()
-    expect(issueUrls[issueUrls.length - 1]).toBe('/portal/projects/42/issues?envelope=1&limit=0&offset=0&sort=title&order=asc')
+    {
+      const afterSort = issueUrls[issueUrls.length - 1]
+      expect(afterSort).toContain('limit=0') // show-all preserved
+      expect(afterSort).toContain('sort=title')
+      expect(afterSort).toContain('order=asc')
+    }
 
     document.querySelector<HTMLButtonElement>('.filter-stub')!.click()
     await settle()
-    expect(issueUrls[issueUrls.length - 1]).toBe('/portal/projects/42/issues?envelope=1&limit=0&offset=0&q=needle&sort=title&order=asc')
+    {
+      const afterFilter = issueUrls[issueUrls.length - 1]
+      expect(afterFilter).toContain('limit=0') // show-all still preserved
+      expect(afterFilter).toContain('q=needle')
+    }
 
     app.unmount()
   })

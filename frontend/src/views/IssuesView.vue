@@ -3,10 +3,9 @@ import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import IssueList from '@/components/IssueList.vue'
 import AppIcon from '@/components/AppIcon.vue'
-import { api, errMsg } from '@/api/client'
+import { api } from '@/api/client'
 import { useIssueQuery } from '@/composables/useIssueQuery'
 import { createInternalFetcher, controllerFreshnessPath } from '@/composables/issueQueryFetchers'
-import { isIssueListV2 } from '@/config/featureFlags'
 import { useSearchStore } from '@/stores/search'
 import { provideIssueContext } from '@/composables/useIssueContext'
 import { useFreshness } from '@/composables/useFreshness'
@@ -20,16 +19,8 @@ const issueRefreshPrompt = useIssueRefreshPromptStore()
 
 const PAGE = 100
 
-// Browse mode (no ?q)
-const issues      = ref<Issue[]>([])
-const total       = ref(0)
-const issueHasMore = ref(false)
-const issueFingerprint = ref('')
-const issueSelectionFingerprint = ref('')
 const loading     = ref(true)
-const loadingMore = ref(false)
 const error       = ref('')
-const issueWindowMode = ref<'page' | 'all'>('page')
 
 // Shared
 const users     = ref<User[]>([])
@@ -41,44 +32,21 @@ const sprints   = ref<Sprint[]>([])
 
 provideIssueContext({ users, allTags, costUnits, releases, projects, sprints })
 
-// PAI-570: IssueList v2 behind a flag. When on, the controller owns fetch +
-// cache + orchestration; the v1 path stays the default until v2 is runtime-
-// verified (PAI-575). Display accessors pass through to v1 when the flag is
-// off, so default behavior is byte-identical.
-const V2 = isIssueListV2()
+// PAI-570/575: the IssueList controller owns fetch + cache + orchestration.
+// The display accessors expose its refs to the template unwrapped.
 const ctrl = useIssueQuery<Issue>({
   initial: { mode: 'internal-global' },
   fetcher: createInternalFetcher(),
 })
-const displayIssues = computed(() => (V2 ? ctrl.issues.value : issues.value))
-const displayTotal = computed(() => (V2 ? ctrl.total.value : total.value))
-const displayHasMore = computed(() => (V2 ? ctrl.hasMore.value : issueHasMore.value))
-const displayLoadingMore = computed(() => (V2 ? ctrl.loading.value : loadingMore.value))
-const displayFingerprint = computed(() => (V2 ? ctrl.serverFingerprint.value : issueFingerprint.value))
-const displaySelFingerprint = computed(() => (V2 ? ctrl.selectionFingerprint.value : issueSelectionFingerprint.value))
+const displayIssues = computed(() => ctrl.issues.value)
+const displayTotal = computed(() => ctrl.total.value)
+const displayHasMore = computed(() => ctrl.hasMore.value)
+const displayLoadingMore = computed(() => ctrl.loading.value)
+const displayFingerprint = computed(() => ctrl.serverFingerprint.value)
+const displaySelFingerprint = computed(() => ctrl.selectionFingerprint.value)
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 const trimmedSearchQuery = computed(() => search.query.trim())
-const serverFilterQuery = ref('')
-const serverSortKey = ref('')
-const serverSortDir = ref<'asc' | 'desc'>('asc')
-const freshnessLimit = computed(() =>
-  issueWindowMode.value === 'all' ? 0 : Math.max(PAGE, issues.value.length || PAGE),
-)
-const issuesPath = computed(() => {
-  const params = new URLSearchParams(serverFilterQuery.value)
-  params.set('fields', 'list')
-  params.set('limit', String(freshnessLimit.value))
-  params.set('offset', '0')
-  if (serverSortKey.value) {
-    params.set('sort', serverSortKey.value)
-    params.set('order', serverSortDir.value)
-  }
-  if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
-  return `/issues?${params.toString()}`
-})
-let issueRequestSeq = 0
-let searchReloadTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── Saved view tabs ──────────────────────────────────────────────────────────
 
@@ -115,12 +83,7 @@ const displayTabs = computed(() => {
 
 async function selectTab(view: SavedView) {
   activeTabId.value = view.id
-  // In v2, applyView drives IssueList -> server-filter-change -> controller,
-  // which does the fetch. v1 fetches here directly.
-  if (!V2) {
-    issueWindowMode.value = 'page'
-    await fetchIssues(PAGE, true)
-  }
+  // applyView drives IssueList -> server-filter-change -> the controller fetch.
   nextTick(() => issueListRef.value?.applyView(view))
 }
 
@@ -148,32 +111,12 @@ const showEmptyFilterBanner = computed(() => {
   return fl === 0 && fc > 0 && !isSearchMode.value && hasMore.value
 })
 
-function currentMainScroll(): HTMLElement | null {
-  return document.querySelector('.main-content')
-}
-
-function applyFreshIssues(envelope: IssueListEnvelope<Issue>) {
-  const scroller = currentMainScroll()
-  const top = scroller?.scrollTop ?? 0
-  issues.value = envelope.issues
-  total.value = envelope.total
-  issueHasMore.value = envelope.has_more ?? (envelope.total > envelope.issues.length)
-  issueFingerprint.value = envelope.fingerprint ?? ''
-  issueSelectionFingerprint.value = envelope.selection_fingerprint ?? ''
-  void nextTick(() => {
-    if (scroller) scroller.scrollTop = top
-  })
-}
-
-// v2 polls the controller's current window; v1 keeps its own path.
+// The controller polls its current window for freshness.
 const freshnessPath = computed(() =>
-  V2 ? controllerFreshnessPath(ctrl.query, ctrl.loaded.value, PAGE) : issuesPath.value,
+  controllerFreshnessPath(ctrl.query, ctrl.loaded.value, PAGE),
 )
 const freshness = useFreshness<IssueListEnvelope<Issue>>(freshnessPath, {
-  apply: (env) => {
-    if (V2) ctrl.reconcile(env.issues ?? [], env.total, env.revision)
-    else applyFreshIssues(env)
-  },
+  apply: (env) => ctrl.reconcile(env.issues ?? [], env.total, env.revision),
   count: (payload) => payload.total,
 })
 const freshnessStale = computed(() => freshness.stale.value)
@@ -213,53 +156,11 @@ async function fetchMeta() {
   allViews.value  = views
 }
 
-async function fetchIssues(limit: number, replace = false) {
-  const offset = replace ? 0 : issues.value.length
-  const request = ++issueRequestSeq
-  try {
-    const params = new URLSearchParams(serverFilterQuery.value)
-    params.set('fields', 'list')
-    params.set('limit', String(limit))
-    params.set('offset', String(offset))
-    if (serverSortKey.value) {
-      params.set('sort', serverSortKey.value)
-      params.set('order', serverSortDir.value)
-    }
-    if (trimmedSearchQuery.value.length >= 2) params.set('q', trimmedSearchQuery.value)
-    const url = `/issues?${params.toString()}`
-    const data = await api.get<IssueListEnvelope<Issue>>(url)
-    if (request !== issueRequestSeq) return
-    if (replace) {
-      issues.value = data.issues
-    } else {
-      issues.value = [...issues.value, ...data.issues]
-    }
-    total.value = data.total
-    issueHasMore.value = data.has_more ?? (total.value > issues.value.length)
-    issueFingerprint.value = data.fingerprint ?? ''
-    issueSelectionFingerprint.value = data.selection_fingerprint ?? ''
-    await freshness.prime({
-      issues: issues.value,
-      total: data.total,
-      offset: 0,
-      limit: issues.value.length,
-      has_more: issueHasMore.value,
-      returned: issues.value.length,
-      fingerprint: issueFingerprint.value,
-      selection_fingerprint: issueSelectionFingerprint.value,
-    })
-  } catch (e: unknown) {
-    if (request !== issueRequestSeq) return
-    error.value = errMsg(e, 'Failed to load issues.')
-  }
-}
-
 async function load() {
   loading.value = true
   error.value = ''
-  issueWindowMode.value = 'page'
-  await Promise.all([V2 ? ctrl.start() : fetchIssues(PAGE, true), fetchMeta()])
-  if (V2) await freshness.prime().catch(() => {}) // baseline the poll; never block load
+  await Promise.all([ctrl.start(), fetchMeta()])
+  await freshness.prime().catch(() => {}) // baseline the poll; never block load
   loading.value = false
   // Apply first tab
   if (displayTabs.value.length && activeTabId.value == null) {
@@ -268,47 +169,25 @@ async function load() {
   }
 }
 
-async function loadMore(n: number) {
-  if (V2) { await ctrl.loadMore(); return }
-  loadingMore.value = true
-  await fetchIssues(n)
-  loadingMore.value = false
+async function loadMore() {
+  await ctrl.loadMore()
 }
 
 async function loadAll() {
-  if (V2) { await ctrl.setWindow('all'); return }
-  loadingMore.value = true
-  issueWindowMode.value = 'all'
-  await fetchIssues(0, true)
-  loadingMore.value = false
-}
-
-function currentWindowLimit() {
-  return issueWindowMode.value === 'all' ? 0 : PAGE
+  await ctrl.setWindow('all')
 }
 
 // Re-fetch when search query changes (search-as-filter overlay).
 watch(trimmedSearchQuery, () => {
-  if (V2) { ctrl.setSearch(trimmedSearchQuery.value); return }
-  if (searchReloadTimer) clearTimeout(searchReloadTimer)
-  searchReloadTimer = setTimeout(() => {
-    void fetchIssues(currentWindowLimit(), true)
-  }, 150)
+  ctrl.setSearch(trimmedSearchQuery.value)
 })
 
 function onServerFilterChange(query: string) {
-  if (V2) { void ctrl.setRawFilter(query); return }
-  if (serverFilterQuery.value === query) return
-  serverFilterQuery.value = query
-  void fetchIssues(currentWindowLimit(), true)
+  void ctrl.setRawFilter(query)
 }
 
 function onServerSortChange(key: string, dir: 'asc' | 'desc') {
-  if (V2) { void ctrl.setSort(key, dir); return }
-  if (serverSortKey.value === key && serverSortDir.value === dir) return
-  serverSortKey.value = key
-  serverSortDir.value = dir
-  void fetchIssues(currentWindowLimit(), true)
+  void ctrl.setSort(key, dir)
 }
 
 // ── Infinite scroll sentinel ──────────────────────────────────────────────────
@@ -321,7 +200,7 @@ onMounted(async () => {
     if (scrollSentinel.value) {
       scrollObserver = new IntersectionObserver((entries) => {
         if (entries[0]?.isIntersecting && canAutoLoadMore.value && !displayLoadingMore.value) {
-          loadMore(PAGE)
+          loadMore()
         }
       }, { rootMargin: '200px' })
       scrollObserver.observe(scrollSentinel.value)
@@ -331,25 +210,19 @@ onMounted(async () => {
 
 onUnmounted(() => {
   scrollObserver?.disconnect()
-  if (searchReloadTimer) clearTimeout(searchReloadTimer)
   issueRefreshPrompt.clear(refreshIssueListFromHeader)
 })
 
 // ── Issue list mutations (browse mode only) ───────────────────────────────────
 
-function onCreated(issue: Issue) {
-  if (V2) { void ctrl.refresh(); return }
-  issues.value.push(issue); total.value++
+function onCreated() {
+  void ctrl.refresh()
 }
 function onUpdated(issue: Issue) {
-  if (V2) { ctrl.confirmMutation(issue.id, issue); return }
-  const idx = issues.value.findIndex(i => i.id === issue.id)
-  if (idx >= 0) issues.value[idx] = issue
+  ctrl.confirmMutation(issue.id, issue)
 }
-function onDeleted(id: number) {
-  if (V2) { void ctrl.refresh(); return }
-  issues.value = issues.value.filter(i => i.id !== id)
-  total.value = Math.max(0, total.value - 1)
+function onDeleted() {
+  void ctrl.refresh()
 }
 </script>
 
@@ -420,7 +293,7 @@ function onDeleted(id: number) {
 
       <!-- Infinite scroll sentinel -->
       <div ref="scrollSentinel" class="scroll-sentinel">
-        <LoadingText v-if="loadingMore" as="span" class="scroll-loading" label="Loading more…" />
+        <LoadingText v-if="displayLoadingMore" as="span" class="scroll-loading" label="Loading more…" />
       </div>
     </template>
   </div>
