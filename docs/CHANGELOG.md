@@ -5,6 +5,37 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] — 2026-06-29
+
+### Added
+
+- **`paimos issue delete` / `restore` / `trash` (PAI-481).** The CLI now wraps
+  the existing soft-delete lifecycle so accidental / probe / duplicate tickets
+  have a real cleanup path. `issue delete <ref> --yes` moves an issue to the
+  trash (reversible; cascades to descendant tasks); `--purge` removes it
+  permanently but is refused when the issue has comments or attachments —
+  steering to a reversible soft-delete or `--status cancelled` so real work
+  keeps its audit trail. `issue restore <id>` and `issue trash` round out the
+  lifecycle. `--yes` is required, so the commands are non-interactive and
+  agent-safe.
+
+### Changed
+
+- **OpenAPI declared an explicit public-core contract (PAI-294).**
+  `/api/openapi.json` now documents its coverage policy in `info.description`:
+  it is the stable, curated *public* surface (auth, users, projects, issues,
+  comments, time entries, attachments, documents, incidents, knowledge, GDPR
+  ops); internal/admin one-off tooling is intentionally omitted and is not part
+  of the stability contract.
+
+### Internal
+
+- **OpenAPI route-coverage guard (PAI-294).** The `/api` route block was
+  extracted into a testable `mountAPI()`; a new guard test (`TestOpenAPIContractRoutesExist`)
+  walks the real route tree and fails if the published spec references a route
+  that no longer exists. A CONTRIBUTING rule asks that new public routes be
+  documented in the same PR.
+
 ## [4.4.0] — 2026-06-25
 
 ### Added
