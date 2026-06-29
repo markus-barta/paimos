@@ -1,5 +1,12 @@
 <template>
   <div class="row-actions" :class="{ 'row-actions--collapsed': collapsed }">
+    <!-- PAI-610/612: transient "Implement this" feedback -->
+    <span
+      v-if="implementState !== 'idle'"
+      class="implement-status"
+      :class="`implement-status--${implementState}`"
+    >{{ implementMsg }}</span>
+
     <!-- Timer — always visible, never collapsed -->
     <!-- State 1: Running timer — green pulsing badge -->
     <span v-if="timerStore.isRunning(issueId)" class="timer-badge timer-badge--running" @click.stop="stopTimer" title="Stop timer">
@@ -30,6 +37,9 @@
       <button v-if="canHaveChildren && !compact" class="row-act row-act--hover" title="Add child issue" @click.stop="$emit('add-child')">
         <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" />
       </button>
+      <button v-if="isImplementable" class="row-act row-act--hover row-act--implement" title="Implement this — hand to your local agent" :disabled="implementState === 'busy'" @click.stop="implement()">
+        <AppIcon name="zap" :size="13" />
+      </button>
       <button v-if="isAdmin" class="row-act row-act--hover row-act--danger" title="Move to trash (recoverable)" @click.stop="$emit('delete')">
         <AppIcon name="trash-2" :size="13" />
       </button>
@@ -55,6 +65,9 @@
             <button v-if="canHaveChildren && !compact" class="ellipsis-item" @click.stop="$emit('add-child'); menuOpen = false">
               <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" /> Add child
             </button>
+            <button v-if="isImplementable" class="ellipsis-item" @click.stop="implement()">
+              <AppIcon name="zap" :size="13" /> Implement this
+            </button>
             <button v-if="isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
               <AppIcon name="trash-2" :size="13" /> Move to trash
             </button>
@@ -68,6 +81,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { api, errMsg } from '@/api/client'
 import { useTimerStore } from '@/stores/timer'
 
 const props = defineProps<{
@@ -83,6 +97,35 @@ const props = defineProps<{
 }>()
 
 const isTimeable = computed(() => props.issueType === 'ticket' || props.issueType === 'task')
+
+// PAI-610/612: "Implement this" — hand the ticket to a local agent run.
+const isImplementable = computed(
+  () =>
+    props.issueType === 'ticket' ||
+    props.issueType === 'task' ||
+    props.issueType === 'epic',
+)
+const implementState = ref<'idle' | 'busy' | 'done' | 'error'>('idle')
+const implementMsg = ref('')
+
+async function implement() {
+  if (implementState.value === 'busy') return
+  implementState.value = 'busy'
+  implementMsg.value = ''
+  menuOpen.value = false
+  try {
+    await api.post(`/issues/${props.issueId}/implement`, {})
+    implementState.value = 'done'
+    implementMsg.value = 'Queued'
+  } catch (e: unknown) {
+    implementState.value = 'error'
+    implementMsg.value = errMsg(e, 'Failed')
+  }
+  window.setTimeout(() => {
+    implementState.value = 'idle'
+    implementMsg.value = ''
+  }, 4000)
+}
 
 defineEmits<{
   (e: 'add-child'): void
@@ -208,6 +251,19 @@ tr:hover .row-act--hover,
 .timer-badge--booked:hover .badge-play-icon { color: #059669; }
 .row-act--play:hover { color: var(--bp-green, #16a34a); }
 .row-act--danger:hover { color: #dc2626; background: #fef2f2; }
+.row-act--implement:hover { color: var(--bp-blue, #2563eb); }
+.row-act--implement:disabled { opacity: .5; cursor: not-allowed; }
+
+/* "Implement this" transient feedback */
+.implement-status {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px;
+  white-space: nowrap; line-height: 1;
+}
+.implement-status--busy { color: var(--text-muted); }
+.implement-status--done {
+  background: color-mix(in srgb, #2ecc71 22%, transparent); color: #1e8449;
+}
+.implement-status--error { background: #fef2f2; color: #c0392b; }
 
 /* Ellipsis menu */
 .ellipsis-wrap { position: relative; }
