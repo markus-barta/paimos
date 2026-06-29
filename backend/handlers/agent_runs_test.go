@@ -9,6 +9,7 @@ package handlers_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -103,4 +104,67 @@ func TestAgentRunsLifecycle(t *testing.T) {
 	// The requester (admin here) can fetch the single run.
 	resp = ts.get(t, "/api/runs/"+itoa(runID), ts.adminCookie)
 	assertStatus(t, resp, http.StatusOK)
+}
+
+// TestAgentRunReportComment covers PAI-609: a terminal transition auto-posts a
+// human-readable summary comment on the issue, exactly once.
+func TestAgentRunReportComment(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Report me", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie,
+		map[string]any{"device_id": "laptop-1"})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	runID := int64(run["id"].(float64))
+
+	// running → no comment yet.
+	ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running"})
+	if n := commentCount(t, issueID); n != 0 {
+		t.Fatalf("comments after running = %d, want 0", n)
+	}
+
+	// deployed → one report comment.
+	ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"status": "deployed", "version": "4.6.0", "deploy_target": "ppm",
+	})
+	body, n := firstComment(t, issueID)
+	if n != 1 {
+		t.Fatalf("comments after deployed = %d, want 1", n)
+	}
+	for _, want := range []string{"Implemented", "v4.6.0", "ppm", "laptop-1"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("report comment %q missing %q", body, want)
+		}
+	}
+
+	// A redundant deployed PATCH must not post a second comment.
+	ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "deployed"})
+	if n := commentCount(t, issueID); n != 1 {
+		t.Errorf("comments after redundant deployed = %d, want 1", n)
+	}
+}
+
+func commentCount(t *testing.T, issueID int64) int {
+	t.Helper()
+	var n int
+	if err := db.DB.QueryRow(`SELECT COUNT(*) FROM comments WHERE issue_id=?`, issueID).Scan(&n); err != nil {
+		t.Fatalf("count comments: %v", err)
+	}
+	return n
+}
+
+func firstComment(t *testing.T, issueID int64) (string, int) {
+	t.Helper()
+	var body string
+	_ = db.DB.QueryRow(`SELECT body FROM comments WHERE issue_id=? ORDER BY id LIMIT 1`, issueID).Scan(&body)
+	return body, commentCount(t, issueID)
 }

@@ -14,6 +14,8 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -329,5 +331,71 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "reload failed", http.StatusInternalServerError)
 		return
 	}
+	// PAI-609: on the transition INTO a reportable terminal status, post a
+	// human-readable summary comment on the issue so the trail stays consistent
+	// with the structured run record. Best-effort — never fails the PATCH.
+	if run.Status != existing.Status && agentRunIsReportable(run.Status) {
+		postAgentRunReport(run.IssueID, run.RequestedBy, run)
+	}
 	jsonOK(w, run)
+}
+
+// agentRunIsReportable reports whether a terminal status warrants a summary
+// comment (cancelled/declined runs are intentionally silent).
+func agentRunIsReportable(s string) bool {
+	return s == "deployed" || s == "tests_passed" || s == "tests_failed" || s == "failed"
+}
+
+// postAgentRunReport writes an internal issue comment summarizing a finished
+// run (PAI-609). Attributed to the run's requester; best-effort.
+func postAgentRunReport(issueID int64, authorID *int64, run *AgentRun) {
+	body := agentRunReportBody(run)
+	if body == "" {
+		return
+	}
+	if _, err := db.DB.Exec(
+		`INSERT INTO comments(issue_id, author_id, body, visibility) VALUES(?, ?, ?, ?)`,
+		issueID, authorID, body, CommentVisibilityInternal); err != nil {
+		log.Printf("agent run report comment: issue=%d run=%d: %v", issueID, run.ID, err)
+	}
+}
+
+func agentRunReportBody(run *AgentRun) string {
+	on := "an agent"
+	if run.DeviceID != "" {
+		on = "device " + run.DeviceID
+	}
+	at := ""
+	if run.FinishedAt != nil {
+		at = " at " + *run.FinishedAt
+	}
+	tests := ""
+	if run.TestsSummary != nil && strings.TrimSpace(*run.TestsSummary) != "" {
+		tests = " Tests: " + *run.TestsSummary + "."
+	}
+	switch run.Status {
+	case "deployed":
+		ver := ""
+		if run.Version != "" {
+			ver = " in v" + run.Version
+		}
+		target := ""
+		if run.DeployTarget != "" {
+			target = ", deployed to " + run.DeployTarget
+		}
+		return fmt.Sprintf("🤖 Implemented%s%s%s.%s (run #%d on %s)", ver, at, target, tests, run.ID, on)
+	case "tests_passed":
+		ver := ""
+		if run.Version != "" {
+			ver = " (v" + run.Version + ")"
+		}
+		return fmt.Sprintf("🤖 Implemented%s%s.%s (run #%d on %s)", at, ver, tests, run.ID, on)
+	case "tests_failed", "failed":
+		reason := run.Error
+		if strings.TrimSpace(reason) == "" {
+			reason = "no detail provided"
+		}
+		return fmt.Sprintf("🤖 Run #%d %s%s: %s (on %s)", run.ID, run.Status, at, reason, on)
+	}
+	return ""
 }
