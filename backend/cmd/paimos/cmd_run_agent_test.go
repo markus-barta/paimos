@@ -13,6 +13,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -126,5 +128,61 @@ func TestAgentRunnerDeclineCancels(t *testing.T) {
 	}
 	if len(*patches) != 1 || (*patches)[0]["status"] != "cancelled" {
 		t.Fatalf("patches=%+v, want a single cancelled", *patches)
+	}
+}
+
+// TestAgentRunnerDeployGated covers PAI-613: with --allow-deploy + --deploy-exec
+// AND a run-level deploy_target, the runner deploys after the implement and
+// stamps deployed + the captured version.
+func TestAgentRunnerDeployGated(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"running"}`)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("4.5.1\n"), 0o600); err != nil {
+		t.Fatalf("seed VERSION: %v", err)
+	}
+	var calls []string
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: root,
+		execCmd: "claude", autoConfirm: true,
+		allowDeploy: true, deployExec: "just deploy-ppm",
+		spawn: func(_ context.Context, _, cmd string, _ []string) error {
+			calls = append(calls, cmd)
+			return nil
+		},
+	}
+	if err := a.handle(context.Background(), implementEvent()); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if len(calls) != 2 || calls[0] != "claude" || calls[1] != "just deploy-ppm" {
+		t.Fatalf("spawn calls = %v, want [claude, just deploy-ppm]", calls)
+	}
+	last := (*patches)[len(*patches)-1]
+	if last["status"] != "deployed" || last["version"] != "4.5.1" || last["deploy_target"] != "ppm" {
+		t.Fatalf("final patch = %+v, want deployed v4.5.1 ppm", last)
+	}
+}
+
+// TestAgentRunnerDeployStaysGatedOff: a deploy_target + --deploy-exec alone do
+// NOT deploy — --allow-deploy is the third required gate.
+func TestAgentRunnerDeployStaysGatedOff(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"running"}`)
+	var calls []string
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
+		execCmd: "claude", autoConfirm: true,
+		allowDeploy: false, deployExec: "just deploy-ppm",
+		spawn: func(_ context.Context, _, cmd string, _ []string) error {
+			calls = append(calls, cmd)
+			return nil
+		},
+	}
+	if err := a.handle(context.Background(), implementEvent()); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if len(calls) != 1 || calls[0] != "claude" {
+		t.Fatalf("spawn calls = %v, want just [claude] (deploy gated off)", calls)
+	}
+	if last := (*patches)[len(*patches)-1]; last["status"] != "tests_passed" {
+		t.Fatalf("final patch = %+v, want tests_passed (no deploy)", last)
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -44,10 +45,12 @@ func runAgentCmd() *cobra.Command {
 
 func runAgentWatchCmd() *cobra.Command {
 	var (
-		projectRef string
-		repoRoot   string
-		execCmd    string
-		yes        bool
+		projectRef  string
+		repoRoot    string
+		execCmd     string
+		yes         bool
+		allowDeploy bool
+		deployExec  string
 	)
 	c := &cobra.Command{
 		Use:   "watch",
@@ -59,8 +62,9 @@ repo and reports progress back to PAIMOS.
 
 Safe by default: it processes one job at a time, only ever runs in --repo-root,
 prompts for confirmation before spawning (unless --yes), and does NOT deploy —
-it reports the run as tests_passed / failed only. Deploy stays a separate,
-manual step.
+it reports the run as tests_passed / failed only. Deploy is triple-gated: it
+runs only when --allow-deploy AND --deploy-exec are set AND the run carries a
+deploy_target.
 
 The spawned command sees PAIMOS_RUN_ID and PAIMOS_ISSUE_KEY in its environment
 and may report richer progress itself via the paimos CLI (e.g. PATCH the run to
@@ -70,25 +74,39 @@ Examples:
   paimos run-agent watch --project PAI --repo-root .
   paimos run-agent watch --project PAI --yes --exec "claude --print"`,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runAgentWatch(projectRef, repoRoot, execCmd, yes)
+			return runAgentWatch(runAgentOpts{
+				projectRef: projectRef, repoRoot: repoRoot, execCmd: execCmd,
+				yes: yes, allowDeploy: allowDeploy, deployExec: deployExec,
+			})
 		},
 	}
 	c.Flags().StringVarP(&projectRef, "project", "p", "", "project key or id (required)")
 	c.Flags().StringVar(&repoRoot, "repo-root", "", "repo the runner operates in (default: cwd)")
 	c.Flags().StringVar(&execCmd, "exec", "claude", "command to spawn for a job (run in --repo-root)")
 	c.Flags().BoolVar(&yes, "yes", false, "skip the per-job confirmation prompt (non-interactive)")
+	c.Flags().BoolVar(&allowDeploy, "allow-deploy", false, "allow the runner to deploy after a successful run (off by default)")
+	c.Flags().StringVar(&deployExec, "deploy-exec", "", `deploy command when --allow-deploy and the run has a deploy_target (e.g. "just deploy-ppm")`)
 	return c
 }
 
-func runAgentWatch(projectRef, repoRoot, execCmd string, yes bool) error {
-	if strings.TrimSpace(projectRef) == "" {
+type runAgentOpts struct {
+	projectRef  string
+	repoRoot    string
+	execCmd     string
+	yes         bool
+	allowDeploy bool
+	deployExec  string
+}
+
+func runAgentWatch(o runAgentOpts) error {
+	if strings.TrimSpace(o.projectRef) == "" {
 		return &usageError{msg: "--project is required"}
 	}
 	client, err := instanceClient()
 	if err != nil {
 		return err
 	}
-	projectID, err := resolveProjectID(client, projectRef)
+	projectID, err := resolveProjectID(client, o.projectRef)
 	if err != nil {
 		return err
 	}
@@ -96,7 +114,7 @@ func runAgentWatch(projectRef, repoRoot, execCmd string, yes bool) error {
 	if err != nil {
 		return err
 	}
-	root, err := resolveWorkspaceRoot(repoRoot)
+	root, err := resolveWorkspaceRoot(o.repoRoot)
 	if err != nil {
 		return err
 	}
@@ -109,9 +127,13 @@ func runAgentWatch(projectRef, repoRoot, execCmd string, yes bool) error {
 	ctx, cancel := signalContext()
 	defer cancel()
 
-	runner := newAgentRunner(client, deviceID, root, execCmd, yes)
-	fmt.Fprintf(stdout, "run-agent watching %s (device=%s, repo=%s) — report-back only, no auto-deploy\n",
-		projectKey, deviceID, root)
+	runner := newAgentRunner(client, deviceID, root, o.execCmd, o.yes, o.allowDeploy, o.deployExec)
+	deployNote := "report-back only, no auto-deploy"
+	if runner.allowDeploy && runner.deployExec != "" {
+		deployNote = "deploy ENABLED via " + runner.deployExec + " (only for runs with a deploy_target)"
+	}
+	fmt.Fprintf(stdout, "run-agent watching %s (device=%s, repo=%s) — %s\n",
+		projectKey, deviceID, root, deployNote)
 
 	// One job at a time: a busy runner skips new events rather than spawning a
 	// second Claude Code in the same repo. The skipped run stays queued and can
@@ -147,26 +169,31 @@ type agentRunner struct {
 	repoRoot    string
 	execCmd     string
 	autoConfirm bool
+	allowDeploy bool
+	deployExec  string
 	spawn       func(ctx context.Context, repoRoot, execCmd string, env []string) error
 	confirm     func(issueKey string, runID int64, repoRoot string) bool
 }
 
-func newAgentRunner(client *Client, deviceID, repoRoot, execCmd string, autoConfirm bool) *agentRunner {
+func newAgentRunner(client *Client, deviceID, repoRoot, execCmd string, autoConfirm, allowDeploy bool, deployExec string) *agentRunner {
 	return &agentRunner{
 		client:      client,
 		deviceID:    deviceID,
 		repoRoot:    repoRoot,
 		execCmd:     execCmd,
 		autoConfirm: autoConfirm,
+		allowDeploy: allowDeploy,
+		deployExec:  deployExec,
 		spawn:       defaultSpawn,
 		confirm:     defaultConfirm,
 	}
 }
 
 type agentRunDetail struct {
-	IssueID  int64  `json:"issue_id"`
-	DeviceID string `json:"device_id"`
-	Status   string `json:"status"`
+	IssueID      int64  `json:"issue_id"`
+	DeviceID     string `json:"device_id"`
+	DeployTarget string `json:"deploy_target"`
+	Status       string `json:"status"`
 }
 
 func (a *agentRunner) handle(ctx context.Context, ev sync.Event) error {
@@ -207,9 +234,24 @@ func (a *agentRunner) handle(ctx context.Context, ev sync.Event) error {
 		_ = a.patch(runID, map[string]any{"status": "failed", "error": spawnErr.Error()})
 		return fmt.Errorf("run %d failed: %w", runID, spawnErr)
 	}
-	// Success. Only stamp tests_passed if the agent didn't already advance the
-	// run to a terminal status itself (it has the paimos CLI and may report
-	// richer progress). The runner never deploys.
+	// Implement succeeded. Deploy is triple-gated (PAI-613): --allow-deploy AND
+	// --deploy-exec AND a run-level deploy_target. When all three hold, run the
+	// deploy and stamp deployed + the captured version; otherwise report-back
+	// only (tests_passed, unless the agent already advanced the run itself).
+	if a.allowDeploy && a.deployExec != "" && detail.DeployTarget != "" {
+		fmt.Fprintf(stdout, "run %d: deploying to %s via %q\n", runID, detail.DeployTarget, a.deployExec)
+		if depErr := a.spawn(ctx, a.repoRoot, a.deployExec, env); depErr != nil {
+			_ = a.patch(runID, map[string]any{"status": "failed", "error": "deploy: " + depErr.Error()})
+			return fmt.Errorf("run %d deploy failed: %w", runID, depErr)
+		}
+		_ = a.patch(runID, map[string]any{
+			"status":        "deployed",
+			"version":       readVersionFile(a.repoRoot),
+			"deploy_target": detail.DeployTarget,
+		})
+		fmt.Fprintf(stdout, "run %d deployed to %s\n", runID, detail.DeployTarget)
+		return nil
+	}
 	if cur, _ := a.fetchRun(runID); cur != nil && cur.Status == "running" {
 		_ = a.patch(runID, map[string]any{"status": "tests_passed"})
 	}
@@ -232,6 +274,18 @@ func (a *agentRunner) fetchRun(runID int64) (*agentRunDetail, error) {
 func (a *agentRunner) patch(runID int64, fields map[string]any) error {
 	_, err := a.client.do("PATCH", fmt.Sprintf("/api/runs/%d", runID), fields)
 	return err
+}
+
+// readVersionFile returns the trimmed contents of <repoRoot>/VERSION, or "" if
+// it can't be read — best-effort version capture for a deploy report (PAI-613).
+func readVersionFile(repoRoot string) string {
+	// #nosec G304 -- repoRoot is the operator's own --repo-root flag and the
+	// filename is the fixed literal "VERSION"; neither is network/user input.
+	b, err := os.ReadFile(filepath.Join(repoRoot, "VERSION"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func defaultSpawn(ctx context.Context, repoRoot, execCmd string, env []string) error {
