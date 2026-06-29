@@ -293,6 +293,71 @@ key should never disrupt an unrelated workflow.
 
 ---
 
+## "Implement this" — UI-triggered local runs (PAI-605)
+
+PAIMOS can hand a ticket to a coding agent **on a developer's own workstation**.
+A button in the web UI creates a *run*; the developer's local runner picks it up
+over the existing SSE channel, executes (Claude Code by default), and reports the
+result back onto the ticket. This is a separate **execution** surface from the
+render-only adapter protocol (`paimos skill render`) — the adapter turns a
+canonical agent artifact into a harness file; the runner *executes* work.
+
+**Default posture: opt-in, repo-scoped, confirm-gated, and report-back only — no
+auto-deploy.** Deploy stays a manual step until the deploy-gating phase.
+
+### Run lifecycle
+
+```
+queued → running → tests_passed | tests_failed → deployed
+                                                ↘ failed | cancelled
+```
+
+### Endpoints
+
+```bash
+# Create a run (the "Implement this" button). Project-editor gated.
+# Optional body: { "device_id": "<target runner>", "deploy_target": "ppm" }
+curl -X POST -H "Authorization: Bearer $KEY" \
+  "$BASE/api/issues/PAI-265/implement"
+
+# List a ticket's runs (issue-access gated) — the UI's run-status card.
+curl -H "Authorization: Bearer $KEY" "$BASE/api/issues/PAI-265/runs"
+
+# Fetch / update a single run (requester or admin). The runner PATCHes the
+# status transitions and the structured report.
+curl -H "Authorization: Bearer $KEY" "$BASE/api/runs/42"
+curl -X PATCH -H "Authorization: Bearer $KEY" \
+  -d '{"status":"deployed","version":"4.6.0","deploy_target":"ppm",
+       "tests_summary":"42 passed"}' \
+  "$BASE/api/runs/42"
+
+# Online, implement-capable runners for a project (the device picker).
+curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/2/runners"
+```
+
+`POST …/implement` publishes an **`implement_requested`** SSE event on the
+project's `…/agents/events` stream — the run id rides in the event's `rev`, the
+issue key in `name`.
+
+### The runner
+
+```bash
+# On the developer's workstation, in the repo checkout:
+paimos run-agent watch --project PAI --repo-root .
+#   subscribes advertising implement-capability (?implement=1), and on an
+#   implement_requested event: marks the run running, spawns `claude` (override
+#   with --exec) in --repo-root, then reports tests_passed / failed.
+#   One job at a time; prompts before each run unless --yes.
+```
+
+The spawned command sees `PAIMOS_RUN_ID` and `PAIMOS_ISSUE_KEY` in its
+environment, so the agent can PATCH richer progress itself (e.g. capture the
+version, attach a log, advance to `deployed`). On any transition into a terminal
+status the server auto-posts a summary comment on the ticket — so the
+human-readable trail always matches the structured run record.
+
+---
+
 ## Best practices for agent implementors
 
 1. **Search before creating.** Run `GET /api/search?q=...` first so

@@ -25,6 +25,7 @@ Start here when opening this repo cold.
 - `POST /api/projects/{id}/retrieve`
 - `GET /api/issues/{id}/anchors`
 - `GET /api/projects/{id}/agents/{name}.json` — canonical agent artifact (PAI-329)
+- `POST /api/issues/{id}/implement` · `GET /api/issues/{id}/runs` · `GET|PATCH /api/runs/{id}` · `GET /api/projects/{id}/runners` — "Implement this" run lifecycle (PAI-605; see [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md))
 
 ## Repo-side tooling
 
@@ -32,6 +33,7 @@ Start here when opening this repo cold.
 - `paimos anchors verify --index .pmo/anchors.json`
 - `paimos onboard --project PAI [--agent <name>]` — single-shot project briefing (PAI-340)
 - `paimos skill render <agent>` — render an agent artifact through a harness adapter (PAI-329 / PAI-332)
+- `paimos run-agent watch --project PAI --repo-root .` — local "Implement this" runner; spawns Claude Code on a UI-triggered run, report-back only (PAI-608)
 
 ## Notes
 
