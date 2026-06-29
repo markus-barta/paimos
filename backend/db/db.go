@@ -5333,6 +5333,22 @@ func migrate(db *sql.DB) error {
 		{126, []string{
 			`ALTER TABLE auto_watch_subscriptions ADD COLUMN can_implement INTEGER NOT NULL DEFAULT 0`,
 		}},
+		// M127 / PAI-605 (audit follow-up): enforce "at most one ACTIVE run per
+		// issue" in the DB. ImplementIssue's idempotency was a non-atomic
+		// SELECT-then-INSERT; two concurrent "Implement this" clicks could both
+		// pass the check and create duplicate queued runs that the runner then
+		// executes twice. A partial unique index makes the guarantee atomic.
+		// First collapse any pre-existing duplicates (keep the newest) so the
+		// index can be created on existing data.
+		{127, []string{
+			`UPDATE agent_runs SET status='cancelled', finished_at=COALESCE(finished_at, datetime('now'))
+				WHERE status IN ('queued','running')
+				  AND id NOT IN (
+					SELECT MAX(id) FROM agent_runs WHERE status IN ('queued','running') GROUP BY issue_id
+				  )`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_runs_active_issue
+				ON agent_runs(issue_id) WHERE status IN ('queued','running')`,
+		}},
 	}
 
 	for _, m := range migrations {

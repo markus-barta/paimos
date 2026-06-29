@@ -10,6 +10,7 @@ package handlers_test
 import (
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/markus-barta/paimos/backend/db"
@@ -195,6 +196,156 @@ func TestImplementIsIdempotent(t *testing.T) {
 	decode(t, resp, &list)
 	if len(list.Runs) != 1 {
 		t.Errorf("runs = %d, want 1 (idempotent)", len(list.Runs))
+	}
+}
+
+// seedRunForIssue creates an issue and a queued run on it, returning both ids.
+func seedRunForIssue(t *testing.T, ts *testServer, projID int64, num int) (int64, int64) {
+	t.Helper()
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, num, "ticket", "Run probe", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	return issueID, int64(run["id"].(float64))
+}
+
+// TestImplementConcurrentCreatesOneRun proves the idempotency is atomic (the
+// partial unique index, migration 127), not a racy SELECT-then-INSERT (audit F1).
+func TestImplementConcurrentCreatesOneRun(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Race", "backlog")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	const N = 8
+	var wg sync.WaitGroup
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest(http.MethodPost, ts.srv.URL+"/api/issues/"+itoa(issueID)+"/implement", strings.NewReader("{}"))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Cookie", ts.adminCookie)
+			if resp, e := http.DefaultClient.Do(req); e == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	wg.Wait()
+
+	var count int
+	if err := db.DB.QueryRow(
+		`SELECT COUNT(*) FROM agent_runs WHERE issue_id=? AND status IN ('queued','running')`,
+		issueID).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("active runs = %d, want exactly 1 (idempotent under concurrency)", count)
+	}
+}
+
+// TestAgentRunClaimConcurrent proves the queued→running claim is atomic under
+// real concurrency: exactly one claimant wins (audit F2).
+func TestAgentRunClaimConcurrent(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+
+	const N = 8
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, _ := http.NewRequest(http.MethodPatch, ts.srv.URL+"/api/runs/"+itoa(runID),
+				strings.NewReader(`{"status":"running","if_status":"queued"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Cookie", ts.adminCookie)
+			resp, e := http.DefaultClient.Do(req)
+			if e != nil {
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				mu.Lock()
+				wins++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if wins != 1 {
+		t.Fatalf("claim wins = %d, want exactly 1 (atomic claim)", wins)
+	}
+}
+
+// TestAgentRunIllegalTransition rejects a status jump that skips the lifecycle.
+func TestAgentRunIllegalTransition(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	// queued → deployed is illegal (must pass through running).
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "deployed", "version": "9.9.9"})
+	assertStatus(t, resp, http.StatusConflict)
+	// queued → running is legal.
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running"})
+	assertStatus(t, resp, http.StatusOK)
+}
+
+// TestAgentRunTerminalImmutable rejects any edit (even non-status) once terminal.
+func TestAgentRunTerminalImmutable(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running"}), http.StatusOK)
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "deployed"}), http.StatusOK)
+	// A non-status edit on a terminal run must be refused.
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"error": "tampered"})
+	assertStatus(t, resp, http.StatusConflict)
+}
+
+// TestAgentRunLogAttachmentValidation rejects an attachment not on the run's issue.
+func TestAgentRunLogAttachmentValidation(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"log_attachment_id": 999999})
+	assertStatus(t, resp, http.StatusBadRequest)
+}
+
+// TestImplementReapsStaleRunning recovers a pipeline wedged by a crashed runner.
+func TestImplementReapsStaleRunning(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	issueID, oldRunID := seedRunForIssue(t, ts, projID, 1)
+	// Simulate a crashed runner: an old 'running' run that never finished.
+	if _, err := db.DB.Exec(
+		`UPDATE agent_runs SET status='running', started_at=datetime('now','-3 hours') WHERE id=?`, oldRunID); err != nil {
+		t.Fatalf("wedge run: %v", err)
+	}
+	// A fresh implement reaps the stale run and queues a new one.
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusCreated)
+	var staleStatus string
+	if err := db.DB.QueryRow(`SELECT status FROM agent_runs WHERE id=?`, oldRunID).Scan(&staleStatus); err != nil {
+		t.Fatalf("reload stale: %v", err)
+	}
+	if staleStatus != "failed" {
+		t.Fatalf("stale run status = %q, want failed (reaped)", staleStatus)
 	}
 }
 

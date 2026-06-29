@@ -93,8 +93,10 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 	// (device, project) rows. The browser UI uses the toggle endpoint
 	// directly.
 	// PAI-607: a runner advertises implement-capability with `?implement=1`.
-	// Browser tabs omit it and stay can_implement=0.
-	canImplement := r.URL.Query().Get("implement") == "1"
+	// Browser tabs omit it and stay can_implement=0. Audit: only a project EDITOR
+	// may actually advertise as a runner (it takes edit rights to claim/report a
+	// run), so a mere viewer can't appear in the device picker or receive jobs.
+	canImplement := r.URL.Query().Get("implement") == "1" && auth.CanEditProject(r, projectID)
 	if err := upsertAutoWatchEnabled(user.ID, deviceID, projectID, canImplement); err != nil {
 		jsonError(w, "subscription init failed", http.StatusInternalServerError)
 		return

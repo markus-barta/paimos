@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/paimos/backend/auth"
@@ -54,6 +55,29 @@ var agentRunStatuses = map[string]bool{
 
 func agentRunIsTerminal(s string) bool {
 	return s == "deployed" || s == "failed" || s == "cancelled"
+}
+
+// legalRunTransitions is the run lifecycle as a directed graph. Terminal states
+// (deployed/failed/cancelled) have no outgoing edges and are handled by the
+// terminal-immutability guard. A same-status PATCH is a no-op (not a transition).
+var legalRunTransitions = map[string]map[string]bool{
+	"queued":       {"running": true, "cancelled": true},
+	"running":      {"tests_passed": true, "tests_failed": true, "deployed": true, "failed": true, "cancelled": true},
+	"tests_passed": {"deployed": true, "failed": true},
+	"tests_failed": {"failed": true},
+}
+
+func isLegalRunTransition(from, to string) bool {
+	return legalRunTransitions[from][to]
+}
+
+// attachmentBelongsToIssue reports whether attachment attID is linked to issueID.
+func attachmentBelongsToIssue(attID, issueID int64) bool {
+	var aIssue sql.NullInt64
+	if err := db.DB.QueryRow(`SELECT issue_id FROM attachments WHERE id=?`, attID).Scan(&aIssue); err != nil {
+		return false
+	}
+	return aIssue.Valid && aIssue.Int64 == issueID
 }
 
 const agentRunCols = `id, issue_id, project_id, device_id, requested_by, agent_name, session_id, ` +
@@ -129,15 +153,23 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body) // body is optional
 	}
-	// Idempotency (PAI-605 M7): if the issue already has an active run, return it
-	// rather than queueing a duplicate — otherwise repeated clicks each become a
-	// separate run that the runner's catch-up would all execute.
+	// Idempotency + stale-orphan reaping (PAI-605 M7 + audit). The DB enforces
+	// at most one active run per issue (idx_agent_runs_active_issue, migration
+	// 127), so the INSERT below is the real authority; this pre-check just returns
+	// the existing active run on the common (non-racing) path, and reaps a run a
+	// crashed runner left wedged in 'running' so the pipeline can recover.
 	var activeID int64
+	var activeStatus string
+	var activeStarted sql.NullString
 	if err := db.DB.QueryRow(
-		`SELECT id FROM agent_runs WHERE issue_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
-		issueID).Scan(&activeID); err == nil && activeID > 0 {
-		if run, rerr := getAgentRunByID(activeID); rerr == nil {
-			jsonOK(w, run) // 200 (not 201): an existing run is returned
+		`SELECT id, status, started_at FROM agent_runs WHERE issue_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
+		issueID).Scan(&activeID, &activeStatus, &activeStarted); err == nil && activeID > 0 {
+		if activeStatus == "running" && agentRunStartedBefore(activeStarted, 2*time.Hour) {
+			_, _ = db.DB.Exec(
+				`UPDATE agent_runs SET status='failed', error='abandoned (runner did not finish)', finished_at=datetime('now') WHERE id=? AND status='running'`,
+				activeID)
+		} else if run, rerr := getAgentRunByID(activeID); rerr == nil {
+			jsonOK(w, run) // 200 (not 201): an existing active run is returned
 			return
 		}
 	}
@@ -152,6 +184,11 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 		 VALUES(?,?,?,?,?, 'queued')`,
 		issueID, projectID, strings.TrimSpace(body.DeviceID), requestedBy, strings.TrimSpace(body.DeployTarget))
 	if err != nil {
+		// Lost the unique-index race to a concurrent click — return its run (200).
+		if existing := activeRunForIssue(issueID); existing != nil {
+			jsonOK(w, existing)
+			return
+		}
 		jsonError(w, "could not create run", http.StatusInternalServerError)
 		return
 	}
@@ -173,6 +210,35 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, run)
+}
+
+// agentRunStartedBefore reports whether started_at (SQLite UTC "YYYY-MM-DD
+// HH:MM:SS") is older than d ago. A null/blank/unparseable value is "not old".
+func agentRunStartedBefore(started sql.NullString, d time.Duration) bool {
+	if !started.Valid || strings.TrimSpace(started.String) == "" {
+		return false
+	}
+	t, err := time.Parse("2006-01-02 15:04:05", started.String)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) > d
+}
+
+// activeRunForIssue returns the issue's current active (queued/running) run, or
+// nil if there is none.
+func activeRunForIssue(issueID int64) *AgentRun {
+	var id int64
+	if err := db.DB.QueryRow(
+		`SELECT id FROM agent_runs WHERE issue_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
+		issueID).Scan(&id); err != nil {
+		return nil
+	}
+	run, err := getAgentRunByID(id)
+	if err != nil {
+		return nil
+	}
+	return run
 }
 
 // agentRunIssueKey returns the "PAI-123" key for an issue id (best-effort;
@@ -337,21 +403,38 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the status value first (bad input is a 400 regardless of run state).
+	if body.Status != nil && !agentRunStatuses[strings.TrimSpace(*body.Status)] {
+		jsonError(w, "invalid status", http.StatusBadRequest)
+		return
+	}
+	// Audit: a terminal run is immutable — reject ANY update (a status move out of
+	// terminal AND non-status field edits), so the historical record can't be
+	// rewritten after the fact.
+	if agentRunIsTerminal(existing.Status) {
+		jsonError(w, "run is already in a terminal status", http.StatusConflict)
+		return
+	}
+
 	sets := make([]string, 0, 8)
 	args := make([]any, 0, 8)
 	statusChanged := false
+	newStatus := existing.Status
 	if body.Status != nil {
 		s := strings.TrimSpace(*body.Status)
 		if !agentRunStatuses[s] {
 			jsonError(w, "invalid status", http.StatusBadRequest)
 			return
 		}
-		// L1: a terminal run cannot be moved to a different status.
-		if agentRunIsTerminal(existing.Status) && s != existing.Status {
-			jsonError(w, "run is already in a terminal status", http.StatusConflict)
+		// Audit: enforce the lifecycle — a status change must follow a legal edge,
+		// so a run can't jump (e.g.) queued→deployed with a fabricated version.
+		// existing.Status is non-terminal here (checked above).
+		if s != existing.Status && !isLegalRunTransition(existing.Status, s) {
+			jsonError(w, "illegal status transition", http.StatusConflict)
 			return
 		}
 		statusChanged = s != existing.Status
+		newStatus = s
 		sets = append(sets, "status=?")
 		args = append(args, s)
 		if s == "running" && existing.StartedAt == nil {
@@ -374,6 +457,12 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		args = append(args, strings.TrimSpace(*body.DeployTarget))
 	}
 	if body.LogAttachmentID != nil {
+		// Audit: only an attachment that belongs to this run's issue may be linked,
+		// so a run can't carry a cross-issue attachment reference.
+		if !attachmentBelongsToIssue(*body.LogAttachmentID, existing.IssueID) {
+			jsonError(w, "log_attachment_id does not belong to this issue", http.StatusBadRequest)
+			return
+		}
 		sets = append(sets, "log_attachment_id=?")
 		args = append(args, *body.LogAttachmentID)
 	}
@@ -436,11 +525,16 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "reload failed", http.StatusInternalServerError)
 		return
 	}
-	// PAI-609: post the report exactly once — only the request that actually made
-	// the transition into a reportable terminal status (guaranteed by the
-	// statusChanged + RowsAffected check above). Best-effort.
-	if statusChanged && agentRunIsReportable(run.Status) {
-		postAgentRunReport(run.IssueID, run.RequestedBy, run)
+	// PAI-609 + audit: post the report exactly once — gate on the status THIS
+	// request set (newStatus), not the reloaded row a concurrent writer may have
+	// advanced. Attribute the auto-comment to the ACTOR who reported, not the
+	// run's requester, so a different user can't forge a comment as the requester.
+	if statusChanged && agentRunIsReportable(newStatus) {
+		var actor *int64
+		if u := auth.GetUser(r); u != nil {
+			actor = &u.ID
+		}
+		postAgentRunReport(run.IssueID, actor, run)
 	}
 	jsonOK(w, run)
 }
