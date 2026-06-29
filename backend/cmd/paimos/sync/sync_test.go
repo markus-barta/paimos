@@ -129,7 +129,7 @@ func TestEventKind(t *testing.T) {
 }
 
 func TestEventEndpoint_EncodesQueryParams(t *testing.T) {
-	got := EventEndpoint(7, "dev-uuid", "skill")
+	got := EventEndpoint(7, "dev-uuid", "skill", false)
 	if !strings.Contains(got, "/api/projects/7/agents/events") {
 		t.Errorf("base path missing: %s", got)
 	}
@@ -138,6 +138,12 @@ func TestEventEndpoint_EncodesQueryParams(t *testing.T) {
 	}
 	if !strings.Contains(got, "kind=skill") {
 		t.Errorf("kind missing: %s", got)
+	}
+	if strings.Contains(got, "implement") {
+		t.Errorf("implement should be absent when false: %s", got)
+	}
+	if impl := EventEndpoint(7, "dev-uuid", "", true); !strings.Contains(impl, "implement=1") {
+		t.Errorf("implement=1 missing: %s", impl)
 	}
 }
 

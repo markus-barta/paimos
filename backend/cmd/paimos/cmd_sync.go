@@ -447,7 +447,7 @@ func runSyncWatch(projectRef, workspaceRoot, kind string) error {
 	defer cancel()
 
 	fmt.Fprintf(stdout, "watching project %s (device=%s)\n", projectKey, deviceID)
-	ssePath := sync.EventEndpoint(projectID, deviceID, kind)
+	ssePath := sync.EventEndpoint(projectID, deviceID, kind, false)
 	err = syncer.Stream(ctx, ssePath, func(ev sync.Event) {
 		evKind := sync.EventKind(ev.Type)
 		if evKind == "" {

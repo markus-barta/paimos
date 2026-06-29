@@ -247,13 +247,16 @@ func (r *Registry) kindsList() []string {
 // the local device-id and an optional kind filter as query params.
 // Centralised here so the wire shape stays consistent across the CLI
 // (subscriber) and the server handler (publisher).
-func EventEndpoint(projectID int64, deviceID string, kindFilter string) string {
+func EventEndpoint(projectID int64, deviceID string, kindFilter string, implement bool) string {
 	q := url.Values{}
 	if strings.TrimSpace(deviceID) != "" {
 		q.Set("device_id", deviceID)
 	}
 	if strings.TrimSpace(kindFilter) != "" {
 		q.Set("kind", kindFilter)
+	}
+	if implement {
+		q.Set("implement", "1")
 	}
 	path := fmt.Sprintf("/api/projects/%d/agents/events", projectID)
 	if encoded := q.Encode(); encoded != "" {

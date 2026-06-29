@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,6 +39,12 @@ func newRunServer(t *testing.T, detail string, patchStatus int) (*httptest.Serve
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(patchStatus)
 			_, _ = w.Write([]byte(`{}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/attachments":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":99}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/attachments/link":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"linked":1}`))
 		default:
 			http.Error(w, `{"error":"unmocked"}`, http.StatusNotFound)
 		}
@@ -54,7 +61,7 @@ func TestAgentRunnerSuccess(t *testing.T) {
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp/repo",
 		autoConfirm: true,
-		spawn: func(_ context.Context, root, _ string, env []string) error {
+		spawn: func(_ context.Context, root, _ string, env []string, _ io.Writer) error {
 			spawned = true
 			if root != "/tmp/repo" {
 				t.Errorf("spawn root=%q, want /tmp/repo", root)
@@ -77,12 +84,38 @@ func TestAgentRunnerSuccess(t *testing.T) {
 	}
 }
 
+func TestAgentRunnerAttachesLog(t *testing.T) {
+	// When the spawn produces output, the runner uploads it as an attachment and
+	// stamps log_attachment_id on the terminal report (PAI-617).
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
+		autoConfirm: true,
+		spawn: func(_ context.Context, _, _ string, _ []string, logSink io.Writer) error {
+			if logSink != nil {
+				_, _ = logSink.Write([]byte("build output\n"))
+			}
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	last := (*patches)[len(*patches)-1]
+	if last["status"] != "tests_passed" {
+		t.Fatalf("final patch = %+v, want tests_passed", last)
+	}
+	if last["log_attachment_id"] == nil {
+		t.Fatalf("expected log_attachment_id to be set after upload, got %+v", last)
+	}
+}
+
 func TestAgentRunnerSpawnFailure(t *testing.T) {
 	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: true,
-		spawn:       func(_ context.Context, _, _ string, _ []string) error { return errors.New("exit 1") },
+		spawn:       func(_ context.Context, _, _ string, _ []string, _ io.Writer) error { return errors.New("exit 1") },
 	}
 	if err := a.handleRun(context.Background(), aJob()); err == nil {
 		t.Fatal("expected an error when the spawned command fails")
@@ -99,7 +132,7 @@ func TestAgentRunnerClaimLost(t *testing.T) {
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: true,
-		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
+		spawn:       func(_ context.Context, _, _ string, _ []string, _ io.Writer) error { spawned = true; return nil },
 	}
 	if err := a.handleRun(context.Background(), aJob()); err != nil {
 		t.Fatalf("a lost claim should not be a hard error: %v", err)
@@ -116,7 +149,7 @@ func TestAgentRunnerSkipsNonQueued(t *testing.T) {
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: true,
-		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
+		spawn:       func(_ context.Context, _, _ string, _ []string, _ io.Writer) error { spawned = true; return nil },
 	}
 	if err := a.handleRun(context.Background(), aJob()); err != nil {
 		t.Fatalf("handleRun: %v", err)
@@ -132,7 +165,7 @@ func TestAgentRunnerDeviceTargetingSkips(t *testing.T) {
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: true,
-		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
+		spawn:       func(_ context.Context, _, _ string, _ []string, _ io.Writer) error { spawned = true; return nil },
 	}
 	if err := a.handleRun(context.Background(), aJob()); err != nil {
 		t.Fatalf("handleRun: %v", err)
@@ -152,7 +185,7 @@ func TestAgentRunnerDeclineCancels(t *testing.T) {
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		autoConfirm: false,
 		confirm:     func(_ string, _ int64, _ string) bool { return false },
-		spawn:       func(_ context.Context, _, _ string, _ []string) error { spawned = true; return nil },
+		spawn:       func(_ context.Context, _, _ string, _ []string, _ io.Writer) error { spawned = true; return nil },
 	}
 	if err := a.handleRun(context.Background(), aJob()); err != nil {
 		t.Fatalf("handleRun: %v", err)
@@ -176,7 +209,7 @@ func TestAgentRunnerDeployGated(t *testing.T) {
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: root,
 		execCmd: "claude", autoConfirm: true,
 		allowDeploy: true, deployExec: "just deploy-ppm", autoConfirmDep: true,
-		spawn: func(_ context.Context, _, cmd string, _ []string) error {
+		spawn: func(_ context.Context, _, cmd string, _ []string, _ io.Writer) error {
 			calls = append(calls, cmd)
 			return nil
 		},
@@ -203,7 +236,7 @@ func TestAgentRunnerDeployNeedsItsOwnConsent(t *testing.T) {
 		execCmd: "claude", autoConfirm: true,
 		allowDeploy: true, deployExec: "just deploy-ppm", autoConfirmDep: false,
 		confirmDeploy: func(_ string, _ int64, _ string) bool { return false },
-		spawn: func(_ context.Context, _, cmd string, _ []string) error {
+		spawn: func(_ context.Context, _, cmd string, _ []string, _ io.Writer) error {
 			calls = append(calls, cmd)
 			return nil
 		},
@@ -226,7 +259,7 @@ func TestAgentRunnerDeployStaysGatedOff(t *testing.T) {
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
 		execCmd: "claude", autoConfirm: true,
 		allowDeploy: false, deployExec: "just deploy-ppm",
-		spawn: func(_ context.Context, _, cmd string, _ []string) error {
+		spawn: func(_ context.Context, _, cmd string, _ []string, _ io.Writer) error {
 			calls = append(calls, cmd)
 			return nil
 		},

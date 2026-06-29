@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -198,7 +199,7 @@ func runAgentWatch(o runAgentOpts) error {
 	}()
 
 	// SSE with reconnect + capped backoff. Exits only on signal (ctx cancel).
-	ssePath := sync.EventEndpoint(projectID, deviceID, "") + "&implement=1"
+	ssePath := sync.EventEndpoint(projectID, deviceID, "", true)
 	backoff := time.Second
 	for {
 		if ctx.Err() != nil {
@@ -248,7 +249,7 @@ type agentRunner struct {
 	allowDeploy    bool
 	deployExec     string
 	autoConfirmDep bool
-	spawn          func(ctx context.Context, repoRoot, execCmd string, env []string) error
+	spawn          func(ctx context.Context, repoRoot, execCmd string, env []string, logSink io.Writer) error
 	confirm        func(issueKey string, runID int64, repoRoot string) bool
 	confirmDeploy  func(issueKey string, runID int64, target string) bool
 }
@@ -318,8 +319,19 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 		"PAIMOS_RUN_ID=" + strconv.FormatInt(runID, 10),
 		"PAIMOS_ISSUE_KEY=" + issueKey,
 	}
-	if spawnErr := a.spawn(ctx, a.repoRoot, a.execCmd, env); spawnErr != nil {
-		a.report(runID, map[string]any{"status": "failed", "error": spawnErr.Error()})
+	// Capture the job's combined output to a temp log we attach to the ticket
+	// (PAI-617), so a run is reviewable from PAIMOS — not just the runner's
+	// terminal. Best-effort: a capture/upload failure never fails the run.
+	logFile, logErr := os.CreateTemp("", fmt.Sprintf("paimos-run-%d-*.log", runID))
+	var logSink io.Writer
+	if logErr == nil {
+		logSink = logFile
+		defer func() { _ = os.Remove(logFile.Name()) }()
+	}
+
+	if spawnErr := a.spawn(ctx, a.repoRoot, a.execCmd, env, logSink); spawnErr != nil {
+		closeLog(logFile)
+		a.finishRun(runID, detail.IssueID, logFile, map[string]any{"status": "failed", "error": spawnErr.Error()})
 		return fmt.Errorf("run %d failed: %w", runID, spawnErr)
 	}
 
@@ -328,15 +340,18 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 	if a.allowDeploy && a.deployExec != "" && detail.DeployTarget != "" {
 		if !a.autoConfirmDep && !a.confirmDeploy(issueKey, runID, detail.DeployTarget) {
 			fmt.Fprintf(stdout, "run %d: deploy declined — reporting tests_passed\n", runID)
-			a.report(runID, map[string]any{"status": "tests_passed"})
+			closeLog(logFile)
+			a.finishRun(runID, detail.IssueID, logFile, map[string]any{"status": "tests_passed"})
 			return nil
 		}
 		fmt.Fprintf(stdout, "run %d: deploying to %s via %q\n", runID, detail.DeployTarget, a.deployExec)
-		if depErr := a.spawn(ctx, a.repoRoot, a.deployExec, env); depErr != nil {
-			a.report(runID, map[string]any{"status": "failed", "error": "deploy: " + depErr.Error()})
+		if depErr := a.spawn(ctx, a.repoRoot, a.deployExec, env, logSink); depErr != nil {
+			closeLog(logFile)
+			a.finishRun(runID, detail.IssueID, logFile, map[string]any{"status": "failed", "error": "deploy: " + depErr.Error()})
 			return fmt.Errorf("run %d deploy failed: %w", runID, depErr)
 		}
-		a.report(runID, map[string]any{
+		closeLog(logFile)
+		a.finishRun(runID, detail.IssueID, logFile, map[string]any{
 			"status":        "deployed",
 			"version":       readVersionFile(a.repoRoot),
 			"deploy_target": detail.DeployTarget,
@@ -347,9 +362,55 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 
 	// Report-back only. The server rejects clobbering a terminal status (so if
 	// the agent already advanced the run, this is a harmless 409, not a clobber).
-	a.report(runID, map[string]any{"status": "tests_passed"})
+	closeLog(logFile)
+	a.finishRun(runID, detail.IssueID, logFile, map[string]any{"status": "tests_passed"})
 	fmt.Fprintf(stdout, "run %d complete\n", runID)
 	return nil
+}
+
+func closeLog(f *os.File) {
+	if f != nil {
+		_ = f.Close()
+	}
+}
+
+// finishRun uploads the captured log (best-effort), stamps log_attachment_id
+// when the upload succeeds, then reports the terminal state (PAI-617).
+func (a *agentRunner) finishRun(runID, issueID int64, logFile *os.File, fields map[string]any) {
+	if logFile != nil {
+		if id := a.uploadLog(issueID, runID, logFile.Name()); id > 0 {
+			fields["log_attachment_id"] = id
+		}
+	}
+	a.report(runID, fields)
+}
+
+// uploadLog uploads the run log as an attachment and links it to the issue,
+// returning the new attachment id (0 on any failure or an empty log — the whole
+// path is best-effort and must never fail the run).
+func (a *agentRunner) uploadLog(issueID, runID int64, path string) int64 {
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		return 0 // nothing captured
+	}
+	raw, err := a.client.doMultipartFile("/api/attachments", "file", path)
+	if err != nil {
+		fmt.Fprintf(stderr, "run %d: log upload failed: %v\n", runID, err)
+		return 0
+	}
+	var up struct {
+		ID int64 `json:"id"`
+	}
+	if json.Unmarshal(raw, &up) != nil || up.ID <= 0 {
+		return 0
+	}
+	if _, err := a.client.do("PATCH", "/api/attachments/link", map[string]any{
+		"issue_id":       issueID,
+		"attachment_ids": []int64{up.ID},
+	}); err != nil {
+		fmt.Fprintf(stderr, "run %d: log link failed: %v\n", runID, err)
+		return 0
+	}
+	return up.ID
 }
 
 // queuedRunIDs returns the ids of runs still queued for the project — the
@@ -422,18 +483,24 @@ func readVersionFile(repoRoot string) string {
 	return strings.TrimSpace(string(b))
 }
 
-func defaultSpawn(ctx context.Context, repoRoot, execCmd string, env []string) error {
-	parts := strings.Fields(execCmd)
-	if len(parts) == 0 {
+func defaultSpawn(ctx context.Context, repoRoot, execCmd string, env []string, logSink io.Writer) error {
+	if strings.TrimSpace(execCmd) == "" {
 		return fmt.Errorf("empty --exec command")
 	}
-	// #nosec G204 -- execCmd is the operator's own --exec flag (default "claude"),
-	// not network input. Running it in the operator's repo is the whole point.
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	// Run through a shell so the operator's --exec can use quotes, pipes, and
+	// chaining (PAI-619). execCmd is the operator's own --exec flag, run in their
+	// own repo — that is the entire purpose of the runner.
+	cmd := exec.CommandContext(ctx, "sh", "-c", execCmd) // #nosec G204 -- operator's own --exec flag
 	cmd.Dir = repoRoot
 	cmd.Env = append(os.Environ(), env...)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	// Tee output to the run log (PAI-617) when a sink is provided.
+	out, errOut := io.Writer(stdout), io.Writer(stderr)
+	if logSink != nil {
+		out = io.MultiWriter(stdout, logSink)
+		errOut = io.MultiWriter(stderr, logSink)
+	}
+	cmd.Stdout = out
+	cmd.Stderr = errOut
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
 }
