@@ -263,6 +263,11 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
 			r.With(auth.RequireIssueEdit).Post("/issues/{id}/clone", handlers.CloneIssue)
+			// PAI-606: "Implement this" run lifecycle (mirrors main.go).
+			r.With(auth.RequireIssueEdit).Post("/issues/{id}/implement", handlers.ImplementIssue)
+			r.With(auth.RequireIssueAccess).Get("/issues/{id}/runs", handlers.ListIssueRuns)
+			r.Get("/runs/{id}", handlers.GetAgentRun)
+			r.Patch("/runs/{id}", handlers.PatchAgentRun)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}", handlers.DeleteIssue)
 			r.With(auth.RequireAdmin).Post("/issues/{id}/restore", handlers.RestoreIssue)
 			r.With(auth.RequireAdmin).Delete("/issues/{id}/purge", handlers.PurgeIssue)

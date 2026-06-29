@@ -5292,6 +5292,37 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE issues ADD COLUMN content_revised_at TEXT`,
 			`ALTER TABLE issues ADD COLUMN deps_reviewed_at TEXT`,
 		}},
+
+		// M125 / PAI-606 (epic PAI-605): agent_runs — the run-lifecycle record
+		// for the "Implement this" feature. A run is created `queued` when the
+		// UI button fires; the developer's local runner then transitions it
+		// (running → tests_passed/tests_failed → deployed | failed | cancelled)
+		// and posts the structured report (version, tests_summary JSON,
+		// deploy_target, log_attachment_id). agent_name/session_id tie the run
+		// to the attribution trail once a runner picks it up.
+		{125, []string{
+			`CREATE TABLE IF NOT EXISTS agent_runs (
+				id                INTEGER PRIMARY KEY AUTOINCREMENT,
+				issue_id          INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				project_id        INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+				device_id         TEXT NOT NULL DEFAULT '',
+				requested_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				agent_name        TEXT NOT NULL DEFAULT '',
+				session_id        TEXT NOT NULL DEFAULT '',
+				status            TEXT NOT NULL DEFAULT 'queued'
+					CHECK(status IN ('queued','running','tests_passed','tests_failed','deployed','failed','cancelled')),
+				version           TEXT NOT NULL DEFAULT '',
+				tests_summary     TEXT,
+				deploy_target     TEXT NOT NULL DEFAULT '',
+				log_attachment_id INTEGER,
+				error             TEXT NOT NULL DEFAULT '',
+				created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+				started_at        TEXT,
+				finished_at       TEXT
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_issue ON agent_runs(issue_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status)`,
+		}},
 	}
 
 	for _, m := range migrations {

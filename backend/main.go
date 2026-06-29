@@ -641,6 +641,11 @@ func mountAPI(r chi.Router) {
 		r.Patch("/attachments/link", handlers.LinkAttachments)
 
 		r.With(auth.RequireIssueEdit).Post("/issues/{id}/clone", handlers.CloneIssue)
+		// PAI-606 (epic PAI-605): "Implement this" run lifecycle.
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/implement", handlers.ImplementIssue)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/runs", handlers.ListIssueRuns)
+		r.Get("/runs/{id}", handlers.GetAgentRun)
+		r.Patch("/runs/{id}", handlers.PatchAgentRun)
 		r.With(auth.RequireIssueAccess).Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
 		r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
 		r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
