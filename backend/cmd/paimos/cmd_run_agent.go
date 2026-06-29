@@ -61,6 +61,7 @@ func runAgentWatchCmd() *cobra.Command {
 		allowDeploy bool
 		deployExec  string
 		yesDeploy   bool
+		attachLogs  bool
 	)
 	c := &cobra.Command{
 		Use:   "watch",
@@ -90,6 +91,7 @@ Examples:
 			return runAgentWatch(runAgentOpts{
 				projectRef: projectRef, repoRoot: repoRoot, execCmd: execCmd,
 				yes: yes, allowDeploy: allowDeploy, deployExec: deployExec, yesDeploy: yesDeploy,
+				attachLogs: attachLogs,
 			})
 		},
 	}
@@ -100,6 +102,7 @@ Examples:
 	c.Flags().BoolVar(&allowDeploy, "allow-deploy", false, "allow the runner to deploy after a successful run (off by default)")
 	c.Flags().StringVar(&deployExec, "deploy-exec", "", `deploy command when --allow-deploy and the run has a deploy_target (e.g. "just deploy-ppm")`)
 	c.Flags().BoolVar(&yesDeploy, "yes-deploy", false, "skip the separate deploy confirmation (still requires --allow-deploy + --deploy-exec)")
+	c.Flags().BoolVar(&attachLogs, "attach-logs", false, "capture the job's output and attach it to the ticket (off by default — logs may contain secrets)")
 	return c
 }
 
@@ -111,6 +114,7 @@ type runAgentOpts struct {
 	allowDeploy bool
 	deployExec  string
 	yesDeploy   bool
+	attachLogs  bool
 }
 
 // runJob is one unit of work for the worker. issueKey is best-effort (carried
@@ -149,7 +153,7 @@ func runAgentWatch(o runAgentOpts) error {
 	ctx, cancel := signalContext()
 	defer cancel()
 
-	runner := newAgentRunner(client, deviceID, root, o.execCmd, o.yes, o.allowDeploy, o.deployExec, o.yesDeploy)
+	runner := newAgentRunner(client, deviceID, root, o.execCmd, o.yes, o.allowDeploy, o.deployExec, o.yesDeploy, o.attachLogs)
 	deployNote := "report-back only, no auto-deploy"
 	if runner.allowDeploy && runner.deployExec != "" {
 		deployNote = "deploy ENABLED via " + runner.deployExec + " (runs with a deploy_target only)"
@@ -201,10 +205,12 @@ func runAgentWatch(o runAgentOpts) error {
 	// SSE with reconnect + capped backoff. Exits only on signal (ctx cancel).
 	ssePath := sync.EventEndpoint(projectID, deviceID, "", true)
 	backoff := time.Second
+	const maxBackoff = 30 * time.Second
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
+		connectedAt := time.Now()
 		streamErr := syncer.Stream(ctx, ssePath, func(ev sync.Event) {
 			if ev.Type != "implement_requested" {
 				return
@@ -222,6 +228,11 @@ func runAgentWatch(o runAgentOpts) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		// A connection that stayed up past the cap was healthy — reset the backoff
+		// so a later blip reconnects promptly instead of waiting the ratcheted cap.
+		if time.Since(connectedAt) > maxBackoff {
+			backoff = time.Second
+		}
 		note := "server closed the stream"
 		if streamErr != nil {
 			note = streamErr.Error()
@@ -232,8 +243,11 @@ func runAgentWatch(o runAgentOpts) error {
 			return nil
 		case <-time.After(backoff):
 		}
-		if backoff < 30*time.Second {
+		if backoff < maxBackoff {
 			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
 		}
 	}
 }
@@ -249,12 +263,14 @@ type agentRunner struct {
 	allowDeploy    bool
 	deployExec     string
 	autoConfirmDep bool
+	attachLogs     bool
+	lastQueuedErr  string // dedupes catch-up error logging (single goroutine)
 	spawn          func(ctx context.Context, repoRoot, execCmd string, env []string, logSink io.Writer) error
 	confirm        func(issueKey string, runID int64, repoRoot string) bool
 	confirmDeploy  func(issueKey string, runID int64, target string) bool
 }
 
-func newAgentRunner(client *Client, deviceID, repoRoot, execCmd string, autoConfirm, allowDeploy bool, deployExec string, autoConfirmDeploy bool) *agentRunner {
+func newAgentRunner(client *Client, deviceID, repoRoot, execCmd string, autoConfirm, allowDeploy bool, deployExec string, autoConfirmDeploy, attachLogs bool) *agentRunner {
 	return &agentRunner{
 		client:         client,
 		deviceID:       deviceID,
@@ -264,6 +280,7 @@ func newAgentRunner(client *Client, deviceID, repoRoot, execCmd string, autoConf
 		allowDeploy:    allowDeploy,
 		deployExec:     deployExec,
 		autoConfirmDep: autoConfirmDeploy,
+		attachLogs:     attachLogs,
 		spawn:          defaultSpawn,
 		confirm:        defaultConfirm,
 		confirmDeploy:  defaultDeployConfirm,
@@ -319,14 +336,18 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 		"PAIMOS_RUN_ID=" + strconv.FormatInt(runID, 10),
 		"PAIMOS_ISSUE_KEY=" + issueKey,
 	}
-	// Capture the job's combined output to a temp log we attach to the ticket
-	// (PAI-617), so a run is reviewable from PAIMOS — not just the runner's
-	// terminal. Best-effort: a capture/upload failure never fails the run.
-	logFile, logErr := os.CreateTemp("", fmt.Sprintf("paimos-run-%d-*.log", runID))
+	// With --attach-logs, capture the job's combined output to a temp log and
+	// attach it to the ticket (PAI-617). OFF by default (audit): agent output can
+	// contain secrets, and an attachment is visible to every project member.
+	// Best-effort: a capture/upload failure never fails the run.
+	var logFile *os.File
 	var logSink io.Writer
-	if logErr == nil {
-		logSink = logFile
-		defer func() { _ = os.Remove(logFile.Name()) }()
+	if a.attachLogs {
+		if f, logErr := os.CreateTemp("", fmt.Sprintf("paimos-run-%d-*.log", runID)); logErr == nil {
+			logFile = f
+			logSink = f
+			defer func() { _ = os.Remove(f.Name()) }()
+		}
 	}
 
 	if spawnErr := a.spawn(ctx, a.repoRoot, a.execCmd, env, logSink); spawnErr != nil {
@@ -421,8 +442,15 @@ func (a *agentRunner) queuedRunIDs(ctx context.Context, projectID int64) []int64
 	}
 	body, err := a.client.do("GET", fmt.Sprintf("/api/projects/%d/runs?status=queued", projectID), nil)
 	if err != nil {
+		// Surface a persistently failing catch-up, but only once per distinct
+		// error so a broken endpoint doesn't spam stderr every 20s.
+		if msg := err.Error(); msg != a.lastQueuedErr {
+			a.lastQueuedErr = msg
+			fmt.Fprintf(stderr, "run-agent: catch-up poll failed: %v\n", err)
+		}
 		return nil
 	}
+	a.lastQueuedErr = ""
 	var resp struct {
 		Runs []struct {
 			ID int64 `json:"id"`

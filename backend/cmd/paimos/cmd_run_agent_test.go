@@ -8,6 +8,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -90,7 +91,7 @@ func TestAgentRunnerAttachesLog(t *testing.T) {
 	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
 	a := &agentRunner{
 		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
-		autoConfirm: true,
+		autoConfirm: true, attachLogs: true,
 		spawn: func(_ context.Context, _, _ string, _ []string, logSink io.Writer) error {
 			if logSink != nil {
 				_, _ = logSink.Write([]byte("build output\n"))
@@ -107,6 +108,41 @@ func TestAgentRunnerAttachesLog(t *testing.T) {
 	}
 	if last["log_attachment_id"] == nil {
 		t.Fatalf("expected log_attachment_id to be set after upload, got %+v", last)
+	}
+}
+
+// TestDefaultSpawnTeesOutput proves the REAL defaultSpawn runs via a shell
+// (PAI-619) and tees combined output to the log sink (PAI-617) — the end-to-end
+// capture the AttachesLog test's fake spawn bypasses (audit F6).
+func TestDefaultSpawnTeesOutput(t *testing.T) {
+	var sink bytes.Buffer
+	if err := defaultSpawn(context.Background(), t.TempDir(), "echo hello-from-spawn", nil, &sink); err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	if !strings.Contains(sink.String(), "hello-from-spawn") {
+		t.Fatalf("log sink = %q, want it to contain the command output", sink.String())
+	}
+}
+
+// TestAgentRunnerDefaultDoesNotAttachLog: without --attach-logs the runner must
+// not capture or upload the job output (audit MED-2 — logs can carry secrets).
+func TestAgentRunnerDefaultDoesNotAttachLog(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp",
+		autoConfirm: true, // attachLogs defaults to false
+		spawn: func(_ context.Context, _, _ string, _ []string, logSink io.Writer) error {
+			if logSink != nil {
+				_, _ = logSink.Write([]byte("secret output"))
+			}
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if last := (*patches)[len(*patches)-1]; last["log_attachment_id"] != nil {
+		t.Fatalf("no log should be attached by default, got %+v", last)
 	}
 }
 
