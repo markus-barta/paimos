@@ -487,6 +487,8 @@ func mountAPI(r chi.Router) {
 		// without a JSON parser.
 		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
 		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
+		// PAI-607: online implement-capable runners for the device picker.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/runners", handlers.ListProjectRunners)
 		// PAI-329 — project-level inventories (environments,
 		// deploy recipes). repos already exists at /repos.
 		r.With(auth.RequireProjectView).Get("/projects/{id}/environments", handlers.ListProjectEnvironments)

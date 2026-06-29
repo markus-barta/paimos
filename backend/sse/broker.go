@@ -223,6 +223,29 @@ func (b *Broker) PublishProject(projectID int64, ev Event) {
 	}
 }
 
+// Presence identifies a live subscriber connection by user + device.
+type Presence struct {
+	UserID   int64  `json:"user_id"`
+	DeviceID string `json:"device_id"`
+}
+
+// ProjectSubscribers returns the (userID, deviceID) of every connection
+// currently subscribed for the project. PAI-607 uses it to surface the
+// online runners for a project — liveness comes from the in-memory
+// registry, not a stale last-seen timestamp.
+func (b *Broker) ProjectSubscribers(projectID int64) []Presence {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make([]Presence, 0, 4)
+	for key, set := range b.subs {
+		if key.ProjectID != projectID || len(set) == 0 {
+			continue
+		}
+		out = append(out, Presence{UserID: key.UserID, DeviceID: key.DeviceID})
+	}
+	return out
+}
+
 // SubscriberCount is a test helper. Returns the number of active
 // subscribers across all keys.
 func (b *Broker) SubscriberCount() int {

@@ -92,7 +92,10 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 	// `paimos sync watch` is the only realistic source of new
 	// (device, project) rows. The browser UI uses the toggle endpoint
 	// directly.
-	if err := upsertAutoWatchEnabled(user.ID, deviceID, projectID); err != nil {
+	// PAI-607: a runner advertises implement-capability with `?implement=1`.
+	// Browser tabs omit it and stay can_implement=0.
+	canImplement := r.URL.Query().Get("implement") == "1"
+	if err := upsertAutoWatchEnabled(user.ID, deviceID, projectID, canImplement); err != nil {
 		jsonError(w, "subscription init failed", http.StatusInternalServerError)
 		return
 	}
@@ -149,14 +152,19 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 // fresh CLI invocation doesn't have to call the toggle endpoint
 // separately. The browser UI does call the toggle endpoint, which is
 // fine — both paths converge on the same row.
-func upsertAutoWatchEnabled(userID int64, deviceID string, projectID int64) error {
+func upsertAutoWatchEnabled(userID int64, deviceID string, projectID int64, canImplement bool) error {
+	ci := 0
+	if canImplement {
+		ci = 1
+	}
 	_, err := db.DB.Exec(`
-		INSERT INTO auto_watch_subscriptions(user_id, device_id, project_id, enabled, created_at, updated_at)
-		VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))
+		INSERT INTO auto_watch_subscriptions(user_id, device_id, project_id, enabled, can_implement, created_at, updated_at)
+		VALUES (?, ?, ?, 1, ?, datetime('now'), datetime('now'))
 		ON CONFLICT(user_id, device_id, project_id) DO UPDATE SET
 			enabled = 1,
+			can_implement = excluded.can_implement,
 			updated_at = datetime('now')
-	`, userID, deviceID, projectID)
+	`, userID, deviceID, projectID, ci)
 	return err
 }
 

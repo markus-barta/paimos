@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/sse"
 )
 
 // AgentRun is the lifecycle record for one "Implement this" run.
@@ -140,10 +141,60 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "run created but reload failed", http.StatusInternalServerError)
 		return
 	}
-	// TODO(PAI-607): publish an `implement_requested` SSE event to the
-	// project's online, implement-capable runners here.
+	// PAI-607: notify the project's online runners. The event carries the
+	// run id (Rev) so a runner can GET /api/runs/{id} for the full detail;
+	// Name is the issue key for human-readable logging.
+	if projectID.Valid {
+		sse.GlobalBroker().PublishProject(projectID.Int64, sse.Event{
+			Type: "implement_requested",
+			Name: agentRunIssueKey(issueID),
+			Rev:  strconv.FormatInt(id, 10),
+		})
+	}
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, run)
+}
+
+// agentRunIssueKey returns the "PAI-123" key for an issue id (best-effort;
+// empty string if the lookup fails).
+func agentRunIssueKey(issueID int64) string {
+	var key string
+	_ = db.DB.QueryRow(
+		`SELECT p.key || '-' || i.issue_number FROM issues i JOIN projects p ON p.id = i.project_id WHERE i.id = ?`,
+		issueID).Scan(&key)
+	return key
+}
+
+// ProjectRunner is an online, implement-capable runner for a project.
+type ProjectRunner struct {
+	UserID   int64  `json:"user_id"`
+	DeviceID string `json:"device_id"`
+	LastSeen string `json:"last_seen"`
+}
+
+// ListProjectRunners — GET /api/projects/{id}/runners (project-view gated).
+// Intersects the broker's live subscribers for the project with the
+// auto-watch rows that advertised implement-capability, so the UI can offer
+// a device picker of runners that can actually take an "Implement this" job.
+func ListProjectRunners(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromRequest(r)
+	if !ok {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+	out := make([]ProjectRunner, 0, 4)
+	for _, p := range sse.GlobalBroker().ProjectSubscribers(projectID) {
+		var canImplement int
+		var lastSeen string
+		err := db.DB.QueryRow(
+			`SELECT can_implement, updated_at FROM auto_watch_subscriptions WHERE user_id=? AND device_id=? AND project_id=?`,
+			p.UserID, p.DeviceID, projectID).Scan(&canImplement, &lastSeen)
+		if err != nil || canImplement == 0 {
+			continue
+		}
+		out = append(out, ProjectRunner{UserID: p.UserID, DeviceID: p.DeviceID, LastSeen: lastSeen})
+	}
+	jsonOK(w, map[string]any{"runners": out})
 }
 
 // ListIssueRuns — GET /api/issues/{id}/runs (RequireIssueAccess). Newest first.

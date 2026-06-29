@@ -332,6 +332,7 @@ func buildRouter() http.Handler {
 			r.Delete("/auth/auto-watch/{deviceID}/{projectID}", handlers.DeleteAutoWatch)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
 			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
+			r.With(auth.RequireProjectView).Get("/projects/{id}/runners", handlers.ListProjectRunners)
 
 			// Branding write endpoints — mirrors main.go. GET is in the
 			// public group above; writes are admin-gated.

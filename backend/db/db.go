@@ -5323,6 +5323,16 @@ func migrate(db *sql.DB) error {
 			`CREATE INDEX IF NOT EXISTS idx_agent_runs_issue ON agent_runs(issue_id)`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status)`,
 		}},
+
+		// M126 / PAI-607: runner capability for the "Implement this" feature.
+		// A subscriber advertises can_implement=1 when it connects as an
+		// implement-capable runner (CLI `?implement=1`); browser tabs leave it
+		// 0. The runner registry intersects this with the broker's live
+		// subscribers to surface a project's online runners. updated_at (set on
+		// every SSE handshake) doubles as the last-seen clock.
+		{126, []string{
+			`ALTER TABLE auto_watch_subscriptions ADD COLUMN can_implement INTEGER NOT NULL DEFAULT 0`,
+		}},
 	}
 
 	for _, m := range migrations {
