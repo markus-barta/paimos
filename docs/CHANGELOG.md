@@ -5,6 +5,37 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.1] — 2026-06-29
+
+### Fixed
+
+- **"Implement this" hardening (PAI-605).** An adversarial review of the v4.6.0
+  feature surfaced robustness, correctness, and contract gaps; all are fixed:
+  - **Runner robustness.** `paimos run-agent watch` now reconnects with backoff
+    on a dropped SSE stream (it previously exited silently), processes one job at
+    a time via a worker queue, and periodically catches up on queued runs it
+    missed while offline/busy or that a server restart orphaned.
+  - **No double-execution.** A run is claimed atomically (`queued → running` via
+    an `if_status` compare-and-set), so two runners can never both execute the
+    same open run, and the report comment posts exactly once. Terminal statuses
+    (`deployed`/`failed`/`cancelled`) are now enforced server-side.
+  - **Cross-user runs.** A project editor — typically the developer whose box
+    runs the job, not whoever clicked the button — can now report a run back
+    (previously a 403). Repeated clicks are idempotent (return the active run).
+  - **Deploy double-consent.** The off-by-default, triple-gated deploy now also
+    asks for its own confirmation unless `--yes-deploy` is passed.
+  - **Per-connection runner capability** in the SSE broker, so a browser tab and
+    a runner on the same device no longer mask each other in the device picker.
+  - **Frontend.** The run-status card stops polling when the tab is hidden,
+    sequences overlapping fetches, refreshes the runner list live, distinguishes
+    a runners-endpoint error from "no runner online", and renders timestamps in
+    local time. New tests cover the issue-list quick action and the polling
+    lifecycle.
+  - **Contract + docs.** The five agent-run routes (plus a catch-up
+    `GET /projects/{id}/runs`) are documented in `openapi.json`; the
+    threat-model "audited" wording, deploy-flag docs, and a stale audit comment
+    are corrected.
+
 ## [4.6.0] — 2026-06-29
 
 ### Added
