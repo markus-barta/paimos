@@ -62,6 +62,14 @@ cd frontend && npm test
   ≤72 chars. Body paragraphs explain *why*, not *what*.
 - **Comments**: only when the *why* is non-obvious. Don't restate what
   well-named code already says.
+- **Public API surface**: `/api/openapi.json` is the *public, stable
+  scriptable contract* — a deliberately curated subset of the canonical
+  resource surface (PAI-294). If you add or change a route meant for the
+  SPA, the `paimos` CLI, or external integrations, document it in
+  `backend/handlers/openapi.json` in the same PR. Internal/admin one-off
+  endpoints (imports, dev tooling, branding, SSO/TOTP, AI ops, portal
+  internals) are intentionally omitted. The `TestOpenAPIContractRoutesExist`
+  guard fails CI if the spec references a route that no longer exists.
 
 ## Developer Certificate of Origin
 

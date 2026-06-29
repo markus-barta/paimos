@@ -111,603 +111,7 @@ func main() {
 	r.Use(handlers.SessionAuditMiddleware)
 	r.Use(handlers.RequestIDMiddleware)
 
-	r.Route("/api", func(r chi.Router) {
-		// ── Strictly public endpoints ────────────────────────────────
-		// Everything here is accessible without a session. Keep this
-		// list short and auditable — the only valid reasons for a
-		// route to live outside the auth group are:
-		//   (a) health checks for Docker / CI / monitoring, or
-		//   (b) the login page needs it before any session can exist, or
-		//   (c) agent-discovery endpoints the CLI / MCP fetch before
-		//       any API key is issued (e.g. /api/schema).
-		// Audited 2026-04-21.
-		r.Get("/health", healthHandler)          // (a) Docker + CI
-		r.Get("/branding", handlers.GetBranding) // (b) login page logo + colors
-		r.Get("/schema", handlers.GetAPISchema)  // (c) CLI / MCP discovery (PAI-87)
-		// PAI-332: public adapter registry. CLI / external tooling
-		// browses the published adapter list without an account so
-		// adapter authors can self-link from their own README.
-		r.Get("/registry/adapters", handlers.GetAdapterRegistry)
-		// PAI-119: published OpenAPI 3.1 contract. Public so external
-		// clients can discover the API without an account.
-		r.Get("/openapi.json", handlers.GetOpenAPI)
-		// PAI-114: CSP violation reports. Browser-driven, unauthenticated.
-		r.Post("/csp-report", handlers.CSPReport)
-
-		// Auth (public — no session possible yet)
-		r.Post("/auth/login", auth.LoginHandler)
-		r.Post("/auth/totp/verify", auth.TOTPVerify)
-		// PAI-267: dev-login route — only mounted when the dev_login
-		// build tag is active. Production binaries do not contain
-		// the handler symbol and the route returns chi's stock 404.
-		if auth.DevLoginEnabled() {
-			r.Post("/auth/dev-login", auth.DevLoginHandler)
-		}
-
-		// PAI-120: OpenID Connect SSO. Status is always reachable so the
-		// SPA can decide whether to render the SSO button; login starts
-		// the flow and callback completes it. All three are public — no
-		// session can exist before the IdP redirects the user back.
-		r.Get("/auth/oidc/status", auth.OIDCStatus)
-		r.Get("/auth/oidc/login", auth.OIDCLogin)
-		r.Get("/auth/oidc/callback", auth.OIDCCallback)
-
-		// Forgot / reset password — all three must stay public since a
-		// user who has forgotten their password has no session cookie.
-		r.Post("/auth/forgot", handlers.ForgotPassword)
-		r.Get("/auth/reset/validate", handlers.ValidateResetToken)
-		r.Post("/auth/reset", handlers.ResetPassword)
-
-		// Auth (authenticated but open to all roles, including external)
-		r.Group(func(r chi.Router) {
-			r.Use(auth.Middleware)
-			r.Use(auth.CSRFMiddleware) // PAI-113
-			// PAI-321: must_change_password gate. Allowlist (logout,
-			// /auth/me, /auth/password) is built into the gate so the
-			// user can complete the change-password flow from this
-			// group without bypass.
-			r.Use(auth.MustChangePasswordGate)
-
-			r.Post("/auth/logout", auth.LogoutHandler)
-			r.Get("/auth/me", auth.MeHandler)
-			r.Post("/auth/password", auth.ChangePassword)
-			r.Post("/auth/impersonation/start", handlers.StartImpersonation)
-			r.Post("/auth/impersonation/end", handlers.EndImpersonation)
-			r.Patch("/auth/me", handlers.UpdateProfile)
-			r.Post("/auth/avatar", handlers.UploadAvatar)
-			r.Delete("/auth/avatar", handlers.DeleteAvatar)
-
-			// TOTP 2FA (authenticated)
-			r.Get("/auth/totp/status", auth.TOTPStatus)
-			r.Get("/auth/totp/setup", auth.TOTPSetup)
-			r.Post("/auth/totp/enable", auth.TOTPEnable)
-			r.Post("/auth/totp/disable", auth.TOTPDisable)
-
-			// API keys
-			r.Get("/auth/api-keys", handlers.ListAPIKeys)
-			r.Post("/auth/api-keys", handlers.CreateAPIKey)
-			r.Delete("/auth/api-keys/{id}", handlers.DeleteAPIKey)
-
-			// PAI-331 — auto-watch sync subscriptions (per-user,
-			// per-(device, project) toggle). The browser UI hits these;
-			// the CLI manages its row implicitly via the SSE handshake.
-			// {deviceID} is opaque text; {projectID} is numeric. Routes
-			// stay under /auth/* because the resource is "this user's
-			// preferences", same as the api-keys neighborhood.
-			r.Get("/auth/auto-watch", handlers.ListAutoWatch)
-			r.Put("/auth/auto-watch/{deviceID}/{projectID}", handlers.UpsertAutoWatch)
-			r.Delete("/auth/auto-watch/{deviceID}/{projectID}", handlers.DeleteAutoWatch)
-
-			// moved inside the auth group. Any authed role
-			// (including external/portal users) may fetch these — they
-			// are non-sensitive but there's no good reason for them to
-			// be reachable pre-authentication.
-			r.Get("/instance", instanceHandler)
-			r.Get("/brandings", handlers.ListBrandings)
-			r.Get("/logos/{filename}", serveLogoHandler)
-			r.Get("/avatars/{filename}", serveAvatarHandler)
-			r.Get("/projektberichte/accept/{code}", handlers.GetProjectReportAcceptance)
-			r.Post("/projektberichte/accept/{code}", handlers.AcceptProjectReport)
-			r.Put("/projektberichte/accept/{code}/signed", handlers.LinkProjectReportSignedArtifact)
-			r.Get("/projektberichte/{code}/pdf", handlers.GetProjectReportPDF)
-		})
-
-		// Portal (external + admin)
-		r.Group(func(r chi.Router) {
-			r.Use(auth.Middleware)
-			r.Use(auth.CSRFMiddleware)         // PAI-113
-			r.Use(auth.MustChangePasswordGate) // PAI-321
-			r.Use(auth.RequirePortalAccess)
-
-			r.Get("/portal/overview", handlers.PortalOverview)
-			r.Get("/portal/projects", handlers.PortalListProjects)
-			r.Get("/portal/projects/{id}", handlers.PortalGetProject)
-			r.Get("/portal/projects/{id}/issues", handlers.PortalListIssues)
-			r.Get("/portal/projects/{id}/issues/{issueId}", handlers.PortalGetIssue)
-			r.Post("/portal/projects/{id}/requests", handlers.PortalSubmitRequest)
-			r.Get("/portal/issues/{id}/comments", handlers.PortalListIssueComments)
-			r.Post("/portal/issues/{id}/accept", handlers.PortalAcceptIssue)
-			r.Post("/portal/issues/{id}/reject", handlers.PortalRejectIssue)
-			r.Post("/portal/issues/{id}/undo-accept", handlers.PortalUndoAccept)
-			r.Post("/portal/issues/{id}/undo-reject", handlers.PortalUndoReject)
-			r.Get("/portal/projects/{id}/summary", handlers.PortalProjectSummary)
-			r.Get("/portal/projects/{id}/projektberichte", handlers.ListProjectReports)
-			r.Get("/portal/projects/{id}/acceptance-report", handlers.AcceptanceReport)
-		})
-
-		// Internal (admin + member; blocked for external)
-		r.Group(func(r chi.Router) {
-			r.Use(auth.Middleware)
-			r.Use(auth.CSRFMiddleware)         // PAI-113
-			r.Use(auth.MustChangePasswordGate) // PAI-321
-			r.Use(auth.BlockExternal)
-
-			// Projects
-			r.Get("/projects", handlers.ListProjects)
-			// PAI-379: scope-narrowable project creation. The admin
-			// role is still required, AND when the caller authenticates
-			// via api-key the key must carry the projects:write scope.
-			// Session-cookie auth implicitly carries ScopeAll, so the
-			// admin web UI is unaffected.
-			r.With(auth.RequireAdmin, auth.RequireScope(auth.ScopeProjectsWrite)).Post("/projects", handlers.CreateProject)
-			r.With(auth.RequireProjectView).Get("/projects/{id}", handlers.GetProject)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}", handlers.UpdateProject)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}", handlers.DeleteProject)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/logo", handlers.UploadProjectLogo)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/logo", handlers.DeleteProjectLogo)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/repos", handlers.ListProjectRepos)
-			r.With(auth.RequireProjectEdit).Post("/projects/{id}/repos", handlers.CreateProjectRepo)
-			r.With(auth.RequireProjectEdit).Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
-			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/anchors", handlers.ListProjectAnchors)
-			// PAI-326 — declarable agents. Read = view; writes = admin
-			// (project-settings territory; matches CreateProject auth).
-			r.With(auth.RequireProjectView).Get("/projects/{id}/agents", handlers.ListProjectAgents)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/agents", handlers.CreateProjectAgent)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/agents/{name}", handlers.UpdateProjectAgent)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/agents/{name}", handlers.DeleteProjectAgent)
-			// PAI-329 — canonical agent artifact + markdown debug
-			// rendering. Read-only, view-gated.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.json", handlers.GetProjectAgentArtifact)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.md", handlers.GetProjectAgentArtifactMarkdown)
-			// PAI-331 — auto-watch sync: SSE event stream + cheap-poll
-			// .rev fallback. The events route is per-project and the
-			// route param `id` is the project id (chi's URL parser
-			// matches the same pattern as the .json/.md siblings). The
-			// .rev path mirrors the .json shape so polling clients
-			// reuse their cached agent_name; the response is plain
-			// text (the 12-char rev hash) so a curl loop can compare
-			// without a JSON parser.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
-			// PAI-329 — project-level inventories (environments,
-			// deploy recipes). repos already exists at /repos.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/environments", handlers.ListProjectEnvironments)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/environments", handlers.CreateProjectEnvironment)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/environments/{envId}", handlers.UpdateProjectEnvironment)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/environments/{envId}", handlers.DeleteProjectEnvironment)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/deploy-recipes", handlers.ListProjectDeployRecipes)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/deploy-recipes", handlers.CreateProjectDeployRecipe)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
-
-			// PAI-338 (gated by PAI-346) — knowledge plane. PAI-394
-			// collapsed the original five-alias surface
-			// (/memory, /runbooks, /external-systems, /related-
-			// projects, /guidelines) into one resource. The type
-			// discriminator lives in the URL path segment for
-			// reads, and in the request body for POST. Auth
-			// mirrors agents: read = project view, writes = admin
-			// (knowledge entries shape an agent's view of the
-			// project, so they're project-settings adjacent).
-			//
-			// Memory-specific subroutes (PAI-347 decay tracking +
-			// PAI-349 admin review) live under /knowledge/memory/
-			// and are guarded against shadowing by the reserved-
-			// slug check in knowledge.IsReservedSlug.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge", knowledge.ListAllHandler)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/graph", knowledge.GraphHandler)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge", knowledge.CreateHandler)
-			r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/proposed/stale", handlers.ListStaleProposedMemory)
-			// PAI-351 slice 2 — needs-review triage queue. Literal route MUST
-			// precede the {slug} wildcard (and "needs-review" is a reserved slug).
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/needs-review", knowledge.NeedsReviewHandler)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/{slug}/dependents", knowledge.MemoryDependentsHandler)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/{slug}/reviewed", handlers.MarkMemoryReviewed)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}", knowledge.GetHandler)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}.rev", handlers.KnowledgeRevHandler)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/knowledge/{type}/{slug}", knowledge.UpdateHandler)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/knowledge/{type}/{slug}", knowledge.DeleteHandler)
-
-			// PAI-345 — cross-scope memory: user-scope and instance-scope
-			// CRUD parallels the project-scope endpoints above. The
-			// discriminator is the WHERE clause inside the handler;
-			// see handlers/knowledge_user.go and knowledge_instance.go.
-			// User memory: any auth'd user can manage their own.
-			r.Get("/users/me/memory", handlers.ListUserMemory)
-			r.Post("/users/me/memory", handlers.CreateUserMemory)
-			r.Get("/users/me/memory/{slug}", handlers.GetUserMemory)
-			r.Put("/users/me/memory/{slug}", handlers.UpdateUserMemory)
-			r.Delete("/users/me/memory/{slug}", handlers.DeleteUserMemory)
-			// Instance memory: read open to all authenticated users,
-			// writes admin-only. Defence-in-depth check inside each
-			// handler keeps the gate even if the middleware is wrong.
-			r.Get("/instance/memory", handlers.ListInstanceMemory)
-			r.With(auth.RequireAdmin).Post("/instance/memory", handlers.CreateInstanceMemory)
-			r.Get("/instance/memory/{slug}", handlers.GetInstanceMemory)
-			r.With(auth.RequireAdmin).Put("/instance/memory/{slug}", handlers.UpdateInstanceMemory)
-			r.With(auth.RequireAdmin).Delete("/instance/memory/{slug}", handlers.DeleteInstanceMemory)
-			// Promotion endpoint — crosses scopes by design, so no
-			// /projects/:id prefix. Auth is per-scope inside the
-			// handler (admin gate fires when promoting to instance).
-			r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
-
-			// PAI-394 moved PAI-347 + PAI-349 memory subroutes
-			// under /projects/{id}/knowledge/memory/... — see
-			// the unified knowledge mount block above.
-			// PAI-358: GET /projects/{id}/manifest, PUT
-			// /projects/{id}/manifest, and POST /projects/{id}/migrate-
-			// manifest-to-knowledge are gone — the legacy taxonomy is
-			// fully replaced by the PAI-338 knowledge plane.
-			r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/graph/blast-radius", handlers.BlastRadius)
-			r.With(auth.RequireProjectView).Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
-
-			// Project key suggestion
-			r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
-
-			// Issues nested under project
-			r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
-			r.With(auth.RequireProjectEdit, handlers.IdempotencyMiddleware).Post("/projects/{id}/issues", handlers.CreateIssue)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/cost-units", handlers.ListCostUnits)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/releases", handlers.ListReleases)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/export/csv", handlers.ExportCSV)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-log", handlers.AcceptanceLog)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-report", handlers.AcceptanceReport)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht", handlers.GetLieferbericht)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht/pdf", handlers.GetLieferberichtPDF)
-			// PAI-579: booked-hours report (user × project × window). Hours/material only.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/time-report", handlers.GetProjectTimeReport)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/projektberichte", handlers.ListProjectReports)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/report-permissions", handlers.ListProjectReportPermissions)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/report-permissions", handlers.PutProjectReportPermissions)
-			// Project accruals (Vorräte) — admin only
-			r.With(auth.RequireAdmin).Get("/reports/accruals", handlers.GetAccruals)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv/preflight", handlers.ImportCSVPreflight)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv", handlers.ImportCSV)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/projects/{id}/time-entries/users", handlers.PurgeUsers)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/time-entries/purge-preview", handlers.PurgePreview)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/time-entries/purge", handlers.PurgeTimeEntries)
-			r.With(auth.RequireAdmin).Post("/import/csv/preflight", handlers.ImportCSVGlobalPreflight)
-			r.With(auth.RequireAdmin).Post("/import/csv", handlers.ImportCSVGlobal)
-
-			// Dashboard recent activity (must be before /issues/{id})
-			r.Get("/issues/recent", handlers.RecentIssues)
-			// Trash (soft-deleted issues) — admin-only (must be before /issues/{id})
-			r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
-			// Cross-project issue list + orphan sprint creation (must be before /issues/{id})
-			// ListOrLookupIssues dispatches to the key-pick handler when ?keys= is
-			// present (PAI-88) and falls through to ListAllIssues otherwise.
-			r.Get("/issues", handlers.ListOrLookupIssues)
-			r.Post("/issues", handlers.CreateOrphanIssue)
-
-			// Bulk issue ops (PAI-88). Admin-only for v1 — simpler to reason
-			// about than cross-project per-item access checks, and the primary
-			// caller is the paimos CLI run under an admin key. Single-issue
-			// endpoints still serve non-admins.
-			r.With(auth.RequireAdmin).Patch("/issues", handlers.UpdateIssuesBatch)
-			r.With(auth.RequireAdmin, handlers.IdempotencyMiddleware).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
-
-			// Sprints
-			r.Get("/sprints", handlers.ListSprints)
-			r.Get("/sprints/years", handlers.ListSprintYears)
-			r.Get("/sprints/{year}", handlers.ListSprintsByYear)
-			r.With(auth.RequireAdmin).Post("/sprints/batch", handlers.CreateSprintsBatch)
-			r.With(auth.RequireAdmin).Put("/sprints/{id}", handlers.UpdateSprint)
-			r.With(auth.RequireAdmin).Post("/sprints/{id}/move-incomplete", handlers.MoveIncompleteToNextSprint)
-			r.With(auth.RequireAdmin).Put("/sprints/{id}/reorder", handlers.ReorderSprintMembers)
-			// Cross-project distinct values
-			r.Get("/cost-units", handlers.ListAllCostUnits)
-			r.Get("/releases", handlers.ListAllReleases)
-
-			// Issues by ID
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
-			r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
-			r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
-			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}", handlers.DeleteIssue)
-			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Post("/issues/{id}/restore", handlers.RestoreIssue)
-			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/purge", handlers.PurgeIssue)
-			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Patch("/issues/{id}/archive", handlers.ArchiveIssue)
-			// Attachments
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/attachments", handlers.ListAttachments)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/attachments", handlers.UploadAttachment)
-			r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}/meta", handlers.GetAttachmentMeta)
-			r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}", handlers.GetAttachmentFile)
-			r.With(auth.RequireAttachmentEdit).Delete("/attachments/{id}", handlers.DeleteAttachment)
-			r.Post("/attachments", handlers.UploadPendingAttachment)
-			r.Patch("/attachments/link", handlers.LinkAttachments)
-
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/clone", handlers.CloneIssue)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/activity", handlers.ListIssueMutationActivity)
-			r.Get("/undo/activity", handlers.ListMyMutationActivity)
-			r.Post("/undo/{id}", handlers.UndoMutation)
-			r.Post("/undo/{id}/resolve", handlers.ResolveUndoMutation)
-			r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
-			r.Post("/redo/{id}", handlers.RedoMutation)
-			r.Post("/redo/{id}/resolve", handlers.ResolveRedoMutation)
-			r.Post("/redo/request/{requestID}", handlers.RedoMutationByRequestID)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
-
-			// Issue relations (v2)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/relations", handlers.ListIssueRelations)
-			r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/relations", handlers.CreateIssueRelation)
-			r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/members", handlers.ListIssuesByRelation)
-
-			// PAI-342: applicable memories. Read-only convenience over
-			// issue_relations(type='applies_to_memory') with an optional
-			// `?suggest=1` mode that scores up to 3 candidates the
-			// ticket isn't yet linked to. Mutations reuse the relations
-			// endpoints above with the same type discriminator.
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/applicable-memories", handlers.ListApplicableMemories)
-
-			// PAI-343: lesson-capture trigger detection. Asked by the UI
-			// (and the `paimos issue update --draft-memory` CLI flag)
-			// when a ticket transitions to a terminal status, so the
-			// trigger logic stays in one place. Read-only.
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/lesson-capture-prompt", handlers.LessonCapturePrompt)
-
-			// Time entries (v2)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
-			r.Get("/time-entries/running", handlers.GetRunningTimers)
-			r.Get("/time-entries/recent", handlers.GetRecentTimers)
-			r.Get("/time-entries/today-summary", handlers.GetTimeEntriesTodaySummary)
-			r.With(auth.RequireTimeEntryAccess).Get("/time-entries/{id}", handlers.GetTimeEntry)
-			r.With(auth.RequireTimeEntryEdit).Put("/time-entries/{id}", handlers.UpdateTimeEntry)
-			r.With(auth.RequireTimeEntryEdit).Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
-
-			// System tag rules (admin only)
-			r.Get("/system-tag-rules", handlers.ListSystemTagRules)
-			r.With(auth.RequireAdmin).Put("/system-tag-rules", handlers.UpdateSystemTagRule)
-
-			// Recent projects (current user)
-			r.Get("/users/me/recent-projects", handlers.GetRecentProjects)
-			r.Post("/users/me/recent-projects", handlers.UpsertRecentProject)
-
-			// Users (admin only for create/update/delete)
-			r.Get("/users", handlers.ListUsers)
-			r.With(auth.RequireAdmin).Post("/users", handlers.CreateUser)
-			r.With(auth.RequireAdmin).Put("/users/{id}", handlers.UpdateUser)
-			r.With(auth.RequireAdmin).Post("/users/{id}/disable", handlers.DisableUser)
-			r.With(auth.RequireAdmin).Delete("/users/{id}", handlers.DeleteUser)
-			r.With(auth.RequireAdmin).Post("/users/{id}/reset-totp", handlers.ResetUserTOTP)
-
-			// PAI-117: per-subject GDPR ops. Export streams every row that
-			// references the user; erase replaces PII with a placeholder
-			// instead of cascade-deleting historical project data.
-			r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
-			r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
-			r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
-			r.With(auth.RequireAdmin).Get("/system/settings", handlers.GetSystemSettings)
-			r.With(auth.RequireAdmin).Put("/system/settings", handlers.PutSystemSettings)
-
-			// User project access (admin only). The legacy /users/{id}/projects
-			// endpoints drive the external-portal grants page; the new
-			// /users/{id}/memberships endpoints drive the full matrix editor
-			// (with viewer/editor/none levels). Both write the same table.
-			r.With(auth.RequireAdmin).Get("/users/{id}/projects", handlers.ListUserProjects)
-			r.With(auth.RequireAdmin).Post("/users/{id}/projects", handlers.AddUserProject)
-			r.With(auth.RequireAdmin).Delete("/users/{id}/projects/{projectId}", handlers.RemoveUserProject)
-			r.With(auth.RequireAdmin).Get("/users/{id}/memberships", handlers.ListUserMemberships)
-			r.With(auth.RequireAdmin).Put("/users/{id}/memberships/{projectId}", handlers.UpsertUserMembership)
-			r.With(auth.RequireAdmin).Delete("/users/{id}/memberships/{projectId}", handlers.DeleteUserMembership)
-
-			// Permissions matrix (read-only; any authenticated internal user
-			// may view it, but the settings page is admin-gated on the UI side).
-			r.Get("/permissions/matrix", handlers.GetPermissionsMatrix)
-
-			// Access-change audit log (admin only).
-			r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
-			r.With(auth.RequireAdmin, auth.RequireCapability(auth.CapabilitySuperAdminAuditRead)).Get("/super-admin-activity", handlers.ListSuperAdminActivity)
-
-			// Incident log (PAI-116). Admin-only CRUD + JSON/CSV export
-			// for SIEM ingestion. Export route is registered before
-			// /incidents/{id} so the literal path wins the chi match.
-			r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)
-			r.With(auth.RequireAdmin).Get("/incidents", handlers.ListIncidents)
-			r.With(auth.RequireAdmin).Post("/incidents", handlers.CreateIncident)
-			r.With(auth.RequireAdmin).Get("/incidents/{id}", handlers.GetIncident)
-			r.With(auth.RequireAdmin).Patch("/incidents/{id}", handlers.UpdateIncident)
-			r.With(auth.RequireAdmin).Delete("/incidents/{id}", handlers.DeleteIncident)
-
-			// Session-scoped mutation audit (PAI-97). Admin only. Returns
-			// the mutations recorded under a session, keyset-paginated by
-			// `id > cursor`. Empty array for unknown sessions.
-			r.With(auth.RequireAdmin).Get("/sessions/{id}/activity", handlers.GetSessionActivity)
-
-			// Tags (admin only for write)
-			r.Get("/tags", handlers.ListTags)
-			r.With(auth.RequireAdmin).Post("/tags", handlers.CreateTag)
-			r.With(auth.RequireAdmin).Put("/tags/{id}", handlers.UpdateTag)
-			r.With(auth.RequireAdmin).Delete("/tags/{id}", handlers.DeleteTag)
-
-			// Tag associations
-			r.With(auth.RequireProjectView).Get("/projects/{id}/tags", handlers.ListProjectTags)
-			r.With(auth.RequireIssueEdit).Post("/issues/{id}/tags", handlers.AddTagToIssue)
-			r.With(auth.RequireIssueEdit).Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
-			// PAI-463: compact endpoint backing the IssueDetailView visibility
-			// toggle's audit line. Read-only — any user with issue access.
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/portal-visibility", handlers.GetIssuePortalVisibility)
-			// PAI-465: bulk attach/detach a single tag across N issues.
-			// Per-issue permission check happens inside the handler so a
-			// mixed-permission selection fails cleanly with 403.
-			r.Post("/issues/batch/tags", handlers.BatchTagIssues)
-			// PAI-467: admin Customer Portal Visibility report. Both
-			// JSON and CSV variants are admin + project-view gated.
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/admin/projects/{id}/portal-visibility", handlers.GetAdminProjectPortalVisibility)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/admin/projects/{id}/portal-visibility.csv", handlers.GetAdminProjectPortalVisibilityCSV)
-			r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)
-			r.With(auth.RequireProjectEdit).Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
-
-			// Comments
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
-			r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/comments", handlers.CreateComment)
-			r.With(auth.RequireCommentEdit).Patch("/comments/{id}", handlers.UpdateCommentVisibility)
-			r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
-
-			// Branding write endpoints (admin only). GET /api/branding stays
-			// public (see the public group above) because the login page needs
-			// it pre-auth. Writes are admin-gated; assets are served by
-			// /brand/{filename} at the root, below.
-			r.With(auth.RequireAdmin).Put("/branding", handlers.PutBranding)
-			r.With(auth.RequireAdmin).Post("/branding/logo", handlers.UploadBrandingLogo)
-			r.With(auth.RequireAdmin).Post("/branding/favicon", handlers.UploadBrandingFavicon)
-
-			// AI text optimization (PAI-146). Admin-only settings + write
-			// surface; the per-call optimize endpoint is mounted in the
-			// authenticated group below so any logged-in user with edit
-			// rights on the target field can call it. AIStatus stays in
-			// the authenticated (non-admin) group as well — the SPA polls
-			// it on every render that shows an AI button.
-			r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
-			r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
-			// PAI-159: admin-only test-connection ping. Mounted in the
-			// admin group; CSRF middleware (PAI-113) covers it.
-			r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
-			// PAI-160: live OpenRouter model picker, server-cached 1h.
-			// Admin-only because the response shapes admin decisions
-			// (which model to enable for the whole instance).
-			r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
-			// PAI-161: per-user usage summary for the admin dashboard.
-			r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
-			r.With(auth.RequireAdmin).Get("/ai/calls", handlers.AIListCalls)
-			r.With(auth.RequireAdmin).Get("/ai/calls/export.csv", handlers.AIExportCallsCSV)
-			r.With(auth.RequireAdmin).Get("/ai/calls/{id}", handlers.AIGetCall)
-			// PAI-175 / PAI-176 / PAI-177: prompt CRUD + dry-run.
-			// Admin-only. The list endpoint lazily seeds built-in
-			// rows so a fresh install never sees an empty list.
-			r.With(auth.RequireAdmin).Get("/ai/prompts", handlers.AIListPrompts)
-			r.With(auth.RequireAdmin).Post("/ai/prompts", handlers.AICreatePrompt)
-			r.With(auth.RequireAdmin).Put("/ai/prompts/{id}", handlers.AIUpdatePrompt)
-			r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
-			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
-			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
-			r.Get("/ai/actions", handlers.AIListActions)
-			r.Get("/ai/status", handlers.AIStatus)
-			r.Get("/ai/calls/me", handlers.AIListMyCalls)
-			r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
-			// PAI-164: legacy /api/ai/optimize endpoint retired —
-			// the optimize behaviour now lives behind /api/ai/action
-			// with action="optimize". The frontend useAiOptimize
-			// composable was updated to call the dispatcher.
-			r.Post("/ai/action", handlers.AIAction)
-			// PAI-449: pre-run cost estimate for bulk AI flows.
-			r.Get("/ai/bulk-cost-estimate", handlers.AIBulkCostEstimate)
-			r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
-
-			// Integrations (admin only for write)
-			r.Get("/integrations/jira", handlers.GetJiraIntegration)
-			r.With(auth.RequireAdmin).Put("/integrations/jira", handlers.PutJiraIntegration)
-			r.With(auth.RequireAdmin).Post("/integrations/jira/test", handlers.TestJiraIntegration)
-
-			// Mite integration
-			r.Get("/integrations/mite", handlers.GetMiteIntegration)
-			r.With(auth.RequireAdmin).Put("/integrations/mite", handlers.PutMiteIntegration)
-			r.With(auth.RequireAdmin).Post("/integrations/mite/test", handlers.TestMiteIntegration)
-
-			// CRM provider plugin layer (PAI-101). All admin-only.
-			// The plugin layer does not assume any specific provider —
-			// `crm.List()` only returns whatever was blank-imported in
-			// this binary.
-			r.With(auth.RequireAdmin).Get("/integrations/crm", crm.ListProviders)
-			r.With(auth.RequireAdmin).Get("/integrations/crm/{id}/config", crm.GetProviderConfig)
-			r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/config", crm.PutProviderConfig)
-			r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/enabled", crm.PutProviderEnabled)
-			r.With(auth.RequireAdmin).Post("/integrations/crm/{id}/test", crm.TestProviderConnection)
-			// PAI-266: name-based company search across enabled providers.
-			r.With(auth.RequireAdmin).Get("/integrations/crm/search", crm.SearchProviders)
-
-			// Customers (PAI-53). CRM-agnostic CRUD; manual customers
-			// fully supported (no provider required).
-			r.Get("/customers", handlers.ListCustomers)
-			r.Get("/customers/{id}", handlers.GetCustomer)
-			r.With(auth.RequireAdmin).Post("/customers", handlers.CreateCustomer)
-			r.With(auth.RequireAdmin).Put("/customers/{id}", handlers.UpdateCustomer)
-			r.With(auth.RequireAdmin).Delete("/customers/{id}", handlers.DeleteCustomer)
-			// Provider-driven import / sync (PAI-103).
-			r.With(auth.RequireAdmin).Post("/customers/import", crm.ImportCustomer)
-			r.With(auth.RequireAdmin).Post("/customers/{id}/sync", crm.SyncCustomer)
-
-			// Contacts (PAI-273). One customer holds many Ansprechpartner;
-			// list is open to anyone with customer-read, mutations are
-			// admin-only. promote-primary is the dedicated atomic flip.
-			r.Get("/customers/{id}/contacts", handlers.ListCustomerContacts)
-			r.With(auth.RequireAdmin).Post("/customers/{id}/contacts", handlers.CreateCustomerContact)
-			r.Get("/contacts/{id}", handlers.GetContact)
-			r.With(auth.RequireAdmin).Put("/contacts/{id}", handlers.UpdateContact)
-			r.With(auth.RequireAdmin).Delete("/contacts/{id}", handlers.DeleteContact)
-			r.With(auth.RequireAdmin).Post("/contacts/{id}/promote-primary", handlers.PromoteContactPrimary)
-
-			// Documents (PAI-55). Scoped under customer / project for
-			// list + upload; unscoped paths for read / mutate / delete
-			// since documents are uniquely id-addressable.
-			r.Get("/customers/{id}/documents", handlers.ListCustomerDocuments)
-			r.With(auth.RequireAdmin).Post("/customers/{id}/documents", handlers.UploadCustomerDocument)
-			r.With(auth.RequireProjectView).Get("/projects/{id}/documents", handlers.ListProjectDocuments)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/documents", handlers.UploadProjectDocument)
-			r.Get("/documents/{id}/download", handlers.DownloadDocument)
-			r.With(auth.RequireAdmin).Put("/documents/{id}", handlers.UpdateDocument)
-			r.With(auth.RequireAdmin).Delete("/documents/{id}", handlers.DeleteDocument)
-
-			// Cooperation metadata (PAI-61). Per-project engagement
-			// profile; informational only in v1.
-			r.With(auth.RequireProjectView).Get("/projects/{id}/cooperation", handlers.GetCooperation)
-			r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/cooperation", handlers.PutCooperation)
-
-			// Mite import
-			r.With(auth.RequireAdmin).Post("/import/mite", handlers.ImportFromMite)
-			r.With(auth.RequireAdmin).Get("/import/mite/jobs/{id}", handlers.GetMiteImportJobStatus)
-			r.With(auth.RequireAdmin).Post("/import/mite/jobs/{id}/cancel", handlers.CancelMiteImportJob)
-			r.With(auth.RequireAdmin).Get("/import/mite/resume-date", handlers.GetMiteResumeDate)
-			r.With(auth.RequireAdmin).Delete("/import/mite/entries", handlers.DeleteMiteEntries)
-
-			// Jira import
-			r.With(auth.RequireAdmin).Get("/import/jira/projects", handlers.ListJiraProjects)
-			r.With(auth.RequireAdmin).Get("/import/jira/debug", handlers.DebugJiraFetch)
-			r.With(auth.RequireAdmin).Post("/import/jira", handlers.ImportFromJira)
-			r.With(auth.RequireAdmin).Get("/import/jira/jobs/{id}", handlers.GetImportJobStatus)
-
-			// Views (saved column+filter sets)
-			r.Get("/views", handlers.ListViews)
-			r.Post("/views", handlers.CreateView)
-			r.Put("/views/{id}", handlers.UpdateView)
-			r.Delete("/views/{id}", handlers.DeleteView)
-			r.With(auth.RequireAdmin).Patch("/views/order", handlers.ReorderViews)
-			r.Post("/views/{id}/pin", handlers.PinView)
-			r.Delete("/views/{id}/pin", handlers.UnpinView)
-
-			// Search
-			r.Get("/search", handlers.Search)
-
-			// Dev panel (admin only)
-			r.With(auth.RequireAdmin).Post("/dev/test-reports", handlers.UploadTestReport)
-			r.With(auth.RequireAdmin).Get("/dev/test-reports", handlers.ListTestReports)
-			r.With(auth.RequireAdmin).Get("/dev/test-reports/summary", handlers.GetTestReportSummary)
-			r.With(auth.RequireAdmin).Get("/dev/test-reports/{filename}", handlers.GetTestReport)
-		})
-	})
+	r.Route("/api", mountAPI)
 
 	// Project logos + avatars are served from DATA_DIR subdirs, which
 	// are volume-mounted and survive container rebuilds. The handlers
@@ -909,4 +313,605 @@ var viteHashedRe = regexp.MustCompile(`-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$`)
 
 func isViteHashed(urlPath string) bool {
 	return viteHashedRe.MatchString(urlPath)
+}
+
+// mountAPI registers every /api/* route. Extracted from main() (PAI-294)
+// so the OpenAPI-coverage guard test can walk the route tree without
+// booting the server, which keeps the published public surface auditable.
+func mountAPI(r chi.Router) {
+	// ── Strictly public endpoints ────────────────────────────────
+	// Everything here is accessible without a session. Keep this
+	// list short and auditable — the only valid reasons for a
+	// route to live outside the auth group are:
+	//   (a) health checks for Docker / CI / monitoring, or
+	//   (b) the login page needs it before any session can exist, or
+	//   (c) agent-discovery endpoints the CLI / MCP fetch before
+	//       any API key is issued (e.g. /api/schema).
+	// Audited 2026-04-21.
+	r.Get("/health", healthHandler)          // (a) Docker + CI
+	r.Get("/branding", handlers.GetBranding) // (b) login page logo + colors
+	r.Get("/schema", handlers.GetAPISchema)  // (c) CLI / MCP discovery (PAI-87)
+	// PAI-332: public adapter registry. CLI / external tooling
+	// browses the published adapter list without an account so
+	// adapter authors can self-link from their own README.
+	r.Get("/registry/adapters", handlers.GetAdapterRegistry)
+	// PAI-119: published OpenAPI 3.1 contract. Public so external
+	// clients can discover the API without an account.
+	r.Get("/openapi.json", handlers.GetOpenAPI)
+	// PAI-114: CSP violation reports. Browser-driven, unauthenticated.
+	r.Post("/csp-report", handlers.CSPReport)
+
+	// Auth (public — no session possible yet)
+	r.Post("/auth/login", auth.LoginHandler)
+	r.Post("/auth/totp/verify", auth.TOTPVerify)
+	// PAI-267: dev-login route — only mounted when the dev_login
+	// build tag is active. Production binaries do not contain
+	// the handler symbol and the route returns chi's stock 404.
+	if auth.DevLoginEnabled() {
+		r.Post("/auth/dev-login", auth.DevLoginHandler)
+	}
+
+	// PAI-120: OpenID Connect SSO. Status is always reachable so the
+	// SPA can decide whether to render the SSO button; login starts
+	// the flow and callback completes it. All three are public — no
+	// session can exist before the IdP redirects the user back.
+	r.Get("/auth/oidc/status", auth.OIDCStatus)
+	r.Get("/auth/oidc/login", auth.OIDCLogin)
+	r.Get("/auth/oidc/callback", auth.OIDCCallback)
+
+	// Forgot / reset password — all three must stay public since a
+	// user who has forgotten their password has no session cookie.
+	r.Post("/auth/forgot", handlers.ForgotPassword)
+	r.Get("/auth/reset/validate", handlers.ValidateResetToken)
+	r.Post("/auth/reset", handlers.ResetPassword)
+
+	// Auth (authenticated but open to all roles, including external)
+	r.Group(func(r chi.Router) {
+		r.Use(auth.Middleware)
+		r.Use(auth.CSRFMiddleware) // PAI-113
+		// PAI-321: must_change_password gate. Allowlist (logout,
+		// /auth/me, /auth/password) is built into the gate so the
+		// user can complete the change-password flow from this
+		// group without bypass.
+		r.Use(auth.MustChangePasswordGate)
+
+		r.Post("/auth/logout", auth.LogoutHandler)
+		r.Get("/auth/me", auth.MeHandler)
+		r.Post("/auth/password", auth.ChangePassword)
+		r.Post("/auth/impersonation/start", handlers.StartImpersonation)
+		r.Post("/auth/impersonation/end", handlers.EndImpersonation)
+		r.Patch("/auth/me", handlers.UpdateProfile)
+		r.Post("/auth/avatar", handlers.UploadAvatar)
+		r.Delete("/auth/avatar", handlers.DeleteAvatar)
+
+		// TOTP 2FA (authenticated)
+		r.Get("/auth/totp/status", auth.TOTPStatus)
+		r.Get("/auth/totp/setup", auth.TOTPSetup)
+		r.Post("/auth/totp/enable", auth.TOTPEnable)
+		r.Post("/auth/totp/disable", auth.TOTPDisable)
+
+		// API keys
+		r.Get("/auth/api-keys", handlers.ListAPIKeys)
+		r.Post("/auth/api-keys", handlers.CreateAPIKey)
+		r.Delete("/auth/api-keys/{id}", handlers.DeleteAPIKey)
+
+		// PAI-331 — auto-watch sync subscriptions (per-user,
+		// per-(device, project) toggle). The browser UI hits these;
+		// the CLI manages its row implicitly via the SSE handshake.
+		// {deviceID} is opaque text; {projectID} is numeric. Routes
+		// stay under /auth/* because the resource is "this user's
+		// preferences", same as the api-keys neighborhood.
+		r.Get("/auth/auto-watch", handlers.ListAutoWatch)
+		r.Put("/auth/auto-watch/{deviceID}/{projectID}", handlers.UpsertAutoWatch)
+		r.Delete("/auth/auto-watch/{deviceID}/{projectID}", handlers.DeleteAutoWatch)
+
+		// moved inside the auth group. Any authed role
+		// (including external/portal users) may fetch these — they
+		// are non-sensitive but there's no good reason for them to
+		// be reachable pre-authentication.
+		r.Get("/instance", instanceHandler)
+		r.Get("/brandings", handlers.ListBrandings)
+		r.Get("/logos/{filename}", serveLogoHandler)
+		r.Get("/avatars/{filename}", serveAvatarHandler)
+		r.Get("/projektberichte/accept/{code}", handlers.GetProjectReportAcceptance)
+		r.Post("/projektberichte/accept/{code}", handlers.AcceptProjectReport)
+		r.Put("/projektberichte/accept/{code}/signed", handlers.LinkProjectReportSignedArtifact)
+		r.Get("/projektberichte/{code}/pdf", handlers.GetProjectReportPDF)
+	})
+
+	// Portal (external + admin)
+	r.Group(func(r chi.Router) {
+		r.Use(auth.Middleware)
+		r.Use(auth.CSRFMiddleware)         // PAI-113
+		r.Use(auth.MustChangePasswordGate) // PAI-321
+		r.Use(auth.RequirePortalAccess)
+
+		r.Get("/portal/overview", handlers.PortalOverview)
+		r.Get("/portal/projects", handlers.PortalListProjects)
+		r.Get("/portal/projects/{id}", handlers.PortalGetProject)
+		r.Get("/portal/projects/{id}/issues", handlers.PortalListIssues)
+		r.Get("/portal/projects/{id}/issues/{issueId}", handlers.PortalGetIssue)
+		r.Post("/portal/projects/{id}/requests", handlers.PortalSubmitRequest)
+		r.Get("/portal/issues/{id}/comments", handlers.PortalListIssueComments)
+		r.Post("/portal/issues/{id}/accept", handlers.PortalAcceptIssue)
+		r.Post("/portal/issues/{id}/reject", handlers.PortalRejectIssue)
+		r.Post("/portal/issues/{id}/undo-accept", handlers.PortalUndoAccept)
+		r.Post("/portal/issues/{id}/undo-reject", handlers.PortalUndoReject)
+		r.Get("/portal/projects/{id}/summary", handlers.PortalProjectSummary)
+		r.Get("/portal/projects/{id}/projektberichte", handlers.ListProjectReports)
+		r.Get("/portal/projects/{id}/acceptance-report", handlers.AcceptanceReport)
+	})
+
+	// Internal (admin + member; blocked for external)
+	r.Group(func(r chi.Router) {
+		r.Use(auth.Middleware)
+		r.Use(auth.CSRFMiddleware)         // PAI-113
+		r.Use(auth.MustChangePasswordGate) // PAI-321
+		r.Use(auth.BlockExternal)
+
+		// Projects
+		r.Get("/projects", handlers.ListProjects)
+		// PAI-379: scope-narrowable project creation. The admin
+		// role is still required, AND when the caller authenticates
+		// via api-key the key must carry the projects:write scope.
+		// Session-cookie auth implicitly carries ScopeAll, so the
+		// admin web UI is unaffected.
+		r.With(auth.RequireAdmin, auth.RequireScope(auth.ScopeProjectsWrite)).Post("/projects", handlers.CreateProject)
+		r.With(auth.RequireProjectView).Get("/projects/{id}", handlers.GetProject)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}", handlers.UpdateProject)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}", handlers.DeleteProject)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/logo", handlers.UploadProjectLogo)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/logo", handlers.DeleteProjectLogo)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/repos", handlers.ListProjectRepos)
+		r.With(auth.RequireProjectEdit).Post("/projects/{id}/repos", handlers.CreateProjectRepo)
+		r.With(auth.RequireProjectEdit).Put("/projects/{id}/repos/{repoId}", handlers.UpdateProjectRepo)
+		r.With(auth.RequireProjectEdit).Delete("/projects/{id}/repos/{repoId}", handlers.DeleteProjectRepo)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/anchors", handlers.ListProjectAnchors)
+		// PAI-326 — declarable agents. Read = view; writes = admin
+		// (project-settings territory; matches CreateProject auth).
+		r.With(auth.RequireProjectView).Get("/projects/{id}/agents", handlers.ListProjectAgents)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/agents", handlers.CreateProjectAgent)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/agents/{name}", handlers.UpdateProjectAgent)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/agents/{name}", handlers.DeleteProjectAgent)
+		// PAI-329 — canonical agent artifact + markdown debug
+		// rendering. Read-only, view-gated.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.json", handlers.GetProjectAgentArtifact)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.md", handlers.GetProjectAgentArtifactMarkdown)
+		// PAI-331 — auto-watch sync: SSE event stream + cheap-poll
+		// .rev fallback. The events route is per-project and the
+		// route param `id` is the project id (chi's URL parser
+		// matches the same pattern as the .json/.md siblings). The
+		// .rev path mirrors the .json shape so polling clients
+		// reuse their cached agent_name; the response is plain
+		// text (the 12-char rev hash) so a curl loop can compare
+		// without a JSON parser.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/events", handlers.AgentsEventsStream)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/agents/{name}.rev", handlers.AgentRevHandler)
+		// PAI-329 — project-level inventories (environments,
+		// deploy recipes). repos already exists at /repos.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/environments", handlers.ListProjectEnvironments)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/environments", handlers.CreateProjectEnvironment)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/environments/{envId}", handlers.UpdateProjectEnvironment)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/environments/{envId}", handlers.DeleteProjectEnvironment)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/deploy-recipes", handlers.ListProjectDeployRecipes)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/deploy-recipes", handlers.CreateProjectDeployRecipe)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/deploy-recipes/{recipeId}", handlers.UpdateProjectDeployRecipe)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/deploy-recipes/{recipeId}", handlers.DeleteProjectDeployRecipe)
+
+		// PAI-338 (gated by PAI-346) — knowledge plane. PAI-394
+		// collapsed the original five-alias surface
+		// (/memory, /runbooks, /external-systems, /related-
+		// projects, /guidelines) into one resource. The type
+		// discriminator lives in the URL path segment for
+		// reads, and in the request body for POST. Auth
+		// mirrors agents: read = project view, writes = admin
+		// (knowledge entries shape an agent's view of the
+		// project, so they're project-settings adjacent).
+		//
+		// Memory-specific subroutes (PAI-347 decay tracking +
+		// PAI-349 admin review) live under /knowledge/memory/
+		// and are guarded against shadowing by the reserved-
+		// slug check in knowledge.IsReservedSlug.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge", knowledge.ListAllHandler)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/graph", knowledge.GraphHandler)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge", knowledge.CreateHandler)
+		r.With(auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/references", handlers.BumpMemoryReferences)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/stale", handlers.ListStaleMemory)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/proposed/stale", handlers.ListStaleProposedMemory)
+		// PAI-351 slice 2 — needs-review triage queue. Literal route MUST
+		// precede the {slug} wildcard (and "needs-review" is a reserved slug).
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/needs-review", knowledge.NeedsReviewHandler)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/memory/{slug}/dependents", knowledge.MemoryDependentsHandler)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/knowledge/memory/{slug}/reviewed", handlers.MarkMemoryReviewed)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}", knowledge.GetHandler)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/knowledge/{type}/{slug}.rev", handlers.KnowledgeRevHandler)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/knowledge/{type}/{slug}", knowledge.UpdateHandler)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Delete("/projects/{id}/knowledge/{type}/{slug}", knowledge.DeleteHandler)
+
+		// PAI-345 — cross-scope memory: user-scope and instance-scope
+		// CRUD parallels the project-scope endpoints above. The
+		// discriminator is the WHERE clause inside the handler;
+		// see handlers/knowledge_user.go and knowledge_instance.go.
+		// User memory: any auth'd user can manage their own.
+		r.Get("/users/me/memory", handlers.ListUserMemory)
+		r.Post("/users/me/memory", handlers.CreateUserMemory)
+		r.Get("/users/me/memory/{slug}", handlers.GetUserMemory)
+		r.Put("/users/me/memory/{slug}", handlers.UpdateUserMemory)
+		r.Delete("/users/me/memory/{slug}", handlers.DeleteUserMemory)
+		// Instance memory: read open to all authenticated users,
+		// writes admin-only. Defence-in-depth check inside each
+		// handler keeps the gate even if the middleware is wrong.
+		r.Get("/instance/memory", handlers.ListInstanceMemory)
+		r.With(auth.RequireAdmin).Post("/instance/memory", handlers.CreateInstanceMemory)
+		r.Get("/instance/memory/{slug}", handlers.GetInstanceMemory)
+		r.With(auth.RequireAdmin).Put("/instance/memory/{slug}", handlers.UpdateInstanceMemory)
+		r.With(auth.RequireAdmin).Delete("/instance/memory/{slug}", handlers.DeleteInstanceMemory)
+		// Promotion endpoint — crosses scopes by design, so no
+		// /projects/:id prefix. Auth is per-scope inside the
+		// handler (admin gate fires when promoting to instance).
+		r.Post("/memory/{slug}/promote", handlers.PromoteMemory)
+
+		// PAI-394 moved PAI-347 + PAI-349 memory subroutes
+		// under /projects/{id}/knowledge/memory/... — see
+		// the unified knowledge mount block above.
+		// PAI-358: GET /projects/{id}/manifest, PUT
+		// /projects/{id}/manifest, and POST /projects/{id}/migrate-
+		// manifest-to-knowledge are gone — the legacy taxonomy is
+		// fully replaced by the PAI-338 knowledge plane.
+		r.With(auth.RequireProjectEdit).Post("/projects/{id}/anchors", handlers.IngestProjectAnchors)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/graph", handlers.ListProjectEntityRelations)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/graph/blast-radius", handlers.BlastRadius)
+		r.With(auth.RequireProjectView).Post("/projects/{id}/retrieve", handlers.RetrieveProjectContext)
+
+		// Project key suggestion
+		r.Get("/projects/suggest-key", handlers.SuggestProjectKey)
+
+		// Issues nested under project
+		r.With(auth.RequireProjectView).Get("/projects/{id}/issues", handlers.ListIssues)
+		r.With(auth.RequireProjectEdit, handlers.IdempotencyMiddleware).Post("/projects/{id}/issues", handlers.CreateIssue)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/issues/tree", handlers.GetIssueTree)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/cost-units", handlers.ListCostUnits)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/releases", handlers.ListReleases)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/export/csv", handlers.ExportCSV)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-log", handlers.AcceptanceLog)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/acceptance-report", handlers.AcceptanceReport)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht", handlers.GetLieferbericht)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/reports/lieferbericht/pdf", handlers.GetLieferberichtPDF)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht", handlers.GetLieferbericht)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/reports/projektbericht/pdf", handlers.GetLieferberichtPDF)
+		// PAI-579: booked-hours report (user × project × window). Hours/material only.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/time-report", handlers.GetProjectTimeReport)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/projektberichte", handlers.ListProjectReports)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/report-permissions", handlers.ListProjectReportPermissions)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/report-permissions", handlers.PutProjectReportPermissions)
+		// Project accruals (Vorräte) — admin only
+		r.With(auth.RequireAdmin).Get("/reports/accruals", handlers.GetAccruals)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv/preflight", handlers.ImportCSVPreflight)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/import/csv", handlers.ImportCSV)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/projects/{id}/time-entries/users", handlers.PurgeUsers)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/time-entries/purge-preview", handlers.PurgePreview)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/time-entries/purge", handlers.PurgeTimeEntries)
+		r.With(auth.RequireAdmin).Post("/import/csv/preflight", handlers.ImportCSVGlobalPreflight)
+		r.With(auth.RequireAdmin).Post("/import/csv", handlers.ImportCSVGlobal)
+
+		// Dashboard recent activity (must be before /issues/{id})
+		r.Get("/issues/recent", handlers.RecentIssues)
+		// Trash (soft-deleted issues) — admin-only (must be before /issues/{id})
+		r.With(auth.RequireAdmin).Get("/issues/trash", handlers.ListTrashIssues)
+		// Cross-project issue list + orphan sprint creation (must be before /issues/{id})
+		// ListOrLookupIssues dispatches to the key-pick handler when ?keys= is
+		// present (PAI-88) and falls through to ListAllIssues otherwise.
+		r.Get("/issues", handlers.ListOrLookupIssues)
+		r.Post("/issues", handlers.CreateOrphanIssue)
+
+		// Bulk issue ops (PAI-88). Admin-only for v1 — simpler to reason
+		// about than cross-project per-item access checks, and the primary
+		// caller is the paimos CLI run under an admin key. Single-issue
+		// endpoints still serve non-admins.
+		r.With(auth.RequireAdmin).Patch("/issues", handlers.UpdateIssuesBatch)
+		r.With(auth.RequireAdmin, handlers.IdempotencyMiddleware).Post("/projects/{key}/issues/batch", handlers.CreateIssuesBatch)
+
+		// Sprints
+		r.Get("/sprints", handlers.ListSprints)
+		r.Get("/sprints/years", handlers.ListSprintYears)
+		r.Get("/sprints/{year}", handlers.ListSprintsByYear)
+		r.With(auth.RequireAdmin).Post("/sprints/batch", handlers.CreateSprintsBatch)
+		r.With(auth.RequireAdmin).Put("/sprints/{id}", handlers.UpdateSprint)
+		r.With(auth.RequireAdmin).Post("/sprints/{id}/move-incomplete", handlers.MoveIncompleteToNextSprint)
+		r.With(auth.RequireAdmin).Put("/sprints/{id}/reorder", handlers.ReorderSprintMembers)
+		// Cross-project distinct values
+		r.Get("/cost-units", handlers.ListAllCostUnits)
+		r.Get("/releases", handlers.ListAllReleases)
+
+		// Issues by ID
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
+		r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
+		r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
+		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}", handlers.DeleteIssue)
+		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Post("/issues/{id}/restore", handlers.RestoreIssue)
+		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/purge", handlers.PurgeIssue)
+		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Patch("/issues/{id}/archive", handlers.ArchiveIssue)
+		// Attachments
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/attachments", handlers.ListAttachments)
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/attachments", handlers.UploadAttachment)
+		r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}/meta", handlers.GetAttachmentMeta)
+		r.With(auth.RequireAttachmentAccess).Get("/attachments/{id}", handlers.GetAttachmentFile)
+		r.With(auth.RequireAttachmentEdit).Delete("/attachments/{id}", handlers.DeleteAttachment)
+		r.Post("/attachments", handlers.UploadPendingAttachment)
+		r.Patch("/attachments/link", handlers.LinkAttachments)
+
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/clone", handlers.CloneIssue)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/aggregation", handlers.GetIssueAggregation)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/children", handlers.GetIssueChildren)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/history", handlers.GetIssueHistory)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/anchors", handlers.ListIssueAnchors)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-activity", handlers.AIListIssueActivity)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/activity", handlers.ListIssueMutationActivity)
+		r.Get("/undo/activity", handlers.ListMyMutationActivity)
+		r.Post("/undo/{id}", handlers.UndoMutation)
+		r.Post("/undo/{id}/resolve", handlers.ResolveUndoMutation)
+		r.Post("/undo/request/{requestID}", handlers.UndoMutationByRequestID)
+		r.Post("/redo/{id}", handlers.RedoMutation)
+		r.Post("/redo/{id}/resolve", handlers.ResolveRedoMutation)
+		r.Post("/redo/request/{requestID}", handlers.RedoMutationByRequestID)
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/complete-epic", handlers.CompleteEpic)
+
+		// Issue relations (v2)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/relations", handlers.ListIssueRelations)
+		r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/relations", handlers.CreateIssueRelation)
+		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/relations", handlers.DeleteIssueRelation)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/members", handlers.ListIssuesByRelation)
+
+		// PAI-342: applicable memories. Read-only convenience over
+		// issue_relations(type='applies_to_memory') with an optional
+		// `?suggest=1` mode that scores up to 3 candidates the
+		// ticket isn't yet linked to. Mutations reuse the relations
+		// endpoints above with the same type discriminator.
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/applicable-memories", handlers.ListApplicableMemories)
+
+		// PAI-343: lesson-capture trigger detection. Asked by the UI
+		// (and the `paimos issue update --draft-memory` CLI flag)
+		// when a ticket transitions to a terminal status, so the
+		// trigger logic stays in one place. Read-only.
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/lesson-capture-prompt", handlers.LessonCapturePrompt)
+
+		// Time entries (v2)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/time-entries", handlers.ListTimeEntries)
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/time-entries", handlers.CreateTimeEntry)
+		r.Get("/time-entries/running", handlers.GetRunningTimers)
+		r.Get("/time-entries/recent", handlers.GetRecentTimers)
+		r.Get("/time-entries/today-summary", handlers.GetTimeEntriesTodaySummary)
+		r.With(auth.RequireTimeEntryAccess).Get("/time-entries/{id}", handlers.GetTimeEntry)
+		r.With(auth.RequireTimeEntryEdit).Put("/time-entries/{id}", handlers.UpdateTimeEntry)
+		r.With(auth.RequireTimeEntryEdit).Delete("/time-entries/{id}", handlers.DeleteTimeEntry)
+
+		// System tag rules (admin only)
+		r.Get("/system-tag-rules", handlers.ListSystemTagRules)
+		r.With(auth.RequireAdmin).Put("/system-tag-rules", handlers.UpdateSystemTagRule)
+
+		// Recent projects (current user)
+		r.Get("/users/me/recent-projects", handlers.GetRecentProjects)
+		r.Post("/users/me/recent-projects", handlers.UpsertRecentProject)
+
+		// Users (admin only for create/update/delete)
+		r.Get("/users", handlers.ListUsers)
+		r.With(auth.RequireAdmin).Post("/users", handlers.CreateUser)
+		r.With(auth.RequireAdmin).Put("/users/{id}", handlers.UpdateUser)
+		r.With(auth.RequireAdmin).Post("/users/{id}/disable", handlers.DisableUser)
+		r.With(auth.RequireAdmin).Delete("/users/{id}", handlers.DeleteUser)
+		r.With(auth.RequireAdmin).Post("/users/{id}/reset-totp", handlers.ResetUserTOTP)
+
+		// PAI-117: per-subject GDPR ops. Export streams every row that
+		// references the user; erase replaces PII with a placeholder
+		// instead of cascade-deleting historical project data.
+		r.With(auth.RequireAdmin).Get("/users/{id}/gdpr-export", handlers.ExportSubject)
+		r.With(auth.RequireAdmin).Post("/users/{id}/gdpr-erase", handlers.EraseSubject)
+		r.With(auth.RequireAdmin).Get("/gdpr/retention", handlers.GetRetentionPolicy)
+		r.With(auth.RequireAdmin).Get("/system/settings", handlers.GetSystemSettings)
+		r.With(auth.RequireAdmin).Put("/system/settings", handlers.PutSystemSettings)
+
+		// User project access (admin only). The legacy /users/{id}/projects
+		// endpoints drive the external-portal grants page; the new
+		// /users/{id}/memberships endpoints drive the full matrix editor
+		// (with viewer/editor/none levels). Both write the same table.
+		r.With(auth.RequireAdmin).Get("/users/{id}/projects", handlers.ListUserProjects)
+		r.With(auth.RequireAdmin).Post("/users/{id}/projects", handlers.AddUserProject)
+		r.With(auth.RequireAdmin).Delete("/users/{id}/projects/{projectId}", handlers.RemoveUserProject)
+		r.With(auth.RequireAdmin).Get("/users/{id}/memberships", handlers.ListUserMemberships)
+		r.With(auth.RequireAdmin).Put("/users/{id}/memberships/{projectId}", handlers.UpsertUserMembership)
+		r.With(auth.RequireAdmin).Delete("/users/{id}/memberships/{projectId}", handlers.DeleteUserMembership)
+
+		// Permissions matrix (read-only; any authenticated internal user
+		// may view it, but the settings page is admin-gated on the UI side).
+		r.Get("/permissions/matrix", handlers.GetPermissionsMatrix)
+
+		// Access-change audit log (admin only).
+		r.With(auth.RequireAdmin).Get("/access-audit", handlers.ListAccessAudit)
+		r.With(auth.RequireAdmin, auth.RequireCapability(auth.CapabilitySuperAdminAuditRead)).Get("/super-admin-activity", handlers.ListSuperAdminActivity)
+
+		// Incident log (PAI-116). Admin-only CRUD + JSON/CSV export
+		// for SIEM ingestion. Export route is registered before
+		// /incidents/{id} so the literal path wins the chi match.
+		r.With(auth.RequireAdmin).Get("/incidents/export", handlers.ExportIncidents)
+		r.With(auth.RequireAdmin).Get("/incidents", handlers.ListIncidents)
+		r.With(auth.RequireAdmin).Post("/incidents", handlers.CreateIncident)
+		r.With(auth.RequireAdmin).Get("/incidents/{id}", handlers.GetIncident)
+		r.With(auth.RequireAdmin).Patch("/incidents/{id}", handlers.UpdateIncident)
+		r.With(auth.RequireAdmin).Delete("/incidents/{id}", handlers.DeleteIncident)
+
+		// Session-scoped mutation audit (PAI-97). Admin only. Returns
+		// the mutations recorded under a session, keyset-paginated by
+		// `id > cursor`. Empty array for unknown sessions.
+		r.With(auth.RequireAdmin).Get("/sessions/{id}/activity", handlers.GetSessionActivity)
+
+		// Tags (admin only for write)
+		r.Get("/tags", handlers.ListTags)
+		r.With(auth.RequireAdmin).Post("/tags", handlers.CreateTag)
+		r.With(auth.RequireAdmin).Put("/tags/{id}", handlers.UpdateTag)
+		r.With(auth.RequireAdmin).Delete("/tags/{id}", handlers.DeleteTag)
+
+		// Tag associations
+		r.With(auth.RequireProjectView).Get("/projects/{id}/tags", handlers.ListProjectTags)
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/tags", handlers.AddTagToIssue)
+		r.With(auth.RequireIssueEdit).Delete("/issues/{id}/tags/{tag_id}", handlers.RemoveTagFromIssue)
+		// PAI-463: compact endpoint backing the IssueDetailView visibility
+		// toggle's audit line. Read-only — any user with issue access.
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/portal-visibility", handlers.GetIssuePortalVisibility)
+		// PAI-465: bulk attach/detach a single tag across N issues.
+		// Per-issue permission check happens inside the handler so a
+		// mixed-permission selection fails cleanly with 403.
+		r.Post("/issues/batch/tags", handlers.BatchTagIssues)
+		// PAI-467: admin Customer Portal Visibility report. Both
+		// JSON and CSV variants are admin + project-view gated.
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/admin/projects/{id}/portal-visibility", handlers.GetAdminProjectPortalVisibility)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Get("/admin/projects/{id}/portal-visibility.csv", handlers.GetAdminProjectPortalVisibilityCSV)
+		r.With(auth.RequireProjectEdit).Post("/projects/{id}/tags", handlers.AddTagToProject)
+		r.With(auth.RequireProjectEdit).Delete("/projects/{id}/tags/{tag_id}", handlers.RemoveTagFromProject)
+
+		// Comments
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/comments", handlers.ListComments)
+		r.With(auth.RequireIssueEdit, handlers.IdempotencyMiddleware).Post("/issues/{id}/comments", handlers.CreateComment)
+		r.With(auth.RequireCommentEdit).Patch("/comments/{id}", handlers.UpdateCommentVisibility)
+		r.With(auth.RequireCommentAccess).Delete("/comments/{id}", handlers.DeleteComment)
+
+		// Branding write endpoints (admin only). GET /api/branding stays
+		// public (see the public group above) because the login page needs
+		// it pre-auth. Writes are admin-gated; assets are served by
+		// /brand/{filename} at the root, below.
+		r.With(auth.RequireAdmin).Put("/branding", handlers.PutBranding)
+		r.With(auth.RequireAdmin).Post("/branding/logo", handlers.UploadBrandingLogo)
+		r.With(auth.RequireAdmin).Post("/branding/favicon", handlers.UploadBrandingFavicon)
+
+		// AI text optimization (PAI-146). Admin-only settings + write
+		// surface; the per-call optimize endpoint is mounted in the
+		// authenticated group below so any logged-in user with edit
+		// rights on the target field can call it. AIStatus stays in
+		// the authenticated (non-admin) group as well — the SPA polls
+		// it on every render that shows an AI button.
+		r.With(auth.RequireAdmin).Get("/ai/settings", handlers.GetAISettings)
+		r.With(auth.RequireAdmin).Put("/ai/settings", handlers.PutAISettings)
+		// PAI-159: admin-only test-connection ping. Mounted in the
+		// admin group; CSRF middleware (PAI-113) covers it.
+		r.With(auth.RequireAdmin).Post("/ai/test", handlers.AITestConnection)
+		// PAI-160: live OpenRouter model picker, server-cached 1h.
+		// Admin-only because the response shapes admin decisions
+		// (which model to enable for the whole instance).
+		r.With(auth.RequireAdmin).Get("/ai/models", handlers.AIListModels)
+		// PAI-161: per-user usage summary for the admin dashboard.
+		r.With(auth.RequireAdmin).Get("/ai/usage", handlers.AIUsage)
+		r.With(auth.RequireAdmin).Get("/ai/calls", handlers.AIListCalls)
+		r.With(auth.RequireAdmin).Get("/ai/calls/export.csv", handlers.AIExportCallsCSV)
+		r.With(auth.RequireAdmin).Get("/ai/calls/{id}", handlers.AIGetCall)
+		// PAI-175 / PAI-176 / PAI-177: prompt CRUD + dry-run.
+		// Admin-only. The list endpoint lazily seeds built-in
+		// rows so a fresh install never sees an empty list.
+		r.With(auth.RequireAdmin).Get("/ai/prompts", handlers.AIListPrompts)
+		r.With(auth.RequireAdmin).Post("/ai/prompts", handlers.AICreatePrompt)
+		r.With(auth.RequireAdmin).Put("/ai/prompts/{id}", handlers.AIUpdatePrompt)
+		r.With(auth.RequireAdmin).Delete("/ai/prompts/{id}", handlers.AIDeletePrompt)
+		r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
+		r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
+		r.Get("/ai/actions", handlers.AIListActions)
+		r.Get("/ai/status", handlers.AIStatus)
+		r.Get("/ai/calls/me", handlers.AIListMyCalls)
+		r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
+		// PAI-164: legacy /api/ai/optimize endpoint retired —
+		// the optimize behaviour now lives behind /api/ai/action
+		// with action="optimize". The frontend useAiOptimize
+		// composable was updated to call the dispatcher.
+		r.Post("/ai/action", handlers.AIAction)
+		// PAI-449: pre-run cost estimate for bulk AI flows.
+		r.Get("/ai/bulk-cost-estimate", handlers.AIBulkCostEstimate)
+		r.With(auth.RequireIssueAccess).Get("/issues/{id}/ai-calls", handlers.AIListIssueCalls)
+
+		// Integrations (admin only for write)
+		r.Get("/integrations/jira", handlers.GetJiraIntegration)
+		r.With(auth.RequireAdmin).Put("/integrations/jira", handlers.PutJiraIntegration)
+		r.With(auth.RequireAdmin).Post("/integrations/jira/test", handlers.TestJiraIntegration)
+
+		// Mite integration
+		r.Get("/integrations/mite", handlers.GetMiteIntegration)
+		r.With(auth.RequireAdmin).Put("/integrations/mite", handlers.PutMiteIntegration)
+		r.With(auth.RequireAdmin).Post("/integrations/mite/test", handlers.TestMiteIntegration)
+
+		// CRM provider plugin layer (PAI-101). All admin-only.
+		// The plugin layer does not assume any specific provider —
+		// `crm.List()` only returns whatever was blank-imported in
+		// this binary.
+		r.With(auth.RequireAdmin).Get("/integrations/crm", crm.ListProviders)
+		r.With(auth.RequireAdmin).Get("/integrations/crm/{id}/config", crm.GetProviderConfig)
+		r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/config", crm.PutProviderConfig)
+		r.With(auth.RequireAdmin).Put("/integrations/crm/{id}/enabled", crm.PutProviderEnabled)
+		r.With(auth.RequireAdmin).Post("/integrations/crm/{id}/test", crm.TestProviderConnection)
+		// PAI-266: name-based company search across enabled providers.
+		r.With(auth.RequireAdmin).Get("/integrations/crm/search", crm.SearchProviders)
+
+		// Customers (PAI-53). CRM-agnostic CRUD; manual customers
+		// fully supported (no provider required).
+		r.Get("/customers", handlers.ListCustomers)
+		r.Get("/customers/{id}", handlers.GetCustomer)
+		r.With(auth.RequireAdmin).Post("/customers", handlers.CreateCustomer)
+		r.With(auth.RequireAdmin).Put("/customers/{id}", handlers.UpdateCustomer)
+		r.With(auth.RequireAdmin).Delete("/customers/{id}", handlers.DeleteCustomer)
+		// Provider-driven import / sync (PAI-103).
+		r.With(auth.RequireAdmin).Post("/customers/import", crm.ImportCustomer)
+		r.With(auth.RequireAdmin).Post("/customers/{id}/sync", crm.SyncCustomer)
+
+		// Contacts (PAI-273). One customer holds many Ansprechpartner;
+		// list is open to anyone with customer-read, mutations are
+		// admin-only. promote-primary is the dedicated atomic flip.
+		r.Get("/customers/{id}/contacts", handlers.ListCustomerContacts)
+		r.With(auth.RequireAdmin).Post("/customers/{id}/contacts", handlers.CreateCustomerContact)
+		r.Get("/contacts/{id}", handlers.GetContact)
+		r.With(auth.RequireAdmin).Put("/contacts/{id}", handlers.UpdateContact)
+		r.With(auth.RequireAdmin).Delete("/contacts/{id}", handlers.DeleteContact)
+		r.With(auth.RequireAdmin).Post("/contacts/{id}/promote-primary", handlers.PromoteContactPrimary)
+
+		// Documents (PAI-55). Scoped under customer / project for
+		// list + upload; unscoped paths for read / mutate / delete
+		// since documents are uniquely id-addressable.
+		r.Get("/customers/{id}/documents", handlers.ListCustomerDocuments)
+		r.With(auth.RequireAdmin).Post("/customers/{id}/documents", handlers.UploadCustomerDocument)
+		r.With(auth.RequireProjectView).Get("/projects/{id}/documents", handlers.ListProjectDocuments)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Post("/projects/{id}/documents", handlers.UploadProjectDocument)
+		r.Get("/documents/{id}/download", handlers.DownloadDocument)
+		r.With(auth.RequireAdmin).Put("/documents/{id}", handlers.UpdateDocument)
+		r.With(auth.RequireAdmin).Delete("/documents/{id}", handlers.DeleteDocument)
+
+		// Cooperation metadata (PAI-61). Per-project engagement
+		// profile; informational only in v1.
+		r.With(auth.RequireProjectView).Get("/projects/{id}/cooperation", handlers.GetCooperation)
+		r.With(auth.RequireAdmin, auth.RequireProjectView).Put("/projects/{id}/cooperation", handlers.PutCooperation)
+
+		// Mite import
+		r.With(auth.RequireAdmin).Post("/import/mite", handlers.ImportFromMite)
+		r.With(auth.RequireAdmin).Get("/import/mite/jobs/{id}", handlers.GetMiteImportJobStatus)
+		r.With(auth.RequireAdmin).Post("/import/mite/jobs/{id}/cancel", handlers.CancelMiteImportJob)
+		r.With(auth.RequireAdmin).Get("/import/mite/resume-date", handlers.GetMiteResumeDate)
+		r.With(auth.RequireAdmin).Delete("/import/mite/entries", handlers.DeleteMiteEntries)
+
+		// Jira import
+		r.With(auth.RequireAdmin).Get("/import/jira/projects", handlers.ListJiraProjects)
+		r.With(auth.RequireAdmin).Get("/import/jira/debug", handlers.DebugJiraFetch)
+		r.With(auth.RequireAdmin).Post("/import/jira", handlers.ImportFromJira)
+		r.With(auth.RequireAdmin).Get("/import/jira/jobs/{id}", handlers.GetImportJobStatus)
+
+		// Views (saved column+filter sets)
+		r.Get("/views", handlers.ListViews)
+		r.Post("/views", handlers.CreateView)
+		r.Put("/views/{id}", handlers.UpdateView)
+		r.Delete("/views/{id}", handlers.DeleteView)
+		r.With(auth.RequireAdmin).Patch("/views/order", handlers.ReorderViews)
+		r.Post("/views/{id}/pin", handlers.PinView)
+		r.Delete("/views/{id}/pin", handlers.UnpinView)
+
+		// Search
+		r.Get("/search", handlers.Search)
+
+		// Dev panel (admin only)
+		r.With(auth.RequireAdmin).Post("/dev/test-reports", handlers.UploadTestReport)
+		r.With(auth.RequireAdmin).Get("/dev/test-reports", handlers.ListTestReports)
+		r.With(auth.RequireAdmin).Get("/dev/test-reports/summary", handlers.GetTestReportSummary)
+		r.With(auth.RequireAdmin).Get("/dev/test-reports/{filename}", handlers.GetTestReport)
+	})
 }
