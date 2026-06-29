@@ -69,6 +69,20 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
     unmount();
   });
 
+  it("offers a view-the-run follow-through after queueing (PAI-618)", async () => {
+    vi.mocked(api.post).mockResolvedValue({});
+    let viewed = 0;
+    const { el, unmount } = mountRow({ onView: () => (viewed += 1) });
+    el.querySelector<HTMLButtonElement>(".row-act--implement")!.click();
+    await settle();
+    const link = el.querySelector<HTMLButtonElement>(".implement-status--link");
+    expect(link).toBeTruthy();
+    link!.click();
+    await settle();
+    expect(viewed).toBe(1);
+    unmount();
+  });
+
   it("surfaces an error when the POST fails", async () => {
     vi.mocked(api.post).mockRejectedValue(new Error("nope"));
     const { el, unmount } = mountRow();

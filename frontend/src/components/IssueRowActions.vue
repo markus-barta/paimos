@@ -1,8 +1,16 @@
 <template>
   <div class="row-actions" :class="{ 'row-actions--collapsed': collapsed }">
-    <!-- PAI-610/612: transient "Implement this" feedback -->
+    <!-- PAI-610/612: transient "Implement this" feedback. On success it's a
+         follow-through to the issue's run panel (PAI-618). -->
+    <button
+      v-if="implementState === 'done'"
+      type="button"
+      class="implement-status implement-status--done implement-status--link"
+      title="Open the issue to watch the run"
+      @click.stop="$emit('view')"
+    >{{ implementMsg }} →</button>
     <span
-      v-if="implementState !== 'idle'"
+      v-else-if="implementState !== 'idle'"
       class="implement-status"
       :class="`implement-status--${implementState}`"
     >{{ implementMsg }}</span>
@@ -116,7 +124,7 @@ async function implement() {
   try {
     await api.post(`/issues/${props.issueId}/implement`, {})
     implementState.value = 'done'
-    implementMsg.value = 'Queued — see the Implement panel on the issue'
+    implementMsg.value = 'Queued — view'
   } catch (e: unknown) {
     implementState.value = 'error'
     implementMsg.value = errMsg(e, 'Failed')
@@ -268,6 +276,10 @@ tr:hover .row-act--hover,
   background: color-mix(in srgb, #2ecc71 22%, transparent); color: #1e8449;
 }
 .implement-status--error { background: #fef2f2; color: #c0392b; }
+.implement-status--link {
+  border: 0; cursor: pointer; font-family: inherit;
+}
+.implement-status--link:hover { text-decoration: underline; }
 
 /* Ellipsis menu */
 .ellipsis-wrap { position: relative; }
