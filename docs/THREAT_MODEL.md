@@ -185,10 +185,13 @@ Defences:
   deploys unless the operator passed BOTH `--allow-deploy` and a `--deploy-exec`
   command AND the run carries a `deploy_target`. Absent any of the three it can
   only move a run to `tests_passed` / `failed`.
-- **Authorized + audited.** `POST /implement` is project-editor gated; run
-  updates are requester/admin only; every mutation flows through the session
-  audit trail (§4.4). The structured `agent_runs` record + the auto-posted issue
-  comment make each run reviewable after the fact.
+- **Authorized + audited.** `POST /implement` is project-editor gated; run reads
+  and updates are requester, project-editor, or admin only. Every request is
+  recorded in the HTTP-level session audit (`session_activity`, §4.4). Note: the
+  run lifecycle and the auto-posted report comment use direct writes, so — unlike
+  ordinary issue/comment writes — they do **not** enter the field-level
+  `mutation_log`/undo trail; they are reviewable via the `agent_runs` record and
+  the comment, not undoable.
 
 The trust assumption is explicit: a developer who runs `paimos run-agent watch`
 delegates "run my coding agent (and optionally my deploy) when I click the

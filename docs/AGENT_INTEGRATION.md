@@ -312,6 +312,12 @@ queued → running → tests_passed | tests_failed → deployed
                                                 ↘ failed | cancelled
 ```
 
+The runner itself sets `running` / `tests_passed` / `failed` / `deployed`;
+`cancelled` is the decline-the-prompt off-ramp before `running`, and
+`tests_failed` is only ever set by the spawned agent reporting its own result.
+Terminal statuses (`deployed` / `failed` / `cancelled`) are enforced
+server-side — a run can't be moved back out of one.
+
 ### Endpoints
 
 ```bash
@@ -345,15 +351,29 @@ issue key in `name`.
 # On the developer's workstation, in the repo checkout:
 paimos run-agent watch --project PAI --repo-root .
 #   subscribes advertising implement-capability (?implement=1), and on an
-#   implement_requested event: marks the run running, spawns `claude` (override
-#   with --exec) in --repo-root, then reports tests_passed / failed.
-#   One job at a time; prompts before each run unless --yes.
+#   implement_requested event: claims the run, spawns `claude` (override with
+#   --exec) in --repo-root, then reports tests_passed / failed.
+#   It reconnects on a dropped stream, processes one job at a time, and
+#   periodically catches up on queued runs it missed; prompts before each run
+#   unless --yes. Two runners never double-execute the same run (atomic claim).
+```
+
+Enabling deploy is **triple-gated** and off by default — it runs only when all
+three hold: `--allow-deploy` AND `--deploy-exec "<cmd>"` AND the run carries a
+`deploy_target`. Even then it asks for a separate deploy confirmation unless
+`--yes-deploy` is also passed:
+
+```bash
+paimos run-agent watch --project PAI --yes \
+  --allow-deploy --deploy-exec "just deploy-ppm" --yes-deploy
+#   after a successful run with a deploy_target, runs the deploy command,
+#   captures the version from ./VERSION, and marks the run `deployed`.
 ```
 
 The spawned command sees `PAIMOS_RUN_ID` and `PAIMOS_ISSUE_KEY` in its
 environment, so the agent can PATCH richer progress itself (e.g. capture the
-version, attach a log, advance to `deployed`). On any transition into a terminal
-status the server auto-posts a summary comment on the ticket — so the
+version, set `log_attachment_id`, advance to `deployed`). On any transition into
+a terminal status the server auto-posts a summary comment on the ticket — so the
 human-readable trail always matches the structured run record.
 
 ---
