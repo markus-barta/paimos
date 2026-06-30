@@ -437,6 +437,71 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "ai_work_status": {
+            "$ref": "#/components/schemas/IssueAIWorkStatus",
+            "nullable": true,
+            "description": "Latest Implement-this agent run state for this issue, when any run exists"
+          }
+        }
+      },
+      "IssueAIWorkStatus": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "agent_name",
+          "device_id",
+          "version",
+          "deploy_target",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "tests_passed",
+              "tests_failed",
+              "deployed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "agent_name": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "deploy_target": {
+            "type": "string"
+          },
+          "tests_summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "finished_at": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -1290,6 +1355,24 @@
               "type": "integer",
               "format": "int64"
             }
+          },
+          {
+            "name": "ai_status",
+            "in": "query",
+            "description": "Comma-separated latest AI run statuses to include. Prefix a value with ! to exclude it. Use none to match issues with no AI run.",
+            "schema": {
+              "type": "string",
+              "example": "running,!failed,none"
+            }
+          },
+          {
+            "name": "ai_work_status",
+            "in": "query",
+            "description": "Alias for ai_status.",
+            "schema": {
+              "type": "string",
+              "example": "deployed"
+            }
           }
         ],
         "responses": {
@@ -1345,6 +1428,26 @@
           "issues"
         ],
         "summary": "List or look up issues across projects",
+        "parameters": [
+          {
+            "name": "ai_status",
+            "in": "query",
+            "description": "Comma-separated latest AI run statuses to include. Prefix a value with ! to exclude it. Use none to match issues with no AI run.",
+            "schema": {
+              "type": "string",
+              "example": "running,!failed,none"
+            }
+          },
+          {
+            "name": "ai_work_status",
+            "in": "query",
+            "description": "Alias for ai_status.",
+            "schema": {
+              "type": "string",
+              "example": "deployed"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Issues",
@@ -2332,6 +2435,10 @@
                   "if_status": {
                     "type": "string",
                     "description": "optimistic claim guard — apply only if the run is still in this status"
+                  },
+                  "device_id": {
+                    "type": "string",
+                    "description": "actual runner device id; accepted only when claiming a queued run"
                   },
                   "version": {
                     "type": "string"

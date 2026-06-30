@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -86,28 +87,23 @@ Examples:
 	return c
 }
 
-// deleteIssueByRef resolves the ref to a numeric id (the delete/purge
-// endpoints take ids, not keys, and resolving works only while the issue
-// is still live), soft-deletes it, and — when purge is set — permanently
-// removes it. Returns the id and a human summary line. Testable with a
-// *Client.
+// deleteIssueByRef resolves the ref to a numeric id, soft-deletes it, and —
+// when purge is set — permanently removes it. For a numeric ref that is already
+// in the trash, --purge can retry the hard-delete directly because normal issue
+// resolution intentionally hides trashed rows.
 func deleteIssueByRef(client *Client, ref string, purge bool) (int64, string, error) {
 	id, err := resolveIssueRefToID(client, ref)
 	if err != nil {
+		if purge {
+			if numericID, ok := numericIssueRef(ref); ok {
+				return purgeTrashedIssueByID(client, numericID, ref)
+			}
+		}
 		return 0, "", err
 	}
 	if purge {
-		if n, err := issueSubCount(client, id, "comments"); err != nil {
+		if err := guardIssuePurge(client, id, ref); err != nil {
 			return id, "", err
-		} else if n > 0 {
-			return id, "", fmt.Errorf("refusing to purge #%d: it has %d comment(s) — "+
-				"soft-delete it (omit --purge) or run `issue update %s --status cancelled`", id, n, ref)
-		}
-		if n, err := issueSubCount(client, id, "attachments"); err != nil {
-			return id, "", err
-		} else if n > 0 {
-			return id, "", fmt.Errorf("refusing to purge #%d: it has %d attachment(s) — "+
-				"soft-delete it (omit --purge) or cancel it instead", id, n)
 		}
 	}
 	idPath := fmt.Sprintf("/api/issues/%d", id)
@@ -123,6 +119,37 @@ func deleteIssueByRef(client *Client, ref string, purge bool) (int64, string, er
 			"the issue is in the trash; restore it with `paimos issue restore %d` or retry", id, err, id)
 	}
 	return id, fmt.Sprintf("✓ %s (#%d) permanently deleted", ref, id), nil
+}
+
+func purgeTrashedIssueByID(client *Client, id int64, ref string) (int64, string, error) {
+	if err := guardIssuePurge(client, id, ref); err != nil {
+		return id, "", err
+	}
+	if _, err := client.do("DELETE", fmt.Sprintf("/api/issues/%d/purge", id), nil); err != nil {
+		return id, "", err
+	}
+	return id, fmt.Sprintf("✓ %s (#%d) permanently deleted", ref, id), nil
+}
+
+func guardIssuePurge(client *Client, id int64, ref string) error {
+	if n, err := issueSubCount(client, id, "comments"); err != nil {
+		return err
+	} else if n > 0 {
+		return fmt.Errorf("refusing to purge #%d: it has %d comment(s) — "+
+			"soft-delete it (omit --purge) or run `issue update %s --status cancelled`", id, n, ref)
+	}
+	if n, err := issueSubCount(client, id, "attachments"); err != nil {
+		return err
+	} else if n > 0 {
+		return fmt.Errorf("refusing to purge #%d: it has %d attachment(s) — "+
+			"soft-delete it (omit --purge) or cancel it instead", id, n)
+	}
+	return nil
+}
+
+func numericIssueRef(ref string) (int64, bool) {
+	id, err := strconv.ParseInt(strings.TrimSpace(ref), 10, 64)
+	return id, err == nil && id > 0
 }
 
 // issueSubCount GETs an issue sub-collection (comments, attachments),

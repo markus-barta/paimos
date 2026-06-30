@@ -32,6 +32,7 @@ var fieldsThatMustNotLeak = []string{
 	"ar_eur",
 	"total_estimate_eur",
 	"total_ar_eur",
+	"ai_work_status",
 }
 
 func assertNoLeakedFields(t *testing.T, label string, payload []byte) {

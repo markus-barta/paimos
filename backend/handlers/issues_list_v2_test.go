@@ -24,6 +24,19 @@ func seedListV2Issue(t *testing.T, projectID int64, num int, title string, statu
 	return id
 }
 
+func seedListV2AgentRun(t *testing.T, projectID int64, issueID int64, status string) int64 {
+	t.Helper()
+	res, err := db.DB.Exec(
+		`INSERT INTO agent_runs(issue_id, project_id, status, agent_name, device_id) VALUES(?,?,?,?,?)`,
+		issueID, projectID, status, "test-agent", "dev-test",
+	)
+	if err != nil {
+		t.Fatalf("seed agent run %s: %v", status, err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
 func TestIssueListV2ProjectEnvelopeSortAndWindow(t *testing.T) {
 	ts := newTestServer(t)
 	projectID := seedBatchProject(t, "PAI", "PAI")
@@ -142,6 +155,58 @@ func TestIssueListV2GlobalSortValidationAndNegatedProjectFilter(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&env)
 	if env.Total != 1 || env.Returned != 1 || env.HasMore || env.Fingerprint == "" || len(env.Issues) != 1 || env.Issues[0].ProjectID != p2 || env.Issues[0].IssueKey != "OTH-1" {
 		t.Fatalf("negated project_ids response=%+v, want OTH-1 only", env)
+	}
+}
+
+func TestIssueListV2AIWorkStatusFilterAndSort(t *testing.T) {
+	ts := newTestServer(t)
+	projectID := seedBatchProject(t, "PAI", "PAI")
+	seedListV2Issue(t, projectID, 1, "No run", "backlog")
+	queued := seedListV2Issue(t, projectID, 2, "Queued run", "backlog")
+	deployed := seedListV2Issue(t, projectID, 3, "Deployed latest", "backlog")
+	failed := seedListV2Issue(t, projectID, 4, "Failed run", "backlog")
+
+	seedListV2AgentRun(t, projectID, queued, "queued")
+	seedListV2AgentRun(t, projectID, deployed, "failed")
+	seedListV2AgentRun(t, projectID, deployed, "deployed")
+	seedListV2AgentRun(t, projectID, failed, "failed")
+
+	titlesFor := func(path string) []string {
+		t.Helper()
+		resp := ts.get(t, path, ts.adminCookie)
+		assertStatus(t, resp, http.StatusOK)
+		var env struct {
+			Issues []struct {
+				Title        string `json:"title"`
+				AIWorkStatus *struct {
+					Status string `json:"status"`
+				} `json:"ai_work_status"`
+			} `json:"issues"`
+			Total int `json:"total"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&env)
+		titles := make([]string, 0, len(env.Issues))
+		for _, iss := range env.Issues {
+			titles = append(titles, iss.Title)
+		}
+		return titles
+	}
+
+	base := fmt.Sprintf("/api/projects/%d/issues?envelope=1&fields=list&limit=0", projectID)
+	if got := titlesFor(base + "&ai_status=deployed"); len(got) != 1 || got[0] != "Deployed latest" {
+		t.Fatalf("ai_status=deployed titles=%v, want Deployed latest", got)
+	}
+	if got := titlesFor(base + "&ai_work_status=queued"); len(got) != 1 || got[0] != "Queued run" {
+		t.Fatalf("ai_work_status alias titles=%v, want Queued run", got)
+	}
+	if got := titlesFor(base + "&ai_status=none"); len(got) != 1 || got[0] != "No run" {
+		t.Fatalf("ai_status=none titles=%v, want No run", got)
+	}
+	if got := titlesFor(base + "&ai_status=!failed&sort=ai_status&order=asc"); strings.Join(got, ",") != "No run,Queued run,Deployed latest" {
+		t.Fatalf("ai_status=!failed sorted titles=%v", got)
+	}
+	if got := titlesFor(base + "&sort=ai_status&order=asc"); strings.Join(got, ",") != "No run,Queued run,Deployed latest,Failed run" {
+		t.Fatalf("sort=ai_status titles=%v", got)
 	}
 }
 

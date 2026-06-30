@@ -32,6 +32,7 @@ describe('buildIssueQueryParams', () => {
       filters: {
         ...emptyFilters(),
         status: ['done', '!cancelled'],
+        aiStatus: ['running', '!failed', 'none'],
         tags: ['5', '!7', '0', 'x'], // 0 and non-numeric dropped
         assignee: ['12'],
         projects: ['3'],
@@ -39,6 +40,7 @@ describe('buildIssueQueryParams', () => {
       },
     }))
     expect(p.get('status')).toBe('done,!cancelled')
+    expect(p.get('ai_status')).toBe('running,!failed,none')
     expect(p.get('tags')).toBe('5,!7')
     expect(p.get('assignee_id')).toBe('12')
     expect(p.get('project_ids')).toBe('3')
@@ -49,6 +51,7 @@ describe('buildIssueQueryParams', () => {
   it('omits empty lists entirely', () => {
     const p = buildIssueQueryParams(q())
     expect(p.has('status')).toBe(false)
+    expect(p.has('ai_status')).toBe(false)
     expect(p.has('tags')).toBe(false)
   })
 

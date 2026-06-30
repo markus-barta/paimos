@@ -50,6 +50,54 @@ func TestDeleteIssueByRef_PurgeEmpty(t *testing.T) {
 	}
 }
 
+func TestDeleteIssueByRef_PurgeAlreadyTrashedNumericRef(t *testing.T) {
+	srv := startFakeAPI(t, map[string]string{
+		// Normal issue resolution fails for trashed issues, but numeric refs can
+		// still safely hit the purge endpoint after the same relationship guard.
+		"GET /api/issues/1234/comments":    `[]`,
+		"GET /api/issues/1234/attachments": `[]`,
+		"DELETE /api/issues/1234/purge":    ``,
+	})
+	_, summary, err := deleteIssueByRef(newClientForTest(srv.URL), "1234", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(summary, "permanently deleted") {
+		t.Errorf("summary = %q, want a permanent-delete confirmation", summary)
+	}
+}
+
+func TestIssueDeleteCLI_PurgeAlreadyTrashedNumericRef(t *testing.T) {
+	srv := startFakeAPI(t, map[string]string{
+		"GET /api/issues/1234/comments":    `[]`,
+		"GET /api/issues/1234/attachments": `[]`,
+		"DELETE /api/issues/1234/purge":    ``,
+	})
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "test_key")
+
+	out, _, err := executeCLIForTest(t, "issue", "delete", "1234", "--yes", "--purge")
+	if err != nil {
+		t.Fatalf("executeCLIForTest: %v", err)
+	}
+	if !strings.Contains(out, "permanently deleted") {
+		t.Fatalf("stdout=%q, want permanent-delete confirmation", out)
+	}
+}
+
+func TestDeleteIssueByRef_PurgeAlreadyTrashedNumericRefStillGuarded(t *testing.T) {
+	srv := startFakeAPI(t, map[string]string{
+		"GET /api/issues/1234/comments": `[{"id":1,"body":"keep me"}]`,
+	})
+	_, _, err := deleteIssueByRef(newClientForTest(srv.URL), "1234", true)
+	if err == nil {
+		t.Fatal("expected a refusal error, got nil")
+	}
+	if !strings.Contains(err.Error(), "refusing to purge") || !strings.Contains(err.Error(), "comment") {
+		t.Errorf("err = %v, want a comment-based purge refusal", err)
+	}
+}
+
 func TestDeleteIssueByRef_PurgeRefusedWithComments(t *testing.T) {
 	// The DELETE routes are deliberately unmocked: the guard must refuse
 	// before any destructive call is made.

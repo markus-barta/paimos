@@ -634,7 +634,7 @@ onUnmounted(stopColumnResize)
         <td v-if="!compact && isVisible('booked_hours')" class="meta-cell booked-cell">{{ i.booked_hours > 0 ? formatHours(i.booked_hours, 'table') : '—' }}</td>
         <td v-if="!compact && isVisible('report_summary')" class="meta-cell report-summary-cell" :title="i.report_summary || ''">{{ i.report_summary || '—' }}</td>
         <td class="col-actions" @click.stop>
-          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
+          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" :ai-work-status="i.ai_work_status" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
         </td>
       </tr>
       <!-- Expand panel for group types -->

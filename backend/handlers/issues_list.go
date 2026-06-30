@@ -123,6 +123,8 @@ func issueListSortOrder(r *http.Request, defaultOrder string, searchTerm string)
 		return " ORDER BY LOWER(" + costUnitLabelExpr + ") " + dir + tieBreaker, nil, sortKey, order, nil
 	case "release":
 		return " ORDER BY LOWER(" + releaseLabelExpr + ") " + dir + tieBreaker, nil, sortKey, order, nil
+	case "ai_status", "ai_work_status":
+		return " ORDER BY " + aiWorkStatusSortExpr + " " + dir + tieBreaker, nil, sortKey, order, nil
 	case "assignee":
 		return " ORDER BY LOWER(COALESCE(u.username,'')) " + dir + tieBreaker, nil, sortKey, order, nil
 	case "billing_type":

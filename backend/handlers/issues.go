@@ -153,6 +153,8 @@ const liveIssuesWhere = `i.deleted_at IS NULL`
 // onto member tickets (or into filters) after it's gone from the dropdown.
 const costUnitLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='cost_unit' AND lc.deleted_at IS NULL),'')`
 const releaseLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='release' AND lc.deleted_at IS NULL),'')`
+const latestAgentRunStatusExpr = `COALESCE((SELECT ar.status FROM agent_runs ar WHERE ar.issue_id=i.id ORDER BY ar.id DESC LIMIT 1),'')`
+const aiWorkStatusSortExpr = `CASE ` + latestAgentRunStatusExpr + ` WHEN '' THEN 0 WHEN 'queued' THEN 1 WHEN 'running' THEN 2 WHEN 'tests_passed' THEN 3 WHEN 'tests_failed' THEN 4 WHEN 'deployed' THEN 5 WHEN 'failed' THEN 6 WHEN 'cancelled' THEN 7 ELSE 8 END`
 
 func scanIssue(rows interface {
 	Scan(...any) error
@@ -430,12 +432,72 @@ func loadBookedHoursBatch(issues []models.Issue) {
 	}
 }
 
+func loadAIWorkStatusBatch(issues []models.Issue) {
+	if len(issues) == 0 {
+		return
+	}
+	ids := make([]any, len(issues))
+	byID := make(map[int64]int, len(issues))
+	for i, iss := range issues {
+		ids[i] = iss.ID
+		byID[iss.ID] = i
+	}
+	placeholders := buildPlaceholders(len(ids))
+	// #nosec G202 -- buildPlaceholders returns a fixed "?,?" list; IDs are bound as args.
+	rows, err := db.DB.Query(`
+		SELECT ar.issue_id, ar.id, ar.status, ar.agent_name, ar.device_id,
+		       ar.version, ar.deploy_target, ar.tests_summary, ar.error,
+		       ar.created_at, ar.started_at, ar.finished_at
+		FROM agent_runs ar
+		JOIN (
+			SELECT issue_id, MAX(id) AS id
+			FROM agent_runs
+			WHERE issue_id IN (`+placeholders+`)
+			GROUP BY issue_id
+		) latest ON latest.id = ar.id
+	`, ids...)
+	if err != nil {
+		log.Printf("loadAIWorkStatusBatch: %v", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var issueID int64
+		var ai models.IssueAIWorkStatus
+		var testsSummary, startedAt, finishedAt sql.NullString
+		if err := rows.Scan(
+			&issueID, &ai.ID, &ai.Status, &ai.AgentName, &ai.DeviceID,
+			&ai.Version, &ai.DeployTarget, &testsSummary, &ai.Error,
+			&ai.CreatedAt, &startedAt, &finishedAt,
+		); err != nil {
+			log.Printf("loadAIWorkStatusBatch scan: %v", err)
+			continue
+		}
+		if testsSummary.Valid {
+			v := testsSummary.String
+			ai.TestsSummary = &v
+		}
+		if startedAt.Valid {
+			v := startedAt.String
+			ai.StartedAt = &v
+		}
+		if finishedAt.Valid {
+			v := finishedAt.String
+			ai.FinishedAt = &v
+		}
+		if idx, ok := byID[issueID]; ok {
+			issues[idx].AIWorkStatus = &ai
+		}
+	}
+}
+
 // enrichIssues batch-loads sprint IDs, last changed by, booked hours, tags,
 // and computes time fields for a slice of issues.
 func enrichIssues(issues []models.Issue) []models.Issue {
 	loadSprintIDsBatch(issues)
 	loadLastChangedByBatch(issues)
 	loadBookedHoursBatch(issues)
+	loadAIWorkStatusBatch(issues)
 	issues = LoadTagsForIssues(issues)
 	issues = computeTimeFields(issues)
 	return issues
@@ -456,6 +518,9 @@ func getIssueByID(id int64) *models.Issue {
 		return nil
 	}
 	LoadTagsForIssue(i)
+	enriched := []models.Issue{*i}
+	loadAIWorkStatusBatch(enriched)
+	*i = enriched[0]
 	return i
 }
 
@@ -524,6 +589,11 @@ func applyIssueFilters(query string, args []any, q url.Values) (string, []any) {
 	// release: multi-value (PAI-599: edge-sourced label)
 	if rel := q.Get("release"); rel != "" {
 		query, args = applyMultiFilter(query, args, releaseLabelExpr, rel)
+	}
+	if ai := q.Get("ai_status"); ai != "" {
+		query, args = applyAIWorkStatusFilter(query, args, ai)
+	} else if ai := q.Get("ai_work_status"); ai != "" {
+		query, args = applyAIWorkStatusFilter(query, args, ai)
 	}
 	// assignee_id: multi-value, optional ! negation, special "unassigned" sentinel
 	if aid := q.Get("assignee_id"); aid != "" {
@@ -811,6 +881,55 @@ func applyMultiFilter(query string, args []any, col string, raw string) (string,
 			args = append(args, v)
 		}
 		query += " AND " + col + " NOT IN (" + ph + ")"
+	}
+	return query, args
+}
+
+func applyAIWorkStatusFilter(query string, args []any, raw string) (string, []any) {
+	vals := splitCSV(raw)
+	var pos, neg []string
+	hasPosNone := false
+	hasNegNone := false
+	for _, raw := range vals {
+		negated := strings.HasPrefix(raw, "!")
+		v := strings.TrimPrefix(raw, "!")
+		if v == "none" {
+			if negated {
+				hasNegNone = true
+			} else {
+				hasPosNone = true
+			}
+			continue
+		}
+		if negated {
+			neg = append(neg, v)
+		} else {
+			pos = append(pos, v)
+		}
+	}
+	if len(pos) > 0 || hasPosNone {
+		ors := []string{}
+		if len(pos) > 0 {
+			ph := buildPlaceholders(len(pos))
+			ors = append(ors, latestAgentRunStatusExpr+" IN ("+ph+")")
+			for _, status := range pos {
+				args = append(args, status)
+			}
+		}
+		if hasPosNone {
+			ors = append(ors, latestAgentRunStatusExpr+" = ''")
+		}
+		query += " AND (" + strings.Join(ors, " OR ") + ")"
+	}
+	if len(neg) > 0 {
+		ph := buildPlaceholders(len(neg))
+		query += " AND " + latestAgentRunStatusExpr + " NOT IN (" + ph + ")"
+		for _, status := range neg {
+			args = append(args, status)
+		}
+	}
+	if hasNegNone {
+		query += " AND " + latestAgentRunStatusExpr + " <> ''"
 	}
 	return query, args
 }

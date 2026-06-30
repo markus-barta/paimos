@@ -59,6 +59,7 @@ export function buildIssueQueryParams(q: IssueQuery): URLSearchParams {
   appendSignedList(p, 'type', f.type)
   appendSignedList(p, 'cost_unit', f.costUnit)
   appendSignedList(p, 'release', f.release)
+  appendSignedList(p, 'ai_status', f.aiStatus)
   appendSignedList(p, 'tags', f.tags, { numeric: true })
   appendSignedList(p, 'sprints', f.sprints, { numeric: true })
   appendSignedList(p, 'assignee_id', f.assignee)

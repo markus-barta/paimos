@@ -1,5 +1,15 @@
 <template>
   <div class="row-actions" :class="{ 'row-actions--collapsed': collapsed }">
+    <button
+      v-if="aiWorkStatus && implementState === 'idle'"
+      type="button"
+      class="ai-work-badge"
+      :class="`ai-work-badge--${aiWorkStatus.status}`"
+      :title="aiWorkTitle"
+      :aria-label="`${aiWorkLabel}; open issue run history`"
+      @click.stop="$emit('view')"
+    >{{ aiWorkLabel }}</button>
+
     <!-- PAI-610/612: transient "Implement this" feedback. On success it's a
          follow-through to the issue's run panel (PAI-618). -->
     <button
@@ -91,6 +101,7 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useTimerStore } from '@/stores/timer'
+import type { IssueAIWorkStatus } from '@/types'
 
 const props = defineProps<{
   canHaveChildren: boolean
@@ -102,6 +113,7 @@ const props = defineProps<{
   issueTitle?: string
   bookedHours?: number
   isAdmin?: boolean
+  aiWorkStatus?: IssueAIWorkStatus | null
 }>()
 
 // PAI-610/612: "Implement this" — hand the ticket to a local agent run.
@@ -115,6 +127,32 @@ const implementState = ref<'idle' | 'busy' | 'done' | 'error'>('idle')
 const implementMsg = ref('')
 let implementTimer: ReturnType<typeof setTimeout> | null = null
 let alive = true // guards post-await writes/timer after unmount (M3)
+
+const AI_WORK_LABEL: Record<string, string> = {
+  queued: 'AI queued',
+  running: 'AI running',
+  tests_passed: 'AI tests ok',
+  tests_failed: 'AI tests failed',
+  deployed: 'AI deployed',
+  failed: 'AI failed',
+  cancelled: 'AI cancelled',
+}
+const aiWorkStatus = computed(() => props.aiWorkStatus ?? null)
+const aiWorkLabel = computed(() => {
+  const status = aiWorkStatus.value?.status ?? ''
+  return AI_WORK_LABEL[status] ?? `AI ${status}`
+})
+const aiWorkTitle = computed(() => {
+  const run = aiWorkStatus.value
+  if (!run) return ''
+  const bits = [`${aiWorkLabel.value} - open run history`]
+  if (run.version) bits.push(`v${run.version}`)
+  if (run.deploy_target) bits.push(`→ ${run.deploy_target}`)
+  if (run.device_id) bits.push(run.device_id)
+  if (run.tests_summary) bits.push(run.tests_summary)
+  if (run.error) bits.push(run.error)
+  return bits.join(' · ')
+})
 
 async function implement() {
   if (implementState.value === 'busy') return
@@ -270,6 +308,30 @@ tr:hover .row-act--hover,
 .row-act--danger:hover { color: #dc2626; background: #fef2f2; }
 .row-act--implement:hover { color: var(--bp-blue, #2563eb); }
 .row-act--implement:disabled { opacity: .5; cursor: not-allowed; }
+
+.ai-work-badge {
+  border: 0; cursor: pointer; font-family: inherit;
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px;
+  white-space: nowrap; line-height: 1;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+.ai-work-badge:hover { text-decoration: underline; }
+.ai-work-badge--queued,
+.ai-work-badge--running {
+  color: var(--bp-blue, #2563eb);
+  background: color-mix(in srgb, var(--bp-blue, #2563eb) 16%, transparent);
+}
+.ai-work-badge--tests_passed,
+.ai-work-badge--deployed {
+  color: #1e8449;
+  background: color-mix(in srgb, #2ecc71 22%, transparent);
+}
+.ai-work-badge--tests_failed,
+.ai-work-badge--failed {
+  color: #c0392b;
+  background: #fef2f2;
+}
 
 /* "Implement this" transient feedback */
 .implement-status {

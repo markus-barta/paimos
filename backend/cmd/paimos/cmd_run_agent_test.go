@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,19 @@ func newRunServer(t *testing.T, detail string, patchStatus int) (*httptest.Serve
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/runs/"):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(detail))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/issues/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"id":5,
+				"issue_key":"PAI-5",
+				"type":"ticket",
+				"title":"Implement the demo change",
+				"description":"Change VERSION to 0.2.0.",
+				"acceptance_criteria":"npm test passes.",
+				"notes":"Do not deploy from the agent.",
+				"status":"new",
+				"priority":"low"
+			}`))
 		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/runs/"):
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -56,6 +70,17 @@ func newRunServer(t *testing.T, detail string, patchStatus int) (*httptest.Serve
 
 func aJob() runJob { return runJob{runID: 1, issueKey: "PAI-5"} }
 
+func envMap(env []string) map[string]string {
+	out := map[string]string{}
+	for _, entry := range env {
+		k, v, ok := strings.Cut(entry, "=")
+		if ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func TestAgentRunnerSuccess(t *testing.T) {
 	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
 	spawned := false
@@ -67,8 +92,22 @@ func TestAgentRunnerSuccess(t *testing.T) {
 			if root != "/tmp/repo" {
 				t.Errorf("spawn root=%q, want /tmp/repo", root)
 			}
-			if strings.Join(env, " ") != "PAIMOS_RUN_ID=1 PAIMOS_ISSUE_KEY=PAI-5" {
+			em := envMap(env)
+			if em["PAIMOS_RUN_ID"] != "1" || em["PAIMOS_ISSUE_KEY"] != "PAI-5" || em["PAIMOS_ISSUE_TITLE"] != "Implement the demo change" {
 				t.Errorf("spawn env=%v", env)
+			}
+			promptPath := em["PAIMOS_PROMPT_FILE"]
+			if promptPath == "" {
+				t.Fatal("spawn env missing PAIMOS_PROMPT_FILE")
+			}
+			prompt, err := os.ReadFile(promptPath)
+			if err != nil {
+				t.Fatalf("read prompt: %v", err)
+			}
+			for _, want := range []string{"PAIMOS local Implement-this worker", "Issue: PAI-5", "Change VERSION to 0.2.0.", "npm test passes."} {
+				if !strings.Contains(string(prompt), want) {
+					t.Fatalf("prompt %q missing %q", string(prompt), want)
+				}
 			}
 			return nil
 		},
@@ -79,9 +118,90 @@ func TestAgentRunnerSuccess(t *testing.T) {
 	if !spawned {
 		t.Error("spawn was not called")
 	}
-	// claim (running) then report (tests_passed).
-	if len(*patches) != 2 || (*patches)[0]["status"] != "running" || (*patches)[0]["if_status"] != "queued" || (*patches)[1]["status"] != "tests_passed" {
-		t.Fatalf("patches=%+v, want claim(running,if_status=queued) then tests_passed", *patches)
+	// claim (running, stamping the actual device) then report (tests_passed).
+	if len(*patches) != 2 ||
+		(*patches)[0]["status"] != "running" ||
+		(*patches)[0]["if_status"] != "queued" ||
+		(*patches)[0]["device_id"] != "dev-1" ||
+		(*patches)[1]["status"] != "tests_passed" {
+		t.Fatalf("patches=%+v, want claim(running,if_status=queued,device_id=dev-1) then tests_passed", *patches)
+	}
+}
+
+func TestAgentRunnerTestExecReportsVersionAndSummary(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","status":"queued"}`, http.StatusOK)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("0.2.0\n"), 0o600); err != nil {
+		t.Fatalf("seed VERSION: %v", err)
+	}
+	var calls []string
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: root,
+		execCmd: "claude", testExec: "npm test", autoConfirm: true,
+		spawn: func(_ context.Context, _, cmd string, _ []string, logSink io.Writer) error {
+			calls = append(calls, cmd)
+			if cmd == "npm test" {
+				if logSink == nil {
+					t.Fatal("test command should receive a summary sink")
+				}
+				_, _ = logSink.Write([]byte("PASS test.mjs\n2 passed\n"))
+			} else if logSink != nil {
+				t.Fatalf("agent command should not capture logs by default")
+			}
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if strings.Join(calls, ",") != "claude,npm test" {
+		t.Fatalf("spawn calls = %v, want claude then npm test", calls)
+	}
+	last := (*patches)[len(*patches)-1]
+	if last["status"] != "tests_passed" || last["version"] != "0.2.0" {
+		t.Fatalf("final patch = %+v, want tests_passed v0.2.0", last)
+	}
+	summary, _ := last["tests_summary"].(string)
+	if !strings.Contains(summary, "npm test passed") || !strings.Contains(summary, "2 passed") {
+		t.Fatalf("tests_summary=%q, want command and output evidence", summary)
+	}
+	if last["log_attachment_id"] != nil {
+		t.Fatalf("test summary must not imply log attachment by default, got %+v", last)
+	}
+}
+
+func TestAgentRunnerTestExecFailureReportsTestsFailed(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"ppm","status":"queued"}`, http.StatusOK)
+	var calls []string
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: t.TempDir(),
+		execCmd: "claude", testExec: "npm test", autoConfirm: true,
+		allowDeploy: true, deployExec: "just deploy-ppm", autoConfirmDep: true,
+		spawn: func(_ context.Context, _, cmd string, _ []string, logSink io.Writer) error {
+			calls = append(calls, cmd)
+			if cmd == "npm test" {
+				_, _ = logSink.Write([]byte("FAIL test.mjs\nexpected true\n"))
+				return errors.New("exit status 1")
+			}
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("test failure is a reported result, not a runner error: %v", err)
+	}
+	if strings.Join(calls, ",") != "claude,npm test" {
+		t.Fatalf("spawn calls = %v, want no deploy after failed tests", calls)
+	}
+	last := (*patches)[len(*patches)-1]
+	if last["status"] != "tests_failed" {
+		t.Fatalf("final patch = %+v, want tests_failed", last)
+	}
+	if !strings.Contains(fmt.Sprint(last["error"]), "tests: exit status 1") {
+		t.Fatalf("error = %v, want test failure detail", last["error"])
+	}
+	summary, _ := last["tests_summary"].(string)
+	if !strings.Contains(summary, "npm test failed") || !strings.Contains(summary, "expected true") {
+		t.Fatalf("tests_summary=%q, want failed test evidence", summary)
 	}
 }
 
@@ -121,6 +241,29 @@ func TestDefaultSpawnTeesOutput(t *testing.T) {
 	}
 	if !strings.Contains(sink.String(), "hello-from-spawn") {
 		t.Fatalf("log sink = %q, want it to contain the command output", sink.String())
+	}
+}
+
+func TestClaudeDefaultIsNonInteractivePromptMode(t *testing.T) {
+	if got := effectiveAgentExec("claude"); got != "claude -p --permission-mode acceptEdits" {
+		t.Fatalf("effectiveAgentExec(claude)=%q", got)
+	}
+	if !commandReadsPromptOnStdin(effectiveAgentExec("claude")) {
+		t.Fatal("normalized claude command should read prompt from stdin")
+	}
+	promptFile := filepath.Join(t.TempDir(), "prompt.md")
+	if err := os.WriteFile(promptFile, []byte("implement PAI-5"), 0o600); err != nil {
+		t.Fatalf("seed prompt: %v", err)
+	}
+	prompt, err := promptForCommand(effectiveAgentExec("claude"), []string{"PAIMOS_PROMPT_FILE=" + promptFile})
+	if err != nil {
+		t.Fatalf("promptForCommand: %v", err)
+	}
+	if prompt != "implement PAI-5" {
+		t.Fatalf("prompt=%q", prompt)
+	}
+	if prompt, err := promptForCommand("npm test", []string{"PAIMOS_PROMPT_FILE=" + promptFile}); err != nil || prompt != "" {
+		t.Fatalf("non-agent command prompt=%q err=%v, want empty nil", prompt, err)
 	}
 }
 
@@ -262,6 +405,40 @@ func TestAgentRunnerDeployGated(t *testing.T) {
 	}
 }
 
+func TestAgentRunnerDeployCarriesTestSummary(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","deploy_target":"local-dev","status":"queued"}`, http.StatusOK)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("1.2.3\n"), 0o600); err != nil {
+		t.Fatalf("seed VERSION: %v", err)
+	}
+	var calls []string
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: root,
+		execCmd: "claude", testExec: "npm test", autoConfirm: true,
+		allowDeploy: true, deployExec: "npm run deploy:local", autoConfirmDep: true,
+		spawn: func(_ context.Context, _, cmd string, _ []string, logSink io.Writer) error {
+			calls = append(calls, cmd)
+			if cmd == "npm test" {
+				_, _ = logSink.Write([]byte("all demo tests passed\n"))
+			}
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if strings.Join(calls, ",") != "claude,npm test,npm run deploy:local" {
+		t.Fatalf("spawn calls = %v, want agent, tests, deploy", calls)
+	}
+	last := (*patches)[len(*patches)-1]
+	if last["status"] != "deployed" || last["version"] != "1.2.3" || last["deploy_target"] != "local-dev" {
+		t.Fatalf("final patch = %+v, want deployed v1.2.3 local-dev", last)
+	}
+	if !strings.Contains(fmt.Sprint(last["tests_summary"]), "all demo tests passed") {
+		t.Fatalf("tests_summary=%v, want deploy report to carry test evidence", last["tests_summary"])
+	}
+}
+
 func TestAgentRunnerDeployNeedsItsOwnConsent(t *testing.T) {
 	// --allow-deploy + --deploy-exec + deploy_target, but the deploy confirm is
 	// declined (and --yes-deploy not set) → no deploy, report tests_passed.
@@ -308,5 +485,57 @@ func TestAgentRunnerDeployStaysGatedOff(t *testing.T) {
 	}
 	if last := (*patches)[len(*patches)-1]; last["status"] != "tests_passed" {
 		t.Fatalf("final patch = %+v, want tests_passed (no deploy)", last)
+	}
+}
+
+func TestAgentRunnerQueuedRunIDsCatchUp(t *testing.T) {
+	var seenPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.String()
+		if r.URL.Path != "/api/projects/7/runs" || r.URL.Query().Get("status") != "queued" {
+			http.Error(w, `{"error":"unexpected route"}`, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"runs":[{"id":11},{"id":12}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	a := &agentRunner{client: newClientForTest(srv.URL)}
+	got := a.queuedRunIDs(context.Background(), 7)
+	if len(got) != 2 || got[0] != 11 || got[1] != 12 {
+		t.Fatalf("queuedRunIDs=%v, want [11 12]", got)
+	}
+	if seenPath != "/api/projects/7/runs?status=queued" {
+		t.Fatalf("catch-up path=%q", seenPath)
+	}
+}
+
+func TestAgentRunnerQueuedRunIDsDedupesPollErrors(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls += 1
+		if calls < 3 {
+			http.Error(w, `{"error":"temporary"}`, http.StatusInternalServerError)
+			return
+		}
+		http.Error(w, `{"error":"still temporary"}`, http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+
+	oldStderr := stderr
+	var errOut bytes.Buffer
+	stderr = &errOut
+	t.Cleanup(func() { stderr = oldStderr })
+
+	a := &agentRunner{client: newClientForTest(srv.URL)}
+	_ = a.queuedRunIDs(context.Background(), 7)
+	_ = a.queuedRunIDs(context.Background(), 7)
+	if got := strings.Count(errOut.String(), "catch-up poll failed"); got != 1 {
+		t.Fatalf("same catch-up error logged %d times, want 1; stderr=%q", got, errOut.String())
+	}
+	_ = a.queuedRunIDs(context.Background(), 7)
+	if got := strings.Count(errOut.String(), "catch-up poll failed"); got != 2 {
+		t.Fatalf("distinct catch-up error logged %d times, want 2; stderr=%q", got, errOut.String())
 	}
 }

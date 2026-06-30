@@ -67,7 +67,13 @@ describe("AgentRunPanel — PAI-610", () => {
 
   it("renders a run's status and starts a run via the issue key", async () => {
     vi.mocked(api.get).mockImplementation(async (path: string) => {
-      if (path === "/issues/5/runs") return { runs: [run("deployed", { version: "4.6.0", deploy_target: "ppm" })] };
+      if (path === "/issues/5/runs")
+        return { runs: [run("deployed", {
+          version: "4.6.0",
+          deploy_target: "ppm",
+          tests_summary: "npm test passed: 2 passed",
+          finished_at: "2026-06-29 10:05:00",
+        })] };
       if (path === "/projects/9/runners") return { runners: [{ user_id: 1, device_id: "laptop", last_seen: "" }] };
       return {};
     });
@@ -78,6 +84,7 @@ describe("AgentRunPanel — PAI-610", () => {
 
     expect(el.textContent).toContain("Deployed");
     expect(el.textContent).toContain("v4.6.0");
+    expect(el.textContent).toContain("npm test passed: 2 passed");
     expect(el.querySelector(".arp-device")).toBeNull(); // 1 runner → no picker
 
     const btn = el.querySelector<HTMLButtonElement>(".btn-primary");
@@ -86,7 +93,7 @@ describe("AgentRunPanel — PAI-610", () => {
     await settle();
     expect(api.post).toHaveBeenCalledWith(
       "/issues/PAI-5/implement",
-      expect.objectContaining({ device_id: "laptop" }),
+      { device_id: "laptop" },
     );
     unmount();
   });
@@ -148,6 +155,31 @@ describe("AgentRunPanel — PAI-610", () => {
     unmount();
   });
 
+  it("posts an explicit deploy target only when the user sets one", async () => {
+    vi.mocked(api.get).mockImplementation(async (path: string) => {
+      if (path === "/issues/5/runs") return { runs: [] };
+      if (path === "/projects/9/runners") return { runners: [{ user_id: 1, device_id: "laptop", last_seen: "" }] };
+      return {};
+    });
+    vi.mocked(api.post).mockResolvedValue({});
+    const { el, unmount } = mountPanel();
+    await settle();
+
+    const target = el.querySelector<HTMLInputElement>(".arp-deploy-target");
+    expect(target).toBeTruthy();
+    target!.value = "local-dev";
+    target!.dispatchEvent(new Event("input"));
+    await settle();
+
+    el.querySelector<HTMLButtonElement>(".btn-primary")!.click();
+    await settle();
+    expect(api.post).toHaveBeenCalledWith(
+      "/issues/PAI-5/implement",
+      expect.objectContaining({ device_id: "laptop", deploy_target: "local-dev" }),
+    );
+    unmount();
+  });
+
   it("renders a timestamp as a valid ISO datetime + a local label (M2/M6)", async () => {
     vi.mocked(api.get).mockImplementation(async (path: string) => {
       if (path === "/issues/5/runs") return { runs: [run("deployed")] };
@@ -179,8 +211,8 @@ describe("AgentRunPanel — polling lifecycle (H2)", () => {
     vi.restoreAllMocks();
   });
 
-  it("polls a non-terminal run every 4s and stops once it goes terminal", async () => {
-    const statuses = ["queued", "running", "deployed"];
+  it("polls an in-flight run every 4s and stops once it reaches a result state", async () => {
+    const statuses = ["queued", "running", "tests_passed"];
     let runsCalls = 0;
     vi.mocked(api.get).mockImplementation(async (path: string) => {
       if (path === "/issues/5/runs") {
@@ -199,11 +231,11 @@ describe("AgentRunPanel — polling lifecycle (H2)", () => {
     await vi.advanceTimersByTimeAsync(4000); // tick 1 → running
     expect(el.textContent).toContain("Running");
 
-    await vi.advanceTimersByTimeAsync(4000); // tick 2 → deployed (terminal → stop)
-    expect(el.textContent).toContain("Deployed");
+    await vi.advanceTimersByTimeAsync(4000); // tick 2 → tests_passed (finished → stop)
+    expect(el.textContent).toContain("Tests passed");
 
     const callsAfterTerminal = runsCalls;
-    await vi.advanceTimersByTimeAsync(12000); // no further polling once terminal
+    await vi.advanceTimersByTimeAsync(12000); // no further polling once finished
     expect(runsCalls).toBe(callsAfterTerminal);
 
     unmount();

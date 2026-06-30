@@ -46,6 +46,7 @@ export interface IssueFilters {
   type: string[]
   costUnit: string[]
   release: string[]
+  aiStatus: string[]
   assignee: string[]
   tags: string[]
   projects: string[]
@@ -128,7 +129,7 @@ export const DEFAULT_PAGE_SIZE = 100
 export function emptyFilters(): IssueFilters {
   return {
     status: [], priority: [], type: [], costUnit: [], release: [],
-    assignee: [], tags: [], projects: [], sprints: [], epic: [],
+    aiStatus: [], assignee: [], tags: [], projects: [], sprints: [], epic: [],
     dateField: null, dateFrom: null, dateTo: null,
   }
 }
@@ -168,6 +169,7 @@ export function queryFingerprint(q: IssueQuery): string {
     filters: {
       status: norm(f.status), priority: norm(f.priority), type: norm(f.type),
       costUnit: norm(f.costUnit), release: norm(f.release), assignee: norm(f.assignee),
+      aiStatus: norm(f.aiStatus),
       tags: norm(f.tags), projects: norm(f.projects), sprints: norm(f.sprints), epic: norm(f.epic),
       dateField: f.dateField, dateFrom: f.dateFrom, dateTo: f.dateTo,
     },

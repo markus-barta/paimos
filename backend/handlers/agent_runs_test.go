@@ -306,6 +306,132 @@ func TestAgentRunIllegalTransition(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 }
 
+// TestAgentRunTestsPassedStampsFinishedAtButCanDeploy pins the result-state
+// semantics used by report-back-only runners: tests_passed is a completed
+// result with a timestamp, but it remains non-terminal so a later deploy report
+// can still move tests_passed -> deployed.
+func TestAgentRunTestsPassedStampsFinishedAtButCanDeploy(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running"}), http.StatusOK)
+
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "tests_passed"})
+	assertStatus(t, resp, http.StatusOK)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["finished_at"] == nil {
+		t.Fatalf("tests_passed should stamp finished_at")
+	}
+
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"status":        "deployed",
+		"version":       "4.6.4",
+		"deploy_target": "local-dev",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &run)
+	if run["status"] != "deployed" || run["version"] != "4.6.4" {
+		t.Fatalf("run after deploy = %+v, want deployed v4.6.4", run)
+	}
+	if run["finished_at"] == nil {
+		t.Fatalf("deployed should keep/stamp finished_at")
+	}
+}
+
+func TestIssueResponsesIncludeLatestAIWorkStatus(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	issueID, oldRunID := seedRunForIssue(t, ts, projID, 1)
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(oldRunID), ts.adminCookie, map[string]any{
+		"status": "running",
+	}), http.StatusOK)
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(oldRunID), ts.adminCookie, map[string]any{
+		"status": "failed",
+		"error":  "superseded",
+	}), http.StatusOK)
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie,
+		map[string]any{"device_id": "dev-latest", "deploy_target": "local-dev"})
+	assertStatus(t, resp, http.StatusCreated)
+	var created map[string]any
+	decode(t, resp, &created)
+	runID := int64(created["id"].(float64))
+	req, _ := http.NewRequest(http.MethodPatch, ts.srv.URL+"/api/runs/"+itoa(runID),
+		strings.NewReader(`{"status":"running","if_status":"queued","device_id":"dev-latest","tests_summary":"npm test passed"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", ts.adminCookie)
+	req.Header.Set("X-Paimos-Agent-Name", "claude-pai625")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("claim run with attribution: %v", err)
+	}
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"status":        "deployed",
+		"version":       "4.6.4",
+		"deploy_target": "local-dev",
+	}), http.StatusOK)
+
+	var single struct {
+		AIWorkStatus *struct {
+			ID           int64   `json:"id"`
+			Status       string  `json:"status"`
+			AgentName    string  `json:"agent_name"`
+			DeviceID     string  `json:"device_id"`
+			Version      string  `json:"version"`
+			DeployTarget string  `json:"deploy_target"`
+			TestsSummary *string `json:"tests_summary"`
+			FinishedAt   *string `json:"finished_at"`
+		} `json:"ai_work_status"`
+	}
+	resp = ts.get(t, "/api/issues/"+itoa(issueID), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &single)
+	if single.AIWorkStatus == nil {
+		t.Fatalf("single issue missing ai_work_status")
+	}
+	if single.AIWorkStatus.ID != runID || single.AIWorkStatus.Status != "deployed" {
+		t.Fatalf("single ai_work_status = %+v, want latest deployed run %d", single.AIWorkStatus, runID)
+	}
+	if single.AIWorkStatus.AgentName != "claude-pai625" || single.AIWorkStatus.DeviceID != "dev-latest" {
+		t.Fatalf("single ai_work_status attribution = %+v", single.AIWorkStatus)
+	}
+	if single.AIWorkStatus.Version != "4.6.4" || single.AIWorkStatus.DeployTarget != "local-dev" {
+		t.Fatalf("single ai_work_status report = %+v", single.AIWorkStatus)
+	}
+	if single.AIWorkStatus.TestsSummary == nil || *single.AIWorkStatus.TestsSummary != "npm test passed" {
+		t.Fatalf("single tests summary = %v", single.AIWorkStatus.TestsSummary)
+	}
+	if single.AIWorkStatus.FinishedAt == nil {
+		t.Fatalf("single ai_work_status should include finished_at")
+	}
+
+	var list struct {
+		Issues []struct {
+			ID           int64 `json:"id"`
+			AIWorkStatus *struct {
+				ID     int64  `json:"id"`
+				Status string `json:"status"`
+			} `json:"ai_work_status"`
+		} `json:"issues"`
+	}
+	resp = ts.get(t, "/api/projects/"+itoa(projID)+"/issues?envelope=1&fields=list", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &list)
+	for _, issue := range list.Issues {
+		if issue.ID != issueID {
+			continue
+		}
+		if issue.AIWorkStatus == nil || issue.AIWorkStatus.ID != runID || issue.AIWorkStatus.Status != "deployed" {
+			t.Fatalf("list ai_work_status = %+v, want latest deployed run %d", issue.AIWorkStatus, runID)
+		}
+		return
+	}
+	t.Fatalf("issue %d not returned in project issue list: %+v", issueID, list.Issues)
+}
+
 // TestAgentRunTerminalImmutable rejects any edit (even non-status) once terminal.
 func TestAgentRunTerminalImmutable(t *testing.T) {
 	ts := newTestServer(t)
@@ -315,6 +441,77 @@ func TestAgentRunTerminalImmutable(t *testing.T) {
 	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "deployed"}), http.StatusOK)
 	// A non-status edit on a terminal run must be refused.
 	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"error": "tampered"})
+	assertStatus(t, resp, http.StatusConflict)
+}
+
+// TestAgentRunNonStatusIfStatusGuard proves non-status edits participate in
+// the same compare-and-set guard as lifecycle transitions. This is the contract
+// that keeps a stale non-status reporter from mutating a run after another
+// request moved it to a different status.
+func TestAgentRunNonStatusIfStatusGuard(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	assertStatus(t, ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "running"}), http.StatusOK)
+
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"if_status": "queued",
+		"error":     "stale reporter should not land",
+	})
+	assertStatus(t, resp, http.StatusConflict)
+
+	var errText string
+	if err := db.DB.QueryRow(`SELECT error FROM agent_runs WHERE id=?`, runID).Scan(&errText); err != nil {
+		t.Fatalf("reload run error: %v", err)
+	}
+	if errText != "" {
+		t.Fatalf("stale non-status update changed error to %q", errText)
+	}
+
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"if_status": "bogus",
+		"error":     "bad guard",
+	})
+	assertStatus(t, resp, http.StatusBadRequest)
+}
+
+func TestAgentRunClaimStampsActualDeviceID(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"status":    "running",
+		"if_status": "queued",
+		"device_id": "dev-1",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["device_id"] != "dev-1" {
+		t.Fatalf("device_id=%v, want dev-1", run["device_id"])
+	}
+
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"device_id": "dev-2",
+		"error":     "late retarget",
+	})
+	assertStatus(t, resp, http.StatusConflict)
+}
+
+func TestAgentRunClaimCannotRetargetSpecificDevice(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	if _, err := db.DB.Exec(`UPDATE agent_runs SET device_id='dev-1' WHERE id=?`, runID); err != nil {
+		t.Fatalf("target run: %v", err)
+	}
+
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{
+		"status":    "running",
+		"if_status": "queued",
+		"device_id": "dev-2",
+	})
 	assertStatus(t, resp, http.StatusConflict)
 }
 
@@ -346,6 +543,29 @@ func TestImplementReapsStaleRunning(t *testing.T) {
 	}
 	if staleStatus != "failed" {
 		t.Fatalf("stale run status = %q, want failed (reaped)", staleStatus)
+	}
+}
+
+// TestImplementReapsRunningWithNullStartedAt covers the audit edge where a
+// legacy/corrupt running row has no started_at. created_at is the fallback
+// staleness clock, otherwise the active-run unique index wedges the issue.
+func TestImplementReapsRunningWithNullStartedAt(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	issueID, oldRunID := seedRunForIssue(t, ts, projID, 1)
+	if _, err := db.DB.Exec(
+		`UPDATE agent_runs SET status='running', started_at=NULL, created_at=datetime('now','-3 hours') WHERE id=?`, oldRunID); err != nil {
+		t.Fatalf("wedge null-started run: %v", err)
+	}
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{})
+	assertStatus(t, resp, http.StatusCreated)
+	var staleStatus string
+	if err := db.DB.QueryRow(`SELECT status FROM agent_runs WHERE id=?`, oldRunID).Scan(&staleStatus); err != nil {
+		t.Fatalf("reload stale: %v", err)
+	}
+	if staleStatus != "failed" {
+		t.Fatalf("null-started stale run status = %q, want failed (reaped)", staleStatus)
 	}
 }
 

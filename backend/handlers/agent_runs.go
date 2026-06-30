@@ -162,7 +162,7 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 	var activeStatus string
 	var activeStarted sql.NullString
 	if err := db.DB.QueryRow(
-		`SELECT id, status, started_at FROM agent_runs WHERE issue_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
+		`SELECT id, status, COALESCE(NULLIF(started_at, ''), created_at) FROM agent_runs WHERE issue_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
 		issueID).Scan(&activeID, &activeStatus, &activeStarted); err == nil && activeID > 0 {
 		if activeStatus == "running" && agentRunStartedBefore(activeStarted, 2*time.Hour) {
 			_, _ = db.DB.Exec(
@@ -392,6 +392,7 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Status          *string `json:"status"`
 		IfStatus        *string `json:"if_status"` // optimistic claim guard (PAI-605 H3)
+		DeviceID        *string `json:"device_id"`
 		Version         *string `json:"version"`
 		TestsSummary    *string `json:"tests_summary"`
 		DeployTarget    *string `json:"deploy_target"`
@@ -406,6 +407,10 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 	// Validate the status value first (bad input is a 400 regardless of run state).
 	if body.Status != nil && !agentRunStatuses[strings.TrimSpace(*body.Status)] {
 		jsonError(w, "invalid status", http.StatusBadRequest)
+		return
+	}
+	if body.IfStatus != nil && !agentRunStatuses[strings.TrimSpace(*body.IfStatus)] {
+		jsonError(w, "invalid if_status", http.StatusBadRequest)
 		return
 	}
 	// Audit: a terminal run is immutable — reject ANY update (a status move out of
@@ -440,7 +445,7 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		if s == "running" && existing.StartedAt == nil {
 			sets = append(sets, "started_at=datetime('now')")
 		}
-		if agentRunIsTerminal(s) {
+		if agentRunIsReportable(s) {
 			sets = append(sets, "finished_at=datetime('now')")
 		}
 	}
@@ -451,6 +456,23 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 	if body.TestsSummary != nil {
 		sets = append(sets, "tests_summary=?")
 		args = append(args, *body.TestsSummary)
+	}
+	if body.DeviceID != nil {
+		d := strings.TrimSpace(*body.DeviceID)
+		if d == "" || len(d) > deviceIDMaxLen {
+			jsonError(w, "invalid device_id", http.StatusBadRequest)
+			return
+		}
+		if existing.Status != "queued" || newStatus != "running" {
+			jsonError(w, "device_id can only be stamped when claiming a queued run", http.StatusConflict)
+			return
+		}
+		if existing.DeviceID != "" && existing.DeviceID != d {
+			jsonError(w, "run is targeted to another device", http.StatusConflict)
+			return
+		}
+		sets = append(sets, "device_id=?")
+		args = append(args, d)
 	}
 	if body.DeployTarget != nil {
 		sets = append(sets, "deploy_target=?")
@@ -483,42 +505,33 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "no fields to update", http.StatusBadRequest)
 		return
 	}
-	// PAI-605 H3/M4/L1: when the status changes, transition optimistically on the
-	// status we just read, so two concurrent reporters — or two runners that both
-	// picked up an open (no-device) run — cannot both win. RowsAffected==0 means
-	// someone changed it first; the loser gets 409 and backs off. Non-status-only
-	// updates apply unconditionally.
+	// PAI-605 H3/M4/L1: transition optimistically on the status we just read, so
+	// two concurrent reporters — or a non-status edit racing a terminal transition
+	// — cannot both win. RowsAffected==0 means someone changed it first; the loser
+	// gets 409 and backs off.
 	// #nosec G202 -- `sets` holds only hardcoded column-assignment fragments
 	// (status=?, version=?, started_at=datetime('now'), …); every value is bound
 	// via ? placeholders in args, so no user input enters the SQL string.
 	// An explicit `if_status` (a runner claiming an open run sends
 	// {status:running, if_status:queued}) is a compare-and-set: the update
 	// applies only if the row is still in that status, so a second runner that
-	// re-reads "running" still loses the claim. Otherwise any status change is
-	// guarded on the status we just read.
+	// re-reads "running" still loses the claim. Otherwise the update is guarded on
+	// the status we just read, including non-status-only updates.
 	query := `UPDATE agent_runs SET ` + strings.Join(sets, ", ") + ` WHERE id=?`
-	guarded := statusChanged
 	guardStatus := existing.Status
 	if body.IfStatus != nil {
-		guarded = true
 		guardStatus = strings.TrimSpace(*body.IfStatus)
 	}
-	if guarded {
-		query += ` AND status=?`
-		args = append(args, id, guardStatus)
-	} else {
-		args = append(args, id)
-	}
+	query += ` AND status=?`
+	args = append(args, id, guardStatus)
 	res, err := db.DB.Exec(query, args...)
 	if err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
-	if guarded {
-		if n, _ := res.RowsAffected(); n == 0 {
-			jsonError(w, "run changed concurrently (claim lost)", http.StatusConflict)
-			return
-		}
+	if n, _ := res.RowsAffected(); n == 0 {
+		jsonError(w, "run changed concurrently (claim lost)", http.StatusConflict)
+		return
 	}
 	run, err := getAgentRunByID(id)
 	if err != nil {

@@ -109,4 +109,39 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
     expect(el.querySelector(".row-act--implement")).toBeNull();
     unmount();
   });
+
+  it("shows the latest AI work state until a transient implement message takes over", async () => {
+    vi.mocked(api.post).mockResolvedValue({});
+    let viewed = 0;
+    const { el, unmount } = mountRow({
+      onView: () => (viewed += 1),
+      aiWorkStatus: {
+        id: 7,
+        status: "deployed",
+        agent_name: "claude",
+        device_id: "dev-1",
+        version: "4.6.4",
+        deploy_target: "local-dev",
+        tests_summary: "npm test passed",
+        error: "",
+        created_at: "2026-06-30 09:33:39",
+        started_at: "2026-06-30 09:33:40",
+        finished_at: "2026-06-30 09:34:35",
+      },
+    });
+    const badge = el.querySelector<HTMLElement>(".ai-work-badge");
+    expect(badge?.textContent).toContain("AI deployed");
+    expect(badge?.getAttribute("title")).toContain("v4.6.4");
+    expect(badge?.getAttribute("title")).toContain("local-dev");
+    expect(badge?.getAttribute("title")).toContain("npm test passed");
+    badge!.click();
+    await settle();
+    expect(viewed).toBe(1);
+
+    el.querySelector<HTMLButtonElement>(".row-act--implement")!.click();
+    await settle();
+    expect(el.querySelector(".ai-work-badge")).toBeNull();
+    expect(el.textContent).toContain("Queued");
+    unmount();
+  });
 });

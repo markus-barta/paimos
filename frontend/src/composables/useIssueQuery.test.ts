@@ -131,7 +131,7 @@ describe('useIssueQuery', () => {
     const base: IssueQuery = {
       mode: 'internal-global', projectId: null,
       filters: {
-        status: [], priority: [], type: [], costUnit: [], release: [],
+        status: [], priority: [], type: [], costUnit: [], release: [], aiStatus: [],
         assignee: [], tags: [], projects: [], sprints: [], epic: [],
         dateField: null, dateFrom: null, dateTo: null,
       },

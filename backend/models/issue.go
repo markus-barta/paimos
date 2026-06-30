@@ -92,6 +92,22 @@ type Issue struct {
 	TimeLogged float64 `json:"time_logged"` // direct time entries on this issue
 	TimeRollup float64 `json:"time_rollup"` // sum of children's time_total
 	TimeTotal  float64 `json:"time_total"`  // override ?? (logged + rollup)
+	// Latest "Implement this" work state, when any agent run exists.
+	AIWorkStatus *IssueAIWorkStatus `json:"ai_work_status,omitempty"`
+}
+
+type IssueAIWorkStatus struct {
+	ID           int64   `json:"id"`
+	Status       string  `json:"status"`
+	AgentName    string  `json:"agent_name"`
+	DeviceID     string  `json:"device_id"`
+	Version      string  `json:"version"`
+	DeployTarget string  `json:"deploy_target"`
+	TestsSummary *string `json:"tests_summary"`
+	Error        string  `json:"error"`
+	CreatedAt    string  `json:"created_at"`
+	StartedAt    *string `json:"started_at"`
+	FinishedAt   *string `json:"finished_at"`
 }
 
 // LabelRef is the edge-sourced representation of an issue's cost_unit or

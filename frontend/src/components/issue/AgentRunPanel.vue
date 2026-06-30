@@ -44,13 +44,14 @@ interface ProjectRunner {
 const runs = ref<AgentRun[]>([]);
 const runners = ref<ProjectRunner[]>([]);
 const selectedDevice = ref("");
+const deployTarget = ref("");
 const loading = ref(true);
 const busy = ref(false);
 const error = ref("");
 const runnersError = ref(""); // distinct from "no runners online" (M4)
 
-const TERMINAL = new Set(["deployed", "failed", "cancelled"]);
-const hasActiveRun = computed(() => runs.value.some((r) => !TERMINAL.has(r.status)));
+const IN_FLIGHT = new Set(["queued", "running"]);
+const hasActiveRun = computed(() => runs.value.some((r) => IN_FLIGHT.has(r.status)));
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 // Monotonic tokens so an out-of-order response can't overwrite newer state (M2).
@@ -89,6 +90,9 @@ function isoAttr(ts: string): string {
 }
 function localTime(ts: string): string {
   return toDate(ts)?.toLocaleString() ?? ts;
+}
+function runTimestamp(run: AgentRun): string {
+  return run.finished_at || run.started_at || run.created_at;
 }
 
 async function fetchRuns() {
@@ -130,9 +134,12 @@ async function implement() {
   busy.value = true;
   error.value = "";
   try {
-    await api.post(`/issues/${props.issueKey}/implement`, {
+    const payload: { device_id: string; deploy_target?: string } = {
       device_id: selectedDevice.value,
-    });
+    };
+    const target = deployTarget.value.trim();
+    if (target) payload.deploy_target = target;
+    await api.post(`/issues/${props.issueKey}/implement`, payload);
     await Promise.all([fetchRuns(), fetchRunners()]); // M5: refresh the picker too
   } catch (e: unknown) {
     error.value = errMsg(e, "Could not start the run.");
@@ -204,6 +211,14 @@ onUnmounted(() => {
             {{ r.device_id }}
           </option>
         </select>
+        <input
+          v-model.trim="deployTarget"
+          class="arp-deploy-target"
+          type="text"
+          aria-label="Deploy target"
+          placeholder="No deploy"
+          :disabled="busy"
+        />
         <button
           class="btn btn-primary btn-sm"
           type="button"
@@ -239,8 +254,9 @@ onUnmounted(() => {
           <span v-if="run.version" class="arp-ver">v{{ run.version }}</span>
           <span v-if="run.device_id" class="arp-dev">{{ run.device_id }}</span>
           <span v-if="run.deploy_target" class="arp-target">→ {{ run.deploy_target }}</span>
-          <time :datetime="isoAttr(run.created_at)">{{ localTime(run.created_at) }}</time>
+          <time :datetime="isoAttr(runTimestamp(run))">{{ localTime(runTimestamp(run)) }}</time>
         </span>
+        <span v-if="run.tests_summary" class="arp-tests">{{ run.tests_summary }}</span>
         <span v-if="run.error" class="arp-run-err">{{ run.error }}</span>
       </li>
     </ul>
@@ -276,7 +292,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
 }
-.arp-device {
+.arp-device,
+.arp-deploy-target {
   font: inherit;
   font-size: 12px;
   padding: 0.25rem 0.4rem;
@@ -284,6 +301,9 @@ onUnmounted(() => {
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
+}
+.arp-deploy-target {
+  width: 10rem;
 }
 .arp-hint,
 .arp-empty {
@@ -356,6 +376,10 @@ onUnmounted(() => {
 }
 .arp-run-err {
   color: #c0392b;
+  flex-basis: 100%;
+}
+.arp-tests {
+  color: var(--text-muted);
   flex-basis: 100%;
 }
 </style>

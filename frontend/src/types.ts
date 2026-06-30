@@ -595,6 +595,21 @@ export interface Issue {
   accepted_by: number | null
   invoiced_at: string | null
   invoice_number: string
+  ai_work_status?: IssueAIWorkStatus | null
+}
+
+export interface IssueAIWorkStatus {
+  id: number
+  status: string
+  agent_name: string
+  device_id: string
+  version: string
+  deploy_target: string
+  tests_summary: string | null
+  error: string
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
 }
 
 export interface IssueListEnvelope<T = Issue> {

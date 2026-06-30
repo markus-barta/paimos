@@ -351,15 +351,32 @@ issue key in `name`.
 # On the developer's workstation, in the repo checkout:
 paimos run-agent watch --project PAI --repo-root .
 #   subscribes advertising implement-capability (?implement=1), and on an
-#   implement_requested event: claims the run, spawns `claude` (override with
-#   --exec) in --repo-root, then reports tests_passed / failed.
+#   implement_requested event: claims the run, generates an issue-context
+#   prompt, spawns Claude Code (override with --exec) in --repo-root,
+#   optionally runs --test-exec, then reports
+#   tests_passed / tests_failed / failed.
 #   It reconnects on a dropped stream, processes one job at a time, and
 #   periodically catches up on queued runs it missed; prompts before each run
 #   unless --yes. Two runners never double-execute the same run (atomic claim).
 ```
 
-`--exec` runs through a shell (`sh -c`), so quoting, pipes, and chaining work,
-e.g. `--exec "claude --print 'do the ticket' && npm test"`.
+The default `--exec "claude"` is normalized to Claude Code print mode and fed
+the generated issue prompt, so the runner does not open an interactive TUI for a
+queued web run. The spawned command sees `PAIMOS_RUN_ID`, `PAIMOS_ISSUE_KEY`,
+`PAIMOS_ISSUE_TITLE`, and `PAIMOS_PROMPT_FILE`; custom provider commands can
+read the prompt file themselves.
+
+`--exec` runs through a shell (`sh -c`), so quoting, pipes, and chaining work for
+custom commands, e.g. `--exec 'codex exec "$(cat "$PAIMOS_PROMPT_FILE")"'`.
+
+`--test-exec` is the preferred way to prove tests in the run record. It runs
+after the agent command, captures a bounded summary into `tests_summary`, reports
+`tests_failed` if the command exits non-zero, and skips deploy on test failure:
+
+```bash
+paimos run-agent watch --project PAI --repo-root . --yes \
+  --test-exec "npm test"
+```
 
 `--attach-logs` (OFF by default) captures the job's combined output and attaches
 it to the ticket as a log, stamping `log_attachment_id`. It is opt-in because
@@ -377,16 +394,26 @@ three hold: `--allow-deploy` AND `--deploy-exec "<cmd>"` AND the run carries a
 
 ```bash
 paimos run-agent watch --project PAI --yes \
+  --test-exec "npm test" \
   --allow-deploy --deploy-exec "just deploy-ppm" --yes-deploy
 #   after a successful run with a deploy_target, runs the deploy command,
-#   captures the version from ./VERSION, and marks the run `deployed`.
+#   captures tests_summary + the version from ./VERSION, and marks the run
+#   `deployed`.
 ```
 
-The spawned command sees `PAIMOS_RUN_ID` and `PAIMOS_ISSUE_KEY` in its
-environment, so the agent can PATCH richer progress itself (e.g. capture the
-version, advance to `deployed`). On any transition into a terminal status the
-server auto-posts a summary comment on the ticket — attributed to the reporting
-user — so the human-readable trail always matches the structured run record.
+For the local non-production PAI-625 demo harness and exact workstation
+commands, see [`PAI_625_DEMO.md`](PAI_625_DEMO.md).
+
+For the PAI-629/PAI-630 path from one generic action to explicit Claude, Codex,
+local-model, and OpenRouter actions, see
+[`IMPLEMENT_THIS_PROVIDERS.md`](IMPLEMENT_THIS_PROVIDERS.md).
+
+The spawned command sees `PAIMOS_RUN_ID`, `PAIMOS_ISSUE_KEY`,
+`PAIMOS_ISSUE_TITLE`, and `PAIMOS_PROMPT_FILE` in its environment, so the agent
+can read the generated prompt or PATCH richer progress itself. On any transition
+into a terminal status the server auto-posts a summary comment on the ticket —
+attributed to the reporting user — so the human-readable trail always matches
+the structured run record.
 
 ---
 
