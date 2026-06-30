@@ -37,6 +37,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   // not key/value snippets — needs room to render legibly when
   // selected.
   report_summary: 320,
+  ai_status: 132,
   actions: 118,
 }
 
@@ -47,6 +48,7 @@ const MIN_WIDTHS: Record<string, number> = {
   status: 92,
   priority: 94,
   assignee: 116,
+  ai_status: 96,
   actions: 86,
   jira_text: 140,
 }
@@ -58,6 +60,7 @@ const MAX_WIDTHS: Record<string, number> = {
   sprint: 420,
   jira_text: 520,
   report_summary: 680,
+  ai_status: 220,
   actions: 180,
 }
 

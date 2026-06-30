@@ -48,6 +48,7 @@ const deployTarget = ref("");
 const loading = ref(true);
 const busy = ref(false);
 const error = ref("");
+const notice = ref("");
 const runnersError = ref(""); // distinct from "no runners online" (M4)
 
 const IN_FLIGHT = new Set(["queued", "running"]);
@@ -74,6 +75,16 @@ function statusLabel(s: string): string {
   return STATUS_LABEL[s] ?? s;
 }
 
+const DEPLOY_TARGETS = [
+  { value: "", label: "No deploy" },
+  { value: "local-dev", label: "local-dev" },
+];
+
+const buttonLabel = computed(() => {
+  if (busy.value) return "Starting...";
+  return deployTarget.value ? "Implement + deploy" : "Implement this";
+});
+
 // The API emits SQLite's "YYYY-MM-DD HH:MM:SS" (UTC). Parse it to a real Date
 // for a localized display string and a valid ISO `datetime` attribute (M6).
 function toDate(ts: string | null): Date | null {
@@ -93,6 +104,60 @@ function localTime(ts: string): string {
 }
 function runTimestamp(run: AgentRun): string {
   return run.finished_at || run.started_at || run.created_at;
+}
+
+type StageState = "pending" | "active" | "complete" | "failed";
+interface RunStage {
+  key: string;
+  label: string;
+  state: StageState;
+}
+
+function isFinished(run: AgentRun): boolean {
+  return ["tests_passed", "tests_failed", "deployed", "failed", "cancelled"].includes(run.status);
+}
+
+function runStages(run: AgentRun): RunStage[] {
+  const isQueued = run.status === "queued";
+  const isRunning = run.status === "running";
+  const isDeployed = run.status === "deployed";
+  const isTestsPassed = run.status === "tests_passed" || isDeployed;
+  const isTestsFailed = run.status === "tests_failed";
+  const isFailed = run.status === "failed" || run.status === "cancelled";
+  const started = !!run.started_at || isRunning || isFinished(run);
+  const hasDeploy = !!run.deploy_target;
+
+  return [
+    { key: "queued", label: "Queued", state: isQueued ? "active" : "complete" },
+    { key: "claimed", label: "Claimed", state: started ? "complete" : "pending" },
+    {
+      key: "editing",
+      label: "Editing",
+      state: isRunning ? "active" : started ? (isFailed ? "failed" : "complete") : "pending",
+    },
+    {
+      key: "tests",
+      label: isTestsPassed ? "Tests passed" : isTestsFailed ? "Tests failed" : "Tests",
+      state: isTestsPassed ? "complete" : isTestsFailed ? "failed" : started && !isFailed ? "active" : "pending",
+    },
+    {
+      key: hasDeploy ? "deploy" : "report",
+      label: hasDeploy ? (isDeployed ? "Deployed" : "Deploy") : "Reported",
+      state: hasDeploy
+        ? isDeployed
+          ? "complete"
+          : isTestsFailed || isFailed
+            ? "failed"
+            : isTestsPassed
+              ? "active"
+              : "pending"
+        : isTestsPassed
+          ? "complete"
+          : isTestsFailed || isFailed
+            ? "failed"
+            : "pending",
+    },
+  ];
 }
 
 async function fetchRuns() {
@@ -133,13 +198,16 @@ async function fetchRunners() {
 async function implement() {
   busy.value = true;
   error.value = "";
+  notice.value = "";
   try {
     const payload: { device_id: string; deploy_target?: string } = {
       device_id: selectedDevice.value,
     };
     const target = deployTarget.value.trim();
     if (target) payload.deploy_target = target;
-    await api.post(`/issues/${props.issueKey}/implement`, payload);
+    const run = await api.post<AgentRun>(`/issues/${props.issueKey}/implement`, payload);
+    const runner = selectedDevice.value ? ` for ${selectedDevice.value}` : "";
+    notice.value = run?.id ? `Run #${run.id} queued${runner}` : `Run queued${runner}`;
     await Promise.all([fetchRuns(), fetchRunners()]); // M5: refresh the picker too
   } catch (e: unknown) {
     error.value = errMsg(e, "Could not start the run.");
@@ -211,21 +279,23 @@ onUnmounted(() => {
             {{ r.device_id }}
           </option>
         </select>
-        <input
-          v-model.trim="deployTarget"
+        <select
+          v-model="deployTarget"
           class="arp-deploy-target"
-          type="text"
           aria-label="Deploy target"
-          placeholder="No deploy"
           :disabled="busy"
-        />
+        >
+          <option v-for="target in DEPLOY_TARGETS" :key="target.value" :value="target.value">
+            {{ target.label }}
+          </option>
+        </select>
         <button
           class="btn btn-primary btn-sm"
           type="button"
           :disabled="busy"
           @click="implement"
         >
-          {{ busy ? "Starting…" : "Implement this" }}
+          {{ buttonLabel }}
         </button>
       </div>
     </div>
@@ -239,6 +309,7 @@ onUnmounted(() => {
     </p>
 
     <p v-if="error" class="arp-error" role="alert">{{ error }}</p>
+    <p v-if="notice" class="arp-notice" role="status">{{ notice }}</p>
 
     <p v-if="!loading && !runs.length" class="arp-empty">
       No runs yet. Click <strong>Implement this</strong> to hand
@@ -247,15 +318,29 @@ onUnmounted(() => {
 
     <ul v-if="runs.length" class="arp-runs" aria-live="polite" aria-label="Agent runs">
       <li v-for="run in runs" :key="run.id" class="arp-run">
-        <span class="arp-pill" :class="`arp-pill--${run.status}`">
-          {{ statusLabel(run.status) }}
-        </span>
-        <span class="arp-run-meta">
-          <span v-if="run.version" class="arp-ver">v{{ run.version }}</span>
-          <span v-if="run.device_id" class="arp-dev">{{ run.device_id }}</span>
-          <span v-if="run.deploy_target" class="arp-target">→ {{ run.deploy_target }}</span>
-          <time :datetime="isoAttr(runTimestamp(run))">{{ localTime(runTimestamp(run)) }}</time>
-        </span>
+        <div class="arp-run-main">
+          <span class="arp-pill" :class="`arp-pill--${run.status}`">
+            {{ statusLabel(run.status) }}
+          </span>
+          <span class="arp-run-meta">
+            <span class="arp-run-id">#{{ run.id }}</span>
+            <span v-if="run.version" class="arp-ver">v{{ run.version }}</span>
+            <span v-if="run.device_id" class="arp-dev">{{ run.device_id }}</span>
+            <span v-if="run.deploy_target" class="arp-target">→ {{ run.deploy_target }}</span>
+            <time :datetime="isoAttr(runTimestamp(run))">{{ localTime(runTimestamp(run)) }}</time>
+          </span>
+        </div>
+        <ol class="arp-timeline" :aria-label="`Run #${run.id} timeline`">
+          <li
+            v-for="stage in runStages(run)"
+            :key="stage.key"
+            class="arp-stage"
+            :class="`arp-stage--${stage.state}`"
+          >
+            <span class="arp-stage-dot" aria-hidden="true" />
+            <span>{{ stage.label }}</span>
+          </li>
+        </ol>
         <span v-if="run.tests_summary" class="arp-tests">{{ run.tests_summary }}</span>
         <span v-if="run.error" class="arp-run-err">{{ run.error }}</span>
       </li>
@@ -316,6 +401,11 @@ onUnmounted(() => {
   font-size: 12px;
   color: #c0392b;
 }
+.arp-notice {
+  margin: 0.6rem 0 0;
+  font-size: 12px;
+  color: #0f7355;
+}
 .arp-hint code {
   font-size: 11px;
   background: color-mix(in srgb, var(--text-muted) 12%, transparent);
@@ -331,11 +421,21 @@ onUnmounted(() => {
   gap: 0.4rem;
 }
 .arp-run {
+  display: grid;
+  gap: 0.45rem;
+  font-size: 12px;
+  padding: 0.55rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+.arp-run:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.arp-run-main {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
-  font-size: 12px;
 }
 .arp-pill {
   display: inline-block;
@@ -369,6 +469,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
   color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.arp-run-id {
+  font-weight: 700;
+  color: var(--text);
 }
 .arp-ver {
   font-weight: 600;
@@ -381,5 +486,54 @@ onUnmounted(() => {
 .arp-tests {
   color: var(--text-muted);
   flex-basis: 100%;
+}
+.arp-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.arp-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.arp-stage:not(:last-child)::after {
+  content: "";
+  width: 18px;
+  height: 1px;
+  margin-left: 0.35rem;
+  background: var(--border);
+}
+.arp-stage-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.arp-stage--complete {
+  color: #1e8449;
+}
+.arp-stage--complete .arp-stage-dot {
+  background: #2ecc71;
+}
+.arp-stage--active {
+  color: var(--bp-blue);
+  font-weight: 700;
+}
+.arp-stage--active .arp-stage-dot {
+  background: var(--bp-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 16%, transparent);
+}
+.arp-stage--failed {
+  color: #c0392b;
+}
+.arp-stage--failed .arp-stage-dot {
+  background: #c0392b;
 }
 </style>

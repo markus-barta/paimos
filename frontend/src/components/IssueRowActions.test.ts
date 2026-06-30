@@ -58,19 +58,20 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
   });
 
   it("posts to /implement and shows the queued feedback", async () => {
-    vi.mocked(api.post).mockResolvedValue({});
+    vi.mocked(api.post).mockResolvedValue({ id: 12 });
     const { el, unmount } = mountRow();
     const btn = el.querySelector<HTMLButtonElement>(".row-act--implement");
     expect(btn).toBeTruthy();
+    expect(btn?.textContent).toContain("Run");
     btn!.click();
     await settle();
     expect(api.post).toHaveBeenCalledWith("/issues/42/implement", {});
-    expect(el.textContent).toContain("Queued");
+    expect(el.textContent).toContain("Run #12 queued");
     unmount();
   });
 
   it("offers a view-the-run follow-through after queueing (PAI-618)", async () => {
-    vi.mocked(api.post).mockResolvedValue({});
+    vi.mocked(api.post).mockResolvedValue({ id: 13 });
     let viewed = 0;
     const { el, unmount } = mountRow({ onView: () => (viewed += 1) });
     el.querySelector<HTMLButtonElement>(".row-act--implement")!.click();
@@ -110,8 +111,7 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
     unmount();
   });
 
-  it("shows the latest AI work state until a transient implement message takes over", async () => {
-    vi.mocked(api.post).mockResolvedValue({});
+  it("turns the row AI action into Open run when a run already exists", async () => {
     let viewed = 0;
     const { el, unmount } = mountRow({
       onView: () => (viewed += 1),
@@ -129,19 +129,13 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
         finished_at: "2026-06-30 09:34:35",
       },
     });
-    const badge = el.querySelector<HTMLElement>(".ai-work-badge");
-    expect(badge?.textContent).toContain("AI deployed");
-    expect(badge?.getAttribute("title")).toContain("v4.6.4");
-    expect(badge?.getAttribute("title")).toContain("local-dev");
-    expect(badge?.getAttribute("title")).toContain("npm test passed");
-    badge!.click();
+    const openRun = el.querySelector<HTMLButtonElement>(".row-run-action--open");
+    expect(openRun?.textContent).toContain("Open run");
+    expect(el.querySelector(".row-act--implement")).toBeNull();
+    openRun!.click();
     await settle();
     expect(viewed).toBe(1);
-
-    el.querySelector<HTMLButtonElement>(".row-act--implement")!.click();
-    await settle();
-    expect(el.querySelector(".ai-work-badge")).toBeNull();
-    expect(el.textContent).toContain("Queued");
+    expect(api.post).not.toHaveBeenCalled();
     unmount();
   });
 });

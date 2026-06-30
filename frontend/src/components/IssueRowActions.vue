@@ -1,15 +1,5 @@
 <template>
   <div class="row-actions" :class="{ 'row-actions--collapsed': collapsed }">
-    <button
-      v-if="aiWorkStatus && implementState === 'idle'"
-      type="button"
-      class="ai-work-badge"
-      :class="`ai-work-badge--${aiWorkStatus.status}`"
-      :title="aiWorkTitle"
-      :aria-label="`${aiWorkLabel}; open issue run history`"
-      @click.stop="$emit('view')"
-    >{{ aiWorkLabel }}</button>
-
     <!-- PAI-610/612: transient "Implement this" feedback. On success it's a
          follow-through to the issue's run panel (PAI-618). -->
     <button
@@ -55,8 +45,26 @@
       <button v-if="canHaveChildren && !compact" class="row-act row-act--hover" title="Add child issue" @click.stop="$emit('add-child')">
         <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" />
       </button>
-      <button v-if="isImplementable" class="row-act row-act--hover row-act--implement" title="Implement this — hand to your local agent" :disabled="implementState === 'busy'" @click.stop="implement()">
-        <AppIcon name="zap" :size="13" />
+      <button
+        v-if="isImplementable && hasRun && implementState === 'idle'"
+        class="row-run-action row-run-action--open"
+        type="button"
+        title="Open run history"
+        @click.stop="$emit('view')"
+      >
+        <AppIcon name="history" :size="12" />
+        <span>Open run</span>
+      </button>
+      <button
+        v-else-if="isImplementable"
+        class="row-run-action row-run-action--start row-act--implement"
+        type="button"
+        title="Run local agent"
+        :disabled="implementState === 'busy'"
+        @click.stop="implement()"
+      >
+        <AppIcon name="zap" :size="12" />
+        <span>{{ implementState === 'busy' ? 'Starting' : 'Run' }}</span>
       </button>
       <button v-if="isAdmin" class="row-act row-act--hover row-act--danger" title="Move to trash (recoverable)" @click.stop="$emit('delete')">
         <AppIcon name="trash-2" :size="13" />
@@ -83,8 +91,11 @@
             <button v-if="canHaveChildren && !compact" class="ellipsis-item" @click.stop="$emit('add-child'); menuOpen = false">
               <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" /> Add child
             </button>
-            <button v-if="isImplementable" class="ellipsis-item" @click.stop="implement()">
-              <AppIcon name="zap" :size="13" /> Implement this
+            <button v-if="isImplementable && hasRun && implementState === 'idle'" class="ellipsis-item" @click.stop="$emit('view'); menuOpen = false">
+              <AppIcon name="history" :size="13" /> Open run
+            </button>
+            <button v-else-if="isImplementable" class="ellipsis-item" @click.stop="implement()">
+              <AppIcon name="zap" :size="13" /> Run
             </button>
             <button v-if="isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
               <AppIcon name="trash-2" :size="13" /> Move to trash
@@ -128,31 +139,8 @@ const implementMsg = ref('')
 let implementTimer: ReturnType<typeof setTimeout> | null = null
 let alive = true // guards post-await writes/timer after unmount (M3)
 
-const AI_WORK_LABEL: Record<string, string> = {
-  queued: 'AI queued',
-  running: 'AI running',
-  tests_passed: 'AI tests ok',
-  tests_failed: 'AI tests failed',
-  deployed: 'AI deployed',
-  failed: 'AI failed',
-  cancelled: 'AI cancelled',
-}
 const aiWorkStatus = computed(() => props.aiWorkStatus ?? null)
-const aiWorkLabel = computed(() => {
-  const status = aiWorkStatus.value?.status ?? ''
-  return AI_WORK_LABEL[status] ?? `AI ${status}`
-})
-const aiWorkTitle = computed(() => {
-  const run = aiWorkStatus.value
-  if (!run) return ''
-  const bits = [`${aiWorkLabel.value} - open run history`]
-  if (run.version) bits.push(`v${run.version}`)
-  if (run.deploy_target) bits.push(`→ ${run.deploy_target}`)
-  if (run.device_id) bits.push(run.device_id)
-  if (run.tests_summary) bits.push(run.tests_summary)
-  if (run.error) bits.push(run.error)
-  return bits.join(' · ')
-})
+const hasRun = computed(() => !!aiWorkStatus.value)
 
 async function implement() {
   if (implementState.value === 'busy') return
@@ -161,10 +149,10 @@ async function implement() {
   implementMsg.value = ''
   menuOpen.value = false
   try {
-    await api.post(`/issues/${props.issueId}/implement`, {})
+    const run = await api.post<{ id?: number }>(`/issues/${props.issueId}/implement`, {})
     if (!alive) return
     implementState.value = 'done'
-    implementMsg.value = 'Queued — view'
+    implementMsg.value = run?.id ? `Run #${run.id} queued` : 'Queued'
   } catch (e: unknown) {
     if (!alive) return
     implementState.value = 'error'
@@ -309,28 +297,32 @@ tr:hover .row-act--hover,
 .row-act--implement:hover { color: var(--bp-blue, #2563eb); }
 .row-act--implement:disabled { opacity: .5; cursor: not-allowed; }
 
-.ai-work-badge {
-  border: 0; cursor: pointer; font-family: inherit;
-  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px;
-  white-space: nowrap; line-height: 1;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
-}
-.ai-work-badge:hover { text-decoration: underline; }
-.ai-work-badge--queued,
-.ai-work-badge--running {
+.row-run-action {
+  border: 1px solid color-mix(in srgb, var(--bp-blue, #2563eb) 18%, var(--border));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--bp-blue, #2563eb) 5%, var(--bg-card));
   color: var(--bp-blue, #2563eb);
-  background: color-mix(in srgb, var(--bp-blue, #2563eb) 16%, transparent);
 }
-.ai-work-badge--tests_passed,
-.ai-work-badge--deployed {
-  color: #1e8449;
-  background: color-mix(in srgb, #2ecc71 22%, transparent);
+.row-run-action:hover {
+  background: color-mix(in srgb, var(--bp-blue, #2563eb) 10%, var(--bg-card));
 }
-.ai-work-badge--tests_failed,
-.ai-work-badge--failed {
-  color: #c0392b;
-  background: #fef2f2;
+.row-run-action--open {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--bg-card);
+}
+.row-run-action--open:hover {
+  color: var(--bp-blue, #2563eb);
 }
 
 /* "Implement this" transient feedback */

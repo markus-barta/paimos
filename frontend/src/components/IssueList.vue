@@ -390,6 +390,7 @@ const ISSUE_COLS: ColDefs<Issue> = {
   jira_version: { value: i => i.jira_version ?? '',        type: 'string' },
   jira_text:    { value: i => i.jira_text ?? '',           type: 'string' },
   report_summary: { value: i => i.report_summary ?? '',    type: 'string' },
+  ai_status:    { value: i => i.ai_work_status?.status ?? '', type: { order: ['', 'queued', 'running', 'tests_passed', 'tests_failed', 'deployed', 'failed', 'cancelled'] } },
 }
 
 const sortResult = useSort(portalFilteredIssues, ISSUE_COLS)

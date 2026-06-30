@@ -85,6 +85,9 @@ describe("AgentRunPanel — PAI-610", () => {
     expect(el.textContent).toContain("Deployed");
     expect(el.textContent).toContain("v4.6.0");
     expect(el.textContent).toContain("npm test passed: 2 passed");
+    expect(el.textContent).toContain("#1");
+    expect(el.textContent).toContain("Claimed");
+    expect(el.textContent).toContain("Tests passed");
     expect(el.querySelector(".arp-device")).toBeNull(); // 1 runner → no picker
 
     const btn = el.querySelector<HTMLButtonElement>(".btn-primary");
@@ -161,15 +164,18 @@ describe("AgentRunPanel — PAI-610", () => {
       if (path === "/projects/9/runners") return { runners: [{ user_id: 1, device_id: "laptop", last_seen: "" }] };
       return {};
     });
-    vi.mocked(api.post).mockResolvedValue({});
+    vi.mocked(api.post).mockResolvedValue({ id: 22 });
     const { el, unmount } = mountPanel();
     await settle();
 
-    const target = el.querySelector<HTMLInputElement>(".arp-deploy-target");
+    const target = el.querySelector<HTMLSelectElement>(".arp-deploy-target");
     expect(target).toBeTruthy();
     target!.value = "local-dev";
-    target!.dispatchEvent(new Event("input"));
+    target!.dispatchEvent(new Event("change"));
     await settle();
+    expect(el.querySelector<HTMLButtonElement>(".btn-primary")?.textContent).toContain(
+      "Implement + deploy",
+    );
 
     el.querySelector<HTMLButtonElement>(".btn-primary")!.click();
     await settle();
@@ -177,6 +183,7 @@ describe("AgentRunPanel — PAI-610", () => {
       "/issues/PAI-5/implement",
       expect.objectContaining({ device_id: "laptop", deploy_target: "local-dev" }),
     );
+    expect(el.textContent).toContain("Run #22 queued for laptop");
     unmount();
   });
 

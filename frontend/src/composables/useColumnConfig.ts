@@ -71,6 +71,7 @@ export const ALL_COLUMNS: ColumnDef[] = [
   // fastest way to see which rows are still missing a summary
   // before exporting.
   { key: 'report_summary', label: 'Report summary', pinned: false },
+  { key: 'ai_status',   label: 'AI',           pinned: false },
   { key: 'actions',      label: 'Actions',      pinned: true  },
 ]
 
