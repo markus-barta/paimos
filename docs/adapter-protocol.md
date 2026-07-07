@@ -170,7 +170,7 @@ Exit `0` when every case passes; `1` otherwise. Use `--json` for machine-readabl
 
 ## 6. Writing your first adapter
 
-Worked example: `paimos-adapter-claude-code` is the in-tree reference. To build an external adapter, mirror the bundled fixture at `backend/cmd/paimos/adapters/fixtures/opencode/`.
+Worked example: `paimos-adapter-claude-code` is the external reference implementation at `https://github.com/markus-barta/paimos-adapter-claude-code`. Paimos still ships a bundled `claude-code` fallback so existing `paimos skill render --harness claude-code` calls continue to work when no external adapter is installed. To build a different external adapter, mirror the bundled fixture at `backend/cmd/paimos/adapters/fixtures/opencode/`.
 
 ### Step 1: write the manifest
 
@@ -275,7 +275,8 @@ The rendered file lands at the path your `target_path_template` resolves to, wit
 | External-adapter execution | `backend/cmd/paimos/adapters/external.go` |
 | Dispatch + header injection | `backend/cmd/paimos/adapters/dispatch.go` |
 | Conformance suite | `backend/cmd/paimos/adapters/conformance.go` |
-| Reference adapter (claude-code) | `backend/cmd/paimos/adapters/claudecode/adapter.go` |
+| Reference adapter (claude-code) | `https://github.com/markus-barta/paimos-adapter-claude-code` |
+| Bundled fallback (claude-code) | `backend/cmd/paimos/adapters/claudecode/adapter.go` |
 | Bundled external stub | `backend/cmd/paimos/adapters/fixtures/opencode/` |
 | Public registry endpoint | `backend/handlers/adapter_registry.go` |
 | Public registry index | `backend/handlers/adapter_registry.json` |

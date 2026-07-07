@@ -14,12 +14,13 @@
         "input_format": "json",
         "output_format": "markdown"
       },
-      "homepage": "https://github.com/markus-barta/paimos-app",
-      "source": "bundled",
+      "homepage": "https://github.com/markus-barta/paimos-adapter-claude-code",
+      "source": "external",
       "maintainer": "paimos",
       "conformance": {
         "passes": true,
-        "last_verified": "2026-05-08"
+        "last_verified": "2026-07-07",
+        "note": "Paimos still ships a bundled fallback for backwards-compatible `--harness claude-code` rendering."
       }
     },
     {
