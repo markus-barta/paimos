@@ -5,6 +5,59 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] — 2026-07-07
+
+### Added
+
+- **Live project changes feed (PAI-230).** Added the authenticated
+  `GET /api/changes` SSE stream with mutation-log replay, project access
+  filtering, metadata-only payloads, and frontend `useChangesStream` /
+  freshness integration so issue and project views can react to server-side
+  changes without waiting for coarse polling.
+- **Explicit provider actions for "Implement this" (PAI-629).** Claude and
+  Codex runner actions are now first-class (`claude_cli.implement`,
+  `codex_cli.implement`) with run/action metadata, runner capability surfaces,
+  CLI selection, and frontend action/status labels.
+- **Request-level undo coverage for batch tag/status cascade work (PAI-228).**
+  Bulk tag changes and terminal-status cascades now record inverse mutation
+  rows so request-level undo/redo can revert the full operation, not only the
+  visible parent row.
+
+### Changed
+
+- **Claude Code adapter extracted (PAI-333).** `claude-code` now has its own
+  public reference repository and independent `v1.0.0` release:
+  `https://github.com/markus-barta/paimos-adapter-claude-code`. The PAIMOS
+  registry points at that external source while the bundled fallback remains in
+  place, so existing `paimos skill render --harness claude-code` workflows keep
+  working.
+- **Customer portal issue lists reuse the shared IssueList engine (PAI-476).**
+  Customer-mode project views now go through the canonical list/table
+  components instead of the old bespoke portal list path.
+- **"Implement this" runner and web UX follow-through (PAI-625).** The runner
+  and issue-list/detail surfaces gained the workstation proof fixes, clearer
+  deploy-target behavior, AI status badges, and reviewable run status display
+  that closed the final implement-run audit.
+
+### Fixed
+
+- **Project open-ticket counts exclude knowledge entries.** Project overview
+  and project-list aggregates no longer count knowledge-plane rows as open
+  tickets.
+- **Knowledge updates preserve metadata when omitted (PAI-644).** Server and
+  CLI update paths now keep existing metadata unless the caller explicitly
+  replaces it.
+- **Agent run write ownership tightened (PAI-624).** Run writes are constrained
+  to the requester, claimer, or admin, with schema/OpenAPI guard coverage for
+  the public run surfaces.
+
+### Internal
+
+- **Release tooling ignores non-release tags.** `just status`, `just release`,
+  and `just doc-sync` now select the latest SemVer `vX.Y.Z` release tag, so
+  operational bookmark tags such as `pai-open-start-*` cannot confuse release
+  math or doc-sync diff ranges.
+
 ## [4.6.3] — 2026-06-29
 
 ### Fixed
