@@ -16,6 +16,8 @@
 package handlers
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -591,11 +593,20 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	if user := auth.GetUser(r); user != nil {
 		userID = &user.ID
 	}
-	if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
-		RequestID:    requestIDFromRequest(r),
+	requestID := requestIDFromRequest(r)
+	sessionID := sessionIDFromRequest(r)
+	agentName := agentNameFromRequest(r)
+	cascadeBatchID := ""
+	cascadeChildren := body.Status != nil && shouldCascadeStatusUpdate(afterSnap.Type, afterSnap.Status, body.CascadeChildren)
+	if cascadeChildren {
+		cascadeBatchID = newAIRequestID()
+	}
+	parentLogID, err := recordMutation(r.Context(), tx, mutationRecordArgs{
+		RequestID:    requestID,
+		BatchID:      cascadeBatchID,
 		UserID:       userID,
-		SessionID:    sessionIDFromRequest(r),
-		AgentName:    agentNameFromRequest(r),
+		SessionID:    sessionID,
+		AgentName:    agentName,
 		MutationType: mutationTypeForRequest(r, "issue.update"),
 		SubjectType:  "issue",
 		SubjectID:    id,
@@ -607,9 +618,43 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		BeforeState: beforeSnap,
 		AfterState:  afterSnap,
 		Undoable:    true,
-	}); err != nil {
+	})
+	if err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	if cascadeChildren {
+		if _, err := recordIssueStatusCascadeMutations(r.Context(), tx, issueStatusCascadeArgs{
+			RequestID:    requestID,
+			BatchID:      cascadeBatchID,
+			ParentLogID:  parentLogID,
+			UserID:       userID,
+			SessionID:    sessionID,
+			AgentName:    agentName,
+			MutationType: mutationTypeForRequest(r, "issue.update"),
+			SourceID:     id,
+			SourceType:   afterSnap.Type,
+			Status:       afterSnap.Status,
+			UpdatedAt:    now,
+		}); err != nil {
+			log.Printf("UpdateIssue: record status cascade id=%d: %v", id, err)
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if cascadeBatchID != "" && userID != nil {
+		if _, err := tx.ExecContext(r.Context(), `
+			UPDATE mutation_log
+			SET on_user_stack = CASE WHEN id = ? THEN 1 ELSE 0 END
+			WHERE batch_id = ? AND user_id = ?
+		`, parentLogID, cascadeBatchID, *userID); err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := enforceUndoStackDepth(r.Context(), tx, *userID); err != nil {
+			jsonError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -656,34 +701,9 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Auto-cascade children for issues moving to done/accepted/invoiced
-		// - Tickets: always cascade to tasks (existing behavior)
-		// - Epics: cascade only when cascade_children is explicitly true
-		terminalStatuses := map[string]bool{"done": true, "delivered": true, "accepted": true, "invoiced": true}
-		if terminalStatuses[*body.Status] {
-			shouldCascade := false
-			if issue.Type == "ticket" {
-				// Tickets always cascade to tasks (unless explicitly disabled)
-				shouldCascade = body.CascadeChildren == nil || *body.CascadeChildren
-			} else if issue.Type == "epic" {
-				// Epics only cascade when explicitly requested
-				shouldCascade = body.CascadeChildren != nil && *body.CascadeChildren
-			}
-			if shouldCascade {
-				// PAI-584 P6: children via the `parent` edge, not parent_id.
-				if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE id IN (SELECT target_id FROM issue_relations WHERE source_id=? AND type='parent') AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
-					*body.Status, nowTS, id); err != nil {
-					log.Printf("UpdateIssue: cascade children id=%d: %v", id, err)
-				}
-				// For epics, also cascade to grandchildren (tasks under tickets)
-				if issue.Type == "epic" {
-					if _, err := db.DB.Exec(`UPDATE issues SET status=?, updated_at=? WHERE id IN (SELECT target_id FROM issue_relations WHERE source_id IN (SELECT target_id FROM issue_relations WHERE source_id=? AND type='parent') AND type='parent') AND deleted_at IS NULL AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')`,
-						*body.Status, nowTS, id); err != nil {
-						log.Printf("UpdateIssue: cascade grandchildren id=%d: %v", id, err)
-					}
-				}
-			}
-		}
+		// Status cascades are recorded and applied in the main update
+		// transaction above so undo/redo sees the parent and child rows
+		// as one request-correlated batch.
 	}
 
 	// Evaluate system tags (budget threshold, etc.)
@@ -695,6 +715,161 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", issueETag(issue.ID, issue.UpdatedAt))
 	}
 	jsonOK(w, issue)
+}
+
+type issueStatusCascadeArgs struct {
+	RequestID    string
+	BatchID      string
+	ParentLogID  int64
+	UserID       *int64
+	SessionID    string
+	AgentName    string
+	MutationType string
+	SourceID     int64
+	SourceType   string
+	Status       string
+	UpdatedAt    string
+}
+
+func shouldCascadeStatusUpdate(issueType, status string, cascadeChildren *bool) bool {
+	if !statusTriggersChildCascade(status) {
+		return false
+	}
+	switch issueType {
+	case "ticket":
+		return cascadeChildren == nil || *cascadeChildren
+	case "epic":
+		return cascadeChildren != nil && *cascadeChildren
+	default:
+		return false
+	}
+}
+
+func statusTriggersChildCascade(status string) bool {
+	switch status {
+	case "done", "delivered", "accepted", "invoiced":
+		return true
+	default:
+		return false
+	}
+}
+
+func recordIssueStatusCascadeMutations(ctx context.Context, tx *sql.Tx, args issueStatusCascadeArgs) (int, error) {
+	childIDs, err := issueStatusCascadeIDsTx(tx, args.SourceID, args.SourceType)
+	if err != nil {
+		return 0, err
+	}
+	if len(childIDs) == 0 {
+		return 0, nil
+	}
+	changed := 0
+	parentLogID := args.ParentLogID
+	for _, childID := range childIDs {
+		beforeSnap, err := fetchIssueMutationSnapshotTx(tx, childID)
+		if err != nil {
+			return changed, err
+		}
+		if issueStatusIsClosed(beforeSnap.Status) {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE issues
+			SET status = ?, updated_at = ?
+			WHERE id = ?
+			  AND deleted_at IS NULL
+			  AND status NOT IN ('done','delivered','accepted','invoiced','cancelled')
+		`, args.Status, args.UpdatedAt, childID); err != nil {
+			return changed, err
+		}
+		afterSnap, err := fetchIssueMutationSnapshotTx(tx, childID)
+		if err != nil {
+			return changed, err
+		}
+		if beforeSnap.Status == afterSnap.Status {
+			continue
+		}
+		if _, err := recordMutation(ctx, tx, mutationRecordArgs{
+			RequestID:    args.RequestID,
+			BatchID:      args.BatchID,
+			ParentLogID:  &parentLogID,
+			UserID:       args.UserID,
+			SessionID:    args.SessionID,
+			AgentName:    args.AgentName,
+			MutationType: args.MutationType,
+			SubjectType:  "issue",
+			SubjectID:    childID,
+			InverseOp: InverseOp{
+				Method: http.MethodPut,
+				Path:   fmt.Sprintf("/issues/%d", childID),
+				Body:   beforeSnap,
+			},
+			BeforeState: beforeSnap,
+			AfterState:  afterSnap,
+			Undoable:    true,
+		}); err != nil {
+			return changed, err
+		}
+		changed++
+	}
+	return changed, nil
+}
+
+func issueStatusIsClosed(status string) bool {
+	switch status {
+	case "done", "delivered", "accepted", "invoiced", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func issueStatusCascadeIDsTx(tx *sql.Tx, sourceID int64, sourceType string) ([]int64, error) {
+	query := `
+		SELECT DISTINCT i.id
+		FROM issues i
+		JOIN issue_relations pr ON pr.target_id = i.id AND pr.type = 'parent'
+		WHERE pr.source_id = ?
+		  AND i.deleted_at IS NULL
+		  AND i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')
+		ORDER BY i.id ASC
+	`
+	args := []any{sourceID}
+	if sourceType == "epic" {
+		query = `
+			WITH cascade_targets(id) AS (
+				SELECT i.id
+				FROM issues i
+				JOIN issue_relations pr ON pr.target_id = i.id AND pr.type = 'parent'
+				WHERE pr.source_id = ?
+				  AND i.deleted_at IS NULL
+				  AND i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')
+				UNION
+				SELECT gc.id
+				FROM issues gc
+				JOIN issue_relations child_edge ON child_edge.target_id = gc.id AND child_edge.type = 'parent'
+				JOIN issue_relations parent_edge ON parent_edge.target_id = child_edge.source_id AND parent_edge.type = 'parent'
+				WHERE parent_edge.source_id = ?
+				  AND gc.deleted_at IS NULL
+				  AND gc.status NOT IN ('done','delivered','accepted','invoiced','cancelled')
+			)
+			SELECT DISTINCT id FROM cascade_targets ORDER BY id ASC
+		`
+		args = []any{sourceID, sourceID}
+	}
+	rows, err := tx.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // CompleteEpic marks an epic as done, optionally bulk-closing open children first.
