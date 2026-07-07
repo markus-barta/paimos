@@ -44,7 +44,7 @@ A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* refer
 
 ## 2 · Active reference deployments
 
-Two as of 2026-06-01. Both real, both production-like, both used to validate the current release flow.
+Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy target for current work; pmo is historical/inactive after the BytePoets exit. The current ppm proof is the live `4.6.3-dev+e08cdbe` deployment verified again on 2026-07-07.
 
 ### 2.1 · ppm · `pm.barta.cm`
 
@@ -53,12 +53,12 @@ Two as of 2026-06-01. Both real, both production-like, both used to validate the
 | Operator | the PAIMOS maintainer |
 | Host | `csb1.barta.cm` (Hetzner-class, EU-region) |
 | Storage | Docker named volume on encrypted FS |
-| Reverse proxy | Caddy (TLS via Let's Encrypt) |
+| Reverse proxy | Traefik (TLS via Let's Encrypt / `default` resolver) |
 | Attachments | MinIO (separate bucket) |
 | AI assist | OpenRouter (configured), `anthropic/claude-sonnet-4.5` model |
 | OIDC | not configured (local password + TOTP) |
 | Active since | v1.x (continuously upgraded; no fresh-install in current era) |
-| Last verified runtime | 2026-06-01: `3.8.3` (`/api/health`, schema `1.5.0`) |
+| Last verified runtime | 2026-07-07: `4.6.3-dev+e08cdbe` (`/api/health`, `paimos --instance ppm doctor`) |
 | Backup pattern | per-deploy via `scripts/deploy.sh`; `$BACKUP_ROOT` on the same host (acknowledged limitation tracked under [§3 Findings](#3--structured-findings) F-08) |
 | Audience | the maintainer + a small group; canary for every release before pmo |
 
@@ -67,6 +67,8 @@ Two as of 2026-06-01. Both real, both production-like, both used to validate the
 **This is the maintainer's own instance**, which is both a strength (real engagement, every defect is felt) and a weakness (operator and maintainer are the same person, so the validation isn't independent).
 
 **2026-06-01 drift note:** ppm was briefly behind pmo because the deploy script still edited the old `/home/mba/docker` compose directory while the live csb1 stack was sourced from `/home/mba/Code/nixcfg/hosts/csb1/docker`. The deploy config and nixcfg compose pin now agree on `3.8.3`. The broader freshness guardrail is tracked by PAI-551.
+
+**2026-07-07 proxy note:** live ppm (`container=ppm`) is routed by Traefik from the `csb1_traefik` Docker network, with a router rule for `pm.barta.cm`, TLS resolver `default`, and backend port `8888`. Earlier reference text still said Caddy; Caddy remains present on the host for other sites, but not as the live ppm router.
 
 ### 2.2 · pmo · `pm.bytepoets.com`
 

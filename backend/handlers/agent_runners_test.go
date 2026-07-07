@@ -47,7 +47,14 @@ func TestProjectRunnersAndImplementPublish(t *testing.T) {
 	}
 
 	// A live, implement-capable runner... (capability is per-connection now)
-	runner := sse.GlobalBroker().Subscribe(adminID, "runner-1", projID, true)
+	runner := sse.GlobalBroker().Subscribe(adminID, "runner-1", projID, true, []sse.ActionCapability{{
+		ActionKey:    "codex_cli.implement",
+		ProviderKind: "local_cli",
+		ProviderID:   "codex_cli",
+		Label:        "Codex CLI",
+		RunModes:     []string{"edit"},
+		CanTest:      true,
+	}})
 	defer sse.GlobalBroker().Close(runner)
 	insertWatch("runner-1", 1)
 	// ...and a live browser tab that is NOT a runner.
@@ -64,6 +71,10 @@ func TestProjectRunnersAndImplementPublish(t *testing.T) {
 	decode(t, resp, &reg)
 	if len(reg.Runners) != 1 || reg.Runners[0]["device_id"] != "runner-1" {
 		t.Fatalf("runners=%+v, want only runner-1", reg.Runners)
+	}
+	actions, ok := reg.Runners[0]["actions"].([]any)
+	if !ok || len(actions) != 1 || actions[0].(map[string]any)["action_key"] != "codex_cli.implement" {
+		t.Fatalf("runner actions=%+v, want codex_cli.implement", reg.Runners[0]["actions"])
 	}
 
 	// POST /implement creates the run AND publishes implement_requested.

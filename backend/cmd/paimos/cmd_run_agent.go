@@ -59,6 +59,7 @@ func runAgentWatchCmd() *cobra.Command {
 		projectRef  string
 		repoRoot    string
 		execCmd     string
+		actionKey   string
 		testExec    string
 		yes         bool
 		allowDeploy bool
@@ -99,7 +100,7 @@ Examples:
   paimos run-agent watch --project PAI --yes --test-exec "npm test"`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return runAgentWatch(runAgentOpts{
-				projectRef: projectRef, repoRoot: repoRoot, execCmd: execCmd, testExec: testExec,
+				projectRef: projectRef, repoRoot: repoRoot, execCmd: execCmd, actionKey: actionKey, testExec: testExec,
 				yes: yes, allowDeploy: allowDeploy, deployExec: deployExec, yesDeploy: yesDeploy,
 				attachLogs: attachLogs,
 			})
@@ -108,6 +109,7 @@ Examples:
 	c.Flags().StringVarP(&projectRef, "project", "p", "", "project key or id (required)")
 	c.Flags().StringVar(&repoRoot, "repo-root", "", "repo the runner operates in (default: cwd)")
 	c.Flags().StringVar(&execCmd, "exec", "claude", "command to spawn for a job (run in --repo-root)")
+	c.Flags().StringVar(&actionKey, "action-key", "", "provider action to advertise (default: inferred from --exec)")
 	c.Flags().StringVar(&testExec, "test-exec", "", `optional test command to run after --exec; summary is reported as tests_summary`)
 	c.Flags().BoolVar(&yes, "yes", false, "skip the per-job confirmation prompt (non-interactive)")
 	c.Flags().BoolVar(&allowDeploy, "allow-deploy", false, "allow the runner to deploy after a successful run (off by default)")
@@ -121,12 +123,57 @@ type runAgentOpts struct {
 	projectRef  string
 	repoRoot    string
 	execCmd     string
+	actionKey   string
 	testExec    string
 	yes         bool
 	allowDeploy bool
 	deployExec  string
 	yesDeploy   bool
 	attachLogs  bool
+}
+
+func resolveRunnerAction(explicit, execCmd string) (string, string, error) {
+	key := strings.TrimSpace(explicit)
+	if key == "" {
+		key = inferRunnerActionKey(execCmd)
+	}
+	switch key {
+	case "claude_cli.implement":
+		return key, "Claude Code", nil
+	case "codex_cli.implement":
+		return key, "Codex CLI", nil
+	default:
+		return "", "", &usageError{msg: "unsupported --action-key " + key}
+	}
+}
+
+func inferRunnerActionKey(execCmd string) string {
+	fields := strings.Fields(strings.TrimSpace(execCmd))
+	if len(fields) == 0 {
+		return "claude_cli.implement"
+	}
+	base := strings.ToLower(filepath.Base(fields[0]))
+	if strings.Contains(base, "codex") {
+		return "codex_cli.implement"
+	}
+	return "claude_cli.implement"
+}
+
+func appendRunnerActionQuery(path, actionKey string, canTest, canDeploy bool) string {
+	u, err := url.Parse(path)
+	if err != nil {
+		return path
+	}
+	q := u.Query()
+	q.Set("action_key", actionKey)
+	if canTest {
+		q.Set("can_test", "1")
+	}
+	if canDeploy {
+		q.Set("can_deploy", "1")
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // runJob is one unit of work for the worker. issueKey is best-effort (carried
@@ -160,18 +207,22 @@ func runAgentWatch(o runAgentOpts) error {
 	if err != nil {
 		return err
 	}
+	actionKey, actionLabel, err := resolveRunnerAction(o.actionKey, o.execCmd)
+	if err != nil {
+		return err
+	}
 
 	syncer := &httpSyncClient{client: client}
 	ctx, cancel := signalContext()
 	defer cancel()
 
-	runner := newAgentRunner(client, deviceID, root, o.execCmd, o.testExec, o.yes, o.allowDeploy, o.deployExec, o.yesDeploy, o.attachLogs)
+	runner := newAgentRunner(client, deviceID, root, o.execCmd, actionKey, o.testExec, o.yes, o.allowDeploy, o.deployExec, o.yesDeploy, o.attachLogs)
 	deployNote := "report-back only, no auto-deploy"
 	if runner.allowDeploy && runner.deployExec != "" {
 		deployNote = "deploy ENABLED via " + runner.deployExec + " (runs with a deploy_target only)"
 	}
-	fmt.Fprintf(stdout, "run-agent watching %s (device=%s, repo=%s) — %s\n",
-		projectKey, deviceID, root, deployNote)
+	fmt.Fprintf(stdout, "run-agent watching %s (device=%s, repo=%s, action=%s) — %s\n",
+		projectKey, deviceID, root, actionLabel, deployNote)
 
 	// One worker → one job at a time. Each handleRun atomically claims its run,
 	// so a job enqueued twice (SSE + catch-up) is harmless (the second claim 409s).
@@ -216,6 +267,7 @@ func runAgentWatch(o runAgentOpts) error {
 
 	// SSE with reconnect + capped backoff. Exits only on signal (ctx cancel).
 	ssePath := sync.EventEndpoint(projectID, deviceID, "", true)
+	ssePath = appendRunnerActionQuery(ssePath, actionKey, runner.testExec != "", runner.allowDeploy && runner.deployExec != "")
 	backoff := time.Second
 	const maxBackoff = 30 * time.Second
 	for {
@@ -271,6 +323,7 @@ type agentRunner struct {
 	deviceID       string
 	repoRoot       string
 	execCmd        string
+	actionKey      string
 	testExec       string
 	autoConfirm    bool
 	allowDeploy    bool
@@ -283,12 +336,16 @@ type agentRunner struct {
 	confirmDeploy  func(issueKey string, runID int64, target string) bool
 }
 
-func newAgentRunner(client *Client, deviceID, repoRoot, execCmd, testExec string, autoConfirm, allowDeploy bool, deployExec string, autoConfirmDeploy, attachLogs bool) *agentRunner {
+func newAgentRunner(client *Client, deviceID, repoRoot, execCmd, actionKey, testExec string, autoConfirm, allowDeploy bool, deployExec string, autoConfirmDeploy, attachLogs bool) *agentRunner {
+	if actionKey == "" {
+		actionKey, _, _ = resolveRunnerAction("", execCmd)
+	}
 	return &agentRunner{
 		client:         client,
 		deviceID:       deviceID,
 		repoRoot:       repoRoot,
 		execCmd:        execCmd,
+		actionKey:      actionKey,
 		testExec:       testExec,
 		autoConfirm:    autoConfirm,
 		allowDeploy:    allowDeploy,
@@ -302,10 +359,12 @@ func newAgentRunner(client *Client, deviceID, repoRoot, execCmd, testExec string
 }
 
 type agentRunDetail struct {
-	IssueID      int64  `json:"issue_id"`
-	DeviceID     string `json:"device_id"`
-	DeployTarget string `json:"deploy_target"`
-	Status       string `json:"status"`
+	IssueID       int64  `json:"issue_id"`
+	DeviceID      string `json:"device_id"`
+	ActionKey     string `json:"action_key"`
+	ProviderLabel string `json:"provider_label"`
+	DeployTarget  string `json:"deploy_target"`
+	Status        string `json:"status"`
 }
 
 type agentIssueContext struct {
@@ -326,9 +385,21 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 	if err != nil {
 		return err
 	}
+	actionKey := a.actionKey
+	if actionKey == "" {
+		actionKey, _, _ = resolveRunnerAction("", a.execCmd)
+	}
 	// Only fresh, unclaimed runs are ours to take. (A catch-up enqueue can race
 	// an SSE one; whichever loses sees a non-queued status and bows out.)
 	if detail.Status != "queued" {
+		return nil
+	}
+	if detail.ActionKey != "" && detail.ActionKey != actionKey {
+		label := detail.ProviderLabel
+		if label == "" {
+			label = detail.ActionKey
+		}
+		fmt.Fprintf(stdout, "run %d targets action %q (not %q) — skipping\n", runID, label, actionKey)
 		return nil
 	}
 	// Device targeting: a run aimed at a specific device is only ours if it
@@ -362,7 +433,7 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 	}
 	// Atomic claim: queued -> running. A second runner that re-reads the run
 	// loses here (the if_status guard) and skips — no double-spawn.
-	if err := a.patch(runID, map[string]any{"status": "running", "if_status": "queued", "device_id": a.deviceID}); err != nil {
+	if err := a.patch(runID, map[string]any{"status": "running", "if_status": "queued", "device_id": a.deviceID, "action_key": actionKey}); err != nil {
 		if isConflict(err) {
 			fmt.Fprintf(stdout, "run %d already claimed by another runner — skipping\n", runID)
 			return nil

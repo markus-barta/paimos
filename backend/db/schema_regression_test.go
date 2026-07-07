@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 127
+const latestSchemaVersion = 129
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -60,6 +60,25 @@ func TestSchemaMigrationsReachLatestVersion(t *testing.T) {
 	}
 	if maxVersion != latestSchemaVersion {
 		t.Fatalf("max schema version=%d want %d", maxVersion, latestSchemaVersion)
+	}
+}
+
+func TestSchemaAgentRunsClaimedByColumn(t *testing.T) {
+	db := openTestDB(t)
+	if !columnExists(t, db, "agent_runs", "claimed_by") {
+		t.Fatal("expected agent_runs.claimed_by to exist (PAI-624 / M128)")
+	}
+}
+
+func TestSchemaAgentRunsProviderColumns(t *testing.T) {
+	db := openTestDB(t)
+	for _, col := range []string{"action_key", "provider_kind", "provider_id", "provider_label", "model", "run_mode"} {
+		if !columnExists(t, db, "agent_runs", col) {
+			t.Fatalf("expected agent_runs.%s to exist (PAI-629 / M129)", col)
+		}
+	}
+	if !columnExists(t, db, "auto_watch_subscriptions", "actions_json") {
+		t.Fatal("expected auto_watch_subscriptions.actions_json to exist (PAI-629 / M129)")
 	}
 }
 

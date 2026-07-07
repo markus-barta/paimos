@@ -15,7 +15,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { useDraggedIssue } from '@/stores/draggedIssue'
 import { storeToRefs } from 'pinia'
-import type { Issue, Tag, SavedView, Sprint, User } from '@/types'
+import type { AgentActionCapability, Issue, Tag, SavedView, Sprint, User } from '@/types'
 import type { Project } from '@/types'
 import { useViews, getLastViewId, setLastViewId } from '@/composables/useViews'
 import { useAuthStore } from '@/stores/auth'
@@ -38,6 +38,7 @@ import { useInlineEdit } from '@/composables/useInlineEdit'
 // ── Extracted sub-components ──────────────────────────────────────────────
 import IssueTable from '@/components/IssueTable.vue'
 import IssueTreeView from '@/components/IssueTreeView.vue'
+import PortalIssueSidePanel from '@/components/portal/PortalIssueSidePanel.vue'
 import CreateIssueModal from '@/components/CreateIssueModal.vue'
 import BulkChangeModal from '@/components/BulkChangeModal.vue'
 import BulkGenerateSummaryModal from '@/components/BulkGenerateSummaryModal.vue'
@@ -77,6 +78,9 @@ const props = defineProps<{
   selectionFingerprint?: string
   loadingMore?: boolean
   searchQueryOverride?: string
+  mode?: 'internal' | 'customer'
+  statusLabels?: Record<string, string>
+  typeLabels?: Record<string, string>
   // PAI-479. When true, this IssueList owns the `?selected=<ISSUE_KEY>` query
   // param: row-clicks write it (replaceState), and a key already in the URL on
   // mount auto-opens the sidebar. Default false so sub-uses inside
@@ -96,7 +100,12 @@ const emit = defineEmits<{
   'load-all':         []
   'server-filter-change': [query: string]
   'server-sort-change': [key: string, dir: 'asc' | 'desc']
+  accepted: [id: number]
+  rejected: [id: number]
 }>()
+
+const isCustomerMode = computed(() => props.mode === 'customer')
+const CUSTOMER_COLUMNS = new Set(['key', 'type', 'title', 'status', 'priority', 'accepted_at'])
 
 const router = useRouter()
 const route  = useRoute()
@@ -112,6 +121,11 @@ const isAdmin   = computed(() => authStore.isAdmin)
 const colScope = computed(() => `project-${props.projectId ?? 'global'}`)
 const { ALL_COLUMNS, isVisible, toggle: toggleCol, reset: resetCols, setFromJSON: setColsFromJSON, toJSON: colsToJSON } = useColumnConfig(colScope)
 const columnWidths = ref<ColumnWidths>({})
+
+function tableColumnVisible(key: string): boolean {
+  if (isCustomerMode.value) return CUSTOMER_COLUMNS.has(key)
+  return isVisible(key)
+}
 
 const colPanelOpen   = ref(false)
 const colPanelEl     = ref<HTMLElement | null>(null)
@@ -371,6 +385,7 @@ const ISSUE_COLS: ColDefs<Issue> = {
   title:        { value: i => i.title,                     type: 'string' },
   status:       { value: i => i.status,                    type: { order: ['backlog','in-progress','complete','canceled'] } },
   priority:     { value: i => i.priority,                  type: { order: ['high','medium','low'] } },
+  accepted_at:  { value: i => i.accepted_at ?? '',         type: 'string' },
   cost_unit:    { value: i => i.cost_unit?.label ?? '',    type: 'string' },
   release:      { value: i => i.release?.label ?? '',      type: 'string' },
   assignee:     { value: i => i.assignee?.username ?? '',  type: 'string' },
@@ -634,6 +649,31 @@ function copyKey(key: string, event?: MouseEvent) {
   flash(`'${key}' copied to clipboard`)
 }
 
+const agentActions = ref<AgentActionCapability[]>([])
+
+async function loadAgentActions() {
+  if (isCustomerMode.value || props.projectId === undefined) {
+    agentActions.value = []
+    return
+  }
+  try {
+    const data = await api.get<{ runners: { actions?: AgentActionCapability[] }[] }>(
+      `/projects/${props.projectId}/runners`,
+    )
+    const byKey = new Map<string, AgentActionCapability>()
+    for (const runner of data.runners ?? []) {
+      for (const action of runner.actions ?? []) {
+        if (!byKey.has(action.action_key)) byKey.set(action.action_key, action)
+      }
+    }
+    agentActions.value = [...byKey.values()]
+  } catch {
+    agentActions.value = []
+  }
+}
+
+watch(() => props.projectId, () => { void loadAgentActions() }, { immediate: true })
+
 type EpicMode = 'key' | 'title' | 'abbreviated'
 const epicDisplayMode = ref<EpicMode>((localStorage.getItem(EPIC_MODE_KEY) as EpicMode) || 'key')
 
@@ -643,7 +683,11 @@ function setEpicMode(m: EpicMode) {
 }
 
 // ── Filter persistence watchers ──────────────────────────────────────────
-onMounted(() => { loadFilters(); loadColumnWidthsFromLocalStorage(); sprintNav.loadSprintNav() })
+onMounted(() => {
+  loadFilters()
+  loadColumnWidthsFromLocalStorage()
+  if (!isCustomerMode.value) sprintNav.loadSprintNav()
+})
 watch(filterWatchSources, () => { if (!applyingView) saveFilters() })
 watch(serverFilterQuery, (query) => emit('server-filter-change', query), { immediate: true })
 watch([sortKey, sortDir], ([key, dir]) => {
@@ -674,6 +718,7 @@ function openCreate(parentIssue?: Issue, overrideType?: string, overrideParentId
 }
 
 watch(() => newIssueStore.trigger, () => {
+  if (isCustomerMode.value) return
   if (props.compact) return
   const ctx = newIssueStore.context
   if (ctx.projectId !== undefined && props.projectId !== undefined && ctx.projectId !== props.projectId) return
@@ -855,6 +900,7 @@ if (props.urlSyncSelection) {
       if (inList) return inList.id
       const inAll = props.projectAllIssues?.find(i => i.issue_key?.toUpperCase() === k)
       if (inAll) return inAll.id
+      if (isCustomerMode.value) return null
       // Fallback: rank-ordered search returns exact-key matches first.
       try {
         const hits = await api.get<Issue[]>(`/issues?q=${encodeURIComponent(k)}&limit=1`)
@@ -1075,7 +1121,7 @@ function showAllRenderedIssues() {
 
 watch(finalIssues, () => { renderLimit.value = RENDER_BATCH })
 
-if (!sprints.value.length) {
+if (!isCustomerMode.value && !sprints.value.length) {
   api.get<Sprint[]>('/sprints').then(s => { loadedSprints.value = s }).catch(() => {})
 }
 
@@ -1187,11 +1233,11 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     <!-- Section title (compact mode) -->
     <div v-if="compact && title" class="compact-header">
       <h3 class="compact-title">{{ title }}</h3>
-      <button class="btn btn-primary btn-sm" @click="openCreate()">+ Add {{ title }}</button>
+      <button v-if="!isCustomerMode" class="btn btn-primary btn-sm" @click="openCreate()">+ Add {{ title }}</button>
     </div>
 
     <!-- Filter bar (full mode only) -->
-    <div v-if="!compact" class="filters">
+    <div v-if="!compact && !isCustomerMode" class="filters">
       <button v-if="projectId !== undefined" class="btn btn-primary btn-sm" @click="openCreate()">+ New issue</button>
 
       <!-- Views toggle button -->
@@ -1390,7 +1436,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Views panel -->
     <IssueViewsPanel
-      v-if="!compact && viewsPanelOpen"
+      v-if="!compact && !isCustomerMode && viewsPanelOpen"
       ref="viewsPanelEl"
       :my-views="myViews"
       :basics-views="basicsViews"
@@ -1412,7 +1458,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Filter panel -->
     <IssueFilterPanel
-      v-if="!compact && filterPanelOpen"
+      v-if="!compact && !isCustomerMode && filterPanelOpen"
       ref="filterPanelEl"
       :filter-type="filterType"
       :filter-status="filterStatus"
@@ -1463,7 +1509,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     />
 
     <!-- Columns panel -->
-    <div v-if="!compact && colPanelOpen" ref="colPanelEl" class="columns-panel">
+    <div v-if="!compact && !isCustomerMode && colPanelOpen" ref="colPanelEl" class="columns-panel">
       <div class="col-panel-header">
         <span class="col-panel-title">Columns</span>
         <button class="fp-clear" @click="resetCols">Reset</button>
@@ -1480,23 +1526,23 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     <!-- Empty -->
     <div v-if="filteredIssues.length === 0" class="empty-state">
       <div v-if="searchQuery && !compact" class="empty-search-term">"{{ searchQuery }}"</div>
-      {{ compact ? 'No child issues.' : 'No issues match the current filters.' }}
+      {{ isCustomerMode ? 'No issues.' : (compact ? 'No child issues.' : 'No issues match the current filters.') }}
     </div>
 
     <!-- FLAT TABLE -->
-    <div v-else-if="compact || !treeView" ref="tableWrapRef" class="issue-table-wrap" :class="{ compact, 'table-borders': showBorders, 'table-stripes': showStripes }">
+    <div v-else-if="compact || isCustomerMode || !treeView" ref="tableWrapRef" class="issue-table-wrap" :class="{ compact, 'table-borders': showBorders, 'table-stripes': showStripes, 'issue-table-wrap--customer': isCustomerMode }">
       <IssueTable
         :issues="renderedIssues"
         :all-issues="issues"
         :loaded-sprints="loadedSprints"
         :compact="!!compact"
-        :selection-mode="selectionMode"
+        :selection-mode="isCustomerMode ? false : selectionMode"
         :selected-ids="selectedIds"
         :all-selected="allSelected"
-        :is-admin="isAdmin"
+        :is-admin="isCustomerMode ? false : isAdmin"
         :project-id="projectId"
         :sort-result="sortResult"
-        :is-visible="isVisible"
+        :is-visible="tableColumnVisible"
         :column-widths="columnWidths"
         :editing-cell="editingCell"
         :cell-edit-value="cellEditValue"
@@ -1513,7 +1559,11 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :children-of="childrenOf"
         :show-borders="showBorders"
         :show-stripes="showStripes"
+        :agent-actions="isCustomerMode ? [] : agentActions"
         :actions-collapsed="actionsCollapsed"
+        :readonly="isCustomerMode"
+        :status-labels="statusLabels"
+        :type-labels="typeLabels"
         :side-panel-issue-id="sidePanelIssueId"
         :search-query="searchQuery"
         :epic-display-mode="epicDisplayMode"
@@ -1551,7 +1601,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     <!-- TREE VIEW (full mode only) — wrapped in a scrollable flex child
          so the tree owns its own overflow, mirroring the flat
          .issue-table-wrap pattern (PAI-274 self-scroll model). -->
-    <div v-else class="issue-tree-wrap">
+    <div v-else-if="!isCustomerMode" class="issue-tree-wrap">
       <IssueTreeView
         :issue-tree="issueTree"
         :selection-mode="selectionMode"
@@ -1559,6 +1609,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :tree-expanded="treeExpanded"
         :is-admin="isAdmin"
         :side-panel-issue-id="sidePanelIssueId"
+        :agent-actions="agentActions"
         @toggle-tree-node="toggleTreeNode"
         @toggle-tree-select="toggleTreeSelect"
         @toggle-select="toggleSelect"
@@ -1572,6 +1623,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Create modal -->
     <CreateIssueModal
+      v-if="!isCustomerMode"
       ref="createModalRef"
       :open="showCreate"
       :project-id="projectId"
@@ -1588,6 +1640,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Bulk change modal -->
     <BulkChangeModal
+      v-if="!isCustomerMode"
       ref="bulkChangeRef"
       :open="showBulkChange"
       :selected-ids="selectedIds"
@@ -1603,6 +1656,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
          exclude-terminal toggles so the modal can pre-filter the
          user's selection by status + existing-summary state. -->
     <BulkGenerateSummaryModal
+      v-if="!isCustomerMode"
       :open="showBulkSummary"
       :issue-ids="bulkSummaryIds"
       :in-scope-issues="filteredIssues"
@@ -1612,7 +1666,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     />
 
     <!-- Bulk delete confirm -->
-    <AppModal title="Delete Issues" :open="showBulkDelete" @close="showBulkDelete=false" confirm-key="d" @confirm="confirmBulkDelete">
+    <AppModal v-if="!isCustomerMode" title="Delete Issues" :open="showBulkDelete" @close="showBulkDelete=false" confirm-key="d" @confirm="confirmBulkDelete">
       <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
         Permanently delete <strong>{{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</strong>? This cannot be undone.
       </p>
@@ -1627,6 +1681,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- View save / edit modal -->
     <AppModal
+      v-if="!isCustomerMode"
       :title="viewModalMode === 'save' ? 'Save View' : 'Edit View'"
       :open="viewModalOpen"
       @close="viewModalOpen = false"
@@ -1662,6 +1717,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Epic cascade confirmation dialog -->
     <EpicCascadeDialog
+      v-if="!isCustomerMode"
       :open="cascadeDialogOpen"
       :child-count="cascadeChildCount"
       :pending-status="cascadePendingStatus"
@@ -1673,6 +1729,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Side panel (peek / quick edit) -->
     <IssueSidePanel
+      v-if="!isCustomerMode"
       :issue-id="sidePanelIssueId"
       :issue-ids="sidePanelIssueIds"
       :start-in-edit="sidePanelEdit"
@@ -1683,10 +1740,22 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       @navigate="onSidePanelNavigate"
       @update:pinned="onPinnedChange"
     />
+    <PortalIssueSidePanel
+      v-else-if="projectId !== undefined"
+      :project-id="projectId"
+      :issue-id="sidePanelIssueId"
+      :issue-ids="sidePanelIssueIds"
+      :pinned="sidePanelPinned"
+      @close="closeSidePanel"
+      @navigate="onSidePanelNavigate"
+      @update:pinned="onPinnedChange"
+      @accepted="id => emit('accepted', id)"
+      @rejected="id => emit('rejected', id)"
+    />
 
     <!-- Sprint nav dropdown -->
     <Teleport to="body">
-      <div v-if="sprintNav.sprintNavOpen.value" class="sn-dropdown" :style="sprintNav.snDropdownStyle.value" @click.stop>
+      <div v-if="!isCustomerMode && sprintNav.sprintNavOpen.value" class="sn-dropdown" :style="sprintNav.snDropdownStyle.value" @click.stop>
         <input v-model="sprintNav.sprintNavSearch.value" class="sn-search" placeholder="Search sprints..." @keydown.escape="sprintNav.sprintNavOpen.value = false" ref="sprintNav.snSearchEl.value" />
         <div class="sn-list">
           <label v-for="s in sprintNav.filteredNavSprints.value" :key="s.id"
@@ -1703,7 +1772,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
          button above; only rendered when the IssueList has a single
          project context. -->
     <LieferberichtExportModal
-      v-if="projectId !== undefined"
+      v-if="!isCustomerMode && projectId !== undefined"
       :open="exportModalOpen"
       :project-id="projectId"
       :filter-status="filterStatus"

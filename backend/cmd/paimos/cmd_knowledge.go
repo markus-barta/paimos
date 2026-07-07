@@ -301,12 +301,14 @@ distort the content.`,
 
 func knowledgeUpdateCmd() *cobra.Command {
 	var (
-		projectRef string
-		title      string
-		body       string
-		bodyFile   string
-		status     string
-		newSlug    string
+		projectRef   string
+		title        string
+		body         string
+		bodyFile     string
+		status       string
+		newSlug      string
+		metadata     string
+		metadataFile string
 	)
 	c := &cobra.Command{
 		Use:   "update <type> <slug>",
@@ -329,11 +331,15 @@ func knowledgeUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			metadataContent, metadataChanged, err := readKnowledgeMetadataInput(metadata, metadataFile)
+			if err != nil {
+				return err
+			}
 			titleChanged := cmd.Flags().Changed("title")
 			statusChanged := cmd.Flags().Changed("status")
 			slugChanged := cmd.Flags().Changed("slug")
-			if !titleChanged && !bodyChanged && !statusChanged && !slugChanged {
-				return &usageError{msg: "at least one of --title, --body, --body-file, --status, --slug is required"}
+			if !titleChanged && !bodyChanged && !statusChanged && !slugChanged && !metadataChanged {
+				return &usageError{msg: "at least one of --title, --body, --body-file, --status, --slug, --metadata, --metadata-file is required"}
 			}
 
 			client, err := instanceClient()
@@ -345,32 +351,33 @@ func knowledgeUpdateCmd() *cobra.Command {
 				return reportError(err)
 			}
 
-			// PUT is full-replace: the server overwrites title + body with
-			// whatever we send. Carry over any field the user did NOT change
-			// (fetch the existing entry once if title or body needs it) so a
-			// partial update never silently wipes the body — and, post
-			// PAI-351, never trips the content-revised signal on an unchanged
-			// body (which would falsely flag every dependent for re-review).
+			// PUT is full-replace on older servers: carry over fields the user
+			// did NOT change and preserve metadata unless an explicit metadata
+			// update path exists. Keeping the unchanged body byte-for-byte also
+			// avoids falsely tripping the PAI-351 content-revised signal.
 			payload := map[string]any{}
-			if !titleChanged || !bodyChanged {
-				existing, err := client.do("GET",
-					fmt.Sprintf("/api/projects/%d/knowledge/%s/%s", projectID, typeSeg, slug), nil)
-				if err != nil {
-					return reportError(err)
-				}
-				var prev knowledgeEntryShape
-				if err := json.Unmarshal(existing, &prev); err != nil {
-					return fmt.Errorf("decode existing entry: %w", err)
-				}
-				if !titleChanged {
-					title = prev.Title
-				}
-				if !bodyChanged {
-					bodyContent = prev.Body
-				}
+			existing, err := client.do("GET",
+				fmt.Sprintf("/api/projects/%d/knowledge/%s/%s", projectID, typeSeg, slug), nil)
+			if err != nil {
+				return reportError(err)
+			}
+			var prev knowledgeEntryShape
+			if err := json.Unmarshal(existing, &prev); err != nil {
+				return fmt.Errorf("decode existing entry: %w", err)
+			}
+			if !titleChanged {
+				title = prev.Title
+			}
+			if !bodyChanged {
+				bodyContent = prev.Body
 			}
 			payload["title"] = strings.TrimSpace(title)
 			payload["body"] = bodyContent
+			if metadataChanged {
+				payload["metadata"] = metadataContent
+			} else {
+				payload["metadata"] = prev.Metadata
+			}
 			if statusChanged {
 				payload["status"] = strings.TrimSpace(status)
 			}
@@ -400,7 +407,28 @@ func knowledgeUpdateCmd() *cobra.Command {
 	c.Flags().StringVar(&bodyFile, "body-file", "", "path to markdown body (or - for stdin)")
 	c.Flags().StringVar(&status, "status", "", "new status")
 	c.Flags().StringVar(&newSlug, "slug", "", "rename the entry to this slug")
+	c.Flags().StringVar(&metadata, "metadata", "", "inline JSON metadata object (replaces current)")
+	c.Flags().StringVar(&metadataFile, "metadata-file", "", "path to JSON metadata object (or - for stdin)")
 	return c
+}
+
+func readKnowledgeMetadataInput(inline, file string) (map[string]any, bool, error) {
+	raw, changed, err := readMultilineInput(inline, file, "metadata")
+	if err != nil || !changed {
+		return nil, changed, err
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return map[string]any{}, true, nil
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+		return nil, false, fmt.Errorf("metadata must be a JSON object: %w", err)
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	return meta, true, nil
 }
 
 func knowledgeDeleteCmd() *cobra.Command {

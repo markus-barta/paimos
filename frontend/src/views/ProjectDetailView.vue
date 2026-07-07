@@ -136,6 +136,7 @@ provideIssueContext({ users, allTags, costUnits, releases, projects: ref([]), sp
 
 const loading       = ref(true)
 const PROJECT_ISSUE_PAGE = 100
+const ISSUE_LIST_CHANGE_SUBJECTS = new Set(['issue', 'issue_tag', 'comment', 'time_entry'])
 const issueListRef  = ref<InstanceType<typeof IssueList> | null>(null)
 const exporting     = ref(false)
 const projectIssueQuery = computed(() => search.scope === 'project' ? search.query : '')
@@ -758,6 +759,8 @@ const projectFreshnessPath = computed(() =>
 const issueFreshness = useFreshness<IssueListEnvelope<Issue>>(projectFreshnessPath, {
   apply: (env) => projectCtrl.reconcile(env.issues ?? [], env.total, env.revision),
   count: (payload) => payload.total,
+  changes: (event) =>
+    event.project_id === projectId.value && ISSUE_LIST_CHANGE_SUBJECTS.has(event.subject_type),
 })
 const issueFreshnessStale = computed(() => issueFreshness.stale.value)
 const issueFreshnessCount = computed(() => issueFreshness.newCount.value)

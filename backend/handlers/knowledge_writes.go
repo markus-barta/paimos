@@ -193,10 +193,6 @@ func normalizeBody(s string) string {
 // category_metadata, status) and nothing else. Cross-cuts (relations,
 // tags, comments) live on the regular /issues path.
 func updateKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module, currentSlug string, in knowledge.Input) (knowledge.Output, error) {
-	metaJSON, err := mod.MarshalMeta(in.Metadata)
-	if err != nil {
-		return knowledge.Output{}, err
-	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 
 	tx, err := db.DB.BeginTx(r.Context(), nil)
@@ -207,10 +203,18 @@ func updateKnowledgeEntry(r *http.Request, projectID int64, mod knowledge.Module
 
 	var existingID int64
 	var oldBody string
+	var metaJSON string
 	if err := tx.QueryRowContext(r.Context(),
-		`SELECT id, COALESCE(description,'') FROM issues WHERE project_id=? AND type=? AND slug=? AND deleted_at IS NULL`,
-		projectID, mod.Type(), currentSlug).Scan(&existingID, &oldBody); err != nil {
+		`SELECT id, COALESCE(description,''), COALESCE(category_metadata,'') FROM issues WHERE project_id=? AND type=? AND slug=? AND deleted_at IS NULL`,
+		projectID, mod.Type(), currentSlug).Scan(&existingID, &oldBody, &metaJSON); err != nil {
 		return knowledge.Output{}, err
+	}
+	if in.MetadataSet {
+		var err error
+		metaJSON, err = mod.MarshalMeta(in.Metadata)
+		if err != nil {
+			return knowledge.Output{}, err
+		}
 	}
 
 	beforeSnap, err := fetchIssueMutationSnapshotTx(tx, existingID)

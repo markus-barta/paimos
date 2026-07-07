@@ -183,6 +183,8 @@ func buildRouter() http.Handler {
 			r.Use(auth.MustChangePasswordGate) // PAI-321
 			r.Use(auth.BlockExternal)
 
+			r.Get("/changes", handlers.ChangesStream)
+
 			r.Get("/projects", handlers.ListProjects)
 			r.With(auth.RequireAdmin).Post("/projects", handlers.CreateProject)
 			r.With(auth.RequireProjectView).Get("/projects/{id}", handlers.GetProject)

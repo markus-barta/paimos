@@ -155,17 +155,42 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, "invalid project id", http.StatusBadRequest)
 		return
 	}
-	var in struct {
-		Type     string         `json:"type"`
-		Slug     string         `json:"slug"`
-		Title    string         `json:"title"`
-		Body     string         `json:"body"`
-		Status   string         `json:"status"`
-		Metadata map[string]any `json:"metadata"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeError(w, r, "invalid body", http.StatusBadRequest)
 		return
+	}
+	var in struct {
+		Type        string
+		Slug        string
+		Title       string
+		Body        string
+		Status      string
+		Metadata    map[string]any
+		MetadataSet bool
+	}
+	for field, dest := range map[string]*string{
+		"type":   &in.Type,
+		"slug":   &in.Slug,
+		"title":  &in.Title,
+		"body":   &in.Body,
+		"status": &in.Status,
+	} {
+		if b, ok := raw[field]; ok && strings.TrimSpace(string(b)) != "null" {
+			if err := json.Unmarshal(b, dest); err != nil {
+				writeError(w, r, "invalid body", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+	if b, ok := raw["metadata"]; ok {
+		in.MetadataSet = true
+		if strings.TrimSpace(string(b)) != "null" {
+			if err := json.Unmarshal(b, &in.Metadata); err != nil {
+				writeError(w, r, "invalid body", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	// Type may travel in the body (canonical) or as a `?type=...`
 	// query parameter (convenience for URL-driven clients like
@@ -185,11 +210,12 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := Input{
-		Slug:     in.Slug,
-		Title:    in.Title,
-		Body:     in.Body,
-		Status:   in.Status,
-		Metadata: in.Metadata,
+		Slug:        in.Slug,
+		Title:       in.Title,
+		Body:        in.Body,
+		Status:      in.Status,
+		Metadata:    in.Metadata,
+		MetadataSet: in.MetadataSet,
 	}
 	if problem := validateInput(mod, payload); problem != nil {
 		writeValidationProblem(w, r, problem, http.StatusBadRequest)
@@ -244,17 +270,42 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, "slug required", http.StatusBadRequest)
 		return
 	}
-	var in struct {
-		Type     string         `json:"type"`
-		Slug     string         `json:"slug"`
-		Title    string         `json:"title"`
-		Body     string         `json:"body"`
-		Status   string         `json:"status"`
-		Metadata map[string]any `json:"metadata"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeError(w, r, "invalid body", http.StatusBadRequest)
 		return
+	}
+	var in struct {
+		Type        string
+		Slug        string
+		Title       string
+		Body        string
+		Status      string
+		Metadata    map[string]any
+		MetadataSet bool
+	}
+	for field, dest := range map[string]*string{
+		"type":   &in.Type,
+		"slug":   &in.Slug,
+		"title":  &in.Title,
+		"body":   &in.Body,
+		"status": &in.Status,
+	} {
+		if b, ok := raw[field]; ok && strings.TrimSpace(string(b)) != "null" {
+			if err := json.Unmarshal(b, dest); err != nil {
+				writeError(w, r, "invalid body", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+	if b, ok := raw["metadata"]; ok {
+		in.MetadataSet = true
+		if strings.TrimSpace(string(b)) != "null" {
+			if err := json.Unmarshal(b, &in.Metadata); err != nil {
+				writeError(w, r, "invalid body", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	if strings.TrimSpace(in.Type) != "" {
 		bodyMod, err := resolveBodyType(in.Type)
@@ -268,11 +319,12 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	payload := Input{
-		Slug:     in.Slug,
-		Title:    in.Title,
-		Body:     in.Body,
-		Status:   in.Status,
-		Metadata: in.Metadata,
+		Slug:        in.Slug,
+		Title:       in.Title,
+		Body:        in.Body,
+		Status:      in.Status,
+		Metadata:    in.Metadata,
+		MetadataSet: in.MetadataSet,
 	}
 	// PUT semantics: URL slug is canonical when body omits it.
 	if strings.TrimSpace(payload.Slug) == "" {
@@ -511,10 +563,6 @@ func insertEntry(r *http.Request, projectID int64, mod Module, in Input) (Output
 // type / cross-project slug collisions stay impossible. Rename
 // goes through the same UNIQUE constraint via the partial index.
 func updateEntry(r *http.Request, projectID int64, mod Module, currentSlug string, in Input) (Output, error) {
-	metaJSON, err := mod.MarshalMeta(in.Metadata)
-	if err != nil {
-		return Output{}, err
-	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 
 	// Use a status only when the caller supplied one — otherwise
@@ -529,10 +577,18 @@ func updateEntry(r *http.Request, projectID int64, mod Module, currentSlug strin
 	defer tx.Rollback()
 
 	var existingID int64
+	var metaJSON string
 	if err := tx.QueryRowContext(r.Context(),
-		`SELECT id FROM issues WHERE project_id=? AND type=? AND slug=? AND deleted_at IS NULL`,
-		projectID, mod.Type(), currentSlug).Scan(&existingID); err != nil {
+		`SELECT id, COALESCE(category_metadata,'') FROM issues WHERE project_id=? AND type=? AND slug=? AND deleted_at IS NULL`,
+		projectID, mod.Type(), currentSlug).Scan(&existingID, &metaJSON); err != nil {
 		return Output{}, err
+	}
+	if in.MetadataSet {
+		var err error
+		metaJSON, err = mod.MarshalMeta(in.Metadata)
+		if err != nil {
+			return Output{}, err
+		}
 	}
 
 	args := []any{

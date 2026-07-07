@@ -1,7 +1,9 @@
 import { ref, defineComponent } from "vue";
+import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mountComponent } from "@/components/ai/testMount";
+import { useChangesStore } from "@/stores/changes";
 import { useFreshness } from "./useFreshness";
 
 const { getWithMeta } = vi.hoisted(() => ({
@@ -17,6 +19,7 @@ vi.mock("@/api/client", () => ({
 describe("useFreshness", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    setActivePinia(undefined);
     getWithMeta.mockReset();
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -55,7 +58,7 @@ describe("useFreshness", () => {
     expect(freshness.stale.value).toBe(true);
     expect(freshness.newCount.value).toBe(3);
 
-    freshness.refresh();
+    await freshness.refresh();
     expect(applied).toEqual([5]);
     expect(freshness.stale.value).toBe(false);
 
@@ -151,6 +154,68 @@ describe("useFreshness", () => {
 
     expect(getWithMeta).toHaveBeenNthCalledWith(1, "/issues?limit=100&q=search");
     expect(getWithMeta).toHaveBeenNthCalledWith(2, "/issues?limit=100");
+
+    await mounted.unmount();
+  });
+
+  it("marks matching live changes stale and refreshes latest data", async () => {
+    setActivePinia(createPinia());
+    const path = ref("/issues?project=7");
+    const applied: number[] = [];
+    let freshness!: ReturnType<typeof useFreshness<{ total: number }>>;
+
+    const TestHarness = defineComponent({
+      setup() {
+        freshness = useFreshness(path, {
+          intervalMs: 1000,
+          apply: (payload) => applied.push(payload.total),
+          count: (payload) => payload.total,
+          changes: (event) =>
+            event.subject_type === "issue" && event.project_id === 7,
+        });
+        void freshness.prime({ total: 2 });
+        return () => null;
+      },
+    });
+
+    const mounted = await mountComponent(TestHarness);
+    const changes = useChangesStore();
+
+    changes.publish({
+      id: 1,
+      mutation_type: "update",
+      subject_type: "issue",
+      subject_id: 10,
+      project_id: 8,
+      user_id: 1,
+      created_at: "2026-07-07T10:00:00Z",
+    });
+    expect(freshness.stale.value).toBe(false);
+
+    changes.publish({
+      id: 2,
+      mutation_type: "update",
+      subject_type: "issue",
+      subject_id: 11,
+      project_id: 7,
+      user_id: 1,
+      created_at: "2026-07-07T10:01:00Z",
+    });
+    expect(freshness.stale.value).toBe(true);
+    expect(freshness.newCount.value).toBeNull();
+
+    getWithMeta.mockResolvedValueOnce({
+      data: { total: 4 },
+      etag: 'W/"live"',
+      lastModified: null,
+      status: 200,
+    });
+
+    await freshness.refresh();
+
+    expect(getWithMeta).toHaveBeenCalledWith("/issues?project=7");
+    expect(applied).toEqual([4]);
+    expect(freshness.stale.value).toBe(false);
 
     await mounted.unmount();
   });

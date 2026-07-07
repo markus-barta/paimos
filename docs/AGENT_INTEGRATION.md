@@ -321,8 +321,9 @@ server-side — a run can't be moved back out of one.
 ### Endpoints
 
 ```bash
-# Create a run (the "Implement this" button). Project-editor gated.
-# Optional body: { "device_id": "<target runner>", "deploy_target": "ppm" }
+# Create a run (the "Implement this" / provider action button). Project-editor gated.
+# Optional body:
+#   { "action_key": "claude_cli.implement", "device_id": "<target runner>", "deploy_target": "ppm" }
 curl -X POST -H "Authorization: Bearer $KEY" \
   "$BASE/api/issues/PAI-265/implement"
 
@@ -341,6 +342,17 @@ curl -X PATCH -H "Authorization: Bearer $KEY" \
 curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/2/runners"
 ```
 
+`action_key` is the requested provider/action. Omit it for backward
+compatibility; the server records the legacy local Claude action
+(`claude_cli.implement`). Current local CLI actions are:
+
+- `claude_cli.implement` — provider label `Claude Code`, run mode `edit`.
+- `codex_cli.implement` — provider label `Codex CLI`, run mode `edit`.
+
+Run records and issue `ai_work_status` include `action_key`, `provider_kind`,
+`provider_id`, `provider_label`, optional `model`, and `run_mode` so list badges,
+comments, and audit views can distinguish Claude vs. Codex requests.
+
 `POST …/implement` publishes an **`implement_requested`** SSE event on the
 project's `…/agents/events` stream — the run id rides in the event's `rev`, the
 issue key in `name`.
@@ -351,13 +363,22 @@ issue key in `name`.
 # On the developer's workstation, in the repo checkout:
 paimos run-agent watch --project PAI --repo-root .
 #   subscribes advertising implement-capability (?implement=1), and on an
-#   implement_requested event: claims the run, generates an issue-context
-#   prompt, spawns Claude Code (override with --exec) in --repo-root,
+#   implement_requested event: claims matching-action runs, generates an
+#   issue-context prompt, spawns Claude Code (override with --exec) in --repo-root,
 #   optionally runs --test-exec, then reports
 #   tests_passed / tests_failed / failed.
 #   It reconnects on a dropped stream, processes one job at a time, and
 #   periodically catches up on queued runs it missed; prompts before each run
 #   unless --yes. Two runners never double-execute the same run (atomic claim).
+```
+
+The runner advertises one local CLI action on connect. The default
+`--exec "claude"` advertises `claude_cli.implement`; an executable whose basename
+contains `codex` advertises `codex_cli.implement`. Use `--action-key` to override
+the inference when a wrapper command name would be ambiguous:
+
+```bash
+paimos run-agent watch --project PAI --repo-root . --exec "codex exec" --action-key codex_cli.implement
 ```
 
 The default `--exec "claude"` is normalized to Claude Code print mode and fed
@@ -385,7 +406,11 @@ project member — only enable it for repos/tickets where that's acceptable.
 
 The run lifecycle is enforced server-side: status changes must follow a legal
 edge (e.g. a run can't jump straight to `deployed`), and a terminal run
-(`deployed`/`failed`/`cancelled`) is immutable.
+(`deployed`/`failed`/`cancelled`) is immutable. For non-requester project-editor
+claims, the server requires the caller's user, device, and requested `action_key`
+to match a live implement-capable runner connection; after the first
+`queued -> running` claim, later writes are limited to the requester, admin, or
+the stamped `claimed_by` executor.
 
 Enabling deploy is **triple-gated** and off by default — it runs only when all
 three hold: `--allow-deploy` AND `--deploy-exec "<cmd>"` AND the run carries a

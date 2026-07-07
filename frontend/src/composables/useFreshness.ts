@@ -1,12 +1,15 @@
 import { onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
+import { getActivePinia } from "pinia";
 
 import { api } from "@/api/client";
+import { useChangesStore, type MutationChangeEvent } from "@/stores/changes";
 
 interface FreshnessOptions<T> {
   intervalMs?: number;
   enabled?: Ref<boolean>;
   apply?: (payload: T) => void;
   count?: (payload: T) => number | null;
+  changes?: (event: MutationChangeEvent) => boolean;
 }
 
 export function useFreshness<T>(
@@ -22,6 +25,7 @@ export function useFreshness<T>(
   let pendingEtag: string | null = null;
   let timer: number | null = null;
   let skipNextPathPrimeFor: string | null = null;
+  let unsubscribeChanges: (() => void) | null = null;
 
   function setCurrent(data: T) {
     currentData = data;
@@ -42,6 +46,14 @@ export function useFreshness<T>(
       etag.value = response.etag;
       setCurrent(response.data);
     }
+  }
+
+  async function fetchAndApply() {
+    const response = await api.getWithMeta<T>(path.value);
+    if (response.status !== 200) return;
+    opts.apply?.(response.data);
+    etag.value = response.etag;
+    setCurrent(response.data);
   }
 
   async function tick() {
@@ -67,8 +79,11 @@ export function useFreshness<T>(
     }
   }
 
-  function refresh() {
-    if (!pendingData) return;
+  async function refresh() {
+    if (!pendingData) {
+      if (stale.value) await fetchAndApply();
+      return;
+    }
     opts.apply?.(pendingData);
     currentData = pendingData;
     pendingData = null;
@@ -82,7 +97,7 @@ export function useFreshness<T>(
     stopPolling();
     timer = window.setInterval(() => {
       void tick();
-    }, opts.intervalMs ?? 30_000);
+    }, opts.intervalMs ?? 300_000);
   }
 
   function stopPolling() {
@@ -93,7 +108,26 @@ export function useFreshness<T>(
   }
 
   onMounted(startPolling);
-  onBeforeUnmount(stopPolling);
+  onMounted(() => {
+    if (!opts.changes) return;
+    if (!getActivePinia()) return;
+    const changes = useChangesStore();
+    unsubscribeChanges = changes.subscribe(
+      opts.changes,
+      () => {
+        if (opts.enabled && !opts.enabled.value) return;
+        pendingData = null;
+        pendingEtag = null;
+        stale.value = true;
+        newCount.value = null;
+      },
+    );
+  });
+  onBeforeUnmount(() => {
+    stopPolling();
+    unsubscribeChanges?.();
+    unsubscribeChanges = null;
+  });
 
   watch(path, (nextPath) => {
     if (skipNextPathPrimeFor !== null) {

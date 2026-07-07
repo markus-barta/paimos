@@ -93,6 +93,43 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
     unmount();
   });
 
+  it("renders explicit provider row actions when multiple actions are available", async () => {
+    vi.mocked(api.post).mockResolvedValue({ id: 14 });
+    const { el, unmount } = mountRow({
+      agentActions: [
+        { action_key: "claude_cli.implement", provider_kind: "local_cli", provider_id: "claude_cli", label: "Claude Code", run_modes: ["edit"], can_test: true, can_deploy: false },
+        { action_key: "codex_cli.implement", provider_kind: "local_cli", provider_id: "codex_cli", label: "Codex CLI", run_modes: ["edit"], can_test: true, can_deploy: false },
+      ],
+    });
+    const buttons = [...el.querySelectorAll<HTMLButtonElement>(".row-run-action--start")];
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(["Claude", "Codex"]);
+    buttons[1].click();
+    await settle();
+    expect(api.post).toHaveBeenCalledWith("/issues/42/implement", {
+      action_key: "codex_cli.implement",
+    });
+    expect(el.textContent).toContain("Run #14 queued with Codex");
+    unmount();
+  });
+
+  it("keeps the one-action shorthand while still recording the action when supplied", async () => {
+    vi.mocked(api.post).mockResolvedValue({ id: 15 });
+    const { el, unmount } = mountRow({
+      agentActions: [
+        { action_key: "codex_cli.implement", provider_kind: "local_cli", provider_id: "codex_cli", label: "Codex CLI", run_modes: ["edit"], can_test: true, can_deploy: false },
+      ],
+    });
+    const btn = el.querySelector<HTMLButtonElement>(".row-act--implement");
+    expect(btn?.textContent).toContain("Run");
+    expect(btn?.textContent).not.toContain("Codex");
+    btn!.click();
+    await settle();
+    expect(api.post).toHaveBeenCalledWith("/issues/42/implement", {
+      action_key: "codex_cli.implement",
+    });
+    unmount();
+  });
+
   it("ignores a re-click while a request is in flight", async () => {
     vi.mocked(api.post).mockImplementation(() => new Promise(() => {})); // never resolves
     const { el, unmount } = mountRow();

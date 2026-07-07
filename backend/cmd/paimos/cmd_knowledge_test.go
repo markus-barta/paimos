@@ -83,7 +83,7 @@ func startKnowledgeFakeAPI(t *testing.T) (*httptest.Server, *sync.Mutex, *[]know
 				{"id":1,"project_id":99,"type":"memory","slug":"feedback_alpha","title":"Alpha","body":"","status":"backlog","metadata":{},"created_at":"","updated_at":"","reference_count":0}
 			]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/99/knowledge/memory/feedback_alpha":
-			_, _ = w.Write([]byte(`{"id":1,"project_id":99,"type":"memory","slug":"feedback_alpha","title":"Alpha","body":"existing body","status":"backlog","metadata":{},"created_at":"","updated_at":"","reference_count":0}`))
+			_, _ = w.Write([]byte(`{"id":1,"project_id":99,"type":"memory","slug":"feedback_alpha","title":"Alpha","body":"existing body","status":"backlog","metadata":{"source_repo":"paimos","tags":["kb","safe"]},"created_at":"","updated_at":"","reference_count":0}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/projects/99/knowledge":
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":2,"project_id":99,"type":"memory","slug":"new_entry","title":"New","body":"","status":"backlog","metadata":{},"created_at":"","updated_at":"","reference_count":0}`))
@@ -259,6 +259,45 @@ func TestKnowledgeUpdate_PreservesBodyOnTitleOnly(t *testing.T) {
 	}
 	if got, _ := put.Body["title"].(string); got != "Renamed" {
 		t.Errorf("PUT title=%q, want %q", got, "Renamed")
+	}
+	meta, _ := put.Body["metadata"].(map[string]any)
+	if got, _ := meta["source_repo"].(string); got != "paimos" {
+		t.Errorf("metadata.source_repo=%v, want paimos (full-replace update must preserve metadata)", meta["source_repo"])
+	}
+}
+
+func TestKnowledgeUpdate_MetadataFlagReplacesMetadata(t *testing.T) {
+	_, mu, reqs := startKnowledgeFakeAPI(t)
+
+	if _, _, err := executeCLIForTest(t,
+		"knowledge", "update", "memory", "feedback_alpha",
+		"--project", "KNW",
+		"--metadata", `{"source_repo":"pharos","tags":["restored"]}`,
+	); err != nil {
+		t.Fatalf("execute update: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	var put *knowledgeReq
+	for i := range *reqs {
+		if (*reqs)[i].Method == http.MethodPut {
+			put = &(*reqs)[i]
+		}
+	}
+	if put == nil {
+		t.Fatalf("no PUT recorded: %+v", *reqs)
+	}
+	meta, _ := put.Body["metadata"].(map[string]any)
+	if got, _ := meta["source_repo"].(string); got != "pharos" {
+		t.Errorf("metadata.source_repo=%v, want pharos", meta["source_repo"])
+	}
+	tags, _ := meta["tags"].([]any)
+	if len(tags) != 1 || tags[0] != "restored" {
+		t.Errorf("metadata.tags=%v, want [restored]", meta["tags"])
+	}
+	if got, _ := put.Body["body"].(string); got != "existing body" {
+		t.Errorf("metadata-only update must preserve body; PUT body=%q, want %q", got, "existing body")
 	}
 }
 

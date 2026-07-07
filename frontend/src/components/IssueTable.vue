@@ -12,7 +12,7 @@ import MetaSelect from '@/components/MetaSelect.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import IssueStatusSelect from '@/components/issue/IssueStatusSelect.vue'
 import IssueAssigneeSelect from '@/components/issue/IssueAssigneeSelect.vue'
-import type { Issue, Sprint, User } from '@/types'
+import type { AgentActionCapability, Issue, Sprint, User } from '@/types'
 import {
   useIssueDisplay,
   TYPE_SVGS,
@@ -39,6 +39,7 @@ const props = defineProps<{
   allSelected: boolean
   isAdmin: boolean
   projectId?: number
+  agentActions?: AgentActionCapability[]
   // Sort
   sortResult: {
     thProps: (key: string) => Record<string, unknown>
@@ -68,6 +69,9 @@ const props = defineProps<{
   showBorders: boolean
   showStripes: boolean
   actionsCollapsed: boolean
+  readonly?: boolean
+  statusLabels?: Record<string, string>
+  typeLabels?: Record<string, string>
   // Side panel
   sidePanelIssueId: number | null
   // Display
@@ -125,6 +129,14 @@ function typeLabel(type: string): string {
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
+}
+
+function displayTypeLabel(type: string): string {
+  return props.typeLabels?.[type] ?? typeLabel(type)
+}
+
+function displayStatusLabel(status: string): string {
+  return props.statusLabels?.[status] ?? STATUS_LABEL[status] ?? status
 }
 
 // ── Epic display ──────────────────────────────────────────────────────────
@@ -269,6 +281,7 @@ onUnmounted(stopColumnResize)
       <col v-if="isVisible('title')" :style="colStyle('title')" />
       <col v-if="isVisible('status')" :style="colStyle('status')" />
       <col v-if="isVisible('priority')" :style="colStyle('priority')" />
+      <col v-if="isVisible('accepted_at')" :style="colStyle('accepted_at')" />
       <col v-if="isVisible('cost_unit')" :style="colStyle('cost_unit')" />
       <col v-if="isVisible('release')" :style="colStyle('release')" />
       <col v-if="isVisible('assignee')" :style="colStyle('assignee')" />
@@ -293,7 +306,7 @@ onUnmounted(stopColumnResize)
       <col v-if="isVisible('booked_hours')" :style="colStyle('booked_hours')" />
       <col v-if="isVisible('report_summary')" :style="colStyle('report_summary')" />
       <col v-if="isVisible('ai_status')" :style="colStyle('ai_status')" />
-      <col :style="colStyle('actions')" />
+      <col v-if="!readonly && isVisible('actions')" :style="colStyle('actions')" />
     </colgroup>
     <thead v-if="!compact">
       <tr>
@@ -305,6 +318,7 @@ onUnmounted(stopColumnResize)
         <th v-if="isVisible('title')" v-bind="headerProps('title', true)">Title <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('title')" :size="11" /></span></th>
         <th v-if="isVisible('status')" v-bind="headerProps('status', true)">Status <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('status')" :size="11" /></span></th>
         <th v-if="isVisible('priority')" v-bind="headerProps('priority', true)">Priority <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('priority')" :size="11" /></span></th>
+        <th v-if="isVisible('accepted_at')" v-bind="headerProps('accepted_at', true)">Accepted <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('accepted_at')" :size="11" /></span></th>
         <th v-if="isVisible('cost_unit')" v-bind="headerProps('cost_unit', true)">Cost Unit <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('cost_unit')" :size="11" /></span></th>
         <th v-if="isVisible('release')" v-bind="headerProps('release', true)">Release <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('release')" :size="11" /></span></th>
         <th v-if="isVisible('assignee')" v-bind="headerProps('assignee', true)">Assignee <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('assignee')" :size="11" /></span></th>
@@ -329,7 +343,7 @@ onUnmounted(stopColumnResize)
         <th v-if="isVisible('booked_hours')" v-bind="headerProps('booked_hours', true)">Booked <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('booked_hours')" :size="11" /></span></th>
         <th v-if="isVisible('report_summary')" v-bind="headerProps('report_summary', true)">Report summary <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('report_summary')" :size="11" /></span></th>
         <th v-if="isVisible('ai_status')" v-bind="headerProps('ai_status', true)" class="col-ai-status">AI <span class="sort-ind"><AppIcon :name="sortResult.sortIndicator('ai_status')" :size="11" /></span></th>
-        <th v-bind="headerProps('actions')" class="col-actions">Actions</th>
+        <th v-if="!readonly && isVisible('actions')" v-bind="headerProps('actions')" class="col-actions">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -370,12 +384,12 @@ onUnmounted(stopColumnResize)
             },
           ]"
           :data-issue-id="i.id"
-          draggable="true"
-          @dragstart="emit('set-dragging', i)"
-          @dragend="emit('drag-end')"
-          @dragover.prevent="issueSprintGroup.has(i.id) && emit('section-drag-over', $event, issueSprintGroup.get(i.id)!)"
-          @dragleave="issueSprintGroup.has(i.id) && emit('section-drag-leave', $event, issueSprintGroup.get(i.id)!)"
-          @drop.prevent="issueSprintGroup.has(i.id) && emit('section-drop', $event, issueSprintGroup.get(i.id)!)"
+          :draggable="!readonly"
+          @dragstart="!readonly && emit('set-dragging', i)"
+          @dragend="!readonly && emit('drag-end')"
+          @dragover.prevent="!readonly && issueSprintGroup.has(i.id) && emit('section-drag-over', $event, issueSprintGroup.get(i.id)!)"
+          @dragleave="!readonly && issueSprintGroup.has(i.id) && emit('section-drag-leave', $event, issueSprintGroup.get(i.id)!)"
+          @drop.prevent="!readonly && issueSprintGroup.has(i.id) && emit('section-drop', $event, issueSprintGroup.get(i.id)!)"
           @click="onRowClick(i)">
         <td v-if="selectionMode" class="sel-td" @click.stop="emit('toggle-select', i.id)">
           <input type="checkbox" class="sel-cb" :checked="selectedIds.has(i.id)" @change="emit('toggle-select', i.id)" @click.stop />
@@ -395,7 +409,7 @@ onUnmounted(stopColumnResize)
         <td v-if="!compact && isVisible('type')">
           <span :class="`issue-type issue-type--${i.type}`">
             <span v-if="showTypeIcon" v-html="TYPE_SVGS[i.type] ?? ''"></span>
-            <span v-if="showTypeText" class="type-label-text">{{ typeLabel(i.type) }}</span>
+            <span v-if="showTypeText" class="type-label-text">{{ displayTypeLabel(i.type) }}</span>
             <!-- PAI-466: always-visible CUSTOMERPORTAL marker. Lives in
                  the type cell (never collapsed) so the visibility
                  signal survives even when the tags column is hidden. -->
@@ -411,7 +425,7 @@ onUnmounted(stopColumnResize)
         <td v-if="compact">
           <span :class="`issue-type issue-type--${i.type}`">
             <span v-if="showTypeIcon" v-html="TYPE_SVGS[i.type] ?? ''"></span>
-            <span v-if="showTypeText" class="type-label-text">{{ typeLabel(i.type) }}</span>
+            <span v-if="showTypeText" class="type-label-text">{{ displayTypeLabel(i.type) }}</span>
             <span
               v-if="hasCustomerPortal(i)"
               class="customerportal-marker"
@@ -435,8 +449,8 @@ onUnmounted(stopColumnResize)
           <span
             v-else
             class="issue-link"
-            @dblclick.stop.prevent="emit('open-cell', i, 'title', $event)"
-            title="Double-click to rename"
+            @dblclick.stop.prevent="!readonly && emit('open-cell', i, 'title', $event)"
+            :title="readonly ? undefined : 'Double-click to rename'"
             v-html="highlight(i.title, searchQuery)"
           />
         </td>
@@ -444,7 +458,7 @@ onUnmounted(stopColumnResize)
            <span class="issue-link" v-html="highlight(i.title, searchQuery)" />
          </td>
         <td v-if="!compact && isVisible('status')" class="inline-edit-cell" :style="colStyle('status')">
-          <div v-if="isEditing(i, 'status')" class="inline-control inline-control--status">
+          <div v-if="!readonly && isEditing(i, 'status')" class="inline-control inline-control--status">
             <IssueStatusSelect
               :model-value="i.status"
               size="sm"
@@ -453,7 +467,7 @@ onUnmounted(stopColumnResize)
             />
           </div>
           <button
-            v-else
+            v-else-if="!readonly"
             type="button"
             class="inline-read-value inline-read-value--status"
             title="Change status"
@@ -461,19 +475,23 @@ onUnmounted(stopColumnResize)
           >
             <span class="issue-status">
               <StatusDot :status="i.status" />
-              {{ STATUS_LABEL[i.status] ?? i.status }}
+              {{ displayStatusLabel(i.status) }}
             </span>
             <AppIcon name="pencil" :size="11" class="inline-edit-ghost" />
           </button>
+          <span v-else class="issue-status">
+            <StatusDot :status="i.status" />
+            {{ displayStatusLabel(i.status) }}
+          </span>
         </td>
         <td v-if="compact">
           <span class="issue-status">
             <StatusDot :status="i.status" />
-            {{ STATUS_LABEL[i.status] }}
+            {{ displayStatusLabel(i.status) }}
           </span>
         </td>
         <td v-if="!compact && isVisible('priority')" class="inline-edit-cell" :style="colStyle('priority')">
-          <div v-if="isEditing(i, 'priority')" class="inline-control inline-control--priority">
+          <div v-if="!readonly && isEditing(i, 'priority')" class="inline-control inline-control--priority">
             <MetaSelect
               :model-value="i.priority"
               :options="INLINE_PRIORITY_OPTIONS"
@@ -483,7 +501,7 @@ onUnmounted(stopColumnResize)
             />
           </div>
           <button
-            v-else
+            v-else-if="!readonly"
             type="button"
             class="inline-read-value inline-read-value--priority"
             title="Change priority"
@@ -495,6 +513,10 @@ onUnmounted(stopColumnResize)
             </span>
             <AppIcon name="pencil" :size="11" class="inline-edit-ghost" />
           </button>
+          <span v-else class="issue-priority" :style="{ color: PRIORITY_COLOR[i.priority] }">
+            <AppIcon :name="PRIORITY_ICON[i.priority]" :size="12" :stroke-width="2.5" class="issue-priority-arrow" />
+            {{ PRIORITY_LABEL[i.priority] }}
+          </span>
         </td>
         <td v-if="compact">
           <span class="issue-priority" :style="{ color: PRIORITY_COLOR[i.priority] }">
@@ -502,6 +524,7 @@ onUnmounted(stopColumnResize)
             {{ PRIORITY_LABEL[i.priority] }}
           </span>
         </td>
+        <td v-if="!compact && isVisible('accepted_at')" class="meta-cell">{{ i.accepted_at || '—' }}</td>
         <td v-if="!compact && isVisible('cost_unit')" class="meta-cell inline-edit-cell">
           <AutocompleteInput
             v-if="editingCell?.issueId === i.id && editingCell?.field === 'cost_unit'"
@@ -644,8 +667,8 @@ onUnmounted(stopColumnResize)
           />
           <span v-else class="ai-status-empty">—</span>
         </td>
-        <td class="col-actions" @click.stop>
-          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" :ai-work-status="i.ai_work_status" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
+        <td v-if="!readonly && isVisible('actions')" class="col-actions" @click.stop>
+          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" :ai-work-status="i.ai_work_status" :agent-actions="agentActions" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
         </td>
       </tr>
       <!-- Expand panel for group types -->

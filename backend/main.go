@@ -449,6 +449,8 @@ func mountAPI(r chi.Router) {
 		r.Use(auth.MustChangePasswordGate) // PAI-321
 		r.Use(auth.BlockExternal)
 
+		r.Get("/changes", handlers.ChangesStream)
+
 		// Projects
 		r.Get("/projects", handlers.ListProjects)
 		// PAI-379: scope-narrowable project creation. The admin

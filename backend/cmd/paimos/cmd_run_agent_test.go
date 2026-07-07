@@ -123,8 +123,48 @@ func TestAgentRunnerSuccess(t *testing.T) {
 		(*patches)[0]["status"] != "running" ||
 		(*patches)[0]["if_status"] != "queued" ||
 		(*patches)[0]["device_id"] != "dev-1" ||
+		(*patches)[0]["action_key"] != "claude_cli.implement" ||
 		(*patches)[1]["status"] != "tests_passed" {
-		t.Fatalf("patches=%+v, want claim(running,if_status=queued,device_id=dev-1) then tests_passed", *patches)
+		t.Fatalf("patches=%+v, want claim(running,if_status=queued,device_id=dev-1,action_key=claude_cli.implement) then tests_passed", *patches)
+	}
+}
+
+func TestResolveRunnerActionInfersCodexFromExec(t *testing.T) {
+	key, label, err := resolveRunnerAction("", "codex exec --full-auto")
+	if err != nil {
+		t.Fatalf("resolveRunnerAction: %v", err)
+	}
+	if key != "codex_cli.implement" || label != "Codex CLI" {
+		t.Fatalf("action=%s label=%s, want Codex CLI", key, label)
+	}
+	key, label, err = resolveRunnerAction("", "claude")
+	if err != nil {
+		t.Fatalf("resolveRunnerAction claude: %v", err)
+	}
+	if key != "claude_cli.implement" || label != "Claude Code" {
+		t.Fatalf("action=%s label=%s, want Claude Code", key, label)
+	}
+}
+
+func TestAgentRunnerSkipsMismatchedAction(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"device_id":"","action_key":"codex_cli.implement","provider_label":"Codex CLI","status":"queued"}`, http.StatusOK)
+	spawned := false
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp/repo",
+		execCmd: "claude", autoConfirm: true,
+		spawn: func(_ context.Context, _, _ string, _ []string, _ io.Writer) error {
+			spawned = true
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if spawned {
+		t.Fatal("runner spawned for a mismatched action")
+	}
+	if len(*patches) != 0 {
+		t.Fatalf("patches=%+v, want none for mismatched action", *patches)
 	}
 }
 

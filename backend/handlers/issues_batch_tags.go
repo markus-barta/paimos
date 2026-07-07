@@ -42,8 +42,9 @@ import (
 //   - System tags follow the same exemption as the singular tag API:
 //     CUSTOMERPORTAL is allowed, every other system tag is rejected.
 //   - One transaction, one batch_id, one mutation_log row per affected
-//     issue. The mutation_type encodes the operation
-//     (issue.tag.bulk_add / issue.tag.bulk_remove) so the PAI-467
+//     issue. Changed rows are undoable through the shared request_id and
+//     batch_id; no-op rows stay audit-only. The mutation_type encodes the
+//     operation (issue.tag.bulk_add / issue.tag.bulk_remove) so the PAI-467
 //     audit feed can render bulk events distinctly.
 
 const maxBatchTagSize = 500
@@ -187,11 +188,25 @@ func BatchTagIssues(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		changed := before.Exists != after.Exists
+		inverse := InverseOp{
+			Method: http.MethodDelete,
+			Path:   fmt.Sprintf("/issues/%d/tags/%d", issueID, body.TagID),
+		}
+		if body.Op == "remove" {
+			inverse = InverseOp{
+				Method: http.MethodPost,
+				Path:   fmt.Sprintf("/issues/%d/tags", issueID),
+				Body: map[string]any{
+					"tag_id": body.TagID,
+				},
+			}
+		}
+
 		// Audit every issue, even no-ops — the user explicitly requested
-		// the operation across this set, so the trail should reflect
-		// that. on_user_stack=0 keeps bulk ops off individual undo
-		// stacks (the user undoes via the inverse bulk action, not via
-		// the per-issue undo button).
+		// the operation across this set, so the trail should reflect that.
+		// Only changed rows enter undo, and the shared batch_id lets one
+		// request-level undo/redo apply them atomically.
 		if _, err := recordMutation(r.Context(), tx, mutationRecordArgs{
 			RequestID:    requestIDFromRequest(r),
 			UserID:       userID,
@@ -201,16 +216,17 @@ func BatchTagIssues(w http.ResponseWriter, r *http.Request) {
 			SubjectType:  "issue_tag",
 			SubjectID:    issueID,
 			BatchID:      batchID,
+			InverseOp:    inverse,
 			BeforeState:  before,
 			AfterState:   after,
-			Undoable:     false,
+			Undoable:     changed,
 		}); err != nil {
 			log.Printf("BatchTagIssues: audit issue=%d: %v", issueID, err)
 			jsonError(w, "audit failed", http.StatusInternalServerError)
 			return
 		}
 
-		if before.Exists != after.Exists {
+		if changed {
 			affected++
 		}
 	}

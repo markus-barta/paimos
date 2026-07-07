@@ -446,6 +446,7 @@ func loadAIWorkStatusBatch(issues []models.Issue) {
 	// #nosec G202 -- buildPlaceholders returns a fixed "?,?" list; IDs are bound as args.
 	rows, err := db.DB.Query(`
 		SELECT ar.issue_id, ar.id, ar.status, ar.agent_name, ar.device_id,
+		       ar.action_key, ar.provider_kind, ar.provider_id, ar.provider_label, ar.model, ar.run_mode,
 		       ar.version, ar.deploy_target, ar.tests_summary, ar.error,
 		       ar.created_at, ar.started_at, ar.finished_at
 		FROM agent_runs ar
@@ -467,6 +468,7 @@ func loadAIWorkStatusBatch(issues []models.Issue) {
 		var testsSummary, startedAt, finishedAt sql.NullString
 		if err := rows.Scan(
 			&issueID, &ai.ID, &ai.Status, &ai.AgentName, &ai.DeviceID,
+			&ai.ActionKey, &ai.ProviderKind, &ai.ProviderID, &ai.ProviderLabel, &ai.Model, &ai.RunMode,
 			&ai.Version, &ai.DeployTarget, &testsSummary, &ai.Error,
 			&ai.CreatedAt, &startedAt, &finishedAt,
 		); err != nil {

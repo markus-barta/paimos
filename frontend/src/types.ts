@@ -603,6 +603,12 @@ export interface IssueAIWorkStatus {
   status: string
   agent_name: string
   device_id: string
+  action_key: string
+  provider_kind: string
+  provider_id: string
+  provider_label: string
+  model: string
+  run_mode: string
   version: string
   deploy_target: string
   tests_summary: string | null
@@ -610,6 +616,16 @@ export interface IssueAIWorkStatus {
   created_at: string
   started_at: string | null
   finished_at: string | null
+}
+
+export interface AgentActionCapability {
+  action_key: string
+  provider_kind: string
+  provider_id: string
+  label: string
+  run_modes?: string[]
+  can_test: boolean
+  can_deploy: boolean
 }
 
 export interface IssueListEnvelope<T = Issue> {

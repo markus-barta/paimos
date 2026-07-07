@@ -34,6 +34,13 @@ type AgentRun struct {
 	ProjectID       *int64  `json:"project_id"`
 	DeviceID        string  `json:"device_id"`
 	RequestedBy     *int64  `json:"requested_by"`
+	ClaimedBy       *int64  `json:"claimed_by"`
+	ActionKey       string  `json:"action_key"`
+	ProviderKind    string  `json:"provider_kind"`
+	ProviderID      string  `json:"provider_id"`
+	ProviderLabel   string  `json:"provider_label"`
+	Model           string  `json:"model"`
+	RunMode         string  `json:"run_mode"`
 	AgentName       string  `json:"agent_name"`
 	SessionID       string  `json:"session_id"`
 	Status          string  `json:"status"`
@@ -80,15 +87,17 @@ func attachmentBelongsToIssue(attID, issueID int64) bool {
 	return aIssue.Valid && aIssue.Int64 == issueID
 }
 
-const agentRunCols = `id, issue_id, project_id, device_id, requested_by, agent_name, session_id, ` +
+const agentRunCols = `id, issue_id, project_id, device_id, requested_by, claimed_by, ` +
+	`action_key, provider_kind, provider_id, provider_label, model, run_mode, agent_name, session_id, ` +
 	`status, version, tests_summary, deploy_target, log_attachment_id, error, created_at, started_at, finished_at`
 
 func scanAgentRun(row interface{ Scan(...any) error }) (*AgentRun, error) {
 	var ar AgentRun
-	var projectID, requestedBy, logAtt sql.NullInt64
+	var projectID, requestedBy, claimedBy, logAtt sql.NullInt64
 	var tests, startedAt, finishedAt sql.NullString
 	if err := row.Scan(&ar.ID, &ar.IssueID, &projectID, &ar.DeviceID, &requestedBy,
-		&ar.AgentName, &ar.SessionID, &ar.Status, &ar.Version, &tests,
+		&claimedBy, &ar.ActionKey, &ar.ProviderKind, &ar.ProviderID, &ar.ProviderLabel,
+		&ar.Model, &ar.RunMode, &ar.AgentName, &ar.SessionID, &ar.Status, &ar.Version, &tests,
 		&ar.DeployTarget, &logAtt, &ar.Error, &ar.CreatedAt, &startedAt, &finishedAt); err != nil {
 		return nil, err
 	}
@@ -97,6 +106,9 @@ func scanAgentRun(row interface{ Scan(...any) error }) (*AgentRun, error) {
 	}
 	if requestedBy.Valid {
 		ar.RequestedBy = &requestedBy.Int64
+	}
+	if claimedBy.Valid {
+		ar.ClaimedBy = &claimedBy.Int64
 	}
 	if logAtt.Valid {
 		ar.LogAttachmentID = &logAtt.Int64
@@ -117,13 +129,10 @@ func getAgentRunByID(id int64) (*AgentRun, error) {
 	return scanAgentRun(db.DB.QueryRow(`SELECT `+agentRunCols+` FROM agent_runs WHERE id=?`, id))
 }
 
-// canManageAgentRun: an admin, the user who requested the run, OR a project
-// editor may read and update a single run. The project-editor case (PAI-605 M5)
-// is essential: the developer whose workstation runs the job is usually NOT the
-// person who clicked "Implement this", so without it the runner gets 403 on
-// every report-back. The list endpoint is gated by issue access, so any project
-// member can still watch a ticket's runs in the UI.
-func canManageAgentRun(r *http.Request, run *AgentRun) bool {
+// canReadAgentRun: an admin, requester, or project editor may read a run. This
+// keeps the UI/watch surfaces usable for project editors without granting every
+// editor write access to another user's queued/running job.
+func canReadAgentRun(r *http.Request, run *AgentRun) bool {
 	u := auth.GetUser(r)
 	if u == nil {
 		return false
@@ -135,6 +144,53 @@ func canManageAgentRun(r *http.Request, run *AgentRun) bool {
 		return true
 	}
 	return run.ProjectID != nil && auth.CanEditProject(r, *run.ProjectID)
+}
+
+func userHasLiveImplementRunner(userID, projectID int64, deviceID, actionKey string) bool {
+	if deviceID == "" {
+		return false
+	}
+	var n int
+	if err := db.DB.QueryRow(
+		`SELECT COUNT(*) FROM auto_watch_subscriptions
+		 WHERE user_id=? AND device_id=? AND project_id=? AND enabled=1 AND can_implement=1`,
+		userID, deviceID, projectID).Scan(&n); err != nil || n == 0 {
+		return false
+	}
+	for _, p := range sse.GlobalBroker().ProjectSubscribers(projectID) {
+		if p.UserID == userID && p.DeviceID == deviceID && p.CanImplement &&
+			actionCapabilitiesContain(presenceActions(p), actionKey) {
+			return true
+		}
+	}
+	return false
+}
+
+// canPatchAgentRun: an admin or requester can always manage a non-terminal run.
+// A project editor may make the initial queued->running CAS claim only from a
+// matching live implement-capable runner; after that only the stamped claimer
+// can report/cancel/update it.
+func canPatchAgentRun(r *http.Request, run *AgentRun, claimAttempt bool, claimDeviceID string) bool {
+	u := auth.GetUser(r)
+	if u == nil {
+		return false
+	}
+	if u.Role == auth.RoleAdmin || u.Role == auth.RoleSuperAdmin {
+		return true
+	}
+	if run.RequestedBy != nil && *run.RequestedBy == u.ID {
+		return true
+	}
+	if run.ClaimedBy != nil && *run.ClaimedBy == u.ID {
+		return true
+	}
+	if claimAttempt && run.ProjectID != nil && auth.CanEditProject(r, *run.ProjectID) &&
+		userHasLiveImplementRunner(u.ID, *run.ProjectID, claimDeviceID, run.ActionKey) {
+		return true
+	}
+	// Compatibility for active rows created before M128: if a run was already
+	// running but has no claimer, keep project-editor report-back working.
+	return run.ClaimedBy == nil && run.Status == "running" && run.ProjectID != nil && auth.CanEditProject(r, *run.ProjectID)
 }
 
 // ImplementIssue — POST /api/issues/{id}/implement (RequireIssueEdit).
@@ -149,6 +205,7 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		DeviceID     string `json:"device_id"`
 		DeployTarget string `json:"deploy_target"`
+		ActionKey    string `json:"action_key"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body) // body is optional
@@ -175,14 +232,28 @@ func ImplementIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	var projectID sql.NullInt64
 	_ = db.DB.QueryRow(`SELECT project_id FROM issues WHERE id=?`, issueID).Scan(&projectID)
+	explicitAction := strings.TrimSpace(body.ActionKey) != ""
+	action, ok := resolveAgentRunAction(body.ActionKey)
+	if !ok {
+		jsonError(w, "invalid action_key", http.StatusBadRequest)
+		return
+	}
+	deviceID := strings.TrimSpace(body.DeviceID)
+	if explicitAction && projectID.Valid && deviceID != "" && !deviceSupportsAgentAction(projectID.Int64, deviceID, action.ActionKey) {
+		jsonError(w, "requested runner action is unavailable", http.StatusConflict)
+		return
+	}
 	var requestedBy *int64
 	if u := auth.GetUser(r); u != nil {
 		requestedBy = &u.ID
 	}
 	res, err := db.DB.Exec(
-		`INSERT INTO agent_runs(issue_id, project_id, device_id, requested_by, deploy_target, status)
-		 VALUES(?,?,?,?,?, 'queued')`,
-		issueID, projectID, strings.TrimSpace(body.DeviceID), requestedBy, strings.TrimSpace(body.DeployTarget))
+		`INSERT INTO agent_runs(
+			issue_id, project_id, device_id, requested_by, deploy_target,
+			action_key, provider_kind, provider_id, provider_label, model, run_mode, status
+		 ) VALUES(?,?,?,?,?,?,?,?,?,?,?, 'queued')`,
+		issueID, projectID, deviceID, requestedBy, strings.TrimSpace(body.DeployTarget),
+		action.ActionKey, action.ProviderKind, action.ProviderID, action.ProviderLabel, action.Model, action.RunMode)
 	if err != nil {
 		// Lost the unique-index race to a concurrent click — return its run (200).
 		if existing := activeRunForIssue(issueID); existing != nil {
@@ -253,9 +324,10 @@ func agentRunIssueKey(issueID int64) string {
 
 // ProjectRunner is an online, implement-capable runner for a project.
 type ProjectRunner struct {
-	UserID   int64  `json:"user_id"`
-	DeviceID string `json:"device_id"`
-	LastSeen string `json:"last_seen"`
+	UserID   int64                  `json:"user_id"`
+	DeviceID string                 `json:"device_id"`
+	LastSeen string                 `json:"last_seen"`
+	Actions  []sse.ActionCapability `json:"actions"`
 }
 
 // ListProjectRunners — GET /api/projects/{id}/runners (project-view gated).
@@ -273,12 +345,20 @@ func ListProjectRunners(w http.ResponseWriter, r *http.Request) {
 	for _, p := range sse.GlobalBroker().ProjectSubscribers(projectID) {
 		// Capability is per live connection (PAI-605 M8): a runner connection
 		// advertises it; a browser tab on the same device does not, and neither
-		// masks the other. Dedup multiple connections of the same runner device.
+		// masks the other. Dedup multiple connections of the same runner device,
+		// merging action capabilities when one device advertises several actions.
 		if !p.CanImplement {
 			continue
 		}
 		key := fmt.Sprintf("%d/%s", p.UserID, p.DeviceID)
+		actions := presenceActions(p)
 		if seen[key] {
+			for i := range out {
+				if out[i].UserID == p.UserID && out[i].DeviceID == p.DeviceID {
+					out[i].Actions = mergeActionCapabilities(out[i].Actions, actions)
+					break
+				}
+			}
 			continue
 		}
 		seen[key] = true
@@ -286,9 +366,36 @@ func ListProjectRunners(w http.ResponseWriter, r *http.Request) {
 		_ = db.DB.QueryRow(
 			`SELECT updated_at FROM auto_watch_subscriptions WHERE user_id=? AND device_id=? AND project_id=?`,
 			p.UserID, p.DeviceID, projectID).Scan(&lastSeen)
-		out = append(out, ProjectRunner{UserID: p.UserID, DeviceID: p.DeviceID, LastSeen: lastSeen})
+		out = append(out, ProjectRunner{UserID: p.UserID, DeviceID: p.DeviceID, LastSeen: lastSeen, Actions: actions})
 	}
 	jsonOK(w, map[string]any{"runners": out})
+}
+
+func mergeActionCapabilities(existing, next []sse.ActionCapability) []sse.ActionCapability {
+	out := append([]sse.ActionCapability(nil), existing...)
+	seen := map[string]bool{}
+	for _, action := range out {
+		seen[action.ActionKey] = true
+	}
+	for _, action := range next {
+		if !seen[action.ActionKey] {
+			out = append(out, action)
+			seen[action.ActionKey] = true
+		}
+	}
+	return out
+}
+
+func deviceSupportsAgentAction(projectID int64, deviceID, actionKey string) bool {
+	for _, p := range sse.GlobalBroker().ProjectSubscribers(projectID) {
+		if p.DeviceID != deviceID || !p.CanImplement {
+			continue
+		}
+		if actionCapabilitiesContain(presenceActions(p), actionKey) {
+			return true
+		}
+	}
+	return false
 }
 
 // ListProjectRuns — GET /api/projects/{id}/runs?status=queued (project-view
@@ -352,7 +459,7 @@ func ListIssueRuns(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{"runs": out})
 }
 
-// GetAgentRun — GET /api/runs/{id}. Requester or admin.
+// GetAgentRun — GET /api/runs/{id}. Admin, requester, or project editor.
 func GetAgentRun(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -364,7 +471,7 @@ func GetAgentRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "run not found", http.StatusNotFound)
 		return
 	}
-	if !canManageAgentRun(r, run) {
+	if !canReadAgentRun(r, run) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -385,14 +492,11 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "run not found", http.StatusNotFound)
 		return
 	}
-	if !canManageAgentRun(r, existing) {
-		jsonError(w, "forbidden", http.StatusForbidden)
-		return
-	}
 	var body struct {
 		Status          *string `json:"status"`
 		IfStatus        *string `json:"if_status"` // optimistic claim guard (PAI-605 H3)
 		DeviceID        *string `json:"device_id"`
+		ActionKey       *string `json:"action_key"`
 		Version         *string `json:"version"`
 		TestsSummary    *string `json:"tests_summary"`
 		DeployTarget    *string `json:"deploy_target"`
@@ -411,6 +515,31 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.IfStatus != nil && !agentRunStatuses[strings.TrimSpace(*body.IfStatus)] {
 		jsonError(w, "invalid if_status", http.StatusBadRequest)
+		return
+	}
+	if body.ActionKey != nil {
+		actionKey := strings.TrimSpace(*body.ActionKey)
+		if actionKey == "" || actionKey != existing.ActionKey {
+			jsonError(w, "run action cannot be changed", http.StatusConflict)
+			return
+		}
+	}
+	claimAttempt := false
+	if body.Status != nil && body.IfStatus != nil {
+		claimAttempt = existing.Status == "queued" &&
+			strings.TrimSpace(*body.Status) == "running" &&
+			strings.TrimSpace(*body.IfStatus) == "queued"
+	}
+	claimDeviceID := ""
+	if claimAttempt && body.DeviceID != nil {
+		claimDeviceID = strings.TrimSpace(*body.DeviceID)
+		if claimDeviceID == "" || len(claimDeviceID) > deviceIDMaxLen {
+			jsonError(w, "invalid device_id", http.StatusBadRequest)
+			return
+		}
+	}
+	if !canPatchAgentRun(r, existing, claimAttempt, claimDeviceID) {
+		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	// Audit: a terminal run is immutable — reject ANY update (a status move out of
@@ -444,6 +573,12 @@ func PatchAgentRun(w http.ResponseWriter, r *http.Request) {
 		args = append(args, s)
 		if s == "running" && existing.StartedAt == nil {
 			sets = append(sets, "started_at=datetime('now')")
+		}
+		if s == "running" && existing.Status == "queued" && existing.ClaimedBy == nil {
+			if u := auth.GetUser(r); u != nil {
+				sets = append(sets, "claimed_by=?")
+				args = append(args, u.ID)
+			}
 		}
 		if agentRunIsReportable(s) {
 			sets = append(sets, "finished_at=datetime('now')")

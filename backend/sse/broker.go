@@ -79,6 +79,7 @@ type Subscriber struct {
 	// (the runner's ?implement=1). Per-connection so a browser tab and a
 	// runner on the same device don't clobber each other's capability.
 	CanImplement bool
+	Actions      []ActionCapability
 
 	// ch is the per-subscriber fan-in channel. Sized so a brief
 	// publisher burst doesn't drop events on a single subscriber. New
@@ -120,6 +121,18 @@ type subKey struct {
 	ProjectID int64
 }
 
+// ActionCapability is one implement-capable action advertised by a live local
+// runner connection.
+type ActionCapability struct {
+	ActionKey    string   `json:"action_key"`
+	ProviderKind string   `json:"provider_kind"`
+	ProviderID   string   `json:"provider_id"`
+	Label        string   `json:"label"`
+	RunModes     []string `json:"run_modes,omitempty"`
+	CanTest      bool     `json:"can_test"`
+	CanDeploy    bool     `json:"can_deploy"`
+}
+
 // NewBroker returns a fresh broker. Tests use this; production code
 // uses GlobalBroker().
 func NewBroker() *Broker {
@@ -144,12 +157,17 @@ func GlobalBroker() *Broker {
 
 // Subscribe registers a new connection. The caller MUST drain Events()
 // promptly and call Close() before letting its http handler return.
-func (b *Broker) Subscribe(userID int64, deviceID string, projectID int64, canImplement bool) *Subscriber {
+func (b *Broker) Subscribe(userID int64, deviceID string, projectID int64, canImplement bool, actions ...[]ActionCapability) *Subscriber {
+	var caps []ActionCapability
+	if len(actions) > 0 && len(actions[0]) > 0 {
+		caps = append([]ActionCapability(nil), actions[0]...)
+	}
 	s := &Subscriber{
 		UserID:       userID,
 		DeviceID:     deviceID,
 		ProjectID:    projectID,
 		CanImplement: canImplement,
+		Actions:      caps,
 		ch:           make(chan Event, subscriberBufferSize),
 	}
 	key := subKey{UserID: userID, DeviceID: deviceID, ProjectID: projectID}
@@ -232,9 +250,10 @@ func (b *Broker) PublishProject(projectID int64, ev Event) {
 // Presence identifies a live subscriber connection by user + device, and
 // whether that connection advertised implement-capability.
 type Presence struct {
-	UserID       int64  `json:"user_id"`
-	DeviceID     string `json:"device_id"`
-	CanImplement bool   `json:"can_implement"`
+	UserID       int64              `json:"user_id"`
+	DeviceID     string             `json:"device_id"`
+	CanImplement bool               `json:"can_implement"`
+	Actions      []ActionCapability `json:"actions,omitempty"`
 }
 
 // ProjectSubscribers returns one Presence per live connection for the project.
@@ -250,7 +269,8 @@ func (b *Broker) ProjectSubscribers(projectID int64) []Presence {
 			continue
 		}
 		for s := range set {
-			out = append(out, Presence{UserID: key.UserID, DeviceID: key.DeviceID, CanImplement: s.CanImplement})
+			actions := append([]ActionCapability(nil), s.Actions...)
+			out = append(out, Presence{UserID: key.UserID, DeviceID: key.DeviceID, CanImplement: s.CanImplement, Actions: actions})
 		}
 	}
 	return out

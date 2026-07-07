@@ -43,6 +43,7 @@ export const ALL_COLUMNS: ColumnDef[] = [
   { key: 'title',        label: 'Title',        pinned: true  },
   { key: 'status',       label: 'Status',       pinned: false },
   { key: 'priority',     label: 'Priority',     pinned: false },
+  { key: 'accepted_at',  label: 'Accepted',     pinned: false },
   { key: 'cost_unit',    label: 'Cost Unit',    pinned: false },
   { key: 'release',      label: 'Release',      pinned: false },
   { key: 'assignee',     label: 'Assignee',     pinned: false },
@@ -81,6 +82,7 @@ const COL_MAP = new Map(ALL_COLUMNS.map(c => [c.key, c]))
 // Columns hidden by default — v2 fields opt-in
 const DEFAULT_HIDDEN = new Set<string>([
   'epic',
+  'accepted_at',
   'billing_type', 'total_budget', 'rate_hourly', 'rate_lp',
   'estimate_hours', 'estimate_lp', 'ar_hours', 'ar_lp',
   'start_date', 'end_date', 'group_state', 'sprint_state',

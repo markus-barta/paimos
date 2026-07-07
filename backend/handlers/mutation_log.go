@@ -283,6 +283,9 @@ func recordMutation(ctx context.Context, tx *sql.Tx, args mutationRecordArgs) (i
 			return 0, err
 		}
 	}
+	if ev, err := loadMutationChange(ctx, tx, id); err == nil {
+		mutationChanges().Publish(ev)
+	}
 	return id, nil
 }
 

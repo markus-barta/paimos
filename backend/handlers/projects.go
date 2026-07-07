@@ -51,12 +51,21 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 		       p.product_owner, p.customer_label, p.customer_id,
 		       COALESCE(c.name, ''),
 		       p.created_at, p.updated_at,
-		       COUNT(i.id) as issue_count,
+		       COUNT(CASE WHEN i.type NOT IN ('memory','runbook','external_system','related_project','guideline') THEN 1 END) as issue_count,
 		       COALESCE(p.logo_path, ''),
 		       COALESCE(MAX(i.updated_at), '') as last_activity,
-		       COUNT(CASE WHEN i.status NOT IN ('done','delivered','cancelled') THEN 1 END) as open_issue_count,
-		       COUNT(CASE WHEN i.status IN ('done','delivered') THEN 1 END) as done_issue_count,
-		       COUNT(CASE WHEN i.status != 'cancelled' THEN 1 END) as active_issue_count,
+		       COUNT(CASE
+		               WHEN i.status NOT IN ('done','delivered','cancelled')
+		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		              THEN 1 END) as open_issue_count,
+		       COUNT(CASE
+		               WHEN i.status IN ('done','delivered')
+		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		              THEN 1 END) as done_issue_count,
+		       COUNT(CASE
+		               WHEN i.status != 'cancelled'
+		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		              THEN 1 END) as active_issue_count,
 		       p.rate_hourly, p.rate_lp,
 		       c.rate_hourly, c.rate_lp
 		FROM projects p
@@ -125,10 +134,10 @@ func applyEffectiveRates(p *models.Project, custH, custLp *float64) {
 
 func CreateProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name          string `json:"name"`
-		Key           string `json:"key"`
-		Description   string `json:"description"`
-		ProductOwner  *int64 `json:"product_owner"`
+		Name         string `json:"name"`
+		Key          string `json:"key"`
+		Description  string `json:"description"`
+		ProductOwner *int64 `json:"product_owner"`
 		// CustomerLabel is the legacy freeform string (PAI-54 rename).
 		// CustomerID is the FK to customers.id; nil = unassigned.
 		CustomerLabel string `json:"customer_label"`
@@ -252,12 +261,12 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name          *string  `json:"name"`
-		Key           *string  `json:"key"`
-		Description   *string  `json:"description"`
-		Status        *string  `json:"status"`
-		ProductOwner  *int64   `json:"product_owner"`
-		CustomerLabel *string  `json:"customer_label"`
+		Name          *string `json:"name"`
+		Key           *string `json:"key"`
+		Description   *string `json:"description"`
+		Status        *string `json:"status"`
+		ProductOwner  *int64  `json:"product_owner"`
+		CustomerLabel *string `json:"customer_label"`
 		// CustomerID is the FK. Pass `null` to detach (the CASE WHEN below
 		// preserves the current value when omitted, writes NULL when
 		// explicitly null in the request body).

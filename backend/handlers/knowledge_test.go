@@ -414,6 +414,64 @@ func TestKnowledge_ExternalSystemBadURLReturns400(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 }
 
+func TestKnowledge_UpdateWithoutMetadataPreservesExistingMetadata(t *testing.T) {
+	ts := newTestServer(t)
+	projectID := createTestProject(t, ts, "Preserve Metadata", "PMD")
+
+	createResp := ts.post(t, knowledgeURL(projectID, "guideline"), ts.adminCookie, map[string]interface{}{
+		"slug":  "keep_metadata",
+		"title": "Keep metadata",
+		"body":  "Original body.",
+		"metadata": map[string]interface{}{
+			"source_repo": "paimos",
+			"tags":        []interface{}{"docs", "kb"},
+		},
+	})
+	assertStatus(t, createResp, http.StatusCreated)
+
+	updateResp := ts.put(t, knowledgeEntryURL(projectID, "guideline", "keep_metadata"), ts.adminCookie, map[string]interface{}{
+		"slug":  "keep_metadata",
+		"title": "Keep metadata",
+		"body":  "Updated body.",
+	})
+	assertStatus(t, updateResp, http.StatusOK)
+	var updated knowledgeEntry
+	decode(t, updateResp, &updated)
+	if got := updated.Metadata["source_repo"]; got != "paimos" {
+		t.Fatalf("source_repo metadata was not preserved: %v", updated.Metadata)
+	}
+	tags, _ := updated.Metadata["tags"].([]interface{})
+	if len(tags) != 2 || tags[0] != "docs" || tags[1] != "kb" {
+		t.Fatalf("tags metadata was not preserved: %v", updated.Metadata)
+	}
+}
+
+func TestKnowledge_UpdateWithExplicitEmptyMetadataClearsMetadata(t *testing.T) {
+	ts := newTestServer(t)
+	projectID := createTestProject(t, ts, "Clear Metadata", "CMD")
+
+	createResp := ts.post(t, knowledgeURL(projectID, "guideline"), ts.adminCookie, map[string]interface{}{
+		"slug":     "clear_metadata",
+		"title":    "Clear metadata",
+		"body":     "Original body.",
+		"metadata": map[string]interface{}{"source_repo": "paimos"},
+	})
+	assertStatus(t, createResp, http.StatusCreated)
+
+	updateResp := ts.put(t, knowledgeEntryURL(projectID, "guideline", "clear_metadata"), ts.adminCookie, map[string]interface{}{
+		"slug":     "clear_metadata",
+		"title":    "Clear metadata",
+		"body":     "Updated body.",
+		"metadata": map[string]interface{}{},
+	})
+	assertStatus(t, updateResp, http.StatusOK)
+	var updated knowledgeEntry
+	decode(t, updateResp, &updated)
+	if len(updated.Metadata) != 0 {
+		t.Fatalf("metadata was not cleared by explicit empty metadata: %v", updated.Metadata)
+	}
+}
+
 // typesOf is a tiny helper that flattens an issue list to its type
 // values for diagnostic Errorf calls.
 func typesOf(list []issueListItem) []string {

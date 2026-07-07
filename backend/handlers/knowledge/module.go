@@ -81,11 +81,12 @@ func ValidateSlug(slug string) error {
 // preserved so future fields can be added without breaking the
 // payload contract.
 type Input struct {
-	Slug     string         `json:"slug"`
-	Title    string         `json:"title"`
-	Body     string         `json:"body"`
-	Status   string         `json:"status"`
-	Metadata map[string]any `json:"metadata"`
+	Slug        string         `json:"slug"`
+	Title       string         `json:"title"`
+	Body        string         `json:"body"`
+	Status      string         `json:"status"`
+	Metadata    map[string]any `json:"metadata"`
+	MetadataSet bool           `json:"-"`
 }
 
 // Output is the canonical JSON shape the convenience endpoints

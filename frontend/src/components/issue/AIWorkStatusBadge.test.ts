@@ -19,6 +19,12 @@ function mountBadge(props: Record<string, unknown> = {}, onOpen?: () => void) {
           status: "deployed",
           agent_name: "claude",
           device_id: "dev-1",
+          action_key: "claude_cli.implement",
+          provider_kind: "local_cli",
+          provider_id: "claude_cli",
+          provider_label: "Claude Code",
+          model: "",
+          run_mode: "edit",
           version: "0.1.2",
           deploy_target: "local-dev",
           tests_summary: "npm test passed: > noisy package script",
@@ -52,9 +58,10 @@ describe("AIWorkStatusBadge", () => {
     const { el, unmount } = mountBadge();
     await settle();
     const badge = el.querySelector<HTMLButtonElement>(".ai-work-badge");
-    expect(badge?.textContent).toContain("Deployed");
+    expect(badge?.textContent).toContain("Claude Code deployed");
     const title = badge?.getAttribute("title") ?? "";
-    expect(title).toContain("AI deployed");
+    expect(title).toContain("Claude Code deployed");
+    expect(title).toContain("claude_cli.implement");
     expect(title).toContain("runner v0.1.2");
     expect(title).toContain("target local-dev");
     expect(title).toContain("tests passed");

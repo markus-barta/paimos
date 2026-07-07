@@ -41,9 +41,10 @@ engine, and no Jira-sized machinery.
   - Owns sticky header, frozen key/actions columns, inline cell edit,
     column resize, and row interactions.
 - `frontend/src/views/portal/PortalProjectView.vue`
-  - Owns portal-safe filter URL state, sort, side-panel selection, and
-    customer actions on top of the shared `components/issue-list`
-    table/filter pair.
+  - Owns portal-safe filter URL state, KPI strip, tabs, and the
+    new-request modal. The customer table and side-panel selection now
+    render through `IssueList.vue` in `mode="customer"`; the old
+    `components/issue-list` table/filter pair was removed in PAI-476.
 
 ## Known Failure Causes
 

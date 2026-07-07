@@ -187,15 +187,19 @@ single-runner installs.
 
 ## Rollout
 
+Status as of PAI-629: rollout steps 1-3 are implemented for local CLI actions.
+Local model and hosted model draft/apply modes remain future work.
+
 1. **Schema and API compatibility.** Add nullable provider/action fields,
    default omitted action requests to the current Claude local CLI action, and
-   expose fields in OpenAPI.
+   expose fields in OpenAPI. **Done in PAI-629.**
 2. **Runner capability advertisement.** Let `paimos run-agent watch` advertise
    one or more local CLI actions; add tests for action matching and targeted
-   device claims.
+   device claims. **Done in PAI-629 for one local CLI action per runner
+   connection; multiple runner connections can expose multiple actions.**
 3. **Claude and Codex UI actions.** Replace the generic menu when both actions
    are available, while preserving the old single-action button for simple
-   installs.
+   installs. **Done in PAI-629 for issue detail and row actions.**
 4. **Local model draft mode.** Add a local-model action that creates a plan or
    patch without autonomous deploy.
 5. **OpenRouter draft mode.** Reuse encrypted admin AI settings to produce a

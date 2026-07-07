@@ -55,13 +55,26 @@
         <AppIcon name="history" :size="12" />
         <span>Open run</span>
       </button>
+      <template v-else-if="isImplementable && implementState === 'idle' && explicitRunActions.length > 1">
+        <button
+          v-for="action in explicitRunActions"
+          :key="action.action_key"
+          class="row-run-action row-run-action--start row-act--implement"
+          type="button"
+          :title="`Do this with ${action.label}`"
+          @click.stop="implement(action)"
+        >
+          <AppIcon name="zap" :size="12" />
+          <span>{{ shortActionLabel(action) }}</span>
+        </button>
+      </template>
       <button
         v-else-if="isImplementable"
         class="row-run-action row-run-action--start row-act--implement"
         type="button"
         title="Run local agent"
         :disabled="implementState === 'busy'"
-        @click.stop="implement()"
+        @click.stop="implement(singleExplicitAction)"
       >
         <AppIcon name="zap" :size="12" />
         <span>{{ implementState === 'busy' ? 'Starting' : 'Run' }}</span>
@@ -94,7 +107,17 @@
             <button v-if="isImplementable && hasRun && implementState === 'idle'" class="ellipsis-item" @click.stop="$emit('view'); menuOpen = false">
               <AppIcon name="history" :size="13" /> Open run
             </button>
-            <button v-else-if="isImplementable" class="ellipsis-item" @click.stop="implement()">
+            <template v-else-if="isImplementable && explicitRunActions.length > 1">
+              <button
+                v-for="action in explicitRunActions"
+                :key="action.action_key"
+                class="ellipsis-item"
+                @click.stop="implement(action)"
+              >
+                <AppIcon name="zap" :size="13" /> Do with {{ shortActionLabel(action) }}
+              </button>
+            </template>
+            <button v-else-if="isImplementable" class="ellipsis-item" @click.stop="implement(singleExplicitAction)">
               <AppIcon name="zap" :size="13" /> Run
             </button>
             <button v-if="isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
@@ -112,7 +135,7 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, errMsg } from '@/api/client'
 import { useTimerStore } from '@/stores/timer'
-import type { IssueAIWorkStatus } from '@/types'
+import type { AgentActionCapability, IssueAIWorkStatus } from '@/types'
 
 const props = defineProps<{
   canHaveChildren: boolean
@@ -125,6 +148,7 @@ const props = defineProps<{
   bookedHours?: number
   isAdmin?: boolean
   aiWorkStatus?: IssueAIWorkStatus | null
+  agentActions?: AgentActionCapability[]
 }>()
 
 // PAI-610/612: "Implement this" — hand the ticket to a local agent run.
@@ -141,18 +165,31 @@ let alive = true // guards post-await writes/timer after unmount (M3)
 
 const aiWorkStatus = computed(() => props.aiWorkStatus ?? null)
 const hasRun = computed(() => !!aiWorkStatus.value)
+const explicitRunActions = computed(() => props.agentActions ?? [])
+const singleExplicitAction = computed(() =>
+  explicitRunActions.value.length === 1 ? explicitRunActions.value[0] : undefined,
+)
 
-async function implement() {
+function shortActionLabel(action: AgentActionCapability): string {
+  return action.label
+    .replace(/\s+Code$/i, '')
+    .replace(/\s+CLI$/i, '')
+    .trim()
+}
+
+async function implement(action?: AgentActionCapability) {
   if (implementState.value === 'busy') return
   if (implementTimer) clearTimeout(implementTimer) // M3: don't let a prior reset fire mid-action
   implementState.value = 'busy'
   implementMsg.value = ''
   menuOpen.value = false
   try {
-    const run = await api.post<{ id?: number }>(`/issues/${props.issueId}/implement`, {})
+    const payload = action ? { action_key: action.action_key } : {}
+    const run = await api.post<{ id?: number }>(`/issues/${props.issueId}/implement`, payload)
     if (!alive) return
     implementState.value = 'done'
-    implementMsg.value = run?.id ? `Run #${run.id} queued` : 'Queued'
+    const suffix = action ? ` with ${shortActionLabel(action)}` : ''
+    implementMsg.value = run?.id ? `Run #${run.id} queued${suffix}` : `Queued${suffix}`
   } catch (e: unknown) {
     if (!alive) return
     implementState.value = 'error'

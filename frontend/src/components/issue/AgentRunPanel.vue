@@ -27,6 +27,8 @@ interface AgentRun {
   status: string;
   version: string;
   device_id: string;
+  action_key: string;
+  provider_label: string;
   deploy_target: string;
   tests_summary: string | null;
   error: string;
@@ -35,14 +37,26 @@ interface AgentRun {
   finished_at: string | null;
 }
 
+interface AgentActionCapability {
+  action_key: string;
+  provider_kind: string;
+  provider_id: string;
+  label: string;
+  run_modes?: string[];
+  can_test: boolean;
+  can_deploy: boolean;
+}
+
 interface ProjectRunner {
   user_id: number;
   device_id: string;
   last_seen: string;
+  actions?: AgentActionCapability[];
 }
 
 const runs = ref<AgentRun[]>([]);
 const runners = ref<ProjectRunner[]>([]);
+const selectedActionKey = ref("claude_cli.implement");
 const selectedDevice = ref("");
 const deployTarget = ref("");
 const loading = ref(true);
@@ -80,8 +94,66 @@ const DEPLOY_TARGETS = [
   { value: "local-dev", label: "local-dev" },
 ];
 
+const DEFAULT_ACTION: AgentActionCapability = {
+  action_key: "claude_cli.implement",
+  provider_kind: "local_cli",
+  provider_id: "claude_cli",
+  label: "Claude Code",
+  run_modes: ["edit"],
+  can_test: true,
+  can_deploy: false,
+};
+
+function runnerActions(runner: ProjectRunner): AgentActionCapability[] {
+  return runner.actions?.length ? runner.actions : [DEFAULT_ACTION];
+}
+
+const availableActions = computed(() => {
+  const byKey = new Map<string, AgentActionCapability>();
+  for (const runner of runners.value) {
+    for (const action of runnerActions(runner)) {
+      if (!byKey.has(action.action_key)) byKey.set(action.action_key, action);
+    }
+  }
+  if (!byKey.size) byKey.set(DEFAULT_ACTION.action_key, DEFAULT_ACTION);
+  return [...byKey.values()];
+});
+
+const selectedAction = computed(
+  () => availableActions.value.find((a) => a.action_key === selectedActionKey.value) ?? availableActions.value[0],
+);
+
+function runnerSupportsAction(runner: ProjectRunner, actionKey: string): boolean {
+  return runnerActions(runner).some((action) => action.action_key === actionKey);
+}
+
+const actionRunners = computed(() =>
+  runners.value.filter((runner) => runnerSupportsAction(runner, selectedActionKey.value)),
+);
+
+function syncActionSelection() {
+  if (!availableActions.value.some((action) => action.action_key === selectedActionKey.value)) {
+    selectedActionKey.value = availableActions.value[0]?.action_key ?? DEFAULT_ACTION.action_key;
+  }
+}
+
+function syncDeviceSelection() {
+  if (!actionRunners.value.length) {
+    selectedDevice.value = "";
+    return;
+  }
+  if (!selectedDevice.value || !actionRunners.value.some((runner) => runner.device_id === selectedDevice.value)) {
+    selectedDevice.value = actionRunners.value[0].device_id;
+  }
+}
+
 const buttonLabel = computed(() => {
   if (busy.value) return "Starting...";
+  if (availableActions.value.length > 1) {
+    return deployTarget.value
+      ? `Do this with ${selectedAction.value.label} + deploy`
+      : `Do this with ${selectedAction.value.label}`;
+  }
   return deployTarget.value ? "Implement + deploy" : "Implement this";
 });
 
@@ -185,9 +257,8 @@ async function fetchRunners() {
     if (!alive || seq !== runnersSeq) return;
     runners.value = data.runners ?? [];
     runnersError.value = "";
-    if (!selectedDevice.value && runners.value.length) {
-      selectedDevice.value = runners.value[0].device_id;
-    }
+    syncActionSelection();
+    syncDeviceSelection();
   } catch (e: unknown) {
     if (!alive || seq !== runnersSeq) return;
     runners.value = [];
@@ -200,14 +271,16 @@ async function implement() {
   error.value = "";
   notice.value = "";
   try {
-    const payload: { device_id: string; deploy_target?: string } = {
+    const payload: { device_id: string; action_key: string; deploy_target?: string } = {
       device_id: selectedDevice.value,
+      action_key: selectedActionKey.value,
     };
     const target = deployTarget.value.trim();
     if (target) payload.deploy_target = target;
     const run = await api.post<AgentRun>(`/issues/${props.issueKey}/implement`, payload);
+    const actor = availableActions.value.length > 1 ? ` with ${selectedAction.value.label}` : "";
     const runner = selectedDevice.value ? ` for ${selectedDevice.value}` : "";
-    notice.value = run?.id ? `Run #${run.id} queued${runner}` : `Run queued${runner}`;
+    notice.value = run?.id ? `Run #${run.id} queued${actor}${runner}` : `Run queued${actor}${runner}`;
     await Promise.all([fetchRuns(), fetchRunners()]); // M5: refresh the picker too
   } catch (e: unknown) {
     error.value = errMsg(e, "Could not start the run.");
@@ -270,12 +343,24 @@ onUnmounted(() => {
       </h3>
       <div class="arp-actions">
         <select
-          v-if="runners.length > 1"
+          v-if="availableActions.length > 1"
+          v-model="selectedActionKey"
+          class="arp-action"
+          aria-label="Agent action"
+          :disabled="busy"
+          @change="syncDeviceSelection"
+        >
+          <option v-for="action in availableActions" :key="action.action_key" :value="action.action_key">
+            {{ action.label }}
+          </option>
+        </select>
+        <select
+          v-if="actionRunners.length > 1"
           v-model="selectedDevice"
           class="arp-device"
           aria-label="Target runner"
         >
-          <option v-for="r in runners" :key="r.device_id" :value="r.device_id">
+          <option v-for="r in actionRunners" :key="r.device_id" :value="r.device_id">
             {{ r.device_id }}
           </option>
         </select>
@@ -325,6 +410,7 @@ onUnmounted(() => {
           <span class="arp-run-meta">
             <span class="arp-run-id">#{{ run.id }}</span>
             <span v-if="run.version" class="arp-ver">v{{ run.version }}</span>
+            <span v-if="run.provider_label" class="arp-provider">{{ run.provider_label }}</span>
             <span v-if="run.device_id" class="arp-dev">{{ run.device_id }}</span>
             <span v-if="run.deploy_target" class="arp-target">→ {{ run.deploy_target }}</span>
             <time :datetime="isoAttr(runTimestamp(run))">{{ localTime(runTimestamp(run)) }}</time>
@@ -377,6 +463,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
 }
+.arp-action,
 .arp-device,
 .arp-deploy-target {
   font: inherit;
@@ -386,6 +473,9 @@ onUnmounted(() => {
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
+}
+.arp-action {
+  width: 11rem;
 }
 .arp-deploy-target {
   width: 10rem;

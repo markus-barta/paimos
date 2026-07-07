@@ -216,6 +216,22 @@ EOF
 
 Mixing `--description` + `--description-file` on the same command is a hard error (exit 2). No silent preference.
 
+### Knowledge metadata updates are explicit
+
+`paimos knowledge update <type> <slug>` preserves existing `metadata`
+when you update only `--title`, `--body`, `--body-file`, `--status`, or
+`--slug`. To replace metadata intentionally, pass a JSON object through
+`--metadata` or `--metadata-file`.
+
+```sh
+# Body-only edit: existing metadata is preserved.
+paimos knowledge update guideline deploy-notes --project PAI --body-file notes.md
+
+# Metadata repair/replacement: explicit JSON object.
+paimos knowledge update guideline deploy-notes --project PAI \
+  --metadata-file metadata.json
+```
+
 ### Always pass `--dry-run` first when scripting
 
 Every mutation supports `--dry-run`: the CLI prints the resolved request payload (method, path, body) as JSON and exits 0 without calling the API.

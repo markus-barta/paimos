@@ -11,9 +11,11 @@ import UndoConflictModal from "@/components/undo/UndoConflictModal.vue";
 import { useAuthStore } from "@/stores/auth";
 import { announceSessionExpired } from "@/api/client";
 import { useUndoStore } from "@/stores/undo";
+import { useChangesStream } from "@/composables/useChangesStream";
 
 const auth = useAuthStore();
 const undo = useUndoStore();
+useChangesStream();
 
 // ── Session-death heartbeat (PAI-322) ────────────────────────
 // Two complementary triggers:

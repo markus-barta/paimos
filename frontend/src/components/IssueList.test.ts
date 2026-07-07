@@ -54,10 +54,19 @@ vi.mock('@/components/AppModal.vue', () => ({
 
 vi.mock('@/components/IssueTable.vue', () => ({
   default: {
-    props: ['issues', 'columnWidths'],
+    props: ['issues', 'columnWidths', 'readonly', 'isVisible', 'statusLabels', 'typeLabels'],
     emits: ['resize-column', 'reset-column-width'],
     template: `
-      <div class="issue-table-stub" :data-rendered-count="issues.length" :data-column-widths="JSON.stringify(columnWidths)">
+      <div
+        class="issue-table-stub"
+        :data-rendered-count="issues.length"
+        :data-column-widths="JSON.stringify(columnWidths)"
+        :data-readonly="readonly ? 'true' : 'false'"
+        :data-accepted-visible="isVisible('accepted_at') ? 'true' : 'false'"
+        :data-actions-visible="isVisible('actions') ? 'true' : 'false'"
+        :data-status-new="statusLabels?.new || ''"
+        :data-type-ticket="typeLabels?.ticket || ''"
+      >
         <button class="resize-status-stub" @click="$emit('resize-column', 'status', 124)">resize</button>
         <button class="reset-status-stub" @click="$emit('reset-column-width', 'status')">reset</button>
       </div>
@@ -93,6 +102,10 @@ vi.mock('@/components/BulkChangeModal.vue', () => ({
 
 vi.mock('@/components/IssueSidePanel.vue', () => ({
   default: { template: '<div class="side-panel-stub"></div>' },
+}))
+
+vi.mock('@/components/portal/PortalIssueSidePanel.vue', () => ({
+  default: { template: '<div class="portal-side-panel-stub"></div>' },
 }))
 
 vi.mock('@/components/IssueFilterPanel.vue', () => ({
@@ -180,7 +193,17 @@ async function settle() {
   }
 }
 
-function mountIssueList(issues: Issue[], props: { projectId?: number; resultTotal?: number; selectionFingerprint?: string } = {}) {
+function mountIssueList(
+  issues: Issue[],
+  props: {
+    projectId?: number
+    resultTotal?: number
+    selectionFingerprint?: string
+    mode?: 'internal' | 'customer'
+    statusLabels?: Record<string, string>
+    typeLabels?: Record<string, string>
+  } = {},
+) {
   const el = document.createElement('div')
   document.body.appendChild(el)
   const listRef = ref<InstanceType<typeof IssueList> | null>(null)
@@ -205,6 +228,9 @@ function mountIssueList(issues: Issue[], props: { projectId?: number; resultTota
         :project-id="props.projectId"
         :result-total="props.resultTotal"
         :selection-fingerprint="props.selectionFingerprint"
+        :mode="props.mode"
+        :status-labels="props.statusLabels"
+        :type-labels="props.typeLabels"
       />
     `,
   })
@@ -339,6 +365,29 @@ describe('IssueList progressive rendering', () => {
       .find((url) => url.startsWith('/projects/42/issues?'))
     expect(idsOnlyCall).toContain('ids_only=1')
     expect(selectedIdSet(exposed).has(2)).toBe(true)
+
+    mounted.unmount()
+  })
+
+  it('renders customer mode through the read-only shared table and portal panel', async () => {
+    const mounted = mountIssueList([makeIssue(1)], {
+      projectId: 42,
+      mode: 'customer',
+      statusLabels: { new: 'Planned' },
+      typeLabels: { ticket: 'Request' },
+    })
+    await settle()
+
+    const table = mounted.el.querySelector<HTMLElement>('.issue-table-stub')
+    expect(table?.dataset.readonly).toBe('true')
+    expect(table?.dataset.acceptedVisible).toBe('true')
+    expect(table?.dataset.actionsVisible).toBe('false')
+    expect(table?.dataset.statusNew).toBe('Planned')
+    expect(table?.dataset.typeTicket).toBe('Request')
+    expect(mounted.el.querySelector('.filters')).toBeNull()
+    expect(mounted.el.querySelector('.side-panel-stub')).toBeNull()
+    expect(mounted.el.querySelector('.portal-side-panel-stub')).toBeTruthy()
+    expect(vi.mocked(api.get).mock.calls.map(([url]) => String(url))).not.toContain('/sprints')
 
     mounted.unmount()
   })

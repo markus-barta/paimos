@@ -29,6 +29,19 @@ All are optional; defaults produce "PAIMOS" out of the box.
 | `BRAND_HEALTH_SERVICE_NAME` | lowercase `BRAND_PRODUCT_NAME` | `GET /api/health` → `{"status":"ok","service":"…","version":"…"}` (`version` is stamped from `VERSION` at build time, `"dev"` for local builds) |
 | `BRAND_PAGE_TITLE` | `BRAND_PRODUCT_NAME` [+ ` — ` + `BRAND_COMPANY_NAME`] | Shipped as the `pageTitle` in default branding |
 
+## Live updates
+
+PAIMOS can stream mutation metadata to the SPA over Server-Sent Events
+so issue lists mark themselves stale without waiting for the polling
+fallback. The stream only emits subject ids, project ids, mutation
+types, user ids, and timestamps; it does not send before/after payloads
+or undo snapshots.
+
+| Var | Default | Notes |
+|---|---|---|
+| `PAIMOS_LIVE_UPDATES_ENABLED` | `false` | Set to `true` to enable `GET /api/changes?since=<seq>`. When disabled, the endpoint returns 404 and clients keep using conditional polling. |
+| `PAIMOS_LIVE_UPDATES_MAX_CONNECTIONS` | `100` | Process-local cap for concurrent SSE clients. |
+
 ### Set-once (changing after data exists has consequences)
 
 | Var | Default | Caveat |

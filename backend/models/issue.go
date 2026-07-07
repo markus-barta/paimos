@@ -97,17 +97,23 @@ type Issue struct {
 }
 
 type IssueAIWorkStatus struct {
-	ID           int64   `json:"id"`
-	Status       string  `json:"status"`
-	AgentName    string  `json:"agent_name"`
-	DeviceID     string  `json:"device_id"`
-	Version      string  `json:"version"`
-	DeployTarget string  `json:"deploy_target"`
-	TestsSummary *string `json:"tests_summary"`
-	Error        string  `json:"error"`
-	CreatedAt    string  `json:"created_at"`
-	StartedAt    *string `json:"started_at"`
-	FinishedAt   *string `json:"finished_at"`
+	ID            int64   `json:"id"`
+	Status        string  `json:"status"`
+	AgentName     string  `json:"agent_name"`
+	DeviceID      string  `json:"device_id"`
+	ActionKey     string  `json:"action_key"`
+	ProviderKind  string  `json:"provider_kind"`
+	ProviderID    string  `json:"provider_id"`
+	ProviderLabel string  `json:"provider_label"`
+	Model         string  `json:"model"`
+	RunMode       string  `json:"run_mode"`
+	Version       string  `json:"version"`
+	DeployTarget  string  `json:"deploy_target"`
+	TestsSummary  *string `json:"tests_summary"`
+	Error         string  `json:"error"`
+	CreatedAt     string  `json:"created_at"`
+	StartedAt     *string `json:"started_at"`
+	FinishedAt    *string `json:"finished_at"`
 }
 
 // LabelRef is the edge-sourced representation of an issue's cost_unit or

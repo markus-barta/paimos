@@ -13,7 +13,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
+	"github.com/markus-barta/paimos/backend/sse"
 )
 
 // TestAgentRunsLifecycle exercises PAI-606: create a queued run via the
@@ -96,11 +98,7 @@ func TestAgentRunsLifecycle(t *testing.T) {
 	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.adminCookie, map[string]any{"status": "bogus"})
 	assertStatus(t, resp, http.StatusBadRequest)
 
-	// PAI-605 M5: a project editor (the member) CAN manage the run even though
-	// they're neither admin nor the requester — this is what lets a developer's
-	// runner report back when someone else clicked "Implement this". (The run is
-	// terminal here, so a write is a 409, not a 403 — the point is the member got
-	// past the access gate; reads succeed.)
+	// Project editors can read a run even when they did not request it.
 	resp = ts.get(t, "/api/runs/"+itoa(runID), ts.memberCookie)
 	assertStatus(t, resp, http.StatusOK)
 
@@ -214,6 +212,210 @@ func seedRunForIssue(t *testing.T, ts *testServer, projID int64, num int) (int64
 	var run map[string]any
 	decode(t, resp, &run)
 	return issueID, int64(run["id"].(float64))
+}
+
+func seedImplementWatch(t *testing.T, userID, projectID int64, deviceID string) {
+	t.Helper()
+	_, err := db.DB.Exec(
+		`INSERT INTO auto_watch_subscriptions(user_id, device_id, project_id, enabled, can_implement, created_at, updated_at)
+		 VALUES(?,?,?,?,1,datetime('now'),datetime('now'))
+		 ON CONFLICT(user_id, device_id, project_id) DO UPDATE SET
+		   enabled=1,
+		   can_implement=1,
+		   updated_at=datetime('now')`,
+		userID, deviceID, projectID, 1)
+	if err != nil {
+		t.Fatalf("seed implement watch: %v", err)
+	}
+}
+
+func seedLiveImplementRunner(t *testing.T, userID, projectID int64, deviceID string) {
+	t.Helper()
+	seedImplementWatch(t, userID, projectID, deviceID)
+	sub := sse.GlobalBroker().Subscribe(userID, deviceID, projectID, true)
+	t.Cleanup(func() { sse.GlobalBroker().Close(sub) })
+}
+
+func seedLiveImplementRunnerAction(t *testing.T, userID, projectID int64, deviceID, actionKey, label string) {
+	t.Helper()
+	seedImplementWatch(t, userID, projectID, deviceID)
+	sub := sse.GlobalBroker().Subscribe(userID, deviceID, projectID, true, []sse.ActionCapability{{
+		ActionKey:    actionKey,
+		ProviderKind: "local_cli",
+		ProviderID:   strings.TrimSuffix(actionKey, ".implement"),
+		Label:        label,
+		RunModes:     []string{"edit"},
+		CanTest:      true,
+	}})
+	t.Cleanup(func() { sse.GlobalBroker().Close(sub) })
+}
+
+func seedMemberUser(t *testing.T, ts *testServer, username, password string) (int64, string) {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	res, err := db.DB.Exec(
+		`INSERT INTO users(username, password, role, status) VALUES(?,?,?,?)`,
+		username, hash, "member", "active")
+	if err != nil {
+		t.Fatalf("seed member user: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	auth.SeedAccessForUser(id, "member")
+	return id, ts.login(t, username, password)
+}
+
+func TestAgentRunProjectEditorClaimRequiresLiveRunner(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	memberID := userID(t, "member")
+
+	seedImplementWatch(t, memberID, projID, "member-dev")
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{
+		"status":    "running",
+		"if_status": "queued",
+		"device_id": "member-dev",
+	})
+	assertStatus(t, resp, http.StatusForbidden)
+
+	seedLiveImplementRunner(t, memberID, projID, "member-dev")
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{
+		"status":    "running",
+		"if_status": "queued",
+		"device_id": "member-dev",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["claimed_by"] == nil || int64(run["claimed_by"].(float64)) != memberID {
+		t.Fatalf("claimed_by=%v, want member id %d", run["claimed_by"], memberID)
+	}
+}
+
+func TestAgentRunClaimedRunOnlyClaimerCanReport(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	_, runID := seedRunForIssue(t, ts, projID, 1)
+	memberID := userID(t, "member")
+	_, peerCookie := seedMemberUser(t, ts, "peer", "peerpass123")
+
+	seedLiveImplementRunner(t, memberID, projID, "member-dev")
+	resp := ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{
+		"status":    "running",
+		"if_status": "queued",
+		"device_id": "member-dev",
+	})
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), peerCookie, map[string]any{
+		"status": "failed",
+		"error":  "wrong runner",
+	})
+	assertStatus(t, resp, http.StatusForbidden)
+
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{
+		"status": "failed",
+		"error":  "legitimate failure",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["status"] != "failed" || run["error"] != "legitimate failure" {
+		t.Fatalf("run after claimer report = %+v, want failed with claimer error", run)
+	}
+	if run["claimed_by"] == nil || int64(run["claimed_by"].(float64)) != memberID {
+		t.Fatalf("claimed_by=%v, want member id %d", run["claimed_by"], memberID)
+	}
+}
+
+func TestImplementRecordsRequestedProviderAction(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Run with Codex", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+	adminID := userID(t, "admin")
+	seedLiveImplementRunnerAction(t, adminID, projID, "dev-codex", "codex_cli.implement", "Codex CLI")
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"device_id":  "dev-codex",
+		"action_key": "codex_cli.implement",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["action_key"] != "codex_cli.implement" ||
+		run["provider_kind"] != "local_cli" ||
+		run["provider_id"] != "codex_cli" ||
+		run["provider_label"] != "Codex CLI" ||
+		run["run_mode"] != "edit" {
+		t.Fatalf("provider fields = %+v, want Codex local CLI action", run)
+	}
+}
+
+func TestImplementRejectsUnavailableExplicitActionDevice(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Wrong runner", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+	adminID := userID(t, "admin")
+	seedLiveImplementRunnerAction(t, adminID, projID, "dev-claude", "claude_cli.implement", "Claude Code")
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"device_id":  "dev-claude",
+		"action_key": "codex_cli.implement",
+	})
+	assertStatus(t, resp, http.StatusConflict)
+}
+
+func TestAgentRunClaimRequiresMatchingAction(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Claim with action", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"action_key": "codex_cli.implement",
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	runID := int64(run["id"].(float64))
+	memberID := userID(t, "member")
+
+	seedLiveImplementRunnerAction(t, memberID, projID, "member-dev", "claude_cli.implement", "Claude Code")
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{
+		"status":     "running",
+		"if_status":  "queued",
+		"device_id":  "member-dev",
+		"action_key": "codex_cli.implement",
+	})
+	assertStatus(t, resp, http.StatusForbidden)
+
+	seedLiveImplementRunnerAction(t, memberID, projID, "member-dev", "codex_cli.implement", "Codex CLI")
+	resp = ts.patch(t, "/api/runs/"+itoa(runID), ts.memberCookie, map[string]any{
+		"status":     "running",
+		"if_status":  "queued",
+		"device_id":  "member-dev",
+		"action_key": "codex_cli.implement",
+	})
+	assertStatus(t, resp, http.StatusOK)
 }
 
 // TestImplementConcurrentCreatesOneRun proves the idempotency is atomic (the

@@ -68,6 +68,7 @@ export default {
     filters: {
       allStatus: 'All Status',
       allTypes: 'All Types',
+      allPriorities: 'All Priorities',
     },
     table: {
       key: 'Key',
@@ -95,6 +96,9 @@ export default {
       task: 'Task',
       bug: 'Issue',
       story: 'Story',
+      cost_unit: 'Cost Unit',
+      release: 'Release',
+      sprint: 'Sprint',
     },
     noIssues: 'No issues found.',
     accept: 'Accept',

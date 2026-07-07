@@ -30,8 +30,16 @@ const PHRASES: Record<string, string> = {
   cancelled: "AI cancelled",
 };
 
-const label = computed(() => LABELS[props.run.status] ?? props.run.status);
-const phrase = computed(() => PHRASES[props.run.status] ?? `AI ${props.run.status}`);
+const statusLabel = computed(() => LABELS[props.run.status] ?? props.run.status);
+const providerLabel = computed(() => props.run.provider_label?.trim() ?? "");
+const label = computed(() =>
+  providerLabel.value ? `${providerLabel.value} ${statusLabel.value.toLowerCase()}` : statusLabel.value,
+);
+const phrase = computed(() =>
+  providerLabel.value
+    ? `${providerLabel.value} ${statusLabel.value.toLowerCase()}`
+    : (PHRASES[props.run.status] ?? `AI ${props.run.status}`),
+);
 
 function testPhrase(): string {
   const summary = props.run.tests_summary ?? "";
@@ -48,6 +56,7 @@ function testPhrase(): string {
 
 const title = computed(() => {
   const bits = [phrase.value];
+  if (providerLabel.value) bits.push(props.run.action_key);
   if (props.run.version) bits.push(`runner v${props.run.version}`);
   if (props.run.deploy_target) bits.push(`target ${props.run.deploy_target}`);
   const tests = testPhrase();

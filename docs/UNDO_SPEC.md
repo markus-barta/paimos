@@ -44,8 +44,10 @@ The current implementation fully ships:
 Undoable mutation families currently include:
 
 - Issue field updates
+- Bulk issue field updates by request ID
 - Issue relation create/delete
 - Issue tag add/remove
+- Bulk issue tag add/remove by request ID; no-op audit rows stay non-undoable
 - Issue comment create/delete
 - Issue time-entry create/update/delete
 

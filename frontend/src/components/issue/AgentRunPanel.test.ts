@@ -96,7 +96,7 @@ describe("AgentRunPanel — PAI-610", () => {
     await settle();
     expect(api.post).toHaveBeenCalledWith(
       "/issues/PAI-5/implement",
-      { device_id: "laptop" },
+      { device_id: "laptop", action_key: "claude_cli.implement" },
     );
     unmount();
   });
@@ -153,8 +153,47 @@ describe("AgentRunPanel — PAI-610", () => {
     await settle();
     expect(api.post).toHaveBeenCalledWith(
       "/issues/PAI-5/implement",
-      expect.objectContaining({ device_id: "desktop" }),
+      expect.objectContaining({ device_id: "desktop", action_key: "claude_cli.implement" }),
     );
+    unmount();
+  });
+
+  it("renders provider actions when multiple local CLI actions are available", async () => {
+    vi.mocked(api.get).mockImplementation(async (path: string) => {
+      if (path === "/issues/5/runs") return { runs: [] };
+      if (path === "/projects/9/runners")
+        return { runners: [{
+          user_id: 1,
+          device_id: "laptop",
+          last_seen: "",
+          actions: [
+            { action_key: "claude_cli.implement", provider_kind: "local_cli", provider_id: "claude_cli", label: "Claude Code", run_modes: ["edit"], can_test: true, can_deploy: false },
+            { action_key: "codex_cli.implement", provider_kind: "local_cli", provider_id: "codex_cli", label: "Codex CLI", run_modes: ["edit"], can_test: true, can_deploy: false },
+          ],
+        }] };
+      return {};
+    });
+    vi.mocked(api.post).mockResolvedValue({ id: 33 });
+    const { el, unmount } = mountPanel();
+    await settle();
+
+    const action = el.querySelector<HTMLSelectElement>(".arp-action");
+    expect(action).toBeTruthy();
+    expect(action!.options.length).toBe(2);
+    action!.value = "codex_cli.implement";
+    action!.dispatchEvent(new Event("change"));
+    await settle();
+
+    expect(el.querySelector<HTMLButtonElement>(".btn-primary")?.textContent).toContain(
+      "Do this with Codex CLI",
+    );
+    el.querySelector<HTMLButtonElement>(".btn-primary")!.click();
+    await settle();
+    expect(api.post).toHaveBeenCalledWith(
+      "/issues/PAI-5/implement",
+      expect.objectContaining({ device_id: "laptop", action_key: "codex_cli.implement" }),
+    );
+    expect(el.textContent).toContain("Run #33 queued with Codex CLI for laptop");
     unmount();
   });
 
@@ -181,7 +220,7 @@ describe("AgentRunPanel — PAI-610", () => {
     await settle();
     expect(api.post).toHaveBeenCalledWith(
       "/issues/PAI-5/implement",
-      expect.objectContaining({ device_id: "laptop", deploy_target: "local-dev" }),
+      expect.objectContaining({ device_id: "laptop", action_key: "claude_cli.implement", deploy_target: "local-dev" }),
     );
     expect(el.textContent).toContain("Run #22 queued for laptop");
     unmount();

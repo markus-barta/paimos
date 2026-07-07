@@ -97,7 +97,20 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 	// may actually advertise as a runner (it takes edit rights to claim/report a
 	// run), so a mere viewer can't appear in the device picker or receive jobs.
 	canImplement := r.URL.Query().Get("implement") == "1" && auth.CanEditProject(r, projectID)
-	if err := upsertAutoWatchEnabled(user.ID, deviceID, projectID, canImplement); err != nil {
+	var actions []sse.ActionCapability
+	if canImplement {
+		action, ok := resolveAgentRunAction(r.URL.Query().Get("action_key"))
+		if !ok {
+			jsonError(w, "invalid action_key", http.StatusBadRequest)
+			return
+		}
+		actions = []sse.ActionCapability{agentActionCapability(
+			action,
+			r.URL.Query().Get("can_test") == "1",
+			r.URL.Query().Get("can_deploy") == "1",
+		)}
+	}
+	if err := upsertAutoWatchEnabled(user.ID, deviceID, projectID, canImplement, actions); err != nil {
 		jsonError(w, "subscription init failed", http.StatusInternalServerError)
 		return
 	}
@@ -117,7 +130,7 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, ":connected\n\n")
 	flusher.Flush()
 
-	sub := sse.GlobalBroker().Subscribe(user.ID, deviceID, projectID, canImplement)
+	sub := sse.GlobalBroker().Subscribe(user.ID, deviceID, projectID, canImplement, actions)
 	defer sse.GlobalBroker().Close(sub)
 
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
@@ -154,19 +167,26 @@ func AgentsEventsStream(w http.ResponseWriter, r *http.Request) {
 // fresh CLI invocation doesn't have to call the toggle endpoint
 // separately. The browser UI does call the toggle endpoint, which is
 // fine — both paths converge on the same row.
-func upsertAutoWatchEnabled(userID int64, deviceID string, projectID int64, canImplement bool) error {
+func upsertAutoWatchEnabled(userID int64, deviceID string, projectID int64, canImplement bool, actions []sse.ActionCapability) error {
 	ci := 0
 	if canImplement {
 		ci = 1
 	}
+	actionsJSON := ""
+	if len(actions) > 0 {
+		if b, err := json.Marshal(actions); err == nil {
+			actionsJSON = string(b)
+		}
+	}
 	_, err := db.DB.Exec(`
-		INSERT INTO auto_watch_subscriptions(user_id, device_id, project_id, enabled, can_implement, created_at, updated_at)
-		VALUES (?, ?, ?, 1, ?, datetime('now'), datetime('now'))
+		INSERT INTO auto_watch_subscriptions(user_id, device_id, project_id, enabled, can_implement, actions_json, created_at, updated_at)
+		VALUES (?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
 		ON CONFLICT(user_id, device_id, project_id) DO UPDATE SET
 			enabled = 1,
 			can_implement = excluded.can_implement,
+			actions_json = excluded.actions_json,
 			updated_at = datetime('now')
-	`, userID, deviceID, projectID, ci)
+	`, userID, deviceID, projectID, ci, actionsJSON)
 	return err
 }
 

@@ -18,6 +18,7 @@ const search = useSearchStore()
 const issueRefreshPrompt = useIssueRefreshPromptStore()
 
 const PAGE = 100
+const ISSUE_LIST_CHANGE_SUBJECTS = new Set(['issue', 'issue_tag', 'comment', 'time_entry'])
 
 const loading     = ref(true)
 const error       = ref('')
@@ -118,6 +119,8 @@ const freshnessPath = computed(() =>
 const freshness = useFreshness<IssueListEnvelope<Issue>>(freshnessPath, {
   apply: (env) => ctrl.reconcile(env.issues ?? [], env.total, env.revision),
   count: (payload) => payload.total,
+  changes: (event) =>
+    event.project_id != null && ISSUE_LIST_CHANGE_SUBJECTS.has(event.subject_type),
 })
 const freshnessStale = computed(() => freshness.stale.value)
 const freshnessCount = computed(() => freshness.newCount.value)

@@ -1,12 +1,12 @@
 <!--
-  PAI-470 — customer-portal project detail view, rebuilt on top of the
-  PAI-468/469 shared IssueTable + IssueFilterBar.
+  PAI-470 / PAI-476 — customer-portal project detail view, rebuilt on top
+  of the shared IssueList table target.
 
   Layout (matches /tmp/paimos-portal-projectview-v2.html):
     1. Crumb row              ← All Projects
     2. Project header card    logo · key chip · name · tagline · [+ New Request]
     3. KPI stat bar           Total · Backlog · In Progress · Done · Awaiting
-    4. Filter card            IssueFilterBar → tab strip → IssueTable
+    4. Filter card            customer filters → tab strip → IssueList
        Action column          Accept + Reject for delivered/done items when
                               user is editor; locked indicator for invoiced;
                               empty otherwise.
@@ -20,33 +20,18 @@
   preserve the working set.
 -->
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import { api, errMsg } from '@/api/client'
 import { useBranding } from '@/composables/useBranding'
-import { useAuthStore } from '@/stores/auth'
-import IssueTable from '@/components/issue-list/IssueTable.vue'
-import IssueFilterBar from '@/components/issue-list/IssueFilterBar.vue'
-import PortalIssueSidePanel from '@/components/portal/PortalIssueSidePanel.vue'
-import type {
-  ColumnDef,
-  FilterOption,
-  RowAction,
-  SharedFilterState,
-} from '@/components/issue-list/types'
+import IssueList from '@/components/IssueList.vue'
 import { useIssueQuery } from '@/composables/useIssueQuery'
 import { createPortalFetcher } from '@/composables/issueQueryFetchers'
-import AppIcon from '@/components/AppIcon.vue'
-import StatusDot from '@/components/StatusDot.vue'
-import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
-import {
-  useSidePanelPinned,
-  setSidePanelPinned,
-  setSidePanelVisible,
-} from '@/composables/useSidePanelPinned'
+import { provideIssueContext } from '@/composables/useIssueContext'
 import { formatInteger } from '@/composables/useNumberFormat'
+import type { Issue, Project, Sprint, Tag, User } from '@/types'
 
 interface PortalProject {
   id: number
@@ -80,7 +65,6 @@ interface PortalIssue {
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
-const auth = useAuthStore()
 const { branding } = useBranding()
 
 const projectId = Number(route.params.id)
@@ -89,10 +73,17 @@ const project = ref<PortalProject | null>(null)
 const issues = ref<PortalIssue[]>([])
 const totalIssues = ref(0)
 const portalIssueHasMore = ref(false)
-const portalIssueFingerprint = ref('')
-const portalIssueSelectionFingerprint = ref('')
 const loading = ref(true)
 const loadingMore = ref(false)
+
+provideIssueContext({
+  users: ref<User[]>([]),
+  allTags: ref<Tag[]>([]),
+  costUnits: ref<string[]>([]),
+  releases: ref<string[]>([]),
+  projects: ref<Project[]>([]),
+  sprints: ref<Sprint[]>([]),
+})
 
 // PAI-570: portal on the shared core. useIssueQuery (portal mode) owns fetch +
 // orchestration; a mirror watcher syncs its outputs into the existing refs so
@@ -111,8 +102,6 @@ watch(
     totalIssues.value = portalCtrl.total.value
     portalIssueHasMore.value = portalCtrl.hasMore.value
     loadingMore.value = portalCtrl.loading.value
-    portalIssueFingerprint.value = portalCtrl.serverFingerprint.value
-    portalIssueSelectionFingerprint.value = portalCtrl.selectionFingerprint.value
   },
 )
 function copyFiltersToCtrl() {
@@ -122,39 +111,33 @@ function copyFiltersToCtrl() {
   portalCtrl.query.filters.priority = [...filters.value.priority]
   portalCtrl.query.filters.tags = filters.value.tagIds.map(String)
   portalCtrl.query.search = filters.value.q
-  portalCtrl.query.sort = { key: sortCol.value, dir: sortDir.value }
 }
 function applyPortalQueryToCtrl() { copyFiltersToCtrl(); void portalCtrl.reload() }
 
 // Filter state owned by this view; mirrored to the URL on every change.
-const filters = ref<SharedFilterState>({
+const filters = ref({
   status: [],
   type: [],
   priority: [],
   tagIds: [],
   q: '',
+} as { status: string[]; type: string[]; priority: string[]; tagIds: number[]; q: string })
+
+const statusFilter = computed({
+  get: () => filters.value.status[0] ?? '',
+  set: (value: string) => { filters.value.status = value ? [value] : [] },
+})
+const typeFilter = computed({
+  get: () => filters.value.type[0] ?? '',
+  set: (value: string) => { filters.value.type = value ? [value] : [] },
+})
+const priorityFilter = computed({
+  get: () => filters.value.priority[0] ?? '',
+  set: (value: string) => { filters.value.priority = value ? [value] : [] },
 })
 
 type Tab = 'all' | 'open' | 'review' | 'accepted'
 const activeTab = ref<Tab>('all')
-
-type SortDir = 'asc' | 'desc'
-const sortCol = ref('updated_at')
-const sortDir = ref<SortDir>('desc')
-
-// PAI-471: viewport-aware column set + row-action filtering. Below
-// 720px the table drops to KEY · TITLE · STATUS · Action; Reject hides
-// (Accept stays — that's the common-case action). Matches the mobile
-// breakpoint the IssueFilterBar already uses internally.
-const MOBILE_BREAKPOINT = 720
-const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
-const isMobile = computed(() => viewportWidth.value < MOBILE_BREAKPOINT)
-function onResize() {
-  viewportWidth.value = window.innerWidth
-}
-if (typeof window !== 'undefined') {
-  window.addEventListener('resize', onResize, { passive: true })
-}
 
 // New-Request modal state
 const showRequestModal = ref(false)
@@ -171,20 +154,20 @@ const requestError = ref('')
 // "Planned / In Progress / Ready for Review / Accepted", not our
 // pipeline micro-stages. The full status set still flows into the
 // table via the cell renderer, which maps each to the same labels.
-const STATUS_OPTIONS = computed<FilterOption[]>(() => [
+const STATUS_OPTIONS = computed(() => [
   { value: 'backlog', label: t('portal.statusLabel.planned') },
   { value: 'in-progress', label: t('portal.statusLabel.inProgress') },
   { value: 'done', label: t('portal.statusLabel.readyForReview') },
   { value: 'accepted', label: t('portal.statusLabel.accepted') },
 ])
 
-const TYPE_OPTIONS = computed<FilterOption[]>(() => [
+const TYPE_OPTIONS = computed(() => [
   { value: 'ticket', label: t('portal.typeLabel.ticket') },
   { value: 'task', label: t('portal.typeLabel.task') },
   { value: 'bug', label: t('portal.typeLabel.bug') },
 ])
 
-const PRIORITY_OPTIONS: FilterOption[] = [
+const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
@@ -220,8 +203,6 @@ function readUrlState() {
     filters.value.tagIds = q.tag_ids.split(',').map((s) => Number(s)).filter((n) => !Number.isNaN(n))
   }
   if (typeof q.q === 'string') filters.value.q = q.q
-  if (typeof q.sort === 'string') sortCol.value = q.sort
-  if (typeof q.order === 'string') sortDir.value = q.order === 'asc' ? 'asc' : 'desc'
   if (typeof q.tab === 'string' && ['all', 'open', 'review', 'accepted'].includes(q.tab)) {
     activeTab.value = q.tab as Tab
   }
@@ -234,8 +215,6 @@ function writeUrlState() {
   if (filters.value.priority.length) query.priority = filters.value.priority.join(',')
   if (filters.value.tagIds.length) query.tag_ids = filters.value.tagIds.join(',')
   if (filters.value.q) query.q = filters.value.q
-  if (sortCol.value !== 'updated_at') query.sort = sortCol.value
-  if (sortDir.value !== 'desc') query.order = sortDir.value
   if (activeTab.value !== 'all') query.tab = activeTab.value
   void router.replace({ query })
 }
@@ -244,11 +223,6 @@ watch(filters, () => {
   writeUrlState()
   applyPortalQueryToCtrl()
 }, { deep: true })
-
-watch([sortCol, sortDir], () => {
-  writeUrlState()
-  applyPortalQueryToCtrl()
-})
 
 watch(activeTab, writeUrlState)
 
@@ -336,95 +310,6 @@ const kpis = computed(() => {
   return { total, backlog, inProgress, done, awaiting }
 })
 
-// ── Sort dispatch ───────────────────────────────────────────────────────
-function onSort(col: string) {
-  if (sortCol.value === col) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortCol.value = col
-    sortDir.value = 'asc'
-  }
-}
-
-// ── Accept/Reject row actions ───────────────────────────────────────────
-const canEdit = computed(() => auth.canEdit(projectId))
-
-async function acceptIssue(issue: PortalIssue) {
-  try {
-    await api.post(`/portal/issues/${issue.id}/accept`, {})
-    // Optimistic row removal — the welcome screen does the same; keep
-    // the UX consistent with v3.5.3.
-    issues.value = issues.value.filter((i) => i.id !== issue.id)
-  } catch {
-    void portalCtrl.refresh()
-  }
-}
-
-async function rejectIssue(issue: PortalIssue) {
-  try {
-    await api.post(`/portal/issues/${issue.id}/reject`, {
-      title: 'Rejected from portal',
-    })
-    issues.value = issues.value.filter((i) => i.id !== issue.id)
-  } catch {
-    void portalCtrl.refresh()
-  }
-}
-
-function rowActions(issue: PortalIssue): RowAction[] {
-  if (issue.status === 'invoiced') {
-    return [
-      {
-        key: 'locked',
-        label: t('portal.invoicedLabel'),
-        variant: 'ghost',
-        disabled: true,
-        onClick: () => {
-          /* locked */
-        },
-      },
-    ]
-  }
-  if (issue.status === 'delivered' || issue.status === 'done') {
-    if (!canEdit.value) return []
-    const actions: RowAction[] = [
-      {
-        key: 'accept',
-        label: t('portal.tabs.accepted'),
-        variant: 'primary',
-        onClick: () => void acceptIssue(issue),
-      },
-    ]
-    // PAI-471: Reject hides at <720px — accept stays (the common case);
-    // reject moves to the issue detail page on mobile.
-    if (!isMobile.value) {
-      actions.push({
-        key: 'reject',
-        label: t('portal.reject'),
-        variant: 'ghost',
-        onClick: () => void rejectIssue(issue),
-      })
-    }
-    return actions
-  }
-  return []
-}
-
-// ── Columns ─────────────────────────────────────────────────────────────
-type PortalColumnDef = ColumnDef<PortalIssue>
-
-// PAI-471: at < 720px the table renders only the four load-bearing
-// columns. We filter the full registry rather than maintaining two
-// parallel definitions so future columns don't have to remember to
-// register in both places.
-const MOBILE_COLUMN_KEYS = new Set(['issue_key', 'title', 'status'])
-
-const COLUMNS = computed<PortalColumnDef[]>(() => {
-  const full: PortalColumnDef[] = ALL_COLUMNS.value
-  if (!isMobile.value) return full
-  return full.filter((c) => MOBILE_COLUMN_KEYS.has(c.key))
-})
-
 // PAI-474: customer-friendly status labels. Maps the internal status
 // enum to four buckets a customer can reason about — "Planned",
 // "In Progress", "Ready for Review", "Accepted". The translation
@@ -458,105 +343,79 @@ function portalTypeLabel(type: string): string {
   return translated
 }
 
-const ALL_COLUMNS = computed<PortalColumnDef[]>(() => [
-  {
-    key: 'issue_key',
-    label: t('portal.table.key'),
-    sortable: true,
-    render: (issue) => issue.issue_key,
-  },
-  {
-    key: 'type',
-    label: t('portal.table.type'),
-    render: (issue) => portalTypeLabel(issue.type),
-  },
-  {
-    key: 'title',
-    label: t('portal.table.title'),
-    sortable: true,
-    render: (issue) => issue.title,
-  },
-  {
-    key: 'status',
-    label: t('portal.table.status'),
-    sortable: true,
-    render: (issue) =>
-      h('span', { class: 'pv-status' }, [
-        h(StatusDot, { status: issue.status }),
-        ` ${portalStatusLabel(issue.status)}`,
-      ]),
-  },
-  {
-    key: 'priority',
-    label: t('portal.table.priority'),
-    sortable: true,
-    render: (issue) => issue.priority,
-  },
-  {
-    key: 'accepted_at',
-    label: t('portal.table.accepted'),
-    sortable: true,
-    render: (issue) => issue.accepted_at ?? '—',
-  },
-])
-
-// PAI-474: clicking a row opens the side panel rather than navigating
-// to a separate detail route. Matches the internal-user pattern (the
-// main IssueList.vue uses IssueSidePanel the same way) and keeps the
-// customer in the project context — they can scan, peek, accept,
-// then continue scanning without losing their place.
-const sidePanelIssueId = ref<number | null>(null)
-
-// PAI-496: pin state lives in the `useSidePanelPinned` singleton (same
-// store the internal IssueSidePanel uses) so AppLayout's inset logic —
-// padding-right on `.main` driven by `pinned && visible` — kicks in
-// automatically and the portal panel shrinks the page instead of
-// overlaying it. Width comes from the shared `useSidePanelWidth`, so
-// AppLayout's offset and the panel's actual width stay in lock-step.
-const { pinned: sidePanelPinned } = useSidePanelPinned()
-function onPinnedChange(v: boolean) {
-  setSidePanelPinned(v)
-}
-// Mirror IssueList's pattern: visible whenever an issue is open OR the
-// panel is pinned (pinned-no-issue still reserves layout space so the
-// user's centred view doesn't jump as they navigate between rows).
-watch(
-  [sidePanelIssueId, sidePanelPinned],
-  ([id, pinned]) => setSidePanelVisible(!!id || pinned),
-  { immediate: true },
+const portalStatusLabels = computed<Record<string, string>>(() =>
+  Object.fromEntries(['new', 'backlog', 'in-progress', 'qa', 'done', 'delivered', 'accepted', 'invoiced', 'cancelled']
+    .map((status) => [status, portalStatusLabel(status)])),
 )
-// Leaving the portal route must release the inset, otherwise AppHeader
-// stays shrunk for the rest of the session.
-onUnmounted(() => setSidePanelVisible(false))
 
-const sidePanelIssueIds = computed(() => tabBoundIssues.value.map((i) => i.id))
+const portalTypeLabels = computed<Record<string, string>>(() =>
+  Object.fromEntries(['ticket', 'task', 'bug', 'epic', 'cost_unit', 'release', 'sprint']
+    .map((type) => [type, portalTypeLabel(type)])),
+)
 
-function onRowClick(issue: PortalIssue) {
-  sidePanelIssueId.value = issue.id
+function issueNumberFromKey(key: string): number {
+  const raw = key.split('-').pop()
+  const n = raw ? Number(raw) : NaN
+  return Number.isInteger(n) && n > 0 ? n : 0
 }
 
-function onSidePanelNavigate(id: number) {
-  sidePanelIssueId.value = id
+function portalIssueToIssue(issue: PortalIssue): Issue {
+  return {
+    id: issue.id,
+    project_id: projectId,
+    issue_number: issueNumberFromKey(issue.issue_key),
+    issue_key: issue.issue_key,
+    type: issue.type as Issue['type'],
+    parent_id: null,
+    title: issue.title,
+    description: issue.description ?? '',
+    acceptance_criteria: issue.acceptance_criteria ?? '',
+    notes: '',
+    report_summary: issue.report_summary ?? '',
+    status: issue.status as Issue['status'],
+    priority: issue.priority as Issue['priority'],
+    cost_unit: null,
+    release: null,
+    billing_type: null,
+    total_budget: null,
+    rate_hourly: null,
+    rate_lp: null,
+    estimate_hours: null,
+    estimate_lp: null,
+    ar_hours: null,
+    ar_lp: null,
+    time_override: null,
+    start_date: null,
+    end_date: null,
+    group_state: null,
+    sprint_state: null,
+    jira_id: null,
+    jira_version: null,
+    jira_text: null,
+    color: null,
+    sprint_ids: [],
+    archived: false,
+    assignee_id: null,
+    assignee: null,
+    tags: [],
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+    created_by: null,
+    created_by_name: '',
+    last_changed_by_name: '',
+    booked_hours: 0,
+    time_logged: 0,
+    time_rollup: 0,
+    time_total: 0,
+    accepted_at: issue.accepted_at,
+    accepted_by: null,
+    invoiced_at: null,
+    invoice_number: '',
+    ai_work_status: null,
+  }
 }
 
-function closeSidePanel() {
-  sidePanelIssueId.value = null
-}
-
-// PAI-479. Two-way sync sidePanelIssueId ↔ ?selected=<ISSUE_KEY>. Resolvers
-// look up the key in the portal issue list (already filtered to the
-// CUSTOMERPORTAL-tagged set the customer is allowed to see); a key outside
-// that set returns null, the sidebar stays closed, and the URL is preserved
-// untouched for the user to inspect.
-useSidebarSelectionUrl({
-  selectedIssueId: sidePanelIssueId,
-  resolveIdToKey: (id) => issues.value.find(i => i.id === id)?.issue_key ?? null,
-  resolveKeyToId: (key) => {
-    const k = key.toUpperCase()
-    return issues.value.find(i => i.issue_key.toUpperCase() === k)?.id ?? null
-  },
-  ready: () => !loading.value,
-})
+const tabBoundIssueRows = computed<Issue[]>(() => tabBoundIssues.value.map(portalIssueToIssue))
 
 // After accept / reject, refresh the list so the row's status flips
 // and the tab counts / KPIs update. The panel reloads its own copy
@@ -644,17 +503,35 @@ async function submitRequest() {
       </div>
     </div>
 
-    <!-- Filter card — PAI-474: tag filter dropped per "strip all tags"
-         operator decision; customer-friendly status labels live in the
-         dropdown options below, not in this bar's pills. -->
+    <!-- Filter card — PAI-474/476: tag filter stays disabled for customers;
+         the shared IssueList renders the table and portal side panel. -->
     <section class="pv__list" v-if="project">
-      <IssueFilterBar
-        v-model="filters"
-        :enabled-filters="['q', 'status', 'type', 'priority']"
-        :status-options="STATUS_OPTIONS"
-        :type-options="TYPE_OPTIONS"
-        :priority-options="PRIORITY_OPTIONS"
-      />
+      <div class="pv__filters">
+        <input
+          v-model="filters.q"
+          class="pv__filter-input"
+          type="search"
+          :placeholder="$t('portal.search')"
+        />
+        <select v-model="statusFilter" class="pv__filter-select">
+          <option value="">{{ $t('portal.filters.allStatus') }}</option>
+          <option v-for="option in STATUS_OPTIONS" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <select v-model="typeFilter" class="pv__filter-select">
+          <option value="">{{ $t('portal.filters.allTypes') }}</option>
+          <option v-for="option in TYPE_OPTIONS" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <select v-model="priorityFilter" class="pv__filter-select">
+          <option value="">{{ $t('portal.filters.allPriorities') }}</option>
+          <option v-for="option in PRIORITY_OPTIONS" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </div>
 
       <!-- Tab strip — counts derived from the backend-filtered set -->
       <div class="pv__tabs" role="tablist">
@@ -671,21 +548,23 @@ async function submitRequest() {
         </button>
       </div>
 
-      <IssueTable
-        :issues="tabBoundIssues"
-        :columns="COLUMNS"
-        :row-actions="(issue: any) => rowActions(issue as PortalIssue)"
-        :sort="{ col: sortCol, dir: sortDir }"
-        :loading="loading"
-        :empty-state="{ title: $t('portal.noIssues') }"
-        @sort="onSort"
-        @row-click="(issue: any) => onRowClick(issue as PortalIssue)"
+      <IssueList
+        mode="customer"
+        :project-id="projectId"
+        :issues="tabBoundIssueRows"
+        :result-total="totalIssues"
+        :result-has-more="portalIssueHasMore"
+        :loading-more="loadingMore"
+        :search-query-override="filters.q"
+        :status-labels="portalStatusLabels"
+        :type-labels="portalTypeLabels"
+        url-sync-selection
+        @accepted="onIssueAccepted"
+        @rejected="onIssueRejected"
       />
       <div
         v-if="portalHasMore"
         class="pv__load-more"
-        :data-query-fingerprint="portalIssueFingerprint || undefined"
-        :data-selection-fingerprint="portalIssueSelectionFingerprint || undefined"
       >
         <span>{{ formatInteger(issues.length) }} / {{ formatInteger(totalIssues) }}</span>
         <button type="button" class="pv__load-more-btn" :disabled="loadingMore" @click="loadMoreIssues">
@@ -693,21 +572,6 @@ async function submitRequest() {
         </button>
       </div>
     </section>
-
-    <!-- PAI-474: customer-facing slide-in detail panel. Loads from the
-         cleaned portal endpoints (no leaked cost fields) and surfaces
-         Accept / Reject in the footer. -->
-    <PortalIssueSidePanel
-      :project-id="projectId"
-      :issue-id="sidePanelIssueId"
-      :issue-ids="sidePanelIssueIds"
-      :pinned="sidePanelPinned"
-      @close="closeSidePanel"
-      @navigate="onSidePanelNavigate"
-      @update:pinned="onPinnedChange"
-      @accepted="onIssueAccepted"
-      @rejected="onIssueRejected"
-    />
 
     <!-- New-Request modal — minimal inline implementation -->
     <div v-if="showRequestModal" class="pv__modal-backdrop" @click="showRequestModal = false">
@@ -852,6 +716,24 @@ async function submitRequest() {
   padding: 1rem 1rem 0.5rem;
 }
 
+.pv__filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, 180px));
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pv__filter-input,
+.pv__filter-select {
+  min-height: 38px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: white;
+  color: var(--text, #1f2937);
+  font-size: 0.875rem;
+  padding: 0.45rem 0.65rem;
+}
+
 .pv__tabs {
   display: flex;
   gap: 0.5rem;
@@ -975,9 +857,7 @@ async function submitRequest() {
 }
 
 /* PAI-471: responsive — below 720px the KPI strip wraps to 2 cols, the
-   header stacks, and "+ New Request" goes full-width. The IssueFilterBar
-   already collapses its pills into the slide-up sheet at this
-   breakpoint per its own internal mobileBreakpoint default. */
+   header stacks, and "+ New Request" goes full-width. */
 @media (max-width: 720px) {
   .pv__header {
     flex-direction: column;
@@ -998,6 +878,9 @@ async function submitRequest() {
   }
   .pv__stat:nth-last-child(-n + 2) {
     border-bottom: none;
+  }
+  .pv__filters {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -24,65 +24,21 @@ vi.mock('@/api/client', () => ({
   errMsg: (_error: unknown, fallback: string) => fallback,
 }))
 
-vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({
-    canEdit: () => true,
-  }),
-}))
-
 vi.mock('@/composables/useBranding', () => ({
   useBranding: () => ({
     branding: ref({ logo: '/logo.png' }),
   }),
 }))
 
-vi.mock('@/composables/useSidebarSelectionUrl', () => ({
-  useSidebarSelectionUrl: vi.fn(),
-}))
-
-vi.mock('@/composables/useSidePanelPinned', () => ({
-  useSidePanelPinned: () => ({ pinned: ref(false), visible: ref(false) }),
-  setSidePanelPinned: vi.fn(),
-  setSidePanelVisible: vi.fn(),
-}))
-
-vi.mock('@/components/issue-list/IssueFilterBar.vue', () => ({
+vi.mock('@/components/IssueList.vue', () => ({
   default: {
-    props: ['modelValue'],
-    emits: ['update:modelValue'],
-    setup(props: { modelValue: Record<string, unknown> }, { emit }: { emit: (event: string, value: unknown) => void }) {
-      function applyFilter() {
-        emit('update:modelValue', { ...props.modelValue, q: 'needle' })
-      }
-      return { applyFilter }
-    },
-    template: '<button type="button" class="filter-stub" @click="applyFilter">filter</button>',
-  },
-}))
-
-vi.mock('@/components/issue-list/IssueTable.vue', () => ({
-  default: {
-    props: ['issues'],
-    emits: ['sort', 'row-click'],
+    props: ['issues', 'mode'],
     template: `
-      <div class="table-stub">
-        <button type="button" class="sort-title" @click="$emit('sort', 'title')">sort</button>
+      <div class="issue-list-stub" :data-mode="mode">
         <span class="row-count">{{ issues.length }}</span>
       </div>
     `,
   },
-}))
-
-vi.mock('@/components/portal/PortalIssueSidePanel.vue', () => ({
-  default: { template: '<div class="portal-panel-stub"></div>' },
-}))
-
-vi.mock('@/components/AppIcon.vue', () => ({
-  default: { props: ['name'], template: '<span class="icon-stub" :data-icon="name"></span>' },
-}))
-
-vi.mock('@/components/StatusDot.vue', () => ({
-  default: { props: ['status'], template: '<span class="status-dot-stub">{{ status }}</span>' },
 }))
 
 function makeIssue(id: number) {
@@ -120,7 +76,7 @@ describe('PortalProjectView IssueList v2 query windows', () => {
     localStorage.clear()
   })
 
-  it('preserves show-all window mode across portal sort and filter changes', async () => {
+  it('renders the shared IssueList and preserves show-all window mode across portal filter changes', async () => {
     // IssueList v2 controller path (the only path since PAI-595). Asserts the
     // show-all window (limit=0) is preserved across sort + filter changes.
     const issueUrls: string[] = []
@@ -168,16 +124,12 @@ describe('PortalProjectView IssueList v2 query windows', () => {
     await settle()
     expect(issueUrls[issueUrls.length - 1]).toContain('limit=0')
 
-    document.querySelector<HTMLButtonElement>('.sort-title')!.click()
-    await settle()
-    {
-      const afterSort = issueUrls[issueUrls.length - 1]
-      expect(afterSort).toContain('limit=0') // show-all preserved
-      expect(afterSort).toContain('sort=title')
-      expect(afterSort).toContain('order=asc')
-    }
+    expect(document.querySelector<HTMLElement>('.issue-list-stub')?.dataset.mode).toBe('customer')
+    expect(document.querySelector('.row-count')?.textContent).toBe('123')
 
-    document.querySelector<HTMLButtonElement>('.filter-stub')!.click()
+    const search = document.querySelector<HTMLInputElement>('.pv__filter-input')!
+    search.value = 'needle'
+    search.dispatchEvent(new Event('input'))
     await settle()
     {
       const afterFilter = issueUrls[issueUrls.length - 1]

@@ -1029,9 +1029,9 @@ func mutationSummary(row mutationLogRow) string {
 		return "Added issue relation"
 	case "ai.issue.relation.delete", "issue.relation.delete":
 		return "Removed issue relation"
-	case "ai.issue.tag.add", "issue.tag.add":
+	case "ai.issue.tag.add", "issue.tag.add", "issue.tag.bulk_add":
 		return "Added tag"
-	case "ai.issue.tag.remove", "issue.tag.remove":
+	case "ai.issue.tag.remove", "issue.tag.remove", "issue.tag.bulk_remove":
 		return "Removed tag"
 	case "ai.issue.comment.create", "issue.comment.create":
 		return "Added comment"

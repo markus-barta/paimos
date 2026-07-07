@@ -5349,6 +5349,26 @@ func migrate(db *sql.DB) error {
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_runs_active_issue
 				ON agent_runs(issue_id) WHERE status IN ('queued','running')`,
 		}},
+		// M128 / PAI-624: stamp the user who claims a queued Implement-this run.
+		// Requester/admin can still manage the run, but after queued->running the
+		// reporter path is owned by this claimer rather than every project editor.
+		{128, []string{
+			`ALTER TABLE agent_runs ADD COLUMN claimed_by INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_claimed_by ON agent_runs(claimed_by)`,
+		}},
+		// M129 / PAI-629: make the requested Implement-this provider/action
+		// explicit and auditable. Defaults preserve existing rows and omitted
+		// action requests as the current Claude Code local-CLI implementation.
+		{129, []string{
+			`ALTER TABLE agent_runs ADD COLUMN action_key TEXT NOT NULL DEFAULT 'claude_cli.implement'`,
+			`ALTER TABLE agent_runs ADD COLUMN provider_kind TEXT NOT NULL DEFAULT 'local_cli'`,
+			`ALTER TABLE agent_runs ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'claude_cli'`,
+			`ALTER TABLE agent_runs ADD COLUMN provider_label TEXT NOT NULL DEFAULT 'Claude Code'`,
+			`ALTER TABLE agent_runs ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE agent_runs ADD COLUMN run_mode TEXT NOT NULL DEFAULT 'edit'`,
+			`ALTER TABLE auto_watch_subscriptions ADD COLUMN actions_json TEXT NOT NULL DEFAULT ''`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_action_key ON agent_runs(action_key)`,
+		}},
 	}
 
 	for _, m := range migrations {
