@@ -44,7 +44,7 @@ A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* refer
 
 ## 2 · Active reference deployments
 
-Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy target for current work; pmo is historical/inactive after the BytePoets exit. The current ppm proof is the live `4.6.3-dev+e08cdbe` deployment verified again on 2026-07-07.
+Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy target for current work; pmo is historical/inactive after the BytePoets exit. The current ppm proof is the live `4.7.0` deployment verified on 2026-07-07.
 
 ### 2.1 · ppm · `pm.barta.cm`
 
@@ -58,7 +58,7 @@ Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy
 | AI assist | OpenRouter (configured), `anthropic/claude-sonnet-4.5` model |
 | OIDC | not configured (local password + TOTP) |
 | Active since | v1.x (continuously upgraded; no fresh-install in current era) |
-| Last verified runtime | 2026-07-07: `4.6.3-dev+e08cdbe` (`/api/health`, `paimos --instance ppm doctor`) |
+| Last verified runtime | 2026-07-07: `4.7.0` (`/api/health`, `paimos --instance ppm doctor`) |
 | Backup pattern | per-deploy via `scripts/deploy.sh`; `$BACKUP_ROOT` on the same host (acknowledged limitation tracked under [§3 Findings](#3--structured-findings) F-08) |
 | Audience | the maintainer + a small group; canary for every release before pmo |
 
