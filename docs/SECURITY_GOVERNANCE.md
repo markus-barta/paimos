@@ -57,7 +57,7 @@ Solo-FOSS metrics are not enterprise dashboards. The bar is **signals worth trac
 
 | Metric | Source | Target | What it signals |
 |---|---|---|---|
-| **Days since last release** | `git tag --sort=-creatordate \| head -1` + date | < 60 d (no commitment) | a project that hasn't released in a while is either stable, on hiatus, or abandoned — readers can read the signal honestly |
+| **Days since last release** | newest SemVer release tag (`git tag --sort=-creatordate \| grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \| head -1`) + date | < 60 d (no commitment) | a project that hasn't released in a while is either stable, on hiatus, or abandoned — readers can read the signal honestly |
 | **Days since last DR drill** | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) §5 last-run date | ≤ 180 d | drill staleness; if > 180 d, runbooks haven't been verified recently |
 | **Days since last incident-response tabletop** | [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) §4 last-run date | ≤ 180 d | same |
 | **Open Sev 0/1 disclosures** | `incident_log` table + `security@paimos.com` inbox | 0 (handle as they arrive per [`SECURITY.md`](../SECURITY.md)) | open high-severity incidents are the strongest negative signal a project can produce |

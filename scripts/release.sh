@@ -5,7 +5,7 @@
 #
 # Usage:
 #   scripts/release.sh patch|minor|major|<x.y.z>   # cut a release
-#   scripts/release.sh                             # dump commits since last tag, exit
+#   scripts/release.sh                             # dump commits since last release tag, exit
 #
 # After this succeeds, CI publishes (see .github/workflows/ci-v2.yml):
 #   ghcr.io/markus-barta/paimos:<x.y.z>       (immutable, use for deploys)
@@ -38,11 +38,15 @@ if [[ "${RELEASE_NO_EDIT:-}" == "1" ]]; then
   NO_EDIT=1
 fi
 
+latest_release_tag() {
+  git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true
+}
+
 git fetch --tags --quiet origin
 
-LAST_TAG=$(git tag --sort=-creatordate | head -1 || true)
+LAST_TAG=$(latest_release_tag)
 if [[ -z "$LAST_TAG" ]]; then
-  echo "error: no tags yet — create v0.1.0 manually first" >&2
+  echo "error: no semver release tags yet — create v0.1.0 manually first" >&2
   exit 1
 fi
 LAST_VERSION="${LAST_TAG#v}"

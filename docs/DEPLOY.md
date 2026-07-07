@@ -36,7 +36,7 @@ just doc-sync [tag]                      # file a "doc/site sync follow-up" tick
 Plus a read-only status helper:
 
 ```
-just status                              # last 5 tags + commits since last tag
+just status                              # last 5 release tags + commits since last release tag
 just wait-release-ci <tag>               # wait for tag workflows before verification/deploy
 ```
 
@@ -63,10 +63,11 @@ just deploy-ppm-current
 
 1. Refuses to run if working tree dirty, not on `main`, or not in sync with
    `origin/main`.
-2. If no argument: dumps commits since the last tag (all + runtime-only) and
+2. If no argument: dumps commits since the last release tag (all + runtime-only) and
    exits. Look at the output, decide patch/minor/major, re-run.
-3. Computes the new version from the last git tag (not from `VERSION` —
-   that's why `VERSION` can never drift again).
+3. Computes the new version from the last SemVer release tag (`vX.Y.Z`, not
+   operational/bookmark tags and not `VERSION` — that's why `VERSION` can never
+   drift again).
 4. Updates `VERSION`, refreshes the README version badge, prepends a draft
    entry to `docs/CHANGELOG.md` pre-seeded from commit subjects, opens
    `$EDITOR` so you can clean it up before committing. If an entry for that

@@ -7,9 +7,9 @@ default:
 # Show the current release state (last tag + commits since).
 status:
     @git fetch --tags --quiet origin
-    @echo "--- last 5 tags"
-    @git tag --sort=-creatordate | head -5
-    @last=$(git tag --sort=-creatordate | head -1); \
+    @echo "--- last 5 release tags"
+    @git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -5
+    @last=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1); \
       echo "--- commits on origin/main since $last"; \
       git log "$last..origin/main" --oneline; \
       echo "--- runtime-relevant only (backend/ frontend/src/)"; \

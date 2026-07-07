@@ -18,6 +18,10 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
+release_tags() {
+  git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'
+}
+
 usage() {
   cat >&2 <<'USAGE'
 usage: scripts/release-doc-sync.sh [--dry-run] [--yes] [--no-edit] [tag]
@@ -66,16 +70,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TAG" ]]; then
-  TAG=$(git tag --sort=-creatordate | head -1 || true)
+  TAG=$(release_tags | head -1 || true)
   if [[ -z "$TAG" ]]; then
-    echo "error: no tags exist on this repo" >&2
+    echo "error: no semver release tags exist on this repo" >&2
     exit 1
   fi
-  echo "Using latest tag: $TAG"
+  echo "Using latest release tag: $TAG"
 fi
 
 if ! git rev-parse "$TAG" >/dev/null 2>&1; then
   echo "error: tag $TAG does not exist" >&2
+  exit 1
+fi
+if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "error: tag $TAG is not a semver release tag (expected vX.Y.Z)" >&2
   exit 1
 fi
 TITLE="Doc/site sync follow-up — $TAG"
@@ -104,8 +112,9 @@ if [[ $DRY_RUN -eq 0 ]]; then
   fi
 fi
 
-# Previous tag — the line right after $TAG in chronological order.
-PREV=$(git tag --sort=-creatordate | awk -v t="$TAG" '$0==t{getline; print; exit}')
+# Previous release tag — the line right after $TAG in chronological order,
+# ignoring operational/bookmark tags such as pai-open-start-*.
+PREV=$(release_tags | awk -v t="$TAG" '$0==t{getline; print; exit}')
 if [[ -z "$PREV" ]]; then
   echo "warning: no prior tag found before $TAG; falling back to HEAD~20 for diff range" >&2
   PREV="HEAD~20"
