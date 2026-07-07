@@ -73,7 +73,7 @@ func findParentHandler(ax *aiActionContext) (any, string, int, int, string, erro
 
 	tree := renderIssueTree(rows, false)
 
-	systemPrompt := resolveActionPrompt("find_parent")
+	systemPrompt := resolveActionPromptWithPreset(ax, "find_parent")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

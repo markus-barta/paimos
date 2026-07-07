@@ -39,6 +39,20 @@ var agentRunActions = map[string]agentRunAction{
 		ProviderLabel: "Codex CLI",
 		RunMode:       "edit",
 	},
+	"openrouter_draft.implement": {
+		ActionKey:     "openrouter_draft.implement",
+		ProviderKind:  "hosted_model",
+		ProviderID:    "openrouter",
+		ProviderLabel: "OpenRouter Draft",
+		RunMode:       "draft",
+	},
+	"local_model_draft.implement": {
+		ActionKey:     "local_model_draft.implement",
+		ProviderKind:  "local_model",
+		ProviderID:    "local_model",
+		ProviderLabel: "Local Model Draft",
+		RunMode:       "draft",
+	},
 }
 
 func resolveAgentRunAction(actionKey string) (agentRunAction, bool) {
@@ -52,13 +66,15 @@ func resolveAgentRunAction(actionKey string) (agentRunAction, bool) {
 
 func agentActionCapability(action agentRunAction, canTest, canDeploy bool) sse.ActionCapability {
 	return sse.ActionCapability{
-		ActionKey:    action.ActionKey,
-		ProviderKind: action.ProviderKind,
-		ProviderID:   action.ProviderID,
-		Label:        action.ProviderLabel,
-		RunModes:     []string{action.RunMode},
-		CanTest:      canTest,
-		CanDeploy:    canDeploy,
+		ActionKey:      action.ActionKey,
+		ProviderKind:   action.ProviderKind,
+		ProviderID:     action.ProviderID,
+		Label:          action.ProviderLabel,
+		RunModes:       []string{action.RunMode},
+		CanTest:        canTest,
+		CanDeploy:      canDeploy,
+		Available:      true,
+		RequiresRunner: action.ProviderKind == "local_cli",
 	}
 }
 
@@ -79,9 +95,17 @@ func presenceActions(p sse.Presence) []sse.ActionCapability {
 
 func actionCapabilitiesContain(actions []sse.ActionCapability, actionKey string) bool {
 	for _, action := range actions {
-		if action.ActionKey == actionKey {
+		if action.ActionKey == actionKey && actionCapabilityAvailable(action) {
 			return true
 		}
 	}
 	return false
+}
+
+func isDraftAgentRunAction(action agentRunAction) bool {
+	return action.RunMode == "draft"
+}
+
+func actionCapabilityAvailable(action sse.ActionCapability) bool {
+	return action.Available || strings.TrimSpace(action.UnavailableReason) == ""
 }

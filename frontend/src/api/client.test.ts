@@ -148,6 +148,29 @@ describe('api client 401 interceptor', () => {
     }
   })
 
+  it('shows request id for AI invalid-response errors without raw output', async () => {
+    const rawSentinel = 'RAW_MODEL_OUTPUT_SENTINEL_DO_NOT_EXPOSE'
+    stubFetch(async () => makeResponse(502, {
+      type: 'https://paimos.com/errors/ai_action_invalid_response',
+      title: 'Bad Gateway',
+      status: 502,
+      detail: 'AI returned an invalid response. Try again or choose a different model.',
+      code: 'ai_action_invalid_response',
+      request_id: 'ai-req-1',
+    }))
+
+    let caught: unknown
+    try {
+      await api.post('/ai/action', { action: 'detect_duplicates' })
+    } catch (e) {
+      caught = e
+    }
+
+    const message = errMsg(caught, 'AI action failed')
+    expect(message).toBe('AI returned an invalid response. Try again or choose a different model. Request ID: ai-req-1')
+    expect(message).not.toContain(rawSentinel)
+  })
+
   it('uses Problem Details code for the must-change-password gate', async () => {
     stubFetch(async () => makeResponse(403, {
       type: 'https://paimos.com/errors/must_change_password',

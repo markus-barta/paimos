@@ -42,8 +42,8 @@ type suggestEnhancementBody struct {
 type suggestEnhancementItem struct {
 	Title       string `json:"title"`
 	Body        string `json:"body"`
-	Impact      string `json:"impact"`        // low | med | high
-	TargetField string `json:"target_field"`  // ac | notes
+	Impact      string `json:"impact"`       // low | med | high
+	TargetField string `json:"target_field"` // ac | notes
 }
 
 // subActionGuidance gives the model a one-line lens per sub-action.
@@ -69,7 +69,7 @@ func suggestEnhancementHandler(ax *aiActionContext) (any, string, int, int, stri
 	// keeps the editable surface manageable — admins tune ONE
 	// prompt that covers all 6 sub-categories, and the lens is
 	// substituted at call time.
-	base := resolveActionPrompt("suggest_enhancement")
+	base := resolveActionPromptWithPreset(ax, "suggest_enhancement")
 	systemPrompt := base + "\n\nSub-category lens for this call: " + guidance
 
 	var u strings.Builder

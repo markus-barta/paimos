@@ -58,6 +58,8 @@ interface OptimizeArgs {
   text: string
   issueId?: number
   onAccept: (text: string) => void
+  context?: Record<string, unknown>
+  options?: AiActionOptions
 }
 
 interface OptimizeResponse {
@@ -67,6 +69,7 @@ interface OptimizeResponse {
   prompt_tokens: number
   completion_tokens: number
   finish_reason: string
+  options?: AiActionResolvedOptions
 }
 
 // PAI-164: response envelope from the /api/ai/action dispatcher.
@@ -81,6 +84,38 @@ interface ActionEnvelope {
   prompt_tokens: number
   completion_tokens: number
   finish_reason: string
+  options?: AiActionResolvedOptions
+}
+
+interface AiActionOptions {
+  profile_id?: string
+  profile?: string
+  model_profile?: string
+  model_id?: string
+  model?: string
+  effort?: string
+  prompt_preset?: string
+  prompt_preset_ref?: string
+  context_pack?: string
+}
+
+interface AiActionResolvedOptions {
+  profile_id: string
+  model: string
+  effort: string
+  prompt_preset_ref: string
+  prompt_preset_label?: string
+  context_pack: string
+  context_pack_label?: string
+  context_truncated?: boolean
+  context_sources?: AiContextSource[]
+}
+
+interface AiContextSource {
+  kind: string
+  label: string
+  count?: number
+  truncated?: boolean
 }
 
 interface AiOverlayState {
@@ -96,6 +131,14 @@ interface AiOverlayState {
   retrying: boolean
   promptTokens: number
   completionTokens: number
+  executionProfileId: string
+  executionEffort: string
+  promptPresetRef: string
+  promptPresetLabel: string
+  contextPack: string
+  contextPackLabel: string
+  contextTruncated: boolean
+  contextSources: AiContextSource[]
 }
 
 export interface AiOptimizeActivity {
@@ -129,6 +172,14 @@ const overlay = reactive<AiOverlayState>({
   retrying: false,
   promptTokens: 0,
   completionTokens: 0,
+  executionProfileId: '',
+  executionEffort: '',
+  promptPresetRef: '',
+  promptPresetLabel: '',
+  contextPack: '',
+  contextPackLabel: '',
+  contextTruncated: false,
+  contextSources: [],
 })
 
 // Stash for Retry. Cleared on Reject/Accept.
@@ -177,6 +228,8 @@ async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
       field: args.field,
       text: args.text,
       issue_id: args.issueId ?? 0,
+      ...(args.context ? { params: args.context } : {}),
+      ...(args.options ? { options: args.options } : {}),
     },
     { timeoutMs: OPTIMIZE_TIMEOUT_MS },
   )
@@ -187,6 +240,7 @@ async function callOptimize(args: OptimizeArgs): Promise<OptimizeResponse> {
     prompt_tokens: env.prompt_tokens,
     completion_tokens: env.completion_tokens,
     finish_reason: env.finish_reason,
+    options: env.options,
   }
 }
 
@@ -217,6 +271,14 @@ function resetOverlayState() {
   overlay.retrying = false
   overlay.promptTokens = 0
   overlay.completionTokens = 0
+  overlay.executionProfileId = ''
+  overlay.executionEffort = ''
+  overlay.promptPresetRef = ''
+  overlay.promptPresetLabel = ''
+  overlay.contextPack = ''
+  overlay.contextPackLabel = ''
+  overlay.contextTruncated = false
+  overlay.contextSources = []
 }
 
 async function run(args: OptimizeArgs): Promise<void> {
@@ -255,6 +317,14 @@ async function run(args: OptimizeArgs): Promise<void> {
     overlay.retrying = false
     overlay.promptTokens = r.prompt_tokens
     overlay.completionTokens = r.completion_tokens
+    overlay.executionProfileId = r.options?.profile_id ?? ''
+    overlay.executionEffort = r.options?.effort ?? ''
+    overlay.promptPresetRef = r.options?.prompt_preset_ref ?? ''
+    overlay.promptPresetLabel = r.options?.prompt_preset_label ?? ''
+    overlay.contextPack = r.options?.context_pack ?? ''
+    overlay.contextPackLabel = r.options?.context_pack_label ?? ''
+    overlay.contextTruncated = r.options?.context_truncated === true
+    overlay.contextSources = r.options?.context_sources ?? []
     overlay.visible = true
   } catch (e) {
     // 503s coming back from the backend mean either "not configured"
@@ -311,6 +381,8 @@ async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
         field: args.field,
         text: args.text,
         issue_id: args.issueId ?? 0,
+        ...(args.context ? { params: args.context } : {}),
+        ...(args.options ? { options: args.options } : {}),
       },
       { timeoutMs: OPTIMIZE_TIMEOUT_MS },
     )
@@ -326,6 +398,14 @@ async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
     overlay.retrying = false
     overlay.promptTokens = env.prompt_tokens
     overlay.completionTokens = env.completion_tokens
+    overlay.executionProfileId = env.options?.profile_id ?? ''
+    overlay.executionEffort = env.options?.effort ?? ''
+    overlay.promptPresetRef = env.options?.prompt_preset_ref ?? ''
+    overlay.promptPresetLabel = env.options?.prompt_preset_label ?? ''
+    overlay.contextPack = env.options?.context_pack ?? ''
+    overlay.contextPackLabel = env.options?.context_pack_label ?? ''
+    overlay.contextTruncated = env.options?.context_truncated === true
+    overlay.contextSources = env.options?.context_sources ?? []
     overlay.visible = true
     // The accept callback uses pendingArgs.onAccept; copy across.
     pendingArgs = {
@@ -334,6 +414,8 @@ async function runRewriteAction(args: RewriteActionArgs): Promise<void> {
       text: args.text,
       issueId: args.issueId,
       onAccept: args.onAccept,
+      context: args.context,
+      options: args.options,
     }
   } catch (e) {
     if (e instanceof ApiError && e.status === 503) {
@@ -357,6 +439,14 @@ async function retry(): Promise<void> {
     const r = await callOptimize(pendingArgs)
     overlay.optimized = r.optimized
     overlay.modelName = r.model
+    overlay.executionProfileId = r.options?.profile_id ?? ''
+    overlay.executionEffort = r.options?.effort ?? ''
+    overlay.promptPresetRef = r.options?.prompt_preset_ref ?? ''
+    overlay.promptPresetLabel = r.options?.prompt_preset_label ?? ''
+    overlay.contextPack = r.options?.context_pack ?? ''
+    overlay.contextPackLabel = r.options?.context_pack_label ?? ''
+    overlay.contextTruncated = r.options?.context_truncated === true
+    overlay.contextSources = r.options?.context_sources ?? []
   } catch (e) {
     lastError.value = errMsg(e, 'Optimization failed')
   } finally {

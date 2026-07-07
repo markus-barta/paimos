@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 129
+const latestSchemaVersion = 132
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -79,6 +79,59 @@ func TestSchemaAgentRunsProviderColumns(t *testing.T) {
 	}
 	if !columnExists(t, db, "auto_watch_subscriptions", "actions_json") {
 		t.Fatal("expected auto_watch_subscriptions.actions_json to exist (PAI-629 / M129)")
+	}
+}
+
+func TestSchemaAICallsExecutionOptionColumns(t *testing.T) {
+	db := openTestDB(t)
+	for _, col := range []string{"profile_id", "effort", "prompt_preset_ref", "context_pack"} {
+		if !columnExists(t, db, "ai_calls", col) {
+			t.Fatalf("expected ai_calls.%s to exist (PAI-649 / M130)", col)
+		}
+	}
+}
+
+func TestSchemaAgentRunsDraftProviderColumns(t *testing.T) {
+	db := openTestDB(t)
+	for _, col := range []string{
+		"profile_id", "effort", "prompt_preset_ref", "context_pack",
+		"context_truncated", "context_sources_json", "prompt_tokens",
+		"completion_tokens", "finish_reason",
+	} {
+		if !columnExists(t, db, "agent_runs", col) {
+			t.Fatalf("expected agent_runs.%s to exist (PAI-657 / M131)", col)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO projects(name, key) VALUES('Draft Status Project', 'DSP')`); err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+	res, err := db.Exec(`INSERT INTO issues(project_id, issue_number, type, title) VALUES(1, 1, 'ticket', 'Draft status')`)
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO agent_runs(issue_id, status, run_mode, action_key, provider_kind, provider_id, provider_label)
+		VALUES(?, 'drafted', 'draft', 'openrouter_draft.implement', 'hosted_model', 'openrouter', 'OpenRouter Draft')
+	`, issueID); err != nil {
+		t.Fatalf("expected drafted to be an allowed agent_runs.status: %v", err)
+	}
+	if !columnExists(t, db, "ai_settings", "base_url") {
+		t.Fatal("expected ai_settings.base_url to exist (PAI-658 / M131)")
+	}
+}
+
+func TestSchemaAIDefaultsAndDraftHandoffColumns(t *testing.T) {
+	db := openTestDB(t)
+	for _, col := range []string{"source_draft_run_id", "followup_run_id"} {
+		if !columnExists(t, db, "agent_runs", col) {
+			t.Fatalf("expected agent_runs.%s to exist (PAI-665 / M132)", col)
+		}
+	}
+	for _, col := range []string{"ai_defaults_json", "ai_policy_json"} {
+		if !columnExists(t, db, "projects", col) {
+			t.Fatalf("expected projects.%s to exist (PAI-666 / M132)", col)
+		}
 	}
 }
 

@@ -192,11 +192,11 @@ vars — so this section is reference, not tuning.
 
 `ai_settings` (M74, singleton row) holds:
 
-- `enabled`, `provider` (only `openrouter` ships today; PAI-122
-  reserves the field for local-model backends), `model` (the
-  OpenRouter model slug — e.g. `anthropic/claude-sonnet-4.5`),
-  `api_key`, `optimize_instruction` (admin-editable preface to the
-  Optimize action's wrapper).
+- `enabled`, `provider` (`openrouter` or `local_model`), `model`
+  (provider model slug — e.g. `anthropic/claude-sonnet-4.5`),
+  `base_url` for OpenAI-compatible local endpoints, `api_key` when the
+  provider needs one, and `optimize_instruction` (admin-editable
+  preface to the Optimize action's wrapper).
 
 Set them from **Settings → AI**:
 - **Test connection** runs a fixed-prompt smoke test against the
@@ -208,6 +208,42 @@ Set them from **Settings → AI**:
   Value, Fastest, Cheapest, Open-weights, Free. Frontier picks are
   vendor-diverse (one model from each of Anthropic / OpenAI / xAI /
   Google). Manual model-id input stays always-visible.
+
+### Execution controls
+
+The AI control-plane path resolves user choices before a request starts:
+
+- **Profile/model**: Fast, Balanced, Deep, or an admin/project default,
+  resolved to the configured provider/model.
+- **Effort**: low, standard, or deep where the provider/action supports it.
+- **Prompt preset**: Default or a project knowledge entry explicitly marked as
+  an AI prompt preset. Prompt bodies are not returned in options or activity
+  payloads.
+- **Context pack**: issue-only, project knowledge, retrieved context, or
+  repo-aware context where project anchors exist. Responses include safe source
+  metadata and truncation flags, not raw context bodies.
+
+The same metadata is stored for AI action audit rows and Implement-this runs so
+activity views can explain what ran without exposing prompts, API keys, model
+responses, or local environment values.
+
+Project settings add a project-level AI defaults section. A project can define
+global defaults for profile, effort, prompt preset, context pack, and preferred
+provider class; advanced JSON scopes can override those defaults per action,
+run action, or project agent. The backend accepts IDs and safe refs only, for
+example `default` or `kb:runbook:release_checklist`, and rejects values that
+look like secrets.
+
+Project AI policy can disable hosted draft providers and/or local-model draft
+providers for that project. Disabled providers remain visible in the catalog as
+unavailable with a policy reason, so users can see why Draft is blocked.
+
+`GET /api/ai/execution-options` is the shared catalog for these controls. It
+returns profiles, effort choices, prompt presets, safe PPM knowledge
+suggestions, context packs, draft providers, and `selector_defaults` for action
+menus, issue rows, and the issue AI Workbench. Selector defaults, project
+policy, and knowledge suggestions are IDs/labels/status/revision only; user
+selector changes stay local unless saved as project defaults.
 
 ### Actions
 
@@ -369,10 +405,14 @@ operators see the full chain in `docker compose logs paimos`.
 
 ### Operational guidance
 
-- The `api_key` is stored unencrypted in the SQLite database. Keep
-  the data volume on encrypted storage if your threat model requires
-  that — the rest of the secrets surface (session cookies, OIDC
-  client secret) has the same property.
+- Provider API keys are encrypted at rest in SQLite when saved through
+  Settings. Legacy plaintext rows are still readable as a migration
+  fallback until the next save clears them. Keep the data volume on
+  encrypted storage if your threat model requires defense in depth.
+- `local_model` uses `base_url` for an OpenAI-compatible endpoint
+  such as an Ollama, LM Studio, llama.cpp, or internal gateway URL.
+  The UI and draft-provider capability payload strip userinfo, query
+  strings, and fragments from displayed endpoint labels.
 - Token cost is on the operator's OpenRouter account. The optimize
   endpoint caps input at 32 KiB and output at ~3000 tokens per call;
   per-user spend is bounded by `PAIMOS_AI_DAILY_CAP_TOKENS`.

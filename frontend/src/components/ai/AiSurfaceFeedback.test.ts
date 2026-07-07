@@ -9,6 +9,7 @@ describe('AiSurfaceFeedback', () => {
     const aiAction = useAiAction()
     aiAction.reset()
     aiAction.clearError()
+    aiAction.executionOptions.value = null
     document.body.innerHTML = ''
   })
 
@@ -96,6 +97,53 @@ describe('AiSurfaceFeedback', () => {
       intent: 'replace-text',
       values: { text: 'Neutralized customer note.' },
     }))
+    await mounted.unmount()
+  })
+
+  it('shows resolved execution metadata on action results', async () => {
+    const aiAction = useAiAction()
+    aiAction.executionOptions.value = {
+      profiles: [
+        {
+          id: 'deep',
+          label: 'Deep',
+          provider: 'test',
+          model: 'test/model',
+          effort: 'deep',
+          speed_label: 'Slower',
+          cost_label: 'Higher',
+        },
+      ],
+      efforts: ['deep'],
+      action_defaults: {},
+    }
+    aiAction.result.value = {
+      hostKey: 'issue-detail:1:record',
+      action: 'estimate_effort',
+      field: 'record',
+      fieldLabel: 'Issue record',
+      issueId: 1,
+      body: { hours: 6, lp: 1 },
+      options: {
+        profile_id: 'deep',
+        model: 'test/model',
+        effort: 'deep',
+        prompt_preset_ref: 'kb:memory:spec_writer@rev123',
+        prompt_preset_label: 'Spec Writer',
+        context_pack: 'knowledge',
+        context_pack_label: 'Project knowledge',
+        context_truncated: true,
+      },
+      sourceText: '',
+      onAccept: () => undefined,
+    } as any
+
+    const mounted = await mountComponent(AiSurfaceFeedback, { hostKey: 'issue-detail:1:record' })
+
+    expect(mounted.el.textContent).toContain('Profile: Deep')
+    expect(mounted.el.textContent).toContain('Effort: Deep')
+    expect(mounted.el.textContent).toContain('Prompt: Spec Writer')
+    expect(mounted.el.textContent).toContain('Context: Project knowledge (truncated)')
     await mounted.unmount()
   })
 })

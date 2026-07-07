@@ -53,6 +53,7 @@ import (
 type aiTestRequest struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
 	APIKey   string `json:"api_key"`
 }
 
@@ -61,13 +62,13 @@ type aiTestRequest struct {
 // (the joke is part of the success signal).
 type aiTestResponse struct {
 	OK               bool   `json:"ok"`
-	Message          string `json:"message"`           // human-readable banner
-	ResponseText     string `json:"response_text"`     // model's funny line
-	Model            string `json:"model"`             // upstream's reported model
+	Message          string `json:"message"`       // human-readable banner
+	ResponseText     string `json:"response_text"` // model's funny line
+	Model            string `json:"model"`         // upstream's reported model
 	LatencyMs        int64  `json:"latency_ms"`
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
-	Marker           string `json:"marker"`            // "OK" | "FAIL" | ""
+	Marker           string `json:"marker"` // "OK" | "FAIL" | ""
 }
 
 const (
@@ -208,6 +209,7 @@ func AITestConnection(w http.ResponseWriter, r *http.Request) {
 	resp, err := provider.Optimize(callCtx, ai.OptimizeRequest{
 		Model:           req.Model,
 		APIKey:          req.APIKey,
+		BaseURL:         req.BaseURL,
 		SystemPrompt:    aiTestSystemPrompt,
 		UserPrompt:      aiTestUserPrompt,
 		MaxOutputTokens: aiTestMaxTokens,

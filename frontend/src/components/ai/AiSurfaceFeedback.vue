@@ -60,10 +60,29 @@ const resultSummary = computed(() => {
     optimizedText: (actionResult.value.body as any)?.optimized ?? (actionResult.value.body as any)?.optimized_text ?? '',
   })
 })
+const actionResultMetadata = computed(() => {
+  const opts = actionResult.value?.options
+  if (!opts) return []
+  const profile = aiAction.executionOptions.value?.profiles.find(p => p.id === opts.profile_id)
+  const meta: string[] = []
+  if (opts.profile_id) meta.push(`Profile: ${profile?.label ?? opts.profile_id}`)
+  if (opts.effort) meta.push(`Effort: ${labelize(opts.effort)}`)
+  if (opts.prompt_preset_ref && opts.prompt_preset_ref !== 'default') {
+    meta.push(`Prompt: ${opts.prompt_preset_label || opts.prompt_preset_ref}`)
+  }
+  if (opts.context_pack && opts.context_pack !== 'issue') {
+    meta.push(`Context: ${opts.context_pack_label || opts.context_pack}${opts.context_truncated ? ' (truncated)' : ''}`)
+  }
+  return meta
+})
 const modalShapeAction = computed(() => {
   const action = actionResult.value?.action
   return action === 'suggest_enhancement' || action === 'spec_out' || action === 'generate_subtasks' || action === 'ui_generation'
 })
+
+function labelize(value: string): string {
+  return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
 
 const actionDecision = computed(() => {
   const r = actionResult.value
@@ -260,6 +279,7 @@ async function undoLastApply() {
       :action-key="actionResult.action"
       :title="t('ai.resultTitle', { action: actionResult.fieldLabel || actionResult.action })"
       :summary="resultSummary"
+      :metadata="actionResultMetadata"
       :details-label="t('ai.details')"
       :details-mode="modalShapeAction ? 'modal' : 'inline'"
       :primary="actionDecision?.primary"
@@ -284,6 +304,7 @@ async function undoLastApply() {
         <div v-else class="ai-surface-detail__meta">
           <span>{{ t('ai.modelLabel') }}: {{ actionResult.model || '—' }}</span>
           <span>{{ t('ai.tokensLabel') }}: {{ (actionResult.promptTokens ?? 0) + (actionResult.completionTokens ?? 0) }}</span>
+          <span v-for="item in actionResultMetadata" :key="item">{{ item }}</span>
         </div>
         <template v-if="actionResult.outcome === 'no_op'">
           <p class="ai-inline-noop">
@@ -348,6 +369,13 @@ async function undoLastApply() {
       :optimized="optimizeOverlay.optimized"
       :field-label="optimizeOverlay.fieldLabel"
       :model-name="optimizeOverlay.modelName"
+      :execution-profile-id="optimizeOverlay.executionProfileId"
+      :execution-effort="optimizeOverlay.executionEffort"
+      :prompt-preset-ref="optimizeOverlay.promptPresetRef"
+      :prompt-preset-label="optimizeOverlay.promptPresetLabel"
+      :context-pack="optimizeOverlay.contextPack"
+      :context-pack-label="optimizeOverlay.contextPackLabel"
+      :context-truncated="optimizeOverlay.contextTruncated"
       :retrying="optimizeOverlay.retrying"
       @accept="aiOptimize.accept()"
       @reject="aiOptimize.reject()"

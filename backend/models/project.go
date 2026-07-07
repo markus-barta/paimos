@@ -31,16 +31,16 @@ type Project struct {
 	// CustomerName is the linked customer's display name, populated by
 	// list / detail handlers when CustomerID is set. Omitted when nil so
 	// the JSON stays tight.
-	CustomerName string `json:"customer_name,omitempty"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	CustomerName     string `json:"customer_name,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 	IssueCount       int    `json:"issue_count,omitempty"`
 	LogoPath         string `json:"logo_path"`
 	LastActivity     string `json:"last_activity"`
 	OpenIssueCount   int    `json:"open_issue_count"`
 	DoneIssueCount   int    `json:"done_issue_count"`
 	ActiveIssueCount int    `json:"active_issue_count"`
-	Tags             []Tag    `json:"tags"`
+	Tags             []Tag  `json:"tags"`
 	// RateHourly / RateLp are the project-level overrides (NULL = inherit).
 	RateHourly *float64 `json:"rate_hourly"`
 	RateLp     *float64 `json:"rate_lp"`
@@ -48,7 +48,29 @@ type Project struct {
 	// quote: the project override when set, else the linked customer's
 	// rate, else nil. RateInherited is true when the effective value comes
 	// from the customer (PAI-54).
-	EffectiveRateHourly *float64 `json:"effective_rate_hourly"`
-	EffectiveRateLp     *float64 `json:"effective_rate_lp"`
-	RateInherited       bool     `json:"rate_inherited"`
+	EffectiveRateHourly *float64          `json:"effective_rate_hourly"`
+	EffectiveRateLp     *float64          `json:"effective_rate_lp"`
+	RateInherited       bool              `json:"rate_inherited"`
+	AIDefaults          ProjectAIDefaults `json:"ai_defaults,omitempty"`
+	AIPolicy            ProjectAIPolicy   `json:"ai_policy,omitempty"`
+}
+
+type ProjectAIDefaultSet struct {
+	ProfileID              string `json:"profile_id,omitempty"`
+	Effort                 string `json:"effort,omitempty"`
+	PromptPresetRef        string `json:"prompt_preset_ref,omitempty"`
+	ContextPack            string `json:"context_pack,omitempty"`
+	PreferredProviderClass string `json:"preferred_provider_class,omitempty"`
+}
+
+type ProjectAIDefaults struct {
+	Global  ProjectAIDefaultSet            `json:"global,omitempty"`
+	Actions map[string]ProjectAIDefaultSet `json:"actions,omitempty"`
+	Runs    map[string]ProjectAIDefaultSet `json:"runs,omitempty"`
+	Agents  map[string]ProjectAIDefaultSet `json:"agents,omitempty"`
+}
+
+type ProjectAIPolicy struct {
+	DisableHostedDraft     bool `json:"disable_hosted_draft,omitempty"`
+	DisableLocalModelDraft bool `json:"disable_local_model_draft,omitempty"`
 }

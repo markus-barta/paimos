@@ -3,8 +3,8 @@ package handlers_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
@@ -180,7 +180,7 @@ func TestAIListIssueActivityAndSelfExport(t *testing.T) {
 			RequestID   string `json:"request_id"`
 			ActionKey   string `json:"action_key"`
 			Outcome     string `json:"outcome"`
-			OnUserStack bool `json:"on_user_stack"`
+			OnUserStack bool   `json:"on_user_stack"`
 		} `json:"rows"`
 		Count int `json:"count"`
 	}
@@ -208,6 +208,91 @@ func TestAIListIssueActivityAndSelfExport(t *testing.T) {
 	assertStatus(t, exportResp, http.StatusOK)
 	if got := exportResp.Header.Get("Content-Type"); len(got) < 8 || got[:8] != "text/csv" {
 		t.Fatalf("expected csv content-type, got %q", got)
+	}
+}
+
+func TestAIListIssueActivityIncludesAgentRuns(t *testing.T) {
+	ts := newTestServer(t)
+	var adminID int64
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID); err != nil {
+		t.Fatalf("lookup admin id: %v", err)
+	}
+	projectID := responseID(t, ts.post(t, "/api/projects", ts.adminCookie, map[string]any{
+		"name": "AI Activity Project",
+		"key":  "AIAR",
+	}))
+	issueID := responseID(t, ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title": "AI activity issue",
+		"type":  "task",
+	}))
+	requestID := "req-activity-action"
+	seedAICall(t, adminID, issueID, requestID)
+	updateResp := putWithHeaders(t, ts, "/api/issues/"+itoa(issueID), ts.adminCookie, map[string]any{
+		"estimate_hours": 3,
+	}, map[string]string{
+		"X-PAIMOS-AI-Request-Id": requestID,
+		"X-PAIMOS-AI-Action":     "estimate_effort",
+	})
+	assertStatus(t, updateResp, http.StatusOK)
+
+	res, err := db.DB.Exec(`
+		INSERT INTO agent_runs(
+			issue_id, project_id, requested_by,
+			action_key, provider_kind, provider_id, provider_label, model, run_mode,
+			profile_id, effort, prompt_preset_ref, context_pack,
+			agent_name, status, tests_summary, created_at, started_at, finished_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),datetime('now'))
+	`, issueID, projectID, adminID,
+		"openrouter_draft.implement", "hosted_model", "openrouter", "OpenRouter Draft", "test/draft", "draft",
+		"balanced", "standard", "default", "knowledge",
+		"codex", "drafted", "AI draft generated; no local tests were run.")
+	if err != nil {
+		t.Fatalf("seed agent run: %v", err)
+	}
+	runID, _ := res.LastInsertId()
+
+	resp := ts.get(t, "/api/issues/"+itoa(issueID)+"/ai-activity", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	var body struct {
+		Rows []struct {
+			Kind          string `json:"kind"`
+			RunID         int64  `json:"run_id"`
+			ActionKey     string `json:"action_key"`
+			Status        string `json:"status"`
+			ProviderLabel string `json:"provider_label"`
+			ProfileID     string `json:"profile_id"`
+			Effort        string `json:"effort"`
+			ContextPack   string `json:"context_pack"`
+			AgentName     string `json:"agent_name"`
+		} `json:"rows"`
+		Count int `json:"count"`
+	}
+	decode(t, resp, &body)
+	if body.Count != 2 {
+		t.Fatalf("activity count=%d rows=%+v, want AI action + agent run", body.Count, body.Rows)
+	}
+	foundRun := false
+	for _, row := range body.Rows {
+		if row.Kind != "agent_run" {
+			continue
+		}
+		foundRun = true
+		if row.RunID != runID || row.ActionKey != "openrouter_draft.implement" ||
+			row.Status != "drafted" || row.ProviderLabel != "OpenRouter Draft" ||
+			row.ProfileID != "balanced" || row.Effort != "standard" ||
+			row.ContextPack != "knowledge" || row.AgentName != "codex" {
+			t.Fatalf("agent run activity row = %+v", row)
+		}
+	}
+	if !foundRun {
+		t.Fatalf("missing agent_run row: %+v", body.Rows)
+	}
+
+	resp = ts.get(t, "/api/issues/"+itoa(issueID)+"/ai-activity?kind=agent_run&status=drafted&provider=openrouter&agent=codex", ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &body)
+	if body.Count != 1 || body.Rows[0].Kind != "agent_run" || body.Rows[0].RunID != runID {
+		t.Fatalf("filtered activity rows = %+v, want only run %d", body.Rows, runID)
 	}
 }
 

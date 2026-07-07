@@ -83,6 +83,7 @@ type AISettings struct {
 	Enabled             bool   `json:"enabled"`
 	Provider            string `json:"provider"`
 	Model               string `json:"model"`
+	BaseURL             string `json:"base_url"`
 	APIKey              string `json:"api_key"`
 	OptimizeInstruction string `json:"optimize_instruction"`
 	UpdatedAt           string `json:"updated_at"`
@@ -104,9 +105,9 @@ func LoadAISettings() (AISettings, error) {
 	var plaintextKey string
 	var encryptedKey []byte
 	err := db.DB.QueryRow(
-		`SELECT enabled, provider, model, api_key, api_key_encrypted, optimize_instruction, updated_at
+		`SELECT enabled, provider, model, COALESCE(base_url,''), api_key, api_key_encrypted, optimize_instruction, updated_at
 		 FROM ai_settings WHERE id = 1`,
-	).Scan(&enabled, &s.Provider, &s.Model, &plaintextKey, &encryptedKey, &s.OptimizeInstruction, &s.UpdatedAt)
+	).Scan(&enabled, &s.Provider, &s.Model, &s.BaseURL, &plaintextKey, &encryptedKey, &s.OptimizeInstruction, &s.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Migration M74 seeds id=1 on first apply, so this should not
 		// happen — but if a hand-edited DB drops the row, we don't want
@@ -152,8 +153,11 @@ func (s AISettings) AvailableForOptimize() bool {
 	if !s.Enabled {
 		return false
 	}
-	if s.Provider == "openrouter" {
+	switch s.Provider {
+	case "openrouter":
 		return s.APIKey != "" && s.Model != ""
+	case "local_model":
+		return s.BaseURL != "" && s.Model != ""
 	}
 	return false
 }
@@ -177,6 +181,7 @@ type aiSettingsPayload struct {
 	Enabled             bool    `json:"enabled"`
 	Provider            string  `json:"provider"`
 	Model               string  `json:"model"`
+	BaseURL             string  `json:"base_url"`
 	APIKey              *string `json:"api_key"`
 	OptimizeInstruction string  `json:"optimize_instruction"`
 }
@@ -193,10 +198,7 @@ func PutAISettings(w http.ResponseWriter, r *http.Request) {
 	if p.Provider == "" {
 		p.Provider = "openrouter"
 	}
-	if p.Provider != "openrouter" {
-		// PAI-151 reserves the provider field for future local backends.
-		// Until those land, refuse anything unknown so a typo can't put
-		// the feature into an unusable state.
+	if p.Provider != "openrouter" && p.Provider != "local_model" {
 		jsonError(w, "unsupported provider", http.StatusBadRequest)
 		return
 	}
@@ -211,10 +213,10 @@ func PutAISettings(w http.ResponseWriter, r *http.Request) {
 		// plaintext until an actual re-save.)
 		_, err := db.DB.Exec(
 			`UPDATE ai_settings
-			 SET enabled = ?, provider = ?, model = ?,
+			 SET enabled = ?, provider = ?, model = ?, base_url = ?,
 			     optimize_instruction = ?, updated_at = datetime('now')
 			 WHERE id = 1`,
-			enabled, p.Provider, p.Model, p.OptimizeInstruction,
+			enabled, p.Provider, p.Model, p.BaseURL, p.OptimizeInstruction,
 		)
 		if err != nil {
 			log.Printf("ai_settings update: %v", err)
@@ -240,11 +242,11 @@ func PutAISettings(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err := db.DB.Exec(
 			`UPDATE ai_settings
-			 SET enabled = ?, provider = ?, model = ?,
+			 SET enabled = ?, provider = ?, model = ?, base_url = ?,
 			     api_key = '', api_key_encrypted = ?,
 			     optimize_instruction = ?, updated_at = datetime('now')
 			 WHERE id = 1`,
-			enabled, p.Provider, p.Model, encrypted, p.OptimizeInstruction,
+			enabled, p.Provider, p.Model, p.BaseURL, encrypted, p.OptimizeInstruction,
 		)
 		if err != nil {
 			log.Printf("ai_settings update: %v", err)

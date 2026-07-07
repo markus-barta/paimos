@@ -649,6 +649,7 @@ func AIDryRunPrompt(w http.ResponseWriter, r *http.Request) {
 	resp, err := provider.Optimize(r.Context(), ai.OptimizeRequest{
 		Model:           settings.Model,
 		APIKey:          settings.APIKey,
+		BaseURL:         settings.BaseURL,
 		SystemPrompt:    systemPrompt,
 		UserPrompt:      userPrompt,
 		MaxOutputTokens: 1500,

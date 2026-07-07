@@ -57,7 +57,7 @@ func specOutHandler(ax *aiActionContext) (any, string, int, int, string, error) 
 
 	// PAI-178: resolved system prompt; admin-editable in
 	// Settings → AI prompts. Default lives in ai_action_prompts.go.
-	systemPrompt := resolveActionPrompt("spec_out")
+	systemPrompt := resolveActionPromptWithPreset(ax, "spec_out")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

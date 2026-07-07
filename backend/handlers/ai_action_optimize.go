@@ -87,6 +87,7 @@ func optimizeActionHandler(ax *aiActionContext) (any, string, int, int, string, 
 	if systemPrompt == optimizeDefaultPrompt && strings.TrimSpace(ax.Settings.OptimizeInstruction) != "" {
 		systemPrompt = ai.BuildSystemPrompt(ax.Settings.OptimizeInstruction)
 	}
+	systemPrompt = applyAIPromptPreset(systemPrompt, ax)
 	userPrompt := ai.BuildUserPrompt(ax.Text, ax.IssueData)
 
 	callCtx, cancel := context.WithTimeout(ax.Ctx, optimizeRequestTimeout)
@@ -94,8 +95,9 @@ func optimizeActionHandler(ax *aiActionContext) (any, string, int, int, string, 
 	resp, err := ax.Provider.Optimize(callCtx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt,
-		UserPrompt:      userPrompt,
+		UserPrompt:      aiUserPromptWithContext(ax, userPrompt),
 		MaxOutputTokens: optimizeMaxOutputTokens,
 	})
 	if err != nil {

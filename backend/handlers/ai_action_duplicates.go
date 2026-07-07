@@ -73,7 +73,7 @@ func detectDuplicatesHandler(ax *aiActionContext) (any, string, int, int, string
 
 	tree := renderIssueTree(rows, true)
 
-	systemPrompt := resolveActionPrompt("detect_duplicates")
+	systemPrompt := resolveActionPromptWithPreset(ax, "detect_duplicates")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

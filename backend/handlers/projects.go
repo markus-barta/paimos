@@ -67,7 +67,8 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
 		              THEN 1 END) as active_issue_count,
 		       p.rate_hourly, p.rate_lp,
-		       c.rate_hourly, c.rate_lp
+		       c.rate_hourly, c.rate_lp,
+		       COALESCE(p.ai_defaults_json, ''), COALESCE(p.ai_policy_json, '')
 		FROM projects p
 		LEFT JOIN issues i    ON i.project_id = p.id
 		LEFT JOIN customers c ON c.id = p.customer_id
@@ -85,16 +86,18 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p models.Project
 		var custRateHourly, custRateLp *float64
+		var aiDefaultsRaw, aiPolicyRaw string
 		if err := rows.Scan(&p.ID, &p.Name, &p.Key, &p.Description, &p.Status,
 			&p.ProductOwner, &p.CustomerLabel, &p.CustomerID, &p.CustomerName,
 			&p.CreatedAt, &p.UpdatedAt, &p.IssueCount, &p.LogoPath,
 			&p.LastActivity, &p.OpenIssueCount, &p.DoneIssueCount, &p.ActiveIssueCount,
 			&p.RateHourly, &p.RateLp,
-			&custRateHourly, &custRateLp); err != nil {
+			&custRateHourly, &custRateLp, &aiDefaultsRaw, &aiPolicyRaw); err != nil {
 			jsonError(w, "scan failed", http.StatusInternalServerError)
 			return
 		}
 		applyEffectiveRates(&p, custRateHourly, custRateLp)
+		applyProjectAIConfig(&p, aiDefaultsRaw, aiPolicyRaw)
 		projects = append(projects, p)
 	}
 	projects = LoadTagsForProjects(projects)
@@ -130,6 +133,133 @@ func applyEffectiveRates(p *models.Project, custH, custLp *float64) {
 	// nullable rate fields, but the boolean is convenient for "show the
 	// inherited badge anywhere on this card" decisions.
 	p.RateInherited = hInherited || lpInherited
+}
+
+func applyProjectAIConfig(p *models.Project, defaultsRaw, policyRaw string) {
+	if p == nil {
+		return
+	}
+	if strings.TrimSpace(defaultsRaw) != "" {
+		_ = json.Unmarshal([]byte(defaultsRaw), &p.AIDefaults)
+	}
+	if strings.TrimSpace(policyRaw) != "" {
+		_ = json.Unmarshal([]byte(policyRaw), &p.AIPolicy)
+	}
+}
+
+func sanitizeProjectAIDefaults(in models.ProjectAIDefaults) (models.ProjectAIDefaults, string) {
+	out := models.ProjectAIDefaults{}
+	var msg string
+	out.Global, msg = sanitizeProjectAIDefaultSet(in.Global)
+	if msg != "" {
+		return out, msg
+	}
+	out.Actions, msg = sanitizeProjectAIDefaultMap(in.Actions)
+	if msg != "" {
+		return out, msg
+	}
+	out.Runs, msg = sanitizeProjectAIDefaultMap(in.Runs)
+	if msg != "" {
+		return out, msg
+	}
+	out.Agents, msg = sanitizeProjectAIDefaultMap(in.Agents)
+	if msg != "" {
+		return out, msg
+	}
+	return out, ""
+}
+
+func sanitizeProjectAIDefaultMap(in map[string]models.ProjectAIDefaultSet) (map[string]models.ProjectAIDefaultSet, string) {
+	if len(in) == 0 {
+		return nil, ""
+	}
+	out := map[string]models.ProjectAIDefaultSet{}
+	for key, value := range in {
+		key = strings.TrimSpace(key)
+		if key == "" || len(key) > 96 {
+			return nil, "invalid AI default scope"
+		}
+		sanitized, msg := sanitizeProjectAIDefaultSet(value)
+		if msg != "" {
+			return nil, msg
+		}
+		if !projectAIDefaultSetEmpty(sanitized) {
+			out[key] = sanitized
+		}
+	}
+	if len(out) == 0 {
+		return nil, ""
+	}
+	return out, ""
+}
+
+func sanitizeProjectAIDefaultSet(in models.ProjectAIDefaultSet) (models.ProjectAIDefaultSet, string) {
+	out := models.ProjectAIDefaultSet{
+		ProfileID:              strings.ToLower(strings.TrimSpace(in.ProfileID)),
+		Effort:                 strings.ToLower(strings.TrimSpace(in.Effort)),
+		PromptPresetRef:        strings.TrimSpace(in.PromptPresetRef),
+		ContextPack:            strings.ToLower(strings.TrimSpace(in.ContextPack)),
+		PreferredProviderClass: strings.ToLower(strings.TrimSpace(in.PreferredProviderClass)),
+	}
+	if projectAIStringLooksSecret(out.ProfileID, out.Effort, out.PromptPresetRef, out.ContextPack, out.PreferredProviderClass) {
+		return out, "AI defaults must contain IDs only"
+	}
+	if out.ProfileID != "" {
+		switch out.ProfileID {
+		case "default", "fast", "balanced", "deep":
+		default:
+			return out, "AI default profile is not available"
+		}
+	}
+	if out.Effort != "" {
+		if _, ok := supportedAIActionEfforts[out.Effort]; !ok {
+			return out, "AI default effort is not available"
+		}
+	}
+	if out.PromptPresetRef != "" && out.PromptPresetRef != aiPromptPresetDefaultRef && !strings.HasPrefix(out.PromptPresetRef, "kb:") {
+		return out, "AI default prompt must be default or a knowledge ref"
+	}
+	if out.ContextPack != "" {
+		canonical, ok := canonicalAIContextPack(out.ContextPack)
+		if !ok {
+			return out, "AI default context pack is not available"
+		}
+		out.ContextPack = canonical
+	}
+	if out.PreferredProviderClass != "" {
+		switch out.PreferredProviderClass {
+		case "local_cli", "hosted_model", "local_model":
+		default:
+			return out, "AI default provider class is not available"
+		}
+	}
+	return out, ""
+}
+
+func projectAIDefaultSetEmpty(set models.ProjectAIDefaultSet) bool {
+	return strings.TrimSpace(set.ProfileID) == "" &&
+		strings.TrimSpace(set.Effort) == "" &&
+		strings.TrimSpace(set.PromptPresetRef) == "" &&
+		strings.TrimSpace(set.ContextPack) == "" &&
+		strings.TrimSpace(set.PreferredProviderClass) == ""
+}
+
+func projectAIStringLooksSecret(values ...string) bool {
+	for _, value := range values {
+		v := strings.ToLower(strings.TrimSpace(value))
+		if v == "" {
+			continue
+		}
+		if len(v) > 240 {
+			return true
+		}
+		for _, needle := range []string{"api_key", "apikey", "secret", "token", "password", "bearer ", "sk-"} {
+			if strings.Contains(v, needle) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -270,10 +400,12 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		// CustomerID is the FK. Pass `null` to detach (the CASE WHEN below
 		// preserves the current value when omitted, writes NULL when
 		// explicitly null in the request body).
-		CustomerID    *int64   `json:"customer_id"`
-		ClearCustomer bool     `json:"clear_customer"`
-		RateHourly    *float64 `json:"rate_hourly"`
-		RateLp        *float64 `json:"rate_lp"`
+		CustomerID    *int64                    `json:"customer_id"`
+		ClearCustomer bool                      `json:"clear_customer"`
+		RateHourly    *float64                  `json:"rate_hourly"`
+		RateLp        *float64                  `json:"rate_lp"`
+		AIDefaults    *models.ProjectAIDefaults `json:"ai_defaults"`
+		AIPolicy      *models.ProjectAIPolicy   `json:"ai_policy"`
 		// PAI-329 — project-level inventory replace-all hooks. When
 		// any of these arrays is non-nil (vs. omitted), the
 		// corresponding table is wiped + re-inserted in a single
@@ -297,6 +429,29 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 		}
 		body.Key = &k
 	}
+	aiDefaultsJSON := ""
+	aiPolicyJSON := ""
+	if body.AIDefaults != nil {
+		sanitized, msg := sanitizeProjectAIDefaults(*body.AIDefaults)
+		if msg != "" {
+			jsonError(w, msg, http.StatusBadRequest)
+			return
+		}
+		raw, err := json.Marshal(sanitized)
+		if err != nil {
+			jsonError(w, "invalid AI defaults", http.StatusBadRequest)
+			return
+		}
+		aiDefaultsJSON = string(raw)
+	}
+	if body.AIPolicy != nil {
+		raw, err := json.Marshal(*body.AIPolicy)
+		if err != nil {
+			jsonError(w, "invalid AI policy", http.StatusBadRequest)
+			return
+		}
+		aiPolicyJSON = string(raw)
+	}
 
 	// Two-step expression for customer_id so detach (set NULL) is
 	// expressible distinct from "leave as-is": pass clear_customer:true
@@ -313,13 +468,18 @@ func UpdateProject(w http.ResponseWriter, r *http.Request) {
 			customer_id    = CASE WHEN ? THEN NULL ELSE COALESCE(?, customer_id) END,
 			rate_hourly    = COALESCE(?, rate_hourly),
 			rate_lp        = COALESCE(?, rate_lp),
+			ai_defaults_json = CASE WHEN ? THEN ? ELSE ai_defaults_json END,
+			ai_policy_json   = CASE WHEN ? THEN ? ELSE ai_policy_json END,
 			updated_at     = ?
 		WHERE id=?
 	`, body.Name, body.Key, body.Description, body.Status,
 		body.ProductOwner, body.ProductOwner,
 		body.CustomerLabel,
 		body.ClearCustomer, body.CustomerID,
-		body.RateHourly, body.RateLp, now, id)
+		body.RateHourly, body.RateLp,
+		body.AIDefaults != nil, aiDefaultsJSON,
+		body.AIPolicy != nil, aiPolicyJSON,
+		now, id)
 	if handleDBError(w, err, "project key") {
 		return
 	}
@@ -424,6 +584,7 @@ func SuggestProjectKey(w http.ResponseWriter, r *http.Request) {
 func getProjectByID(id int64) *models.Project {
 	var p models.Project
 	var custRateHourly, custRateLp *float64
+	var aiDefaultsRaw, aiPolicyRaw string
 	err := db.DB.QueryRow(`
 		SELECT p.id, p.name, p.key, p.description, p.status,
 		       p.product_owner, p.customer_label, p.customer_id,
@@ -436,7 +597,8 @@ func getProjectByID(id int64) *models.Project {
 		       COUNT(CASE WHEN i.status IN ('done','delivered') THEN 1 END),
 		       COUNT(CASE WHEN i.status != 'cancelled' THEN 1 END),
 		       p.rate_hourly, p.rate_lp,
-		       c.rate_hourly, c.rate_lp
+		       c.rate_hourly, c.rate_lp,
+		       COALESCE(p.ai_defaults_json, ''), COALESCE(p.ai_policy_json, '')
 		FROM projects p
 		LEFT JOIN issues i    ON i.project_id=p.id
 		LEFT JOIN customers c ON c.id = p.customer_id
@@ -447,11 +609,12 @@ func getProjectByID(id int64) *models.Project {
 		&p.CreatedAt, &p.UpdatedAt, &p.IssueCount, &p.LogoPath,
 		&p.LastActivity, &p.OpenIssueCount, &p.DoneIssueCount, &p.ActiveIssueCount,
 		&p.RateHourly, &p.RateLp,
-		&custRateHourly, &custRateLp)
+		&custRateHourly, &custRateLp, &aiDefaultsRaw, &aiPolicyRaw)
 	if err != nil {
 		return nil
 	}
 	applyEffectiveRates(&p, custRateHourly, custRateLp)
+	applyProjectAIConfig(&p, aiDefaultsRaw, aiPolicyRaw)
 	LoadTagsForProject(&p)
 	return &p
 }

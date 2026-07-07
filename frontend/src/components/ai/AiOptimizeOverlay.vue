@@ -45,6 +45,14 @@ const props = defineProps<{
   fieldLabel?: string
   /** Display only — shown in the header below the title. */
   modelName?: string
+  /** Safe execution metadata returned by the AI action dispatcher. */
+  executionProfileId?: string
+  executionEffort?: string
+  promptPresetRef?: string
+  promptPresetLabel?: string
+  contextPack?: string
+  contextPackLabel?: string
+  contextTruncated?: boolean
   /** True while the parent is calling /api/ai/optimize for a retry. */
   retrying?: boolean
 }>()
@@ -66,6 +74,18 @@ const summary = computed(() => {
 })
 
 const unchanged = computed(() => props.original === props.optimized)
+const executionMeta = computed(() => {
+  const parts: string[] = []
+  if (props.executionProfileId) parts.push(`Profile: ${props.executionProfileId}`)
+  if (props.executionEffort) parts.push(`Effort: ${props.executionEffort}`)
+  if (props.promptPresetRef && props.promptPresetRef !== 'default') {
+    parts.push(`Prompt: ${props.promptPresetLabel || props.promptPresetRef}`)
+  }
+  if (props.contextPack && props.contextPack !== 'issue') {
+    parts.push(`Context: ${props.contextPackLabel || props.contextPack}${props.contextTruncated ? ' (truncated)' : ''}`)
+  }
+  return parts.join(' · ')
+})
 
 // PAI-219. Per-hunk decision state. Each hunk defaults to 'accept'
 // so the overall behaviour is identical to the old "Accept replaces
@@ -193,6 +213,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                 · <strong>{{ acceptedHunks }} of {{ totalHunks }}</strong> hunk<template v-if="totalHunks !== 1">s</template> kept
               </template>
               <span v-if="modelName" class="ai-model-tag"> · {{ modelName }}</span>
+              <span v-if="executionMeta" class="ai-model-tag"> · {{ executionMeta }}</span>
             </template>
           </p>
         </div>

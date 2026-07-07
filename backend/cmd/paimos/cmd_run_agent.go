@@ -360,9 +360,12 @@ func newAgentRunner(client *Client, deviceID, repoRoot, execCmd, actionKey, test
 
 type agentRunDetail struct {
 	IssueID       int64  `json:"issue_id"`
+	ProjectID     *int64 `json:"project_id"`
 	DeviceID      string `json:"device_id"`
 	ActionKey     string `json:"action_key"`
 	ProviderLabel string `json:"provider_label"`
+	AgentName     string `json:"agent_name"`
+	ContextPack   string `json:"context_pack"`
 	DeployTarget  string `json:"deploy_target"`
 	Status        string `json:"status"`
 }
@@ -377,6 +380,55 @@ type agentIssueContext struct {
 	Notes              string `json:"notes"`
 	Status             string `json:"status"`
 	Priority           string `json:"priority"`
+}
+
+type agentRunPromptContext struct {
+	AgentName        string
+	ContextPack      string
+	ContextPackLabel string
+	Artifact         *agentRunArtifact
+	ArtifactRaw      []byte
+}
+
+type agentRunArtifact struct {
+	Project struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+		Key  string `json:"key"`
+	} `json:"project"`
+	Agent struct {
+		Name             string   `json:"name"`
+		Description      string   `json:"description"`
+		SlashCommandName string   `json:"slash_command_name"`
+		LaneTags         []string `json:"lane_tags"`
+		Body             string   `json:"body"`
+		BootstrapSteps   []struct {
+			Title     string `json:"title"`
+			Command   string `json:"command"`
+			Rationale string `json:"rationale"`
+		} `json:"bootstrap_steps"`
+		NonNegotiableRules []struct {
+			Title     string `json:"title"`
+			Body      string `json:"body"`
+			MemoryRef string `json:"memory_ref"`
+		} `json:"non_negotiable_rules"`
+	} `json:"agent"`
+	Repos []struct {
+		Label         string `json:"label"`
+		URL           string `json:"url"`
+		DefaultBranch string `json:"default_branch"`
+	} `json:"repos"`
+	Environments []struct {
+		Name      string `json:"name"`
+		URL       string `json:"url"`
+		HostAlias string `json:"host_alias"`
+		HostIP    string `json:"host_ip"`
+	} `json:"environments"`
+	DeployRecipes []struct {
+		Name    string `json:"name"`
+		Command string `json:"command"`
+		Summary string `json:"summary"`
+	} `json:"deploy_recipes"`
 }
 
 func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
@@ -440,17 +492,40 @@ func (a *agentRunner) handleRun(ctx context.Context, j runJob) error {
 		}
 		return fmt.Errorf("claim run %d: %w", runID, err)
 	}
-	fmt.Fprintf(stdout, "%s implementing %s (run %d) in %s\n",
-		time.Now().Format(time.RFC3339), issueKey, runID, a.repoRoot)
+	runCtx, ctxErr := a.fetchRunPromptContext(detail)
+	if ctxErr != nil {
+		a.finishRun(runID, detail.IssueID, nil, map[string]any{"status": "failed", "error": "agent context: " + ctxErr.Error()})
+		return fmt.Errorf("run %d agent context failed: %w", runID, ctxErr)
+	}
+	agentNote := ""
+	if strings.TrimSpace(runCtx.AgentName) != "" {
+		agentNote = " as " + strings.TrimSpace(runCtx.AgentName)
+	}
+	fmt.Fprintf(stdout, "%s implementing %s%s (run %d) in %s\n",
+		time.Now().Format(time.RFC3339), issueKey, agentNote, runID, a.repoRoot)
 
 	env := []string{
 		"PAIMOS_RUN_ID=" + strconv.FormatInt(runID, 10),
 		"PAIMOS_ISSUE_KEY=" + issueKey,
 		"PAIMOS_ISSUE_TITLE=" + issueCtx.Title,
+		"PAIMOS_CONTEXT_PACK=" + runCtx.ContextPack,
+		"PAIMOS_CONTEXT_PACK_LABEL=" + runCtx.ContextPackLabel,
+	}
+	if strings.TrimSpace(runCtx.AgentName) != "" {
+		env = append(env, "PAIMOS_AGENT_NAME="+strings.TrimSpace(runCtx.AgentName))
 	}
 	var logFile *os.File
 	var logSink io.Writer
-	promptPath, cleanupPrompt, promptErr := writeAgentPromptFile(runID, buildAgentPrompt(issueCtx, runID, a.repoRoot, a.testExec, detail.DeployTarget))
+	if len(runCtx.ArtifactRaw) > 0 {
+		artifactPath, cleanupArtifact, artifactErr := writeAgentArtifactFile(runID, runCtx.ArtifactRaw)
+		if artifactErr != nil {
+			a.finishRun(runID, detail.IssueID, nil, map[string]any{"status": "failed", "error": "agent artifact: " + artifactErr.Error()})
+			return fmt.Errorf("run %d artifact failed: %w", runID, artifactErr)
+		}
+		defer cleanupArtifact()
+		env = append(env, "PAIMOS_AGENT_ARTIFACT_FILE="+artifactPath)
+	}
+	promptPath, cleanupPrompt, promptErr := writeAgentPromptFile(runID, buildAgentPrompt(issueCtx, runID, a.repoRoot, a.testExec, detail.DeployTarget, runCtx))
 	if promptErr != nil {
 		closeLog(logFile)
 		a.finishRun(runID, detail.IssueID, logFile, map[string]any{"status": "failed", "error": "prompt: " + promptErr.Error()})
@@ -613,13 +688,21 @@ func truncateRunes(s string, max int) string {
 }
 
 func writeAgentPromptFile(runID int64, prompt string) (string, func(), error) {
-	f, err := os.CreateTemp("", fmt.Sprintf("paimos-run-%d-prompt-*.md", runID))
+	return writeAgentRunTempFile(runID, "prompt", ".md", []byte(prompt))
+}
+
+func writeAgentArtifactFile(runID int64, raw []byte) (string, func(), error) {
+	return writeAgentRunTempFile(runID, "agent-artifact", ".json", raw)
+}
+
+func writeAgentRunTempFile(runID int64, kind, ext string, body []byte) (string, func(), error) {
+	f, err := os.CreateTemp("", fmt.Sprintf("paimos-run-%d-%s-*%s", runID, kind, ext))
 	if err != nil {
 		return "", func() {}, err
 	}
 	path := f.Name()
 	cleanup := func() { _ = os.Remove(path) }
-	if _, err := f.WriteString(prompt); err != nil {
+	if _, err := f.Write(body); err != nil {
 		_ = f.Close()
 		cleanup()
 		return "", func() {}, err
@@ -631,7 +714,7 @@ func writeAgentPromptFile(runID int64, prompt string) (string, func(), error) {
 	return path, cleanup, nil
 }
 
-func buildAgentPrompt(issue *agentIssueContext, runID int64, repoRoot, testExec, deployTarget string) string {
+func buildAgentPrompt(issue *agentIssueContext, runID int64, repoRoot, testExec, deployTarget string, runCtx *agentRunPromptContext) string {
 	var b strings.Builder
 	key := strings.TrimSpace(issue.IssueKey)
 	if key == "" {
@@ -641,6 +724,7 @@ func buildAgentPrompt(issue *agentIssueContext, runID int64, repoRoot, testExec,
 	fmt.Fprintf(&b, "Repository root: %s\n", repoRoot)
 	fmt.Fprintf(&b, "Run id: %d\n", runID)
 	fmt.Fprintf(&b, "Issue: %s\n\n", key)
+	appendRunContextPrompt(&b, runCtx)
 	fmt.Fprintf(&b, "Task:\n")
 	appendPromptField(&b, "Title", issue.Title)
 	appendPromptField(&b, "Type", issue.Type)
@@ -663,6 +747,158 @@ func buildAgentPrompt(issue *agentIssueContext, runID int64, repoRoot, testExec,
 	}
 	fmt.Fprintf(&b, "- If the issue is impossible or unsafe, make no destructive changes and explain the blocker.\n")
 	return b.String()
+}
+
+func appendRunContextPrompt(b *strings.Builder, runCtx *agentRunPromptContext) {
+	if runCtx == nil {
+		runCtx = &agentRunPromptContext{ContextPack: "issue", ContextPackLabel: "Issue only"}
+	}
+	pack := strings.TrimSpace(runCtx.ContextPack)
+	if pack == "" {
+		pack = "issue"
+	}
+	label := strings.TrimSpace(runCtx.ContextPackLabel)
+	if label == "" {
+		label = runContextPackLabel(pack)
+	}
+	fmt.Fprintf(b, "Run context:\n")
+	fmt.Fprintf(b, "- Context pack: %s (%s)\n", pack, label)
+	if agentName := strings.TrimSpace(runCtx.AgentName); agentName != "" {
+		fmt.Fprintf(b, "- Project agent: %s\n", agentName)
+	}
+	if runCtx.Artifact != nil {
+		appendAgentArtifactPrompt(b, runCtx.Artifact)
+	}
+	b.WriteString("\n")
+}
+
+func appendAgentArtifactPrompt(b *strings.Builder, artifact *agentRunArtifact) {
+	a := artifact.Agent
+	p := artifact.Project
+	if p.Name != "" || p.Key != "" {
+		project := strings.TrimSpace(p.Name)
+		if p.Key != "" {
+			project = strings.TrimSpace(project + " (" + p.Key + ")")
+		}
+		appendAgentPromptField(b, "Agent project", project, 240)
+	}
+	appendAgentPromptField(b, "Agent name", a.Name, 160)
+	appendAgentPromptField(b, "Description", a.Description, 500)
+	appendAgentPromptField(b, "Slash command", a.SlashCommandName, 160)
+	if len(a.LaneTags) > 0 {
+		appendAgentPromptField(b, "Lane tags", strings.Join(a.LaneTags, ", "), 300)
+	}
+	appendAgentPromptSection(b, "Agent body", a.Body, 4000)
+	if len(a.BootstrapSteps) > 0 {
+		b.WriteString("\nAgent bootstrap steps:\n")
+		for i, step := range a.BootstrapSteps {
+			if i >= 6 {
+				fmt.Fprintf(b, "- ... %d more step(s)\n", len(a.BootstrapSteps)-i)
+				break
+			}
+			title := promptSafeExcerpt(step.Title, 160)
+			if title == "" {
+				title = fmt.Sprintf("Step %d", i+1)
+			}
+			fmt.Fprintf(b, "- %s\n", title)
+			appendAgentPromptField(b, "  command", step.Command, 500)
+			appendAgentPromptField(b, "  rationale", step.Rationale, 300)
+		}
+	}
+	if len(a.NonNegotiableRules) > 0 {
+		b.WriteString("\nAgent rules:\n")
+		for i, rule := range a.NonNegotiableRules {
+			if i >= 8 {
+				fmt.Fprintf(b, "- ... %d more rule(s)\n", len(a.NonNegotiableRules)-i)
+				break
+			}
+			title := promptSafeExcerpt(rule.Title, 180)
+			if title == "" {
+				title = fmt.Sprintf("Rule %d", i+1)
+			}
+			fmt.Fprintf(b, "- %s\n", title)
+			appendAgentPromptField(b, "  body", rule.Body, 900)
+			appendAgentPromptField(b, "  memory_ref", rule.MemoryRef, 200)
+		}
+	}
+	appendAgentInventoryPrompt(b, "Agent repos", artifact.Repos, func(repo struct {
+		Label         string `json:"label"`
+		URL           string `json:"url"`
+		DefaultBranch string `json:"default_branch"`
+	}) string {
+		parts := []string{repo.Label}
+		if repo.DefaultBranch != "" {
+			parts = append(parts, "branch "+repo.DefaultBranch)
+		}
+		if repo.URL != "" {
+			parts = append(parts, repo.URL)
+		}
+		return strings.Join(nonEmptyStrings(parts), " - ")
+	})
+	appendAgentInventoryPrompt(b, "Agent environments", artifact.Environments, func(env struct {
+		Name      string `json:"name"`
+		URL       string `json:"url"`
+		HostAlias string `json:"host_alias"`
+		HostIP    string `json:"host_ip"`
+	}) string {
+		return strings.Join(nonEmptyStrings([]string{env.Name, env.URL, env.HostAlias, env.HostIP}), " - ")
+	})
+	appendAgentInventoryPrompt(b, "Agent deploy recipes", artifact.DeployRecipes, func(recipe struct {
+		Name    string `json:"name"`
+		Command string `json:"command"`
+		Summary string `json:"summary"`
+	}) string {
+		return strings.Join(nonEmptyStrings([]string{recipe.Name, recipe.Summary, recipe.Command}), " - ")
+	})
+}
+
+func appendAgentInventoryPrompt[T any](b *strings.Builder, label string, items []T, render func(T) string) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n%s:\n", label)
+	for i, item := range items {
+		if i >= 5 {
+			fmt.Fprintf(b, "- ... %d more item(s)\n", len(items)-i)
+			break
+		}
+		text := promptSafeExcerpt(render(item), 700)
+		if text != "" {
+			fmt.Fprintf(b, "- %s\n", text)
+		}
+	}
+}
+
+func nonEmptyStrings(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func appendAgentPromptField(b *strings.Builder, label, value string, max int) {
+	value = promptSafeExcerpt(value, max)
+	if value != "" {
+		fmt.Fprintf(b, "- %s: %s\n", label, value)
+	}
+}
+
+func appendAgentPromptSection(b *strings.Builder, label, value string, max int) {
+	value = promptSafeExcerpt(value, max)
+	if value != "" {
+		fmt.Fprintf(b, "\n%s:\n%s\n", label, value)
+	}
+}
+
+func promptSafeExcerpt(value string, max int) string {
+	value = redactSensitiveText(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	return truncateRunes(value, max)
 }
 
 func appendPromptField(b *strings.Builder, label, value string) {
@@ -772,6 +1008,59 @@ func (a *agentRunner) fetchIssueContext(ref string) (*agentIssueContext, error) 
 		return nil, fmt.Errorf("decode issue context: %w", err)
 	}
 	return &iss, nil
+}
+
+func (a *agentRunner) fetchRunPromptContext(detail *agentRunDetail) (*agentRunPromptContext, error) {
+	pack := strings.TrimSpace(detail.ContextPack)
+	if pack == "" {
+		pack = "issue"
+	}
+	out := &agentRunPromptContext{
+		ContextPack:      pack,
+		ContextPackLabel: runContextPackLabel(pack),
+	}
+	agentName := strings.TrimSpace(detail.AgentName)
+	if agentName == "" {
+		return out, nil
+	}
+	out.AgentName = agentName
+	if detail.ProjectID == nil || *detail.ProjectID <= 0 {
+		return nil, fmt.Errorf("selected agent %q has no project_id", agentName)
+	}
+	raw, err := a.client.do("GET",
+		fmt.Sprintf("/api/projects/%d/agents/%s.json", *detail.ProjectID, url.PathEscape(agentName)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetch selected agent %q: %w", agentName, err)
+	}
+	safeRaw := []byte(redactSensitiveText(string(raw)))
+	var artifact agentRunArtifact
+	if err := json.Unmarshal(safeRaw, &artifact); err != nil {
+		return nil, fmt.Errorf("decode selected agent %q artifact: %w", agentName, err)
+	}
+	out.Artifact = &artifact
+	out.ArtifactRaw = safeRaw
+	if strings.TrimSpace(out.Artifact.Agent.Name) != "" {
+		out.AgentName = strings.TrimSpace(out.Artifact.Agent.Name)
+	}
+	return out, nil
+}
+
+func runContextPackLabel(pack string) string {
+	switch strings.TrimSpace(pack) {
+	case "issue":
+		return "Issue only"
+	case "knowledge":
+		return "Project knowledge"
+	case "retrieve":
+		return "Retrieved context"
+	case "repo":
+		return "Repo-aware bundle"
+	default:
+		if strings.TrimSpace(pack) == "" {
+			return "Issue only"
+		}
+		return strings.TrimSpace(pack)
+	}
 }
 
 func (a *agentRunner) patch(runID int64, fields map[string]any) error {

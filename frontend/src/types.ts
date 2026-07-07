@@ -15,7 +15,13 @@
  * License along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { IssuePriority, IssueStatus, IssueType, KnowledgeStatus, RelationType } from './types/generated/schema'
+import type {
+  IssuePriority,
+  IssueStatus,
+  IssueType,
+  KnowledgeStatus,
+  RelationType,
+} from './types/generated/schema'
 
 export {
   ENUM_FIELDS,
@@ -293,6 +299,28 @@ export interface Project {
   // for the footer-bar badges (open issues + knowledge entries).
   // Absent on list responses; treat as null when undefined.
   counts?: ProjectCounts
+  ai_defaults?: ProjectAIDefaults
+  ai_policy?: ProjectAIPolicy
+}
+
+export interface ProjectAIDefaultSet {
+  profile_id?: string
+  effort?: string
+  prompt_preset_ref?: string
+  context_pack?: string
+  preferred_provider_class?: string
+}
+
+export interface ProjectAIDefaults {
+  global?: ProjectAIDefaultSet
+  actions?: Record<string, ProjectAIDefaultSet>
+  runs?: Record<string, ProjectAIDefaultSet>
+  agents?: Record<string, ProjectAIDefaultSet>
+}
+
+export interface ProjectAIPolicy {
+  disable_hosted_draft?: boolean
+  disable_local_model_draft?: boolean
 }
 
 // PAI-356 — counts surfaced on the project detail response. Both
@@ -609,6 +637,10 @@ export interface IssueAIWorkStatus {
   provider_label: string
   model: string
   run_mode: string
+  profile_id: string
+  effort: string
+  prompt_preset_ref: string
+  context_pack: string
   version: string
   deploy_target: string
   tests_summary: string | null
@@ -626,6 +658,14 @@ export interface AgentActionCapability {
   run_modes?: string[]
   can_test: boolean
   can_deploy: boolean
+  available?: boolean
+  unavailable_reason?: string
+  requires_runner?: boolean
+  profile_ids?: string[]
+  efforts?: string[]
+  models?: string[]
+  context_limit_tokens?: number
+  endpoint_label?: string
 }
 
 export interface IssueListEnvelope<T = Issue> {
@@ -645,7 +685,7 @@ export interface IssueListEnvelope<T = Issue> {
 
 export interface TimeEntry {
   id: number
-  issue_id: number   // renamed from ticket_id in migration 32
+  issue_id: number // renamed from ticket_id in migration 32
   user_id: number
   username: string
   started_at: string
@@ -667,13 +707,13 @@ export interface SavedView {
   owner_username: string
   title: string
   description: string
-  columns_json: string   // JSON array of hidden column keys
-  filters_json: string   // JSON object matching SavedFilters shape
+  columns_json: string // JSON array of hidden column keys
+  filters_json: string // JSON object matching SavedFilters shape
   is_shared: boolean
   is_admin_default: boolean
   sort_order: number
   hidden: boolean
-  pinned: boolean | null  // per-user pin state; null = no explicit choice (lazy init)
+  pinned: boolean | null // per-user pin state; null = no explicit choice (lazy init)
   created_at: string
   updated_at: string
 }

@@ -14,6 +14,7 @@ const props = defineProps<{
   actionKey: string
   title: string
   summary: string
+  metadata?: string[]
   detailsLabel?: string
   detailsMode?: 'inline' | 'modal'
   primary?: StripButton
@@ -53,6 +54,7 @@ const { t } = useI18n()
         <div class="aux-res-head">
           <span class="aux-res-title">{{ title }}</span>
           <span class="aux-res-key">{{ actionKey }}</span>
+          <span v-for="item in metadata ?? []" :key="item" class="aux-res-meta">{{ item }}</span>
         </div>
         <p class="aux-res-summary">{{ summary }}</p>
       </div>
@@ -117,6 +119,15 @@ const { t } = useI18n()
   font-family: "DM Mono", "JetBrains Mono", monospace;
   font-size: 11px;
   color: var(--text-muted);
+}
+.aux-res-meta {
+  font-family: "DM Mono", "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  padding: .05rem .35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
 }
 .aux-res-summary {
   margin-top: .25rem;

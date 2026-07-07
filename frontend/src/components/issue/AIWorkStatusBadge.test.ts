@@ -25,6 +25,10 @@ function mountBadge(props: Record<string, unknown> = {}, onOpen?: () => void) {
           provider_label: "Claude Code",
           model: "",
           run_mode: "edit",
+          profile_id: "",
+          effort: "",
+          prompt_preset_ref: "",
+          context_pack: "",
           version: "0.1.2",
           deploy_target: "local-dev",
           tests_summary: "npm test passed: > noisy package script",
@@ -66,6 +70,34 @@ describe("AIWorkStatusBadge", () => {
     expect(title).toContain("target local-dev");
     expect(title).toContain("tests passed");
     expect(title).not.toContain("noisy package script");
+    unmount();
+  });
+
+  it("labels drafted runs and includes safe execution metadata", async () => {
+    const { el, unmount } = mountBadge({
+      status: "drafted",
+      action_key: "openrouter_draft.implement",
+      provider_kind: "hosted_model",
+      provider_id: "openrouter",
+      provider_label: "OpenRouter Draft",
+      model: "openrouter/test-model",
+      run_mode: "draft",
+      profile_id: "balanced",
+      effort: "standard",
+      prompt_preset_ref: "kb:runbook:draft@rev1",
+      context_pack: "knowledge",
+      deploy_target: "",
+      tests_summary: "",
+    });
+    await settle();
+    const badge = el.querySelector<HTMLButtonElement>(".ai-work-badge");
+    expect(badge?.textContent).toContain("OpenRouter Draft draft ready");
+    const title = badge?.getAttribute("title") ?? "";
+    expect(title).toContain("profile balanced");
+    expect(title).toContain("effort standard");
+    expect(title).toContain("prompt kb:runbook:draft@rev1");
+    expect(title).toContain("context knowledge");
+    expect(title).not.toContain("API");
     unmount();
   });
 

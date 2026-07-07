@@ -527,6 +527,9 @@ export function errMsg(e: unknown, fallback = "An error occurred"): string {
     if (raw.trim() === "") {
       raw = `request failed (HTTP ${e.status || "network"})`;
     }
+    if (e.code === "ai_action_invalid_response" && e.request_id) {
+      raw = `${raw} Request ID: ${e.request_id}`;
+    }
   } else if (e instanceof Error) {
     raw = e.message;
   } else if (typeof e === "string") {

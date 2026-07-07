@@ -1,34 +1,26 @@
 <script setup lang="ts">
-import LoadingText from "@/components/LoadingText.vue";
-import { ref, computed, onMounted, watch, nextTick } from "vue";
-import { useI18n } from "vue-i18n";
-import {
-  useRoute,
-  useRouter,
-  RouterLink,
-  onBeforeRouteLeave,
-} from "vue-router";
+import LoadingText from '@/components/LoadingText.vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter, RouterLink, onBeforeRouteLeave } from 'vue-router'
 
-const { t } = useI18n();
-import { useAuthStore } from "@/stores/auth";
-import IssueList from "@/components/IssueList.vue";
-import AppIcon from "@/components/AppIcon.vue";
-import StatusDot from "@/components/StatusDot.vue";
-import { useDirtyGuard } from "@/composables/useDirtyGuard";
-import { useConfirm } from "@/composables/useConfirm";
-import { useMarkdown } from "@/composables/useMarkdown";
-import { useTimeUnit } from "@/composables/useTimeUnit";
-import { fmtDateTime as formatDisplayDateTime } from "@/utils/formatTime";
-import { ApiError, api, errMsg } from "@/api/client";
-import { isDevFixtureUser } from "@/utils/devUsers";
-import { attachmentsEnabled } from "@/api/instance";
-import { useNewIssueStore } from "@/stores/newIssue";
-import { provideIssueContext } from "@/composables/useIssueContext";
-import {
-  emptyIssueDetailForm,
-  issueToDetailForm,
-} from "@/config/issueDetailForm";
-import type { Issue, Tag, Project, Sprint, User, Attachment } from "@/types";
+const { t } = useI18n()
+import { useAuthStore } from '@/stores/auth'
+import IssueList from '@/components/IssueList.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import StatusDot from '@/components/StatusDot.vue'
+import { useDirtyGuard } from '@/composables/useDirtyGuard'
+import { useConfirm } from '@/composables/useConfirm'
+import { useMarkdown } from '@/composables/useMarkdown'
+import { useTimeUnit } from '@/composables/useTimeUnit'
+import { fmtDateTime as formatDisplayDateTime } from '@/utils/formatTime'
+import { ApiError, api, errMsg } from '@/api/client'
+import { isDevFixtureUser } from '@/utils/devUsers'
+import { attachmentsEnabled } from '@/api/instance'
+import { useNewIssueStore } from '@/stores/newIssue'
+import { provideIssueContext } from '@/composables/useIssueContext'
+import { emptyIssueDetailForm, issueToDetailForm } from '@/config/issueDetailForm'
+import type { Issue, Tag, Project, Sprint, User, Attachment } from '@/types'
 import {
   addIssueTag,
   assignIssueSprint,
@@ -42,9 +34,9 @@ import {
   saveIssueDetail,
   issueIfMatch,
   type IssueAggregation as Aggregation,
-} from "@/services/issueDetail";
-import { uploadInlineIssueAttachment } from "@/services/issueInlineAttachments";
-import { addIssueRelation } from "@/services/issueRelations";
+} from '@/services/issueDetail'
+import { uploadInlineIssueAttachment } from '@/services/issueInlineAttachments'
+import { addIssueRelation } from '@/services/issueRelations'
 import {
   useIssueDisplay,
   TYPE_SVGS,
@@ -52,93 +44,91 @@ import {
   PRIORITY_ICON,
   PRIORITY_COLOR,
   PRIORITY_LABEL,
-} from "@/composables/useIssueDisplay";
-import AiActionMenu from "@/components/ai/AiActionMenu.vue";
-import AiSurfaceFeedback from "@/components/ai/AiSurfaceFeedback.vue";
+} from '@/composables/useIssueDisplay'
+import AiActionMenu from '@/components/ai/AiActionMenu.vue'
+import AiSurfaceFeedback from '@/components/ai/AiSurfaceFeedback.vue'
 import {
   aiMutationHeaders,
   applyIssueTextMutations,
   type AiApplyInfo,
-} from "@/services/aiActionApply";
-import { undoMutationByRequestId } from "@/services/aiPaperTrail";
-import { useUndoStore } from "@/stores/undo";
+} from '@/services/aiActionApply'
+import { undoMutationByRequestId } from '@/services/aiPaperTrail'
+import { useUndoStore } from '@/stores/undo'
 
 // Sub-components
-import IssueTimeEntries from "@/components/issue/IssueTimeEntries.vue";
-import IssueHistory from "@/components/issue/IssueHistory.vue";
-import IssueRelations from "@/components/issue/IssueRelations.vue";
-import IssueApplicableMemories from "@/components/issue/IssueApplicableMemories.vue";
-import AgentRunPanel from "@/components/issue/AgentRunPanel.vue";
-import IssueAttachments from "@/components/issue/IssueAttachments.vue";
-import IssueComments from "@/components/issue/IssueComments.vue";
-import IssueAnchors from "@/components/issue/IssueAnchors.vue";
-import IssueGroupMembers from "@/components/issue/IssueGroupMembers.vue";
-import IssueMetaGrid from "@/components/issue/IssueMetaGrid.vue";
-import IssueEditSidebar from "@/components/issue/IssueEditSidebar.vue";
-import IssueBillingSummary from "@/components/issue/IssueBillingSummary.vue";
-import IssueCompleteEpicModal from "@/components/issue/IssueCompleteEpicModal.vue";
-import LessonCaptureModal from "@/components/issue/LessonCaptureModal.vue";
-import { getLessonCapturePrompt } from "@/services/lessonCapture";
-import IssueDetailBody from "@/components/issue/IssueDetailBody.vue";
-import IssueDetailFooter from "@/components/issue/IssueDetailFooter.vue";
-import IssueTextEditField from "@/components/issue/IssueTextEditField.vue";
+import IssueTimeEntries from '@/components/issue/IssueTimeEntries.vue'
+import IssueHistory from '@/components/issue/IssueHistory.vue'
+import IssueRelations from '@/components/issue/IssueRelations.vue'
+import IssueApplicableMemories from '@/components/issue/IssueApplicableMemories.vue'
+import IssueAIWorkbench from '@/components/issue/IssueAIWorkbench.vue'
+import IssueAttachments from '@/components/issue/IssueAttachments.vue'
+import IssueComments from '@/components/issue/IssueComments.vue'
+import IssueAnchors from '@/components/issue/IssueAnchors.vue'
+import IssueGroupMembers from '@/components/issue/IssueGroupMembers.vue'
+import IssueMetaGrid from '@/components/issue/IssueMetaGrid.vue'
+import IssueEditSidebar from '@/components/issue/IssueEditSidebar.vue'
+import IssueBillingSummary from '@/components/issue/IssueBillingSummary.vue'
+import IssueCompleteEpicModal from '@/components/issue/IssueCompleteEpicModal.vue'
+import LessonCaptureModal from '@/components/issue/LessonCaptureModal.vue'
+import { getLessonCapturePrompt } from '@/services/lessonCapture'
+import IssueDetailBody from '@/components/issue/IssueDetailBody.vue'
+import IssueDetailFooter from '@/components/issue/IssueDetailFooter.vue'
+import IssueTextEditField from '@/components/issue/IssueTextEditField.vue'
 // PAI-463: customer-portal visibility toggle + audit line. Rendered
 // below the type/status/priority subheader so it sits next to the
 // other issue-level "what state is this in" signals.
-import IssueVisibilityToggle from "@/components/IssueVisibilityToggle.vue";
+import IssueVisibilityToggle from '@/components/IssueVisibilityToggle.vue'
 // PAI-464: nudge banner that surfaces above the description when a
 // terminal-status issue is missing the CUSTOMERPORTAL tag.
-import IssueVisibilityNudge from "@/components/IssueVisibilityNudge.vue";
+import IssueVisibilityNudge from '@/components/IssueVisibilityNudge.vue'
 
-const route = useRoute();
-const router = useRouter();
-const undoStore = useUndoStore();
-const { confirm } = useConfirm();
+const route = useRoute()
+const router = useRouter()
+const undoStore = useUndoStore()
+const { confirm } = useConfirm()
 
-const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]{0,15}-\d+$/;
+const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]{0,15}-\d+$/
 
-type IssueRouteRef =
-  | { ok: true; ref: string }
-  | { ok: false; message: string };
+type IssueRouteRef = { ok: true; ref: string } | { ok: false; message: string }
 
 function firstRouteParam(value: unknown): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return String(raw ?? "").trim();
+  const raw = Array.isArray(value) ? value[0] : value
+  return String(raw ?? '').trim()
 }
 
 function parseProjectId(value: unknown): number | null {
-  const raw = firstRouteParam(value);
-  if (!raw) return null;
-  const id = Number(raw);
-  return Number.isInteger(id) && id > 0 ? id : null;
+  const raw = firstRouteParam(value)
+  if (!raw) return null
+  const id = Number(raw)
+  return Number.isInteger(id) && id > 0 ? id : null
 }
 
 function parseIssueRef(value: unknown): IssueRouteRef {
-  const raw = firstRouteParam(value);
+  const raw = firstRouteParam(value)
   if (!raw) {
-    return { ok: false, message: "Issue link is missing an issue ID." };
+    return { ok: false, message: 'Issue link is missing an issue ID.' }
   }
-  if (/^\d+$/.test(raw) && Number(raw) > 0) return { ok: true, ref: raw };
-  if (ISSUE_KEY_PATTERN.test(raw)) return { ok: true, ref: raw };
+  if (/^\d+$/.test(raw) && Number(raw) > 0) return { ok: true, ref: raw }
+  if (ISSUE_KEY_PATTERN.test(raw)) return { ok: true, ref: raw }
   return {
     ok: false,
     message: `Issue links must use a positive numeric ID or an uppercase issue key like PAI-265. "${raw}" is not valid.`,
-  };
+  }
 }
 
-const issueId = ref(0);
-const projectId = ref<number | null>(parseProjectId(route.params.id));
+const issueId = ref(0)
+const projectId = ref<number | null>(parseProjectId(route.params.id))
 
-const issue = ref<Issue | null>(null);
-const project = ref<Project | null>(null);
-const parentIssue = ref<Issue | null>(null);
-const children = ref<Issue[]>([]);
-const projectIssues = ref<Issue[]>([]);
-const users = ref<User[]>([]);
-const allTags = ref<Tag[]>([]);
-const allSprints = ref<Sprint[]>([]);
-const costUnits = ref<string[]>([]);
-const releases = ref<string[]>([]);
+const issue = ref<Issue | null>(null)
+const project = ref<Project | null>(null)
+const parentIssue = ref<Issue | null>(null)
+const children = ref<Issue[]>([])
+const projectIssues = ref<Issue[]>([])
+const users = ref<User[]>([])
+const allTags = ref<Tag[]>([])
+const allSprints = ref<Sprint[]>([])
+const costUnits = ref<string[]>([])
+const releases = ref<string[]>([])
 
 provideIssueContext({
   users,
@@ -147,314 +137,288 @@ provideIssueContext({
   releases,
   projects: ref([]),
   sprints: allSprints,
-});
+})
 
-const loading = ref(true);
-const loadError = ref("");
-const loadErrorTitle = ref("");
-const loadErrorRetryable = ref(false);
-const editing = ref(false);
-const saving = ref(false);
-const saveError = ref("");
+const loading = ref(true)
+const loadError = ref('')
+const loadErrorTitle = ref('')
+const loadErrorRetryable = ref(false)
+const editing = ref(false)
+const saving = ref(false)
+const saveError = ref('')
 // PAI-231 — set when a save is rejected with 412 (the issue changed since it
 // was loaded). Drives the conflict banner + Reload action.
-const conflict = ref<{ fields: string[] } | null>(null);
+const conflict = ref<{ fields: string[] } | null>(null)
 
-const issueTagIds = computed(() => issue.value?.tags?.map((t) => t.id) ?? []);
+const issueTagIds = computed(() => issue.value?.tags?.map((t) => t.id) ?? [])
 
-const form = ref(emptyIssueDetailForm());
+const form = ref(emptyIssueDetailForm())
 
 // Sub-component refs
-const timeEntriesRef = ref<InstanceType<typeof IssueTimeEntries> | null>(null);
-const historyRef = ref<InstanceType<typeof IssueHistory> | null>(null);
-const relationsRef = ref<InstanceType<typeof IssueRelations> | null>(null);
-const attachmentsRef = ref<InstanceType<typeof IssueAttachments> | null>(null);
-const commentsRef = ref<InstanceType<typeof IssueComments> | null>(null);
-const groupMembersRef = ref<InstanceType<typeof IssueGroupMembers> | null>(
-  null,
-);
+const timeEntriesRef = ref<InstanceType<typeof IssueTimeEntries> | null>(null)
+const historyRef = ref<InstanceType<typeof IssueHistory> | null>(null)
+const relationsRef = ref<InstanceType<typeof IssueRelations> | null>(null)
+const attachmentsRef = ref<InstanceType<typeof IssueAttachments> | null>(null)
+const commentsRef = ref<InstanceType<typeof IssueComments> | null>(null)
+const groupMembersRef = ref<InstanceType<typeof IssueGroupMembers> | null>(null)
 
 function clearIssueState() {
-  issue.value = null;
-  project.value = null;
-  parentIssue.value = null;
-  children.value = [];
-  projectIssues.value = [];
-  costUnits.value = [];
-  releases.value = [];
-  aggregation.value = null;
+  issue.value = null
+  project.value = null
+  parentIssue.value = null
+  children.value = []
+  projectIssues.value = []
+  costUnits.value = []
+  releases.value = []
+  aggregation.value = null
 }
 
 function setLoadError(title: string, message: string, retryable: boolean) {
-  loadErrorTitle.value = title;
-  loadError.value = message;
-  loadErrorRetryable.value = retryable;
-  clearIssueState();
-  issueId.value = 0;
+  loadErrorTitle.value = title
+  loadError.value = message
+  loadErrorRetryable.value = retryable
+  clearIssueState()
+  issueId.value = 0
 }
 
 function setLoadErrorFromUnknown(e: unknown) {
   if (e instanceof ApiError) {
     if (e.status === 400) {
-      setLoadError(
-        "Invalid issue link",
-        errMsg(e, "Invalid issue ID."),
-        false,
-      );
-      return;
+      setLoadError('Invalid issue link', errMsg(e, 'Invalid issue ID.'), false)
+      return
     }
     if (e.status === 404) {
       setLoadError(
-        "Issue not found",
-        "This issue does not exist, was deleted, or is not visible to your account.",
+        'Issue not found',
+        'This issue does not exist, was deleted, or is not visible to your account.',
         true,
-      );
-      return;
+      )
+      return
     }
     if (e.status === 401) {
       setLoadError(
-        "Sign in required",
-        "Your session is no longer active. Sign in again to open this issue.",
+        'Sign in required',
+        'Your session is no longer active. Sign in again to open this issue.',
         true,
-      );
-      return;
+      )
+      return
     }
     if (e.status === 0) {
-      setLoadError("Issue did not load", errMsg(e, "Network error."), true);
-      return;
+      setLoadError('Issue did not load', errMsg(e, 'Network error.'), true)
+      return
     }
   }
-  setLoadError(
-    "Issue did not load",
-    errMsg(e, "Issue could not be loaded."),
-    true,
-  );
+  setLoadError('Issue did not load', errMsg(e, 'Issue could not be loaded.'), true)
 }
 
 // Reload when the route target changes.
 watch(
   () => [route.params.issueId, route.params.id],
   () => load(),
-);
+)
 
-let loadSeq = 0;
+let loadSeq = 0
 async function load() {
-  const seq = ++loadSeq;
-  const parsed = parseIssueRef(route.params.issueId);
-  projectId.value = parseProjectId(route.params.id);
-  loading.value = true;
-  editing.value = false;
-  saveError.value = "";
-  loadError.value = "";
-  loadErrorTitle.value = "";
-  loadErrorRetryable.value = false;
+  const seq = ++loadSeq
+  const parsed = parseIssueRef(route.params.issueId)
+  projectId.value = parseProjectId(route.params.id)
+  loading.value = true
+  editing.value = false
+  saveError.value = ''
+  loadError.value = ''
+  loadErrorTitle.value = ''
+  loadErrorRetryable.value = false
 
   if (!parsed.ok) {
-    setLoadError("Invalid issue link", parsed.message, false);
-    loading.value = false;
-    return;
+    setLoadError('Invalid issue link', parsed.message, false)
+    loading.value = false
+    return
   }
 
-  let loaded = false;
+  let loaded = false
   try {
-    const data = await loadIssueDetailData(parsed.ref, projectId.value);
-    if (seq !== loadSeq) return;
-    issueId.value = data.issue.id;
-    projectId.value = data.issue.project_id ?? projectId.value;
-    issue.value = data.issue;
-    project.value = data.project;
-    parentIssue.value = data.parentIssue;
-    children.value = data.children;
-    projectIssues.value = data.projectIssues;
+    const data = await loadIssueDetailData(parsed.ref, projectId.value)
+    if (seq !== loadSeq) return
+    issueId.value = data.issue.id
+    projectId.value = data.issue.project_id ?? projectId.value
+    issue.value = data.issue
+    project.value = data.project
+    parentIssue.value = data.parentIssue
+    children.value = data.children
+    projectIssues.value = data.projectIssues
     // PAI-267: filter dev_* fixture users out of the assignee picker.
-    users.value = data.users.filter((u) => !isDevFixtureUser(u.username));
-    allTags.value = data.allTags;
-    allSprints.value = data.allSprints;
-    costUnits.value = data.costUnits;
-    releases.value = data.releases;
-    aggregation.value = null;
-    resetForm();
-    loaded = true;
+    users.value = data.users.filter((u) => !isDevFixtureUser(u.username))
+    allTags.value = data.allTags
+    allSprints.value = data.allSprints
+    costUnits.value = data.costUnits
+    releases.value = data.releases
+    aggregation.value = null
+    resetForm()
+    loaded = true
   } catch (e: unknown) {
-    if (seq !== loadSeq) return;
-    setLoadErrorFromUnknown(e);
+    if (seq !== loadSeq) return
+    setLoadErrorFromUnknown(e)
   } finally {
-    if (seq === loadSeq) loading.value = false;
+    if (seq === loadSeq) loading.value = false
   }
 
   if (loaded && seq === loadSeq) {
     // Sub-components load their own data once the canonical numeric issue id is known.
     nextTick(() => {
-      if (seq !== loadSeq) return;
-      commentsRef.value?.load();
-      relationsRef.value?.load();
-      timeEntriesRef.value?.load();
-      groupMembersRef.value?.load();
-      attachmentsRef.value?.load();
-      loadAggregation();
-    });
+      if (seq !== loadSeq) return
+      commentsRef.value?.load()
+      relationsRef.value?.load()
+      timeEntriesRef.value?.load()
+      groupMembersRef.value?.load()
+      attachmentsRef.value?.load()
+      loadAggregation()
+    })
   }
 }
 
 onMounted(async () => {
-  await load();
-  initMdModes();
-  if (route.query.edit === "1" && issue.value) {
-    editing.value = true;
-    router.replace({ query: { ...route.query, edit: undefined } });
+  await load()
+  initMdModes()
+  if (route.query.edit === '1' && issue.value) {
+    editing.value = true
+    router.replace({ query: { ...route.query, edit: undefined } })
   }
-});
+})
 
 function resetForm() {
-  if (!issue.value) return;
-  form.value = issueToDetailForm(issue.value);
+  if (!issue.value) return
+  form.value = issueToDetailForm(issue.value)
 }
 
 // Dirty guard for unsaved changes
-const detailSavedSnapshot = ref("");
-const detailCurrentSnapshot = computed(() =>
-  editing.value ? JSON.stringify(form.value) : "",
-);
+const detailSavedSnapshot = ref('')
+const detailCurrentSnapshot = computed(() => (editing.value ? JSON.stringify(form.value) : ''))
 const { isDirty: isDetailDirty, reset: resetDetailDirty } = useDirtyGuard(
   detailCurrentSnapshot,
   detailSavedSnapshot,
-);
+)
 
 onBeforeRouteLeave(async () => {
   if (pendingInlineUploads.value > 0) {
     return await confirm({
       message: `An attachment upload is still in progress (${pendingInlineUploads.value}). Leave anyway? Pending placeholders will be lost.`,
-      confirmLabel: "Leave",
+      confirmLabel: 'Leave',
       danger: true,
-    });
+    })
   }
   if (isDetailDirty.value) {
     return await confirm({
-      message: "You have unsaved changes. Discard and leave?",
-      confirmLabel: "Discard",
+      message: 'You have unsaved changes. Discard and leave?',
+      confirmLabel: 'Discard',
       danger: true,
-    });
+    })
   }
-});
+})
 
 function enterEditMode() {
-  resetForm();
-  editing.value = true;
+  resetForm()
+  editing.value = true
   nextTick(() => {
-    detailSavedSnapshot.value = JSON.stringify(form.value);
-  });
+    detailSavedSnapshot.value = JSON.stringify(form.value)
+  })
 }
 
 // PAI-231 — recover from a save conflict: drop unsaved edits, re-fetch the
 // latest issue, and return to read mode so the user re-edits against current.
 async function reloadOnConflict() {
-  conflict.value = null;
-  saveError.value = "";
-  editing.value = false;
-  await load();
+  conflict.value = null
+  saveError.value = ''
+  editing.value = false
+  await load()
 }
 
 async function save() {
   if (pendingInlineUploads.value > 0) {
-    saveError.value = `Please wait — ${pendingInlineUploads.value} attachment upload${pendingInlineUploads.value > 1 ? "s" : ""} still in progress.`;
-    return;
+    saveError.value = `Please wait — ${pendingInlineUploads.value} attachment upload${pendingInlineUploads.value > 1 ? 's' : ''} still in progress.`
+    return
   }
-  saveError.value = "";
-  conflict.value = null;
-  saving.value = true;
+  saveError.value = ''
+  conflict.value = null
+  saving.value = true
   // Capture prior status BEFORE the save so the post-save hook
   // (PAI-343 lesson capture) can detect a terminal-state transition.
-  const prevStatus = issue.value?.status ?? "";
+  const prevStatus = issue.value?.status ?? ''
   // PAI-231 — send the load-time version as If-Match so a concurrent edit is
   // rejected (412) instead of silently overwritten.
-  const ifMatch = issue.value
-    ? issueIfMatch(issue.value.id, issue.value.updated_at)
-    : undefined;
+  const ifMatch = issue.value ? issueIfMatch(issue.value.id, issue.value.updated_at) : undefined
   try {
-    issue.value = await saveIssueDetail(issueId.value, form.value, ifMatch);
-    parentIssue.value = issue.value.parent_id
-      ? await loadIssueParent(issue.value.parent_id)
-      : null;
-    editing.value = false;
-    resetDetailDirty();
-    const cu = issue.value.cost_unit?.label?.trim();
+    issue.value = await saveIssueDetail(issueId.value, form.value, ifMatch)
+    parentIssue.value = issue.value.parent_id ? await loadIssueParent(issue.value.parent_id) : null
+    editing.value = false
+    resetDetailDirty()
+    const cu = issue.value.cost_unit?.label?.trim()
     if (cu && !costUnits.value.includes(cu))
-      costUnits.value = [...costUnits.value, cu].sort((a, b) =>
-        a.localeCompare(b),
-      );
-    const rel = issue.value.release?.label?.trim();
+      costUnits.value = [...costUnits.value, cu].sort((a, b) => a.localeCompare(b))
+    const rel = issue.value.release?.label?.trim()
     if (rel && !releases.value.includes(rel))
-      releases.value = [...releases.value, rel].sort((a, b) =>
-        a.localeCompare(b),
-      );
+      releases.value = [...releases.value, rel].sort((a, b) => a.localeCompare(b))
     // PAI-343 — post-save trigger check. Runs only when the ticket
     // actually moved into a terminal state during this save. Failures
     // are silent — capturing is opt-in and additive.
-    void maybeOfferLessonCapture(prevStatus, issue.value.status);
+    void maybeOfferLessonCapture(prevStatus, issue.value.status)
   } catch (e: unknown) {
     if (e instanceof ApiError && e.status === 412) {
-      const raw = (e as { diverged_fields?: unknown }).diverged_fields;
-      const fields = Array.isArray(raw) ? (raw as string[]) : [];
-      conflict.value = { fields };
+      const raw = (e as { diverged_fields?: unknown }).diverged_fields
+      const fields = Array.isArray(raw) ? (raw as string[]) : []
+      conflict.value = { fields }
       saveError.value =
-        "This issue was changed by someone else since you opened it." +
-        (fields.length ? ` Changed: ${fields.join(", ")}.` : "") +
-        " Reload to get the latest, then re-apply your edit.";
+        'This issue was changed by someone else since you opened it.' +
+        (fields.length ? ` Changed: ${fields.join(', ')}.` : '') +
+        ' Reload to get the latest, then re-apply your edit.'
     } else {
-      saveError.value = errMsg(e, "Save failed.");
+      saveError.value = errMsg(e, 'Save failed.')
     }
   } finally {
-    saving.value = false;
+    saving.value = false
   }
 }
 
 async function deleteIssue() {
-  if (saving.value) return;
+  if (saving.value) return
   if (
     !(await confirm({
       message: `Delete ${issue.value?.issue_key} "${issue.value?.title}"?`,
-      confirmLabel: "Delete",
+      confirmLabel: 'Delete',
       danger: true,
     }))
   )
-    return;
-  saving.value = true;
+    return
+  saving.value = true
   try {
-    await deleteIssueDetail(issueId.value);
-    router.push(projectRoute.value);
+    await deleteIssueDetail(issueId.value)
+    router.push(projectRoute.value)
   } finally {
-    saving.value = false;
+    saving.value = false
   }
 }
 
 // ── Clone ────────────────────────────────────────────────────────────────────
-const cloning = ref(false);
+const cloning = ref(false)
 async function cloneIssue() {
-  if (cloning.value) return;
-  cloning.value = true;
+  if (cloning.value) return
+  cloning.value = true
   try {
-    const clone = await cloneIssueDetail(issueId.value);
-    const pid = clone.project_id ?? effectiveProjectId.value;
-    router.push(
-      pid
-        ? `/projects/${pid}/issues/${clone.id}?edit=1`
-        : `/issues/${clone.id}?edit=1`,
-    );
+    const clone = await cloneIssueDetail(issueId.value)
+    const pid = clone.project_id ?? effectiveProjectId.value
+    router.push(pid ? `/projects/${pid}/issues/${clone.id}?edit=1` : `/issues/${clone.id}?edit=1`)
   } catch (e: unknown) {
-    alert(errMsg(e, "Clone failed."));
+    alert(errMsg(e, 'Clone failed.'))
   } finally {
-    cloning.value = false;
+    cloning.value = false
   }
 }
 
 // ── Complete Epic ────────────────────────────────────────────────────────────
-const completeEpicRef = ref<InstanceType<typeof IssueCompleteEpicModal> | null>(
-  null,
-);
+const completeEpicRef = ref<InstanceType<typeof IssueCompleteEpicModal> | null>(null)
 
 function onEpicCompleted(updated: Issue, ch: Issue[]) {
-  issue.value = updated;
-  children.value = ch;
+  issue.value = updated
+  children.value = ch
 }
 
 // ── Lesson capture (PAI-343) ──────────────────────────────────────────────
@@ -464,359 +428,333 @@ function onEpicCompleted(updated: Issue, ch: Issue[]) {
 // modal post-save. The modal is opt-in — declining doesn't roll
 // back the status transition.
 const TERMINAL_STATUSES_FOR_CAPTURE: ReadonlySet<string> = new Set([
-  "done",
-  "delivered",
-  "cancelled",
-]);
-const lessonCaptureOpen = ref(false);
-const lessonCaptureSuggestedName = ref("");
-const lessonCaptureReason = ref("");
-const lessonCaptureTicketKey = ref("");
+  'done',
+  'delivered',
+  'cancelled',
+])
+const lessonCaptureOpen = ref(false)
+const lessonCaptureSuggestedName = ref('')
+const lessonCaptureReason = ref('')
+const lessonCaptureTicketKey = ref('')
 
 async function maybeOfferLessonCapture(prevStatus: string, nextStatus: string) {
-  if (prevStatus === nextStatus) return;
-  if (!TERMINAL_STATUSES_FOR_CAPTURE.has(nextStatus)) return;
-  if (!issue.value) return;
-  const prompt = await getLessonCapturePrompt(issue.value.id);
-  if (!prompt.should_prompt) return;
-  lessonCaptureSuggestedName.value = prompt.suggested_name || "";
-  lessonCaptureReason.value = prompt.reason || "";
-  lessonCaptureTicketKey.value =
-    prompt.ticket_key || issue.value.issue_key || "";
-  lessonCaptureOpen.value = true;
+  if (prevStatus === nextStatus) return
+  if (!TERMINAL_STATUSES_FOR_CAPTURE.has(nextStatus)) return
+  if (!issue.value) return
+  const prompt = await getLessonCapturePrompt(issue.value.id)
+  if (!prompt.should_prompt) return
+  lessonCaptureSuggestedName.value = prompt.suggested_name || ''
+  lessonCaptureReason.value = prompt.reason || ''
+  lessonCaptureTicketKey.value = prompt.ticket_key || issue.value.issue_key || ''
+  lessonCaptureOpen.value = true
 }
 
 function onLessonCaptureClose() {
-  lessonCaptureOpen.value = false;
+  lessonCaptureOpen.value = false
 }
 
 function onLessonCaptureSaved(_payload: { memoryId: number; slug: string }) {
-  lessonCaptureOpen.value = false;
+  lessonCaptureOpen.value = false
 }
 
 // ── Inline file paste/drop (ACME-1 / 581 / 583 / 584 / 585) ──────────────
-const pendingAttachmentIds = ref<number[]>([]);
-let pendingUploadSeq = 0;
+const pendingAttachmentIds = ref<number[]>([])
+let pendingUploadSeq = 0
 
-type InlineField = "description" | "acceptance_criteria";
-type UploadStatus = "pending" | "done" | "failed";
+type InlineField = 'description' | 'acceptance_criteria'
+type UploadStatus = 'pending' | 'done' | 'failed'
 
 interface UploadJob {
-  seq: number;
-  field: InlineField;
-  filename: string;
-  file: File;
-  isImage: boolean;
-  progress: number;
-  status: UploadStatus;
-  error?: string;
-  insertAt: number;
+  seq: number
+  field: InlineField
+  filename: string
+  file: File
+  isImage: boolean
+  progress: number
+  status: UploadStatus
+  error?: string
+  insertAt: number
 }
 
 // Sidecar upload state — NOT mixed into the textarea. The textarea stays clean;
 // the markdown link is only inserted when the upload resolves successfully.
-const uploadJobs = ref<UploadJob[]>([]);
+const uploadJobs = ref<UploadJob[]>([])
 
 const pendingInlineUploads = computed(
-  () => uploadJobs.value.filter((j) => j.status === "pending").length,
-);
+  () => uploadJobs.value.filter((j) => j.status === 'pending').length,
+)
 const avgUploadProgress = computed(() => {
-  const active = uploadJobs.value.filter((j) => j.status === "pending");
-  if (!active.length) return 0;
-  return Math.round(active.reduce((s, j) => s + j.progress, 0) / active.length);
-});
+  const active = uploadJobs.value.filter((j) => j.status === 'pending')
+  if (!active.length) return 0
+  return Math.round(active.reduce((s, j) => s + j.progress, 0) / active.length)
+})
 function jobsFor(field: InlineField): UploadJob[] {
-  return uploadJobs.value.filter((j) => j.field === field);
+  return uploadJobs.value.filter((j) => j.field === field)
 }
 
 // Escape characters that would break a markdown link's text segment.
 function escapeLinkText(name: string): string {
-  return name.replace(/[\[\]]/g, (m) => "\\" + m).replace(/[\r\n]+/g, " ");
+  return name.replace(/[\[\]]/g, (m) => '\\' + m).replace(/[\r\n]+/g, ' ')
 }
 
 function startUpload(job: UploadJob) {
-  job.status = "pending";
-  job.progress = 0;
-  job.error = undefined;
+  job.status = 'pending'
+  job.progress = 0
+  job.error = undefined
   uploadInlineIssueAttachment(issue.value?.id ?? 0, job.file, (pct) => {
-    job.progress = pct;
+    job.progress = pct
   })
     .then((a) => {
-      const url = `/api/attachments/${a.id}`;
-      const safeName = escapeLinkText(a.filename);
-      const snippet = job.isImage
-        ? `![${safeName}](${url})`
-        : `[${safeName}](${url})`;
+      const url = `/api/attachments/${a.id}`
+      const safeName = escapeLinkText(a.filename)
+      const snippet = job.isImage ? `![${safeName}](${url})` : `[${safeName}](${url})`
 
       // Insert at the saved cursor position, clamped to current text length.
       // Prefix a newline if we're not already on a fresh line, so successive
       // drops don't smash into each other or into existing prose.
-      const text = form.value[job.field];
-      const pos = Math.min(Math.max(job.insertAt, 0), text.length);
-      const needsLeadingNL = pos > 0 && text[pos - 1] !== "\n";
-      const needsTrailingNL = pos < text.length && text[pos] !== "\n";
-      const inserted =
-        (needsLeadingNL ? "\n" : "") + snippet + (needsTrailingNL ? "\n" : "");
-      form.value[job.field] = text.slice(0, pos) + inserted + text.slice(pos);
+      const text = form.value[job.field]
+      const pos = Math.min(Math.max(job.insertAt, 0), text.length)
+      const needsLeadingNL = pos > 0 && text[pos - 1] !== '\n'
+      const needsTrailingNL = pos < text.length && text[pos] !== '\n'
+      const inserted = (needsLeadingNL ? '\n' : '') + snippet + (needsTrailingNL ? '\n' : '')
+      form.value[job.field] = text.slice(0, pos) + inserted + text.slice(pos)
 
       if (issue.value?.id) {
-        attachmentsRef.value?.load();
+        attachmentsRef.value?.load()
       } else {
-        pendingAttachmentIds.value.push(a.id);
+        pendingAttachmentIds.value.push(a.id)
       }
 
-      job.status = "done";
-      job.progress = 100;
+      job.status = 'done'
+      job.progress = 100
       // Auto-dismiss success chips so the row doesn't pile up.
       setTimeout(() => {
-        uploadJobs.value = uploadJobs.value.filter((j) => j !== job);
-      }, 1500);
+        uploadJobs.value = uploadJobs.value.filter((j) => j !== job)
+      }, 1500)
     })
     .catch((err: unknown) => {
-      job.status = "failed";
-      job.error = errMsg(err, "upload failed");
-    });
+      job.status = 'failed'
+      job.error = errMsg(err, 'upload failed')
+    })
 }
 
-function uploadInlineFiles(
-  files: FileList | File[],
-  modelField: InlineField,
-  insertAt: number,
-) {
-  const list = Array.from(files);
-  if (!list.length) return;
+function uploadInlineFiles(files: FileList | File[], modelField: InlineField, insertAt: number) {
+  const list = Array.from(files)
+  if (!list.length) return
 
   const newJobs: UploadJob[] = list.map((file) => ({
     seq: ++pendingUploadSeq,
     field: modelField,
     filename: file.name,
     file,
-    isImage: file.type.startsWith("image/"),
+    isImage: file.type.startsWith('image/'),
     progress: 0,
-    status: "pending",
+    status: 'pending',
     insertAt,
-  }));
+  }))
 
-  uploadJobs.value.push(...newJobs);
-  for (const job of newJobs) startUpload(job);
+  uploadJobs.value.push(...newJobs)
+  for (const job of newJobs) startUpload(job)
 }
 
 function retryUpload(job: UploadJob) {
-  startUpload(job);
+  startUpload(job)
 }
 
 function dismissJob(job: UploadJob) {
-  uploadJobs.value = uploadJobs.value.filter((j) => j !== job);
+  uploadJobs.value = uploadJobs.value.filter((j) => j !== job)
 }
 
 // PAI-463: CUSTOMERPORTAL tag is the load-bearing visibility marker.
 // We derive the id from the loaded tag list rather than hard-coding it
 // because the id varies per environment (auto-increment column on tags).
-const CUSTOMER_PORTAL_TAG_NAME = "CUSTOMERPORTAL";
+const CUSTOMER_PORTAL_TAG_NAME = 'CUSTOMERPORTAL'
 const customerPortalTagId = computed<number | null>(() => {
-  const tag = allTags.value.find((t) => t.name === CUSTOMER_PORTAL_TAG_NAME);
-  return tag?.id ?? null;
-});
+  const tag = allTags.value.find((t) => t.name === CUSTOMER_PORTAL_TAG_NAME)
+  return tag?.id ?? null
+})
 const isVisibleToPortal = computed(() =>
   (issue.value?.tags ?? []).some((t) => t.name === CUSTOMER_PORTAL_TAG_NAME),
-);
+)
 async function onVisibilityToggle(makeVisible: boolean) {
-  const tagId = customerPortalTagId.value;
-  if (!tagId) return;
+  const tagId = customerPortalTagId.value
+  if (!tagId) return
   if (makeVisible) {
-    await addTag(tagId);
+    await addTag(tagId)
   } else {
-    await removeTag(tagId);
+    await removeTag(tagId)
   }
 }
 
 async function addTag(tagId: number) {
-  await addIssueTag(issueId.value, tagId);
-  const tag = allTags.value.find((t) => t.id === tagId);
-  if (tag && issue.value)
-    issue.value = { ...issue.value, tags: [...(issue.value.tags ?? []), tag] };
+  await addIssueTag(issueId.value, tagId)
+  const tag = allTags.value.find((t) => t.id === tagId)
+  if (tag && issue.value) issue.value = { ...issue.value, tags: [...(issue.value.tags ?? []), tag] }
 }
 
 async function removeTag(tagId: number) {
-  if (!(await confirm({ message: "Remove this tag?", confirmLabel: "Remove" })))
-    return;
-  await removeIssueTag(issueId.value, tagId);
+  if (!(await confirm({ message: 'Remove this tag?', confirmLabel: 'Remove' }))) return
+  await removeIssueTag(issueId.value, tagId)
   if (issue.value)
     issue.value = {
       ...issue.value,
       tags: (issue.value.tags ?? []).filter((t) => t.id !== tagId),
-    };
+    }
 }
 
 // ── Sprint assignment ────────────────────────────────────────────────────────
-const sprintSearchQuery = ref("");
-const sprintDropdownOpen = ref(false);
-const sprintSearchRef = ref<HTMLInputElement | null>(null);
-const sprintWrapperRef = ref<HTMLElement | null>(null);
-const sprintDropdownPos = ref({ top: 0, left: 0 });
+const sprintSearchQuery = ref('')
+const sprintDropdownOpen = ref(false)
+const sprintSearchRef = ref<HTMLInputElement | null>(null)
+const sprintWrapperRef = ref<HTMLElement | null>(null)
+const sprintDropdownPos = ref({ top: 0, left: 0 })
 
 function onSprintOutsideClick(e: MouseEvent) {
-  const target = e.target as Node;
+  const target = e.target as Node
   if (sprintWrapperRef.value && !sprintWrapperRef.value.contains(target)) {
-    const dd = document.querySelector(".sprint-dropdown--teleported");
-    if (dd && dd.contains(target)) return;
-    sprintDropdownOpen.value = false;
+    const dd = document.querySelector('.sprint-dropdown--teleported')
+    if (dd && dd.contains(target)) return
+    sprintDropdownOpen.value = false
   }
 }
 watch(sprintDropdownOpen, (open) => {
-  if (open) document.addEventListener("mousedown", onSprintOutsideClick);
-  else document.removeEventListener("mousedown", onSprintOutsideClick);
-});
+  if (open) document.addEventListener('mousedown', onSprintOutsideClick)
+  else document.removeEventListener('mousedown', onSprintOutsideClick)
+})
 
 const assignedSprints = computed(() =>
   allSprints.value.filter((s) => issue.value?.sprint_ids?.includes(s.id)),
-);
+)
 
 const availableSprintsFiltered = computed(() => {
-  const assigned = issue.value?.sprint_ids ?? [];
-  const q = sprintSearchQuery.value.toLowerCase();
+  const assigned = issue.value?.sprint_ids ?? []
+  const q = sprintSearchQuery.value.toLowerCase()
   return allSprints.value
     .filter((s) => !assigned.includes(s.id))
     .filter((s) => !q || s.title.toLowerCase().includes(q))
-    .slice(0, 20);
-});
+    .slice(0, 20)
+})
 
 function toggleSprintDropdown() {
-  sprintDropdownOpen.value = !sprintDropdownOpen.value;
+  sprintDropdownOpen.value = !sprintDropdownOpen.value
   if (sprintDropdownOpen.value) {
     nextTick(() => {
       if (sprintWrapperRef.value) {
-        const rect = sprintWrapperRef.value.getBoundingClientRect();
-        sprintDropdownPos.value = { top: rect.bottom + 4, left: rect.left };
+        const rect = sprintWrapperRef.value.getBoundingClientRect()
+        sprintDropdownPos.value = { top: rect.bottom + 4, left: rect.left }
       }
-      sprintSearchRef.value?.focus();
-    });
+      sprintSearchRef.value?.focus()
+    })
   }
 }
 
 async function assignSprint(sprint: Sprint) {
-  if (!issue.value) return;
-  await assignIssueSprint(issueId.value, sprint.id);
+  if (!issue.value) return
+  await assignIssueSprint(issueId.value, sprint.id)
   issue.value = {
     ...issue.value,
     sprint_ids: [...(issue.value.sprint_ids ?? []), sprint.id],
-  };
-  sprintDropdownOpen.value = false;
-  sprintSearchQuery.value = "";
+  }
+  sprintDropdownOpen.value = false
+  sprintSearchQuery.value = ''
 }
 
 async function removeSprint(sprintId: number) {
-  if (!issue.value) return;
+  if (!issue.value) return
   if (
     !(await confirm({
-      message: "Remove sprint assignment?",
-      confirmLabel: "Remove",
+      message: 'Remove sprint assignment?',
+      confirmLabel: 'Remove',
     }))
   )
-    return;
-  await removeIssueSprint(issueId.value, sprintId);
+    return
+  await removeIssueSprint(issueId.value, sprintId)
   issue.value = {
     ...issue.value,
     sprint_ids: (issue.value.sprint_ids ?? []).filter((id) => id !== sprintId),
-  };
+  }
 }
 
 // IssueList ref
-const childIssueListRef = ref<InstanceType<typeof IssueList> | null>(null);
+const childIssueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 
-const newIssueStore = useNewIssueStore();
+const newIssueStore = useNewIssueStore()
 watch(
   () => newIssueStore.trigger,
   () => {
-    const ctx = newIssueStore.context;
-    if (
-      ctx.projectId !== undefined &&
-      ctx.projectId !== effectiveProjectId.value
-    )
-      return;
-    if (ctx.parentId !== undefined && ctx.parentId !== issueId.value) return;
-    if (
-      issue.value &&
-      childLabel(issue.value.type) &&
-      childIssueListRef.value
-    ) {
-      childIssueListRef.value.openCreate();
-      return;
+    const ctx = newIssueStore.context
+    if (ctx.projectId !== undefined && ctx.projectId !== effectiveProjectId.value) return
+    if (ctx.parentId !== undefined && ctx.parentId !== issueId.value) return
+    if (issue.value && childLabel(issue.value.type) && childIssueListRef.value) {
+      childIssueListRef.value.openCreate()
+      return
     }
   },
-);
+)
 
 function onChildCreated(child: Issue) {
-  children.value.push(child);
+  children.value.push(child)
 }
 function onChildUpdated(child: Issue) {
-  const idx = children.value.findIndex((c) => c.id === child.id);
-  if (idx >= 0) children.value[idx] = child;
+  const idx = children.value.findIndex((c) => c.id === child.id)
+  if (idx >= 0) children.value[idx] = child
 }
 function onChildDeleted(id: number) {
-  children.value = children.value.filter((c) => c.id !== id);
+  children.value = children.value.filter((c) => c.id !== id)
 }
 
-const { showTypeIcon, showTypeText } = useIssueDisplay();
-const authStore = useAuthStore();
+const { showTypeIcon, showTypeText } = useIssueDisplay()
+const authStore = useAuthStore()
 const effectiveProjectId = computed(
   () => project.value?.id ?? issue.value?.project_id ?? projectId.value,
-);
+)
 const projectRoute = computed(() =>
-  effectiveProjectId.value
-    ? `/projects/${effectiveProjectId.value}`
-    : "/issues",
-);
+  effectiveProjectId.value ? `/projects/${effectiveProjectId.value}` : '/issues',
+)
 const projectIssuesLabel = computed(() =>
-  project.value?.key ? `${project.value.key} Issues` : "Issues",
-);
+  project.value?.key ? `${project.value.key} Issues` : 'Issues',
+)
 // Per-project edit flag for the current user. Consumed by templates to
 // hide edit affordances when the caller only has viewer access.
 const canEditThisProject = computed(() => {
-  return authStore.canEdit(effectiveProjectId.value);
-});
+  return authStore.canEdit(effectiveProjectId.value)
+})
 const validParents = computed(() => {
-  const currentId = issue.value?.id;
-  const t = form.value.type;
-  if (t === "epic") return [];
-  if (t === "ticket")
-    return projectIssues.value.filter(
-      (i) => i.type === "epic" && i.id !== currentId,
-    );
-  if (t === "task")
-    return projectIssues.value.filter(
-      (i) => i.type === "ticket" && i.id !== currentId,
-    );
-  return projectIssues.value.filter(
-    (i) => i.type === "epic" && i.id !== currentId,
-  );
-});
+  const currentId = issue.value?.id
+  const t = form.value.type
+  if (t === 'epic') return []
+  if (t === 'ticket')
+    return projectIssues.value.filter((i) => i.type === 'epic' && i.id !== currentId)
+  if (t === 'task')
+    return projectIssues.value.filter((i) => i.type === 'ticket' && i.id !== currentId)
+  return projectIssues.value.filter((i) => i.type === 'epic' && i.id !== currentId)
+})
 
 const typeChangeWarning = computed(() => {
-  if (!issue.value || form.value.type === issue.value.type) return "";
+  if (!issue.value || form.value.type === issue.value.type) return ''
   if (children.value.length > 0)
-    return `This issue has ${children.value.length} child issue${children.value.length > 1 ? "s" : ""} — changing its type may break the hierarchy.`;
-  return "";
-});
+    return `This issue has ${children.value.length} child issue${children.value.length > 1 ? 's' : ''} — changing its type may break the hierarchy.`
+  return ''
+})
 
 const childLabel = (type: string) =>
-  type === "epic" ? "Tickets" : type === "ticket" ? "Tasks" : null;
+  type === 'epic' ? 'Tickets' : type === 'ticket' ? 'Tasks' : null
 
 // ── Markdown / monospace preferences ─────────────────────────────────────────
-const mdMode = ref(false);
+const mdMode = ref(false)
 function initMdModes() {
-  mdMode.value = authStore.user?.markdown_default ?? false;
+  mdMode.value = authStore.user?.markdown_default ?? false
 }
-const isMonospace = computed(() => authStore.user?.monospace_fields ?? false);
+const isMonospace = computed(() => authStore.user?.monospace_fields ?? false)
 
-const descriptionRef = computed(() => issue.value?.description ?? "");
-const acRef = computed(() => issue.value?.acceptance_criteria ?? "");
-const notesRef = computed(() => issue.value?.notes ?? "");
-const reportSummaryRef = computed(() => issue.value?.report_summary ?? "");
-const { html: descHtml } = useMarkdown(descriptionRef, mdMode);
-const { html: acHtml } = useMarkdown(acRef, mdMode);
-const { html: notesHtml } = useMarkdown(notesRef, mdMode);
-const { html: reportSummaryHtml } = useMarkdown(reportSummaryRef, mdMode);
+const descriptionRef = computed(() => issue.value?.description ?? '')
+const acRef = computed(() => issue.value?.acceptance_criteria ?? '')
+const notesRef = computed(() => issue.value?.notes ?? '')
+const reportSummaryRef = computed(() => issue.value?.report_summary ?? '')
+const { html: descHtml } = useMarkdown(descriptionRef, mdMode)
+const { html: acHtml } = useMarkdown(acRef, mdMode)
+const { html: notesHtml } = useMarkdown(notesRef, mdMode)
+const { html: reportSummaryHtml } = useMarkdown(reportSummaryRef, mdMode)
 
 // PAI-146: AI text optimization. The composable manages availability,
 // in-flight state, and the overlay slot; we just provide the per-field
@@ -828,37 +766,37 @@ const { html: reportSummaryHtml } = useMarkdown(reportSummaryRef, mdMode);
 // (always truthy) in v-if, which kept the error banner permanently
 // visible with empty content.
 function onOptimizeAccept(
-  field: "description" | "acceptance_criteria" | "notes" | "report_summary",
+  field: 'description' | 'acceptance_criteria' | 'notes' | 'report_summary',
 ) {
   return (text: string) => {
-    form.value[field] = text;
-  };
+    form.value[field] = text
+  }
 }
 
 async function applyAiResult(info: AiApplyInfo) {
-  if (info.action === "estimate_effort") {
-    const hours = Number(info.values?.hours ?? (info.body as any)?.hours ?? 0);
-    const lp = Number(info.values?.lp ?? (info.body as any)?.lp ?? 0);
+  if (info.action === 'estimate_effort') {
+    const hours = Number(info.values?.hours ?? (info.body as any)?.hours ?? 0)
+    const lp = Number(info.values?.lp ?? (info.body as any)?.lp ?? 0)
     if (editing.value) {
-      const prevHours = form.value.estimate_hours;
-      const prevLp = form.value.estimate_lp;
-      form.value.estimate_hours = hours;
-      form.value.estimate_lp = lp;
+      const prevHours = form.value.estimate_hours
+      const prevLp = form.value.estimate_lp
+      form.value.estimate_hours = hours
+      form.value.estimate_lp = lp
       return {
         undoLabel: `Estimate ${hours}h / ${lp} LP applied`,
         undo: () => {
-          form.value.estimate_hours = prevHours;
-          form.value.estimate_lp = prevLp;
+          form.value.estimate_hours = prevHours
+          form.value.estimate_lp = prevLp
         },
-      };
+      }
     }
-    const prevHours = issue.value?.estimate_hours ?? null;
-    const prevLp = issue.value?.estimate_lp ?? null;
+    const prevHours = issue.value?.estimate_hours ?? null
+    const prevLp = issue.value?.estimate_lp ?? null
     issue.value = await api.put<Issue>(
       `/issues/${issueId.value}`,
       { estimate_hours: hours, estimate_lp: lp },
       { headers: aiMutationHeaders(info) },
-    );
+    )
     if (info.requestId) {
       undoStore.showSyntheticToast(
         {
@@ -866,48 +804,48 @@ async function applyAiResult(info: AiApplyInfo) {
           title: issue.value.issue_key,
           detail: `Estimate ${hours}h / ${lp} LP applied`,
         },
-        "undo",
-      );
-      void undoStore.refresh();
+        'undo',
+      )
+      void undoStore.refresh()
     }
     return {
       undoLabel: `Estimate ${hours}h / ${lp} LP applied`,
       undo: async () => {
         if (info.requestId) {
-          await undoMutationByRequestId(info.requestId);
-          await load();
-          return;
+          await undoMutationByRequestId(info.requestId)
+          await load()
+          return
         }
         issue.value = await api.put<Issue>(`/issues/${issueId.value}`, {
           estimate_hours: prevHours,
           estimate_lp: prevLp,
-        });
+        })
       },
       undoAutoDismissMs: 15000,
-    };
+    }
   }
-  if (info.action === "find_parent") {
-    const issueKey = String(info.values?.issue_key ?? "");
-    const parent = projectIssues.value.find((i) => i.issue_key === issueKey);
-    if (!parent) return;
+  if (info.action === 'find_parent') {
+    const issueKey = String(info.values?.issue_key ?? '')
+    const parent = projectIssues.value.find((i) => i.issue_key === issueKey)
+    if (!parent) return
     if (editing.value) {
-      const prevParent = form.value.parent_id;
-      form.value.parent_id = parent.id;
+      const prevParent = form.value.parent_id
+      form.value.parent_id = parent.id
       return {
         undoLabel: `Parent set to ${parent.issue_key}`,
         undo: () => {
-          form.value.parent_id = prevParent;
+          form.value.parent_id = prevParent
         },
-      };
+      }
     }
-    const prevParent = issue.value?.parent_id ?? null;
-    const prevParentIssue = parentIssue.value;
+    const prevParent = issue.value?.parent_id ?? null
+    const prevParentIssue = parentIssue.value
     issue.value = await api.put<Issue>(
       `/issues/${issueId.value}`,
       { parent_id: parent.id },
       { headers: aiMutationHeaders(info) },
-    );
-    parentIssue.value = parent;
+    )
+    parentIssue.value = parent
     if (info.requestId) {
       undoStore.showSyntheticToast(
         {
@@ -915,170 +853,161 @@ async function applyAiResult(info: AiApplyInfo) {
           title: issue.value.issue_key,
           detail: `Parent set to ${parent.issue_key}`,
         },
-        "undo",
-      );
-      void undoStore.refresh();
+        'undo',
+      )
+      void undoStore.refresh()
     }
     return {
       undoLabel: `Parent set to ${parent.issue_key}`,
       undo: async () => {
         if (info.requestId) {
-          await undoMutationByRequestId(info.requestId);
-          await load();
-          return;
+          await undoMutationByRequestId(info.requestId)
+          await load()
+          return
         }
         issue.value = await api.put<Issue>(`/issues/${issueId.value}`, {
           parent_id: prevParent,
-        });
-        parentIssue.value = prevParentIssue;
+        })
+        parentIssue.value = prevParentIssue
       },
       undoAutoDismissMs: 15000,
-    };
+    }
   }
-  if (info.action === "detect_duplicates") {
-    const issueKey = String(info.values?.issue_key ?? "");
-    const relationType = String(info.values?.relation_type ?? "related") as
-      | "depends_on"
-      | "impacts"
-      | "follows_from"
-      | "blocks"
-      | "related";
-    const requestId = info.requestId;
-    const target = projectIssues.value.find((i) => i.issue_key === issueKey);
-    if (!target) return;
+  if (info.action === 'detect_duplicates') {
+    const issueKey = String(info.values?.issue_key ?? '')
+    const relationType = String(info.values?.relation_type ?? 'related') as
+      | 'depends_on'
+      | 'impacts'
+      | 'follows_from'
+      | 'blocks'
+      | 'related'
+    const requestId = info.requestId
+    const target = projectIssues.value.find((i) => i.issue_key === issueKey)
+    if (!target) return
     await addIssueRelation(issueId.value, target.id, relationType, {
       headers: aiMutationHeaders(info),
-    });
-    relationsRef.value?.load();
+    })
+    relationsRef.value?.load()
     if (requestId) {
       undoStore.showSyntheticToast(
         {
           id: Date.now(),
-          title: issue.value?.issue_key ?? "Issue",
-          detail: `${relationType.replace(/_/g, " ")} link to ${target.issue_key} added`,
+          title: issue.value?.issue_key ?? 'Issue',
+          detail: `${relationType.replace(/_/g, ' ')} link to ${target.issue_key} added`,
         },
-        "undo",
-      );
-      void undoStore.refresh();
+        'undo',
+      )
+      void undoStore.refresh()
     }
     return requestId
       ? {
-          undoLabel: `${relationType.replace(/_/g, " ")} link to ${target.issue_key} added`,
+          undoLabel: `${relationType.replace(/_/g, ' ')} link to ${target.issue_key} added`,
           undo: async () => {
-            await undoMutationByRequestId(requestId);
-            relationsRef.value?.load();
+            await undoMutationByRequestId(requestId)
+            relationsRef.value?.load()
           },
           undoAutoDismissMs: 15000,
         }
-      : undefined;
+      : undefined
   }
-  if (info.action === "generate_subtasks") {
-    if (!effectiveProjectId.value) return;
-    const suggestions = (info.body as any)?.suggestions ?? [];
+  if (info.action === 'generate_subtasks') {
+    if (!effectiveProjectId.value) return
+    const suggestions = (info.body as any)?.suggestions ?? []
     const selected = info.selection?.length
       ? info.selection
-      : suggestions.map((_: unknown, idx: number) => idx);
-    const overrides = (info.values?.titleOverrides ?? {}) as Record<
-      string,
-      string
-    >;
+      : suggestions.map((_: unknown, idx: number) => idx)
+    const overrides = (info.values?.titleOverrides ?? {}) as Record<string, string>
     for (const idx of selected) {
-      const item = suggestions[idx];
-      if (!item) continue;
+      const item = suggestions[idx]
+      if (!item) continue
       await api.post(`/projects/${effectiveProjectId.value}/issues`, {
         parent_id: issueId.value,
         title: overrides[idx] || item.title,
-        description: item.description || "",
-        type: item.type || "task",
-        status: "backlog",
-        priority: "medium",
-      });
+        description: item.description || '',
+        type: item.type || 'task',
+        status: 'backlog',
+        priority: 'medium',
+      })
     }
     children.value = await api
       .get<Issue[]>(`/issues/${issueId.value}/children`)
-      .catch(() => children.value);
-    return;
+      .catch(() => children.value)
+    return
   }
   if (editing.value) {
     const next = applyIssueTextMutations(info, {
       description: form.value.description,
       acceptance_criteria: form.value.acceptance_criteria,
       notes: form.value.notes,
-    });
-    form.value.description = next.description;
-    form.value.acceptance_criteria = next.acceptance_criteria;
-    form.value.notes = next.notes;
+    })
+    form.value.description = next.description
+    form.value.acceptance_criteria = next.acceptance_criteria
+    form.value.notes = next.notes
   }
 }
 
 // ── h/PT toggle + EUR calculations ───────────────────────────────────────────
-const {
-  unit: timeUnit,
-  toggle: toggleTimeUnit,
-  formatHours,
-  label: timeLabel,
-} = useTimeUnit();
+const { unit: timeUnit, toggle: toggleTimeUnit, formatHours, label: timeLabel } = useTimeUnit()
 
 const linkedBillingType = computed(() => {
-  const i = issue.value;
-  if (!i || !i.cost_unit) return null;
-  if (i.type === "cost_unit" || i.type === "epic")
-    return i.billing_type || null;
+  const i = issue.value
+  if (!i || !i.cost_unit) return null
+  if (i.type === 'cost_unit' || i.type === 'epic') return i.billing_type || null
   const cu = projectIssues.value.find(
-    (p) => p.type === "cost_unit" && p.title === i.cost_unit?.label,
-  );
-  return cu?.billing_type || null;
-});
+    (p) => p.type === 'cost_unit' && p.title === i.cost_unit?.label,
+  )
+  return cu?.billing_type || null
+})
 
 function fmtDateTime(s: string): string {
-  return s ? formatDisplayDateTime(s) : "—";
+  return s ? formatDisplayDateTime(s) : '—'
 }
 
 // ── Aggregation (cost_unit / epic) ──────────────────────────────────────────
-const aggregation = ref<Aggregation | null>(null);
-const aggLoading = ref(false);
+const aggregation = ref<Aggregation | null>(null)
+const aggLoading = ref(false)
 const isCostUnitOrEpic = computed(
-  () => issue.value?.type === "cost_unit" || issue.value?.type === "epic",
-);
+  () => issue.value?.type === 'cost_unit' || issue.value?.type === 'epic',
+)
 
 async function loadAggregation() {
-  if (!issueId.value || !isCostUnitOrEpic.value) return;
-  aggLoading.value = true;
+  if (!issueId.value || !isCostUnitOrEpic.value) return
+  aggLoading.value = true
   try {
-    aggregation.value = await loadIssueAggregation(issueId.value);
+    aggregation.value = await loadIssueAggregation(issueId.value)
   } catch {
-    aggregation.value = null;
+    aggregation.value = null
   } finally {
-    aggLoading.value = false;
+    aggLoading.value = false
   }
 }
 
 const BILLING_LABEL: Record<string, string> = {
-  time_and_material: "Time & Material",
-  fixed_price: "Fixed Price",
-  mixed: "Mixed",
-};
+  time_and_material: 'Time & Material',
+  fixed_price: 'Fixed Price',
+  mixed: 'Mixed',
+}
 
 // ── History overlay ──────────────────────────────────────────────────────────
-const historyOpen = ref(false);
+const historyOpen = ref(false)
 async function openHistory() {
-  historyOpen.value = true;
-  historyRef.value?.load();
+  historyOpen.value = true
+  historyRef.value?.load()
 }
 
 async function cancelEdit() {
   if (pendingInlineUploads.value > 0) {
     const ok = await confirm({
       message: `An attachment upload is still in progress (${pendingInlineUploads.value}). Cancel anyway? Pending placeholders will be lost.`,
-      confirmLabel: "Cancel edit",
+      confirmLabel: 'Cancel edit',
       danger: true,
-    });
-    if (!ok) return;
+    })
+    if (!ok) return
   }
-  editing.value = false;
-  resetForm();
-  saveError.value = "";
-  resetDetailDirty();
+  editing.value = false
+  resetForm()
+  saveError.value = ''
+  resetDetailDirty()
 }
 </script>
 
@@ -1095,21 +1024,14 @@ async function cancelEdit() {
       <AppIcon name="alert-circle" :size="20" />
     </div>
     <div class="issue-load-copy">
-      <h1>{{ loadErrorTitle || "Issue did not load" }}</h1>
+      <h1>{{ loadErrorTitle || 'Issue did not load' }}</h1>
       <p>{{ loadError }}</p>
     </div>
     <div class="issue-load-actions">
-      <button
-        v-if="loadErrorRetryable"
-        class="btn btn-primary"
-        type="button"
-        @click="load"
-      >
+      <button v-if="loadErrorRetryable" class="btn btn-primary" type="button" @click="load">
         Retry
       </button>
-      <RouterLink class="btn btn-ghost" :to="projectRoute">
-        Back to issues
-      </RouterLink>
+      <RouterLink class="btn btn-ghost" :to="projectRoute"> Back to issues </RouterLink>
     </div>
   </div>
   <template v-else-if="issue">
@@ -1119,15 +1041,11 @@ async function cancelEdit() {
       <span class="idv-conflict__text">
         This issue was changed by someone else since you opened it.
         <template v-if="conflict.fields.length">
-          Changed: {{ conflict.fields.join(", ") }}.
+          Changed: {{ conflict.fields.join(', ') }}.
         </template>
         Your unsaved edits weren't applied.
       </span>
-      <button
-        class="btn btn-sm btn-primary"
-        type="button"
-        @click="reloadOnConflict"
-      >
+      <button class="btn btn-sm btn-primary" type="button" @click="reloadOnConflict">
         Reload latest
       </button>
     </div>
@@ -1162,10 +1080,7 @@ async function cancelEdit() {
             <span class="issue-key-text">{{ issue.issue_key }}</span>
             <span class="subheader-sep">·</span>
             <span :class="`issue-type issue-type--${issue.type}`">
-              <span
-                v-if="showTypeIcon"
-                v-html="TYPE_SVGS[issue.type] ?? ''"
-              ></span>
+              <span v-if="showTypeIcon" v-html="TYPE_SVGS[issue.type] ?? ''"></span>
               <span v-if="showTypeText" class="type-label-text">{{
                 issue.type.charAt(0).toUpperCase() + issue.type.slice(1)
               }}</span>
@@ -1177,15 +1092,8 @@ async function cancelEdit() {
             </span>
             <template v-if="issue.type !== 'sprint'">
               <span class="subheader-sep">·</span>
-              <span
-                class="issue-priority"
-                :style="{ color: PRIORITY_COLOR[issue.priority] }"
-              >
-                <AppIcon
-                  :name="PRIORITY_ICON[issue.priority]"
-                  :size="11"
-                  :stroke-width="2.5"
-                />
+              <span class="issue-priority" :style="{ color: PRIORITY_COLOR[issue.priority] }">
+                <AppIcon :name="PRIORITY_ICON[issue.priority]" :size="11" :stroke-width="2.5" />
                 {{ PRIORITY_LABEL[issue.priority] }}
               </span>
             </template>
@@ -1229,36 +1137,23 @@ async function cancelEdit() {
                 }
               "
             />
-            <button
-              v-if="authStore.isAdmin"
-              class="btn btn-danger"
-              @click="deleteIssue"
-            >
+            <button v-if="authStore.isAdmin" class="btn btn-danger" @click="deleteIssue">
               Delete
             </button>
             <button
               v-if="
-                issue.type === 'epic' &&
-                issue.status !== 'done' &&
-                issue.status !== 'cancelled'
+                issue.type === 'epic' && issue.status !== 'done' && issue.status !== 'cancelled'
               "
               class="btn btn-ghost"
               @click="completeEpicRef?.show()"
             >
               Mark as Done
             </button>
-            <button
-              class="btn btn-ghost"
-              :disabled="cloning"
-              @click="cloneIssue"
-            >
+            <button class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
               <AppIcon name="copy" :size="13" /> Clone
             </button>
             <button class="btn btn-ghost" @click="enterEditMode">Edit</button>
-            <button
-              class="btn btn-ghost"
-              @click="router.push(projectRoute)"
-            >
+            <button class="btn btn-ghost" @click="router.push(projectRoute)">
               <AppIcon name="x" :size="13" /> Close
             </button>
           </template>
@@ -1278,18 +1173,10 @@ async function cancelEdit() {
                 }
               "
             />
-            <button
-              v-if="authStore.isAdmin"
-              class="btn btn-danger"
-              @click="deleteIssue"
-            >
+            <button v-if="authStore.isAdmin" class="btn btn-danger" @click="deleteIssue">
               Delete
             </button>
-            <button
-              class="btn btn-ghost"
-              :disabled="cloning"
-              @click="cloneIssue"
-            >
+            <button class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
               <AppIcon name="copy" :size="13" /> Clone
             </button>
             <button class="btn btn-ghost" @click="cancelEdit">Cancel</button>
@@ -1297,9 +1184,7 @@ async function cancelEdit() {
               class="btn btn-primary"
               :class="{ 'btn--uploading': pendingInlineUploads > 0 }"
               :style="
-                pendingInlineUploads > 0
-                  ? `--upload-progress:${avgUploadProgress}%`
-                  : undefined
+                pendingInlineUploads > 0 ? `--upload-progress:${avgUploadProgress}%` : undefined
               "
               @click="save"
               :disabled="saving || pendingInlineUploads > 0"
@@ -1308,17 +1193,14 @@ async function cancelEdit() {
                 pendingInlineUploads > 0
                   ? `Uploading ${pendingInlineUploads}…`
                   : saving
-                    ? "Saving…"
-                    : "Save"
+                    ? 'Saving…'
+                    : 'Save'
               }}
             </button>
           </template>
         </div>
       </div>
-      <AiSurfaceFeedback
-        :host-key="`issue-detail:${issueId}:record`"
-        :apply="applyAiResult"
-      />
+      <AiSurfaceFeedback :host-key="`issue-detail:${issueId}:record`" :apply="applyAiResult" />
 
       <!-- Meta (view mode) -->
       <div class="meta-section">
@@ -1357,10 +1239,7 @@ async function cancelEdit() {
                   @keydown.escape="sprintDropdownOpen = false"
                 />
                 <div class="sprint-list">
-                  <div
-                    v-if="!availableSprintsFiltered.length"
-                    class="sprint-empty"
-                  >
+                  <div v-if="!availableSprintsFiltered.length" class="sprint-empty">
                     No sprints found
                   </div>
                   <button
@@ -1373,10 +1252,7 @@ async function cancelEdit() {
                     <span class="sprint-opt-title">{{ s.title }}</span>
                     <span
                       v-if="s.sprint_state"
-                      :class="[
-                        'sprint-opt-state',
-                        `sprint-opt-state--${s.sprint_state}`,
-                      ]"
+                      :class="['sprint-opt-state', `sprint-opt-state--${s.sprint_state}`]"
                       >{{ s.sprint_state }}</span
                     >
                     <span v-if="s.start_date" class="sprint-opt-dates">{{
@@ -1442,10 +1318,7 @@ async function cancelEdit() {
             :jobs="jobsFor('description')"
             :apply="applyAiResult"
             :on-accept="onOptimizeAccept('description')"
-            @upload-files="
-              (files, insertAt) =>
-                uploadInlineFiles(files, 'description', insertAt)
-            "
+            @upload-files="(files, insertAt) => uploadInlineFiles(files, 'description', insertAt)"
             @retry-job="retryUpload"
             @dismiss-job="dismissJob"
           />
@@ -1464,8 +1337,7 @@ async function cancelEdit() {
             :apply="applyAiResult"
             :on-accept="onOptimizeAccept('acceptance_criteria')"
             @upload-files="
-              (files, insertAt) =>
-                uploadInlineFiles(files, 'acceptance_criteria', insertAt)
+              (files, insertAt) => uploadInlineFiles(files, 'acceptance_criteria', insertAt)
             "
             @retry-job="retryUpload"
             @dismiss-job="dismissJob"
@@ -1541,10 +1413,7 @@ async function cancelEdit() {
                   @keydown.escape="sprintDropdownOpen = false"
                 />
                 <div class="sprint-list">
-                  <div
-                    v-if="!availableSprintsFiltered.length"
-                    class="sprint-empty"
-                  >
+                  <div v-if="!availableSprintsFiltered.length" class="sprint-empty">
                     No sprints found
                   </div>
                   <button
@@ -1557,10 +1426,7 @@ async function cancelEdit() {
                     <span class="sprint-opt-title">{{ s.title }}</span>
                     <span
                       v-if="s.sprint_state"
-                      :class="[
-                        'sprint-opt-state',
-                        `sprint-opt-state--${s.sprint_state}`,
-                      ]"
+                      :class="['sprint-opt-state', `sprint-opt-state--${s.sprint_state}`]"
                       >{{ s.sprint_state }}</span
                     >
                     <span v-if="s.start_date" class="sprint-opt-dates">{{
@@ -1592,13 +1458,13 @@ async function cancelEdit() {
         @cost-unit-added="
           (v: string) => {
             if (!costUnits.includes(v))
-              costUnits = [...costUnits, v].sort((a, b) => a.localeCompare(b));
+              costUnits = [...costUnits, v].sort((a, b) => a.localeCompare(b))
           }
         "
         @release-added="
           (v: string) => {
             if (!releases.includes(v))
-              releases = [...releases, v].sort((a, b) => a.localeCompare(b));
+              releases = [...releases, v].sort((a, b) => a.localeCompare(b))
           }
         "
       />
@@ -1614,49 +1480,39 @@ async function cancelEdit() {
 
     <!-- Issue Relations -->
     <IssueRelations
-      v-if="
-        issue.type === 'ticket' ||
-        issue.type === 'task' ||
-        issue.type === 'epic'
-      "
+      v-if="issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic'"
       ref="relationsRef"
       :issue-id="issueId"
       :project-id="effectiveProjectId"
       :project-issues="projectIssues"
     />
 
-    <!-- PAI-610: "Implement this" button + live run-status card. -->
-    <AgentRunPanel
+    <!-- PAI-663: one AI Workbench region owns run controls, PPM knowledge,
+         selected issue context, and the unified activity timeline. -->
+    <IssueAIWorkbench
       v-if="
         issue.issue_key &&
-        (issue.type === 'ticket' ||
-          issue.type === 'task' ||
-          issue.type === 'epic')
+        (issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic')
       "
       :issue-id="issueId"
       :issue-key="issue.issue_key"
       :project-id="effectiveProjectId ?? 0"
+      :issue-type="issue.type"
+      :issue-status="issue.status"
+      :issue-title="issue.title"
     />
 
     <!-- PAI-342: Applicable memories. Same gate as IssueRelations —
          knowledge entries don't link to other knowledge entries here;
          only ticket/task/epic surfaces the section. -->
     <IssueApplicableMemories
-      v-if="
-        issue.type === 'ticket' ||
-        issue.type === 'task' ||
-        issue.type === 'epic'
-      "
+      v-if="issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic'"
       :issue-id="issueId"
       :project-id="effectiveProjectId"
     />
 
     <IssueAnchors
-      v-if="
-        issue.type === 'ticket' ||
-        issue.type === 'task' ||
-        issue.type === 'epic'
-      "
+      v-if="issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic'"
       :issue-id="issueId"
     />
 
@@ -1672,11 +1528,7 @@ async function cancelEdit() {
     />
 
     <!-- Footer -->
-    <IssueDetailFooter
-      :issue="issue"
-      :format-date-time="fmtDateTime"
-      @history="openHistory"
-    />
+    <IssueDetailFooter :issue="issue" :format-date-time="fmtDateTime" @history="openHistory" />
   </template>
 
   <!-- History overlay -->
@@ -1806,7 +1658,7 @@ async function cancelEdit() {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  font-family: "DM Mono", monospace;
+  font-family: 'DM Mono', monospace;
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -1964,7 +1816,7 @@ async function cancelEdit() {
   overflow: hidden;
 }
 .btn--uploading::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 0;
   bottom: 0;

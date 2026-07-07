@@ -48,7 +48,7 @@ func execSummaryHandler(ax *aiActionContext) (any, string, int, int, string, err
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "issue has no description to summarise"}
 	}
 
-	systemPrompt := resolveActionPrompt("exec_summary")
+	systemPrompt := resolveActionPromptWithPreset(ax, "exec_summary")
 
 	var u strings.Builder
 	if ax.IssueData.IssueTitle != "" {
@@ -71,8 +71,9 @@ func execSummaryHandler(ax *aiActionContext) (any, string, int, int, string, err
 	resp, err := ax.Provider.Optimize(callCtx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt,
-		UserPrompt:      u.String(),
+		UserPrompt:      aiUserPromptWithContext(ax, u.String()),
 		MaxOutputTokens: optimizeMaxOutputTokens,
 	})
 	if err != nil {

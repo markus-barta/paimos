@@ -154,7 +154,7 @@ const liveIssuesWhere = `i.deleted_at IS NULL`
 const costUnitLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='cost_unit' AND lc.deleted_at IS NULL),'')`
 const releaseLabelExpr = `COALESCE((SELECT lc.title FROM issue_relations lr JOIN issues lc ON lc.id=lr.source_id WHERE lr.target_id=i.id AND lr.type='release' AND lc.deleted_at IS NULL),'')`
 const latestAgentRunStatusExpr = `COALESCE((SELECT ar.status FROM agent_runs ar WHERE ar.issue_id=i.id ORDER BY ar.id DESC LIMIT 1),'')`
-const aiWorkStatusSortExpr = `CASE ` + latestAgentRunStatusExpr + ` WHEN '' THEN 0 WHEN 'queued' THEN 1 WHEN 'running' THEN 2 WHEN 'tests_passed' THEN 3 WHEN 'tests_failed' THEN 4 WHEN 'deployed' THEN 5 WHEN 'failed' THEN 6 WHEN 'cancelled' THEN 7 ELSE 8 END`
+const aiWorkStatusSortExpr = `CASE ` + latestAgentRunStatusExpr + ` WHEN '' THEN 0 WHEN 'queued' THEN 1 WHEN 'running' THEN 2 WHEN 'drafted' THEN 3 WHEN 'tests_passed' THEN 4 WHEN 'tests_failed' THEN 5 WHEN 'deployed' THEN 6 WHEN 'failed' THEN 7 WHEN 'cancelled' THEN 8 ELSE 9 END`
 
 func scanIssue(rows interface {
 	Scan(...any) error
@@ -447,6 +447,7 @@ func loadAIWorkStatusBatch(issues []models.Issue) {
 	rows, err := db.DB.Query(`
 		SELECT ar.issue_id, ar.id, ar.status, ar.agent_name, ar.device_id,
 		       ar.action_key, ar.provider_kind, ar.provider_id, ar.provider_label, ar.model, ar.run_mode,
+		       ar.profile_id, ar.effort, ar.prompt_preset_ref, ar.context_pack,
 		       ar.version, ar.deploy_target, ar.tests_summary, ar.error,
 		       ar.created_at, ar.started_at, ar.finished_at
 		FROM agent_runs ar
@@ -469,6 +470,7 @@ func loadAIWorkStatusBatch(issues []models.Issue) {
 		if err := rows.Scan(
 			&issueID, &ai.ID, &ai.Status, &ai.AgentName, &ai.DeviceID,
 			&ai.ActionKey, &ai.ProviderKind, &ai.ProviderID, &ai.ProviderLabel, &ai.Model, &ai.RunMode,
+			&ai.ProfileID, &ai.Effort, &ai.PromptPresetRef, &ai.ContextPack,
 			&ai.Version, &ai.DeployTarget, &testsSummary, &ai.Error,
 			&ai.CreatedAt, &startedAt, &finishedAt,
 		); err != nil {

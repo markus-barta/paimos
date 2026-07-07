@@ -34,6 +34,8 @@ export interface AICallListResponse {
 
 export interface IssueAIActivityRow {
   log_id: number
+  run_id?: number
+  kind: 'ai_action' | 'agent_run'
   request_id: string
   action_key: string
   sub_action: string
@@ -41,13 +43,31 @@ export interface IssueAIActivityRow {
   user_id: number | null
   user_name: string
   outcome: string
+  status?: string
+  provider_kind?: string
+  provider_id?: string
+  provider_label?: string
+  run_mode?: string
+  agent_name?: string
+  device_id?: string
+  version?: string
+  deploy_target?: string
+  tests_summary?: string
+  error?: string
   latency_ms: number
   model: string
+  profile_id?: string
+  effort?: string
+  prompt_preset_ref?: string
+  context_pack?: string
   prompt_tokens: number
   completion_tokens: number
   cost_micro_usd: number
   on_user_stack: boolean
   created_at: string
+  finished_at?: string
+  source_draft_run_id?: number
+  followup_run_id?: number
 }
 
 export interface IssueAIActivityResponse {
@@ -93,19 +113,50 @@ export function loadMyAICalls(query: AICallQuery = {}): Promise<AICallListRespon
   return api.get<AICallListResponse>(`/ai/calls/me${buildQuery(query)}`)
 }
 
-export function loadIssueAICalls(issueId: number, query: AICallQuery = {}): Promise<AICallListResponse> {
+export function loadIssueAICalls(
+  issueId: number,
+  query: AICallQuery = {},
+): Promise<AICallListResponse> {
   return api.get<AICallListResponse>(`/issues/${issueId}/ai-calls${buildQuery(query)}`)
 }
 
-export function loadIssueAIActivity(issueId: number): Promise<IssueAIActivityResponse> {
-  return api.get<IssueAIActivityResponse>(`/issues/${issueId}/ai-activity`)
+export interface IssueAIActivityQuery {
+  kind?: 'ai_action' | 'agent_run' | ''
+  action_key?: string
+  provider?: string
+  profile_id?: string
+  agent?: string
+  status?: string
 }
 
-export function undoMutation(logId: number): Promise<{ undone: boolean, log_id: number }> {
+function buildIssueActivityQuery(q: IssueAIActivityQuery = {}): string {
+  const sp = new URLSearchParams()
+  if (q.kind) sp.set('kind', q.kind)
+  if (q.action_key) sp.set('action_key', q.action_key)
+  if (q.provider) sp.set('provider', q.provider)
+  if (q.profile_id) sp.set('profile_id', q.profile_id)
+  if (q.agent) sp.set('agent', q.agent)
+  if (q.status) sp.set('status', q.status)
+  const suffix = sp.toString()
+  return suffix ? `?${suffix}` : ''
+}
+
+export function loadIssueAIActivity(
+  issueId: number,
+  query: IssueAIActivityQuery = {},
+): Promise<IssueAIActivityResponse> {
+  return api.get<IssueAIActivityResponse>(
+    `/issues/${issueId}/ai-activity${buildIssueActivityQuery(query)}`,
+  )
+}
+
+export function undoMutation(logId: number): Promise<{ undone: boolean; log_id: number }> {
   return api.post(`/undo/${logId}`, {})
 }
 
-export function undoMutationByRequestId(requestId: string): Promise<{ undone: boolean, log_id: number, request_id: string }> {
+export function undoMutationByRequestId(
+  requestId: string,
+): Promise<{ undone: boolean; log_id: number; request_id: string }> {
   return api.post(`/undo/request/${encodeURIComponent(requestId)}`, {})
 }
 

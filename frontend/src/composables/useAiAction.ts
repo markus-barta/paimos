@@ -51,6 +51,7 @@
 import { ref, reactive, computed } from 'vue'
 import { api, errMsg, ApiError } from '@/api/client'
 import { useAiOptimize } from '@/composables/useAiOptimize'
+import type { AgentActionCapability } from '@/types'
 
 export interface AiActionDescriptor {
   key: string
@@ -63,6 +64,8 @@ export interface AiActionDescriptor {
   placement: 'text' | 'issue' | 'both'
   sub_keys?: string[]
   implemented: boolean
+  default_profile_id?: string
+  default_effort?: string
 }
 
 interface ActionsCatalog {
@@ -83,6 +86,127 @@ export interface ActionEnvelope<T = unknown> {
   prompt_tokens?: number
   completion_tokens?: number
   finish_reason?: string
+  options?: AiActionResolvedOptions
+}
+
+export interface AiActionOptions {
+  profile_id?: string
+  profile?: string
+  model_profile?: string
+  model_id?: string
+  model?: string
+  effort?: string
+  prompt_preset?: string
+  prompt_preset_ref?: string
+  context_pack?: string
+}
+
+export interface AiActionResolvedOptions {
+  profile_id: string
+  model: string
+  effort: string
+  prompt_preset_ref: string
+  prompt_preset_label?: string
+  context_pack: string
+  context_pack_label?: string
+  context_truncated?: boolean
+  context_sources?: AiContextSource[]
+}
+
+export interface AiExecutionProfile {
+  id: string
+  label: string
+  provider: string
+  model: string
+  effort: string
+  speed_label: string
+  cost_label: string
+  capability_hints?: string[]
+}
+
+export interface AiActionDefaultOptions {
+  profile_id: string
+  effort: string
+}
+
+export interface AiSelectorDefault {
+  action_key?: string
+  profile_id: string
+  profile_label?: string
+  model?: string
+  effort: string
+  prompt_preset_ref: string
+  context_pack: string
+  context_pack_label?: string
+  provider_id?: string
+  provider_label?: string
+  agent_name?: string
+  source: 'global' | 'project' | string
+}
+
+export interface AiSelectorDefaults {
+  actions: Record<string, AiSelectorDefault>
+  runs: Record<string, AiSelectorDefault>
+  row_launch: AiSelectorDefault
+  workbench: AiSelectorDefault
+}
+
+export interface AiPromptPresetChoice {
+  ref: string
+  label: string
+  type: string
+  slug: string
+  status: string
+  revision: string
+  actions: string[]
+}
+
+export interface AiContextPackChoice {
+  id: string
+  label: string
+  description?: string
+}
+
+export interface AiContextSource {
+  kind: string
+  label: string
+  count?: number
+  truncated?: boolean
+}
+
+export interface AiKnowledgeSuggestion {
+  ref: string
+  type: string
+  slug: string
+  title: string
+  status: string
+  revision: string
+  suggested_use: 'prompt' | 'context' | string
+  prompt_preset: boolean
+  prompt_preset_ref?: string
+  prompt_preset_label?: string
+  prompt_preset_status?: string
+  actions?: string[]
+}
+
+export interface AiExecutionOptionsCatalog {
+  profiles: AiExecutionProfile[]
+  efforts: string[]
+  action_defaults: Record<string, AiActionDefaultOptions>
+  selector_defaults?: AiSelectorDefaults
+  prompt_presets?: AiPromptPresetChoice[]
+  knowledge_suggestions?: AiKnowledgeSuggestion[]
+  context_packs?: AiContextPackChoice[]
+  run_providers?: AgentActionCapability[]
+  project_policy?: {
+    disable_hosted_draft?: boolean
+    disable_local_model_draft?: boolean
+  }
+}
+
+export interface AiExecutionOptionsScope {
+  projectId?: number
+  issueId?: number
 }
 
 export interface RunArgs {
@@ -96,6 +220,7 @@ export interface RunArgs {
   issueId?: number
   onAccept: (text: string) => void
   context?: Record<string, unknown>
+  options?: AiActionOptions
 }
 
 // ── module-singleton state ────────────────────────────────────────
@@ -103,6 +228,12 @@ const actions = ref<AiActionDescriptor[]>([])
 const actionsLoaded = ref(false)
 const actionsLoadError = ref<string | null>(null)
 let actionsInflight: Promise<void> | null = null
+const executionOptions = ref<AiExecutionOptionsCatalog | null>(null)
+const executionOptionsLoaded = ref(false)
+const executionOptionsLoadError = ref<string | null>(null)
+let executionOptionsInflight: Promise<void> | null = null
+let executionOptionsInflightKey = ''
+let executionOptionsCacheKey = ''
 
 const isRunning = ref(false)
 const lastError = ref<string | null>(null)
@@ -138,6 +269,7 @@ interface ActiveResult {
   // candidate list, and skip token/model metadata.
   outcome?: 'ok' | 'no_op'
   model?: string
+  options?: AiActionResolvedOptions
   // Apply callback for actions that need the user's accept (e.g. spec_out)
   onApply?: (chosen: unknown) => void
   // Source text the action was run against — useful for diff UX.
@@ -155,6 +287,11 @@ const actionsStatus = computed<'loading' | 'ready' | 'error'>(() => {
   if (actionsInflight) return 'loading'
   if (actionsLoadError.value) return 'error'
   return actionsLoaded.value ? 'ready' : 'loading'
+})
+const executionOptionsStatus = computed<'loading' | 'ready' | 'error'>(() => {
+  if (executionOptionsInflight) return 'loading'
+  if (executionOptionsLoadError.value) return 'error'
+  return executionOptionsLoaded.value ? 'ready' : 'loading'
 })
 
 // ── catalogue loader ──────────────────────────────────────────────
@@ -174,7 +311,7 @@ async function loadActions(): Promise<void> {
     let succeeded = false
     try {
       const r = await api.get<ActionsCatalog>('/ai/actions')
-      actions.value = (r.actions ?? []).map(a => ({
+      actions.value = (r.actions ?? []).map((a) => ({
         ...a,
         // Backend versions before PAI-179 don't return `placement`.
         // Default to 'text' so legacy deployments still surface
@@ -197,6 +334,49 @@ async function loadActions(): Promise<void> {
     }
   })()
   return actionsInflight
+}
+
+function executionOptionsKey(scope?: AiExecutionOptionsScope): string {
+  if (scope?.issueId && scope.issueId > 0) return `issue:${scope.issueId}`
+  if (scope?.projectId && scope.projectId > 0) return `project:${scope.projectId}`
+  return 'global'
+}
+
+function executionOptionsPath(scope?: AiExecutionOptionsScope): string {
+  const q = new URLSearchParams()
+  if (scope?.issueId && scope.issueId > 0) q.set('issue_id', String(scope.issueId))
+  else if (scope?.projectId && scope.projectId > 0) q.set('project_id', String(scope.projectId))
+  const suffix = q.toString()
+  return suffix ? `/ai/execution-options?${suffix}` : '/ai/execution-options'
+}
+
+async function loadExecutionOptions(scope?: AiExecutionOptionsScope): Promise<void> {
+  const key = executionOptionsKey(scope)
+  if (executionOptionsInflight) {
+    if (executionOptionsInflightKey === key) return executionOptionsInflight
+    await executionOptionsInflight
+  }
+  if (executionOptionsLoaded.value && executionOptionsCacheKey === key && executionOptions.value)
+    return
+  executionOptionsInflight = (async () => {
+    let succeeded = false
+    try {
+      executionOptions.value = await api.get<AiExecutionOptionsCatalog>(executionOptionsPath(scope))
+      executionOptionsLoadError.value = null
+      succeeded = true
+    } catch (e) {
+      executionOptionsLoadError.value = errMsg(e, 'AI execution options unavailable')
+    } finally {
+      if (succeeded) {
+        executionOptionsLoaded.value = true
+        executionOptionsCacheKey = key
+      }
+      executionOptionsInflight = null
+      executionOptionsInflightKey = ''
+    }
+  })()
+  executionOptionsInflightKey = key
+  return executionOptionsInflight
 }
 
 // Diff-overlay UX is reused for actions that produce rewritten field
@@ -247,18 +427,26 @@ async function run(args: RunArgs): Promise<void> {
     }
 
     // Generic action call: POST /ai/action with the wire shape.
-    const env = await api.post<ActionEnvelope>('/ai/action', {
-      action: args.action,
-      sub_action: args.subAction,
-      field: args.field,
-      issue_id: args.issueId ?? 0,
-      text: args.text,
-      ...(args.context ? { params: args.context } : {}),
-    }, { timeoutMs: 90_000 })
+    const env = await api.post<ActionEnvelope>(
+      '/ai/action',
+      {
+        action: args.action,
+        sub_action: args.subAction,
+        field: args.field,
+        issue_id: args.issueId ?? 0,
+        text: args.text,
+        ...(args.context ? { params: args.context } : {}),
+        ...(args.options ? { options: args.options } : {}),
+      },
+      { timeoutMs: 90_000 },
+    )
 
     result.value = {
       requestId: env.request_id,
-      hostKey: activity.value?.hostKey ?? (args.hostKey ?? `${args.field}:${args.issueId ?? 0}:${args.action}`),
+      hostKey:
+        activity.value?.hostKey ??
+        args.hostKey ??
+        `${args.field}:${args.issueId ?? 0}:${args.action}`,
       promptTokens: env.prompt_tokens,
       completionTokens: env.completion_tokens,
       action: env.action,
@@ -269,6 +457,7 @@ async function run(args: RunArgs): Promise<void> {
       body: env.body,
       outcome: env.outcome,
       model: env.model,
+      options: env.options,
       sourceText: args.text,
       onAccept: args.onAccept,
     }
@@ -299,6 +488,8 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
       text: args.text,
       issueId: args.issueId,
       onAccept: args.onAccept,
+      context: args.context,
+      options: args.options,
     })
     return
   }
@@ -318,6 +509,8 @@ async function runViaOptimize(args: RunArgs): Promise<void> {
       text: args.text,
       issueId: args.issueId,
       onAccept: args.onAccept,
+      context: args.context,
+      options: args.options,
     })
     return
   }
@@ -346,6 +539,9 @@ export function useAiAction() {
     actions,
     actionsStatus,
     actionsLoadError,
+    executionOptions,
+    executionOptionsStatus,
+    executionOptionsLoadError,
     available,
     isRunning,
     lastError,
@@ -356,5 +552,6 @@ export function useAiAction() {
     reset,
     clearError,
     refreshActions: loadActions,
+    refreshExecutionOptions: loadExecutionOptions,
   }
 }

@@ -44,7 +44,7 @@ func uiGenerationHandler(ax *aiActionContext) (any, string, int, int, string, er
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "ui_generation needs a title or description"}
 	}
 
-	systemPrompt := resolveActionPrompt("ui_generation")
+	systemPrompt := resolveActionPromptWithPreset(ax, "ui_generation")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {
@@ -70,8 +70,9 @@ func uiGenerationHandler(ax *aiActionContext) (any, string, int, int, string, er
 	resp, err := ax.Provider.Optimize(ctx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt,
-		UserPrompt:      u.String(),
+		UserPrompt:      aiUserPromptWithContext(ax, u.String()),
 		MaxOutputTokens: 4000,
 	})
 	if err != nil {

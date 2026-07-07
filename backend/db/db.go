@@ -5369,6 +5369,95 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE auto_watch_subscriptions ADD COLUMN actions_json TEXT NOT NULL DEFAULT ''`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_runs_action_key ON agent_runs(action_key)`,
 		}},
+		// M130 / PAI-649: resolved AI action execution options. Metadata only:
+		// profile/model selection, effort, prompt preset reference, and context
+		// pack name. Prompt bodies, model response bodies, and secrets are never
+		// stored here.
+		{130, []string{
+			`ALTER TABLE ai_calls ADD COLUMN profile_id TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE ai_calls ADD COLUMN effort TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE ai_calls ADD COLUMN prompt_preset_ref TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE ai_calls ADD COLUMN context_pack TEXT NOT NULL DEFAULT ''`,
+		}},
+		// M131 / PAI-657 + PAI-658: draft Implement-this providers.
+		// A hosted/local draft provider produces reviewable markdown without
+		// shell access, repository mutation, local tests, or deploy authority.
+		// The new `drafted` terminal state avoids pretending that a draft has
+		// passed tests. Run-option columns mirror ai_calls and store metadata
+		// only: no prompt bodies, model output, keys, or local environment.
+		{131, []string{
+			`ALTER TABLE ai_settings ADD COLUMN base_url TEXT NOT NULL DEFAULT ''`,
+			`PRAGMA foreign_keys=OFF`,
+			`CREATE TABLE agent_runs_m131 (
+				id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+				issue_id             INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				project_id           INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+				device_id            TEXT NOT NULL DEFAULT '',
+				requested_by         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				agent_name           TEXT NOT NULL DEFAULT '',
+				session_id           TEXT NOT NULL DEFAULT '',
+				status               TEXT NOT NULL DEFAULT 'queued'
+					CHECK(status IN ('queued','running','tests_passed','tests_failed','deployed','failed','cancelled','drafted')),
+				version              TEXT NOT NULL DEFAULT '',
+				tests_summary        TEXT,
+				deploy_target        TEXT NOT NULL DEFAULT '',
+				log_attachment_id    INTEGER,
+				error                TEXT NOT NULL DEFAULT '',
+				created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+				started_at           TEXT,
+				finished_at          TEXT,
+				claimed_by           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				action_key           TEXT NOT NULL DEFAULT 'claude_cli.implement',
+				provider_kind        TEXT NOT NULL DEFAULT 'local_cli',
+				provider_id          TEXT NOT NULL DEFAULT 'claude_cli',
+				provider_label       TEXT NOT NULL DEFAULT 'Claude Code',
+				model                TEXT NOT NULL DEFAULT '',
+				run_mode             TEXT NOT NULL DEFAULT 'edit',
+				profile_id           TEXT NOT NULL DEFAULT '',
+				effort               TEXT NOT NULL DEFAULT '',
+				prompt_preset_ref    TEXT NOT NULL DEFAULT '',
+				context_pack         TEXT NOT NULL DEFAULT '',
+				context_truncated    INTEGER NOT NULL DEFAULT 0,
+				context_sources_json TEXT NOT NULL DEFAULT '',
+				prompt_tokens        INTEGER NOT NULL DEFAULT 0,
+				completion_tokens    INTEGER NOT NULL DEFAULT 0,
+				finish_reason        TEXT NOT NULL DEFAULT ''
+			)`,
+			`INSERT INTO agent_runs_m131(
+				id, issue_id, project_id, device_id, requested_by, agent_name, session_id,
+				status, version, tests_summary, deploy_target, log_attachment_id, error,
+				created_at, started_at, finished_at, claimed_by, action_key, provider_kind,
+				provider_id, provider_label, model, run_mode
+			 )
+			 SELECT id, issue_id, project_id, device_id, requested_by, agent_name, session_id,
+				status, version, tests_summary, deploy_target, log_attachment_id, error,
+				created_at, started_at, finished_at, claimed_by, action_key, provider_kind,
+				provider_id, provider_label, model, run_mode
+			   FROM agent_runs`,
+			`DROP TABLE agent_runs`,
+			`ALTER TABLE agent_runs_m131 RENAME TO agent_runs`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_issue ON agent_runs(issue_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status)`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_runs_active_issue
+				ON agent_runs(issue_id) WHERE status IN ('queued','running')`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_claimed_by ON agent_runs(claimed_by)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_action_key ON agent_runs(action_key)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_run_mode ON agent_runs(run_mode)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_provider_id ON agent_runs(provider_id)`,
+			`PRAGMA foreign_keys=ON`,
+		}},
+		// M132 / PAI-665 + PAI-666: draft handoff links and project AI
+		// defaults/policy. Defaults/policy are JSON metadata only: profile,
+		// effort, prompt ref, context pack, provider class, and booleans.
+		// They must never carry provider credentials or prompt/context bodies.
+		{132, []string{
+			`ALTER TABLE agent_runs ADD COLUMN source_draft_run_id INTEGER REFERENCES agent_runs(id) ON DELETE SET NULL`,
+			`ALTER TABLE agent_runs ADD COLUMN followup_run_id INTEGER REFERENCES agent_runs(id) ON DELETE SET NULL`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_source_draft ON agent_runs(source_draft_run_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_agent_runs_followup ON agent_runs(followup_run_id)`,
+			`ALTER TABLE projects ADD COLUMN ai_defaults_json TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE projects ADD COLUMN ai_policy_json TEXT NOT NULL DEFAULT ''`,
+		}},
 	}
 
 	for _, m := range migrations {

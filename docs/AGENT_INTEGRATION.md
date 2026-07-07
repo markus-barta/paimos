@@ -293,7 +293,7 @@ key should never disrupt an unrelated workflow.
 
 ---
 
-## "Implement this" — UI-triggered local runs (PAI-605)
+## "Implement this" — UI-triggered local runs and drafts (PAI-605)
 
 PAIMOS can hand a ticket to a coding agent **on a developer's own workstation**.
 A button in the web UI creates a *run*; the developer's local runner picks it up
@@ -301,6 +301,11 @@ over the existing SSE channel, executes (Claude Code by default), and reports th
 result back onto the ticket. This is a separate **execution** surface from the
 render-only adapter protocol (`paimos skill render`) — the adapter turns a
 canonical agent artifact into a harness file; the runner *executes* work.
+
+PAIMOS can also create **draft runs** through a configured model provider. Draft
+runs use the same run record and provenance fields, but they do not claim a
+local runner, do not edit a checkout, do not run tests, and cannot deploy. Their
+output is posted as an internal issue comment with clear draft provenance.
 
 **Default posture: opt-in, repo-scoped, confirm-gated, and report-back only — no
 auto-deploy.** Deploy stays a manual step until the deploy-gating phase.
@@ -310,12 +315,15 @@ auto-deploy.** Deploy stays a manual step until the deploy-gating phase.
 ```
 queued → running → tests_passed | tests_failed → deployed
                                                 ↘ failed | cancelled
+running → drafted
 ```
 
 The runner itself sets `running` / `tests_passed` / `failed` / `deployed`;
 `cancelled` is the decline-the-prompt off-ramp before `running`, and
 `tests_failed` is only ever set by the spawned agent reporting its own result.
-Terminal statuses (`deployed` / `failed` / `cancelled`) are enforced
+Draft providers move their server-created run from `running` to `drafted` after
+posting the draft comment. Terminal statuses (`drafted` / `deployed` / `failed`
+/ `cancelled`) are enforced
 server-side — a run can't be moved back out of one.
 
 ### Endpoints
@@ -323,7 +331,19 @@ server-side — a run can't be moved back out of one.
 ```bash
 # Create a run (the "Implement this" / provider action button). Project-editor gated.
 # Optional body:
-#   { "action_key": "claude_cli.implement", "device_id": "<target runner>", "deploy_target": "ppm" }
+#   {
+#     "action_key": "claude_cli.implement",
+#     "agent_name": "codex",
+#     "device_id": "<target runner>",
+#     "deploy_target": "ppm",
+#     "source_draft_run_id": 41,
+#     "options": {
+#       "profile_id": "balanced",
+#       "effort": "standard",
+#       "prompt_preset_ref": "default",
+#       "context_pack": "issue"
+#     }
+#   }
 curl -X POST -H "Authorization: Bearer $KEY" \
   "$BASE/api/issues/PAI-265/implement"
 
@@ -340,6 +360,9 @@ curl -X PATCH -H "Authorization: Bearer $KEY" \
 
 # Online, implement-capable runners for a project (the device picker).
 curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/2/runners"
+
+# Project-level run history (used by the Project Agents launchpad).
+curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/2/runs"
 ```
 
 `action_key` is the requested provider/action. Omit it for backward
@@ -349,13 +372,45 @@ compatibility; the server records the legacy local Claude action
 - `claude_cli.implement` — provider label `Claude Code`, run mode `edit`.
 - `codex_cli.implement` — provider label `Codex CLI`, run mode `edit`.
 
+Draft actions are available from `/api/ai/execution-options` when their backing
+provider is configured:
+
+- `openrouter_draft.implement` — provider label `OpenRouter Draft`, run mode
+  `draft`; uses enabled OpenRouter AI settings with a model and API key.
+- `local_model_draft.implement` — provider label `Local Model Draft`, run mode
+  `draft`; uses an enabled OpenAI-compatible local endpoint and model.
+
+Draft actions reject `device_id` and `deploy_target`. They accept the same
+`options` object as AI actions: `profile_id`, `effort`, `prompt_preset_ref`, and
+`context_pack`. The run stores the resolved model/profile/effort/prompt/context
+metadata, token counts when reported, and safe context-source provenance.
+
+A reviewed draft can be handed to a trusted local runner by creating a follow-up
+run with a local CLI `action_key` and `source_draft_run_id`. The source run must
+belong to the same issue, be terminal `drafted`, have `run_mode: "draft"`, and
+not already have a `followup_run_id`. Draft actions are rejected as follow-ups,
+so the second step is always an edit-capable local runner. Activity rows expose
+only the linked run IDs (`source_draft_run_id` / `followup_run_id`), not draft
+prompt bodies.
+
+`agent_name` is optional. When present, it must be the lowercase project-agent
+name declared on the issue's project (`GET /api/projects/:id/agents`). The
+server stores it on the queued run so UI history and runner handoff can keep the
+project-agent choice separate from the CLI provider/action.
+
 Run records and issue `ai_work_status` include `action_key`, `provider_kind`,
-`provider_id`, `provider_label`, optional `model`, and `run_mode` so list badges,
-comments, and audit views can distinguish Claude vs. Codex requests.
+`provider_id`, `provider_label`, optional `model`, `run_mode`, profile, effort,
+prompt preset, context pack, and token metadata so list badges, comments, and
+audit views can distinguish Claude, Codex, local-model, and OpenRouter requests.
 
 `POST …/implement` publishes an **`implement_requested`** SSE event on the
 project's `…/agents/events` stream — the run id rides in the event's `rev`, the
 issue key in `name`.
+
+The Project Agents tab combines `GET /api/projects/:id/agents`,
+`/agents/:name.json`, `/runners`, and `/runs` into a launchpad: each declared
+agent shows artifact links, compatible online adapters, runner availability,
+commands for skill/session/runner setup, and recent agent-attributed runs.
 
 ### The runner
 
@@ -384,8 +439,18 @@ paimos run-agent watch --project PAI --repo-root . --exec "codex exec" --action-
 The default `--exec "claude"` is normalized to Claude Code print mode and fed
 the generated issue prompt, so the runner does not open an interactive TUI for a
 queued web run. The spawned command sees `PAIMOS_RUN_ID`, `PAIMOS_ISSUE_KEY`,
-`PAIMOS_ISSUE_TITLE`, and `PAIMOS_PROMPT_FILE`; custom provider commands can
-read the prompt file themselves.
+`PAIMOS_ISSUE_TITLE`, `PAIMOS_CONTEXT_PACK`, `PAIMOS_CONTEXT_PACK_LABEL`, and
+`PAIMOS_PROMPT_FILE`; custom provider commands can read the prompt file
+themselves.
+
+When the run carries `agent_name`, the watcher fetches the canonical
+`/api/projects/:id/agents/:name.json` artifact before spawning the command. The
+prompt includes a bounded, redacted project-agent summary, and the child process
+also receives:
+
+- `PAIMOS_AGENT_NAME` — the selected project agent.
+- `PAIMOS_AGENT_ARTIFACT_FILE` — a temporary redacted copy of the canonical
+  artifact for harnesses that prefer structured input.
 
 `--exec` runs through a shell (`sh -c`), so quoting, pipes, and chaining work for
 custom commands, e.g. `--exec 'codex exec "$(cat "$PAIMOS_PROMPT_FILE")"'`.
@@ -406,7 +471,7 @@ project member — only enable it for repos/tickets where that's acceptable.
 
 The run lifecycle is enforced server-side: status changes must follow a legal
 edge (e.g. a run can't jump straight to `deployed`), and a terminal run
-(`deployed`/`failed`/`cancelled`) is immutable. For non-requester project-editor
+(`drafted`/`deployed`/`failed`/`cancelled`) is immutable. For non-requester project-editor
 claims, the server requires the caller's user, device, and requested `action_key`
 to match a live implement-capable runner connection; after the first
 `queued -> running` claim, later writes are limited to the requester, admin, or
@@ -433,12 +498,10 @@ For the PAI-629/PAI-630 path from one generic action to explicit Claude, Codex,
 local-model, and OpenRouter actions, see
 [`IMPLEMENT_THIS_PROVIDERS.md`](IMPLEMENT_THIS_PROVIDERS.md).
 
-The spawned command sees `PAIMOS_RUN_ID`, `PAIMOS_ISSUE_KEY`,
-`PAIMOS_ISSUE_TITLE`, and `PAIMOS_PROMPT_FILE` in its environment, so the agent
-can read the generated prompt or PATCH richer progress itself. On any transition
-into a terminal status the server auto-posts a summary comment on the ticket —
-attributed to the reporting user — so the human-readable trail always matches
-the structured run record.
+The spawned command can read the generated prompt, selected-agent artifact, or
+PATCH richer progress itself. On any transition into a terminal status the
+server auto-posts a summary comment on the ticket — attributed to the reporting
+user — so the human-readable trail always matches the structured run record.
 
 ---
 

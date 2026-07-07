@@ -545,6 +545,8 @@ The post-M101 migration ledger is active in `backend/db/db.go` and should stay r
 | M127 | `idx_agent_runs_active_issue` | Database invariant: at most one active implement run per issue. |
 | M128 | `agent_runs.claimed_by` | Claim ownership for queued-to-running implement runs. |
 | M129 | `agent_runs` provider/action fields, `auto_watch_subscriptions.actions_json` | Explicit implement-this provider/action metadata and runner capability payloads. |
+| M130 | `ai_calls.profile_id/effort/prompt_preset_ref/context_pack` | Safe AI execution-option provenance for action calls. |
+| M131 | `ai_settings.base_url`, `agent_runs` draft metadata/status | OpenRouter/local-model draft provider support, including `drafted` status and safe run provenance. |
 
 PAI-553 tracks the remaining hardening: keep this ledger and the published schema version aligned whenever future migrations land.
 

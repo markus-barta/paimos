@@ -59,6 +59,7 @@ type actionRequest struct {
 	IssueID   int64           `json:"issue_id,omitempty"`
 	Text      string          `json:"text,omitempty"`
 	Params    json.RawMessage `json:"params,omitempty"`
+	Options   aiActionOptions `json:"options,omitempty"`
 }
 
 // actionResponse is what the dispatcher returns — body shape varies
@@ -75,15 +76,16 @@ type actionRequest struct {
 // has changed (no_op responses carry `{no_op: true, reason: "…"}`),
 // but the field is the canonical, machine-readable signal.
 type actionResponse struct {
-	RequestID        string          `json:"request_id,omitempty"`
-	Action           string          `json:"action"`
-	SubAction        string          `json:"sub_action,omitempty"`
-	Body             json.RawMessage `json:"body"`
-	Outcome          string          `json:"outcome,omitempty"`
-	Model            string          `json:"model,omitempty"`
-	PromptTokens     int             `json:"prompt_tokens,omitempty"`
-	CompletionTokens int             `json:"completion_tokens,omitempty"`
-	FinishReason     string          `json:"finish_reason,omitempty"`
+	RequestID        string                  `json:"request_id,omitempty"`
+	Action           string                  `json:"action"`
+	SubAction        string                  `json:"sub_action,omitempty"`
+	Body             json.RawMessage         `json:"body"`
+	Outcome          string                  `json:"outcome,omitempty"`
+	Model            string                  `json:"model,omitempty"`
+	PromptTokens     int                     `json:"prompt_tokens,omitempty"`
+	CompletionTokens int                     `json:"completion_tokens,omitempty"`
+	FinishReason     string                  `json:"finish_reason,omitempty"`
+	Options          resolvedAIActionOptions `json:"options,omitempty"`
 }
 
 // noOpResult is the body type a handler returns when it has decided
@@ -121,6 +123,7 @@ type aiActionContext struct {
 	Text      string
 	SubAction string
 	Params    json.RawMessage
+	Options   resolvedAIActionOptions
 	DB        *sql.DB
 }
 
@@ -202,6 +205,7 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	}
 	isAdmin := auth.IsAdmin(user)
 	requestID := newAIRequestID()
+	w.Header().Set(AIRequestIDHeader, requestID)
 	var userIDPtr *int64
 	if user != nil {
 		userIDPtr = &userID
@@ -292,7 +296,7 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	desc, ok := actionRegistry[body.Action]
 	if !ok {
 		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0)
-		recordAICall(r.Context(), aiCallArgs{
+		callArgs := aiCallArgs{
 			RequestID:  requestID,
 			UserID:     userIDPtr,
 			ActionKey:  body.Action,
@@ -302,13 +306,49 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 			Model:      settings.Model,
 			Outcome:    "bad_request",
 			ErrorClass: "unknown_action",
-		})
+		}
+		recordAICall(r.Context(), callArgs)
 		jsonError(w, "unknown action: "+body.Action, http.StatusBadRequest)
+		return
+	}
+	projectID, customerID, cooperationID := parseAICallContext(body.Params)
+	if body.IssueID > 0 && projectID == nil {
+		if pid, err := issueProjectID(body.IssueID); err == nil && pid > 0 {
+			projectID = &pid
+		}
+	}
+	if projectID != nil && !auth.CanViewProject(r, *projectID) {
+		// Do not let prompt preset resolution read project knowledge
+		// before the normal issue-context authorization path has had
+		// a chance to reject the action.
+		projectID = nil
+	}
+	resolvedOptions, optionsErr := resolveAIActionOptions(settings, body.Action, body.Options, projectID)
+	if optionsErr != nil {
+		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0, resolvedOptions)
+		callArgs := aiCallArgs{
+			RequestID:     requestID,
+			UserID:        userIDPtr,
+			ActionKey:     body.Action,
+			SubAction:     body.SubAction,
+			Surface:       desc.Surface,
+			IssueID:       nullableInt64(body.IssueID),
+			ProjectID:     projectID,
+			CustomerID:    customerID,
+			CooperationID: cooperationID,
+			Provider:      settings.Provider,
+			Model:         settings.Model,
+			Outcome:       "bad_request",
+			ErrorClass:    "options_invalid",
+		}
+		resolvedOptions.applyToAICallArgs(&callArgs)
+		recordAICall(r.Context(), callArgs)
+		jsonError(w, optionsErr.msg, optionsErr.status)
 		return
 	}
 
 	if body.Field != "" && !allowedActionFields[body.Field] {
-		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0)
+		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0, resolvedOptions)
 		jsonError(w, "field is not enabled for AI actions", http.StatusBadRequest)
 		return
 	}
@@ -325,7 +365,7 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !matched {
-			auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0)
+			auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0, resolvedOptions)
 			jsonError(w, "missing or invalid sub_action for "+body.Action, http.StatusBadRequest)
 			return
 		}
@@ -334,9 +374,8 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	provider, err := ai.Get(settings.Provider)
 	if err != nil {
 		log.Printf("ai_action: provider %q not registered: %v", settings.Provider, err)
-		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "provider_missing", 0, 0, 0)
-		projectID, customerID, cooperationID := parseAICallContext(body.Params)
-		recordAICall(r.Context(), aiCallArgs{
+		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "provider_missing", 0, 0, 0, resolvedOptions)
+		callArgs := aiCallArgs{
 			RequestID:     requestID,
 			UserID:        userIDPtr,
 			ActionKey:     body.Action,
@@ -350,7 +389,9 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 			Model:         settings.Model,
 			Outcome:       "provider_missing",
 			ErrorClass:    "provider_missing",
-		})
+		}
+		resolvedOptions.applyToAICallArgs(&callArgs)
+		recordAICall(r.Context(), callArgs)
 		jsonError(w, "AI provider unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -359,12 +400,12 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 	if ctxErr != nil {
 		var ue *userError
 		if errors.As(ctxErr, &ue) {
-			auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "denied", 0, 0, 0)
+			auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "denied", 0, 0, 0, resolvedOptions)
 			jsonError(w, ue.msg, ue.status)
 			return
 		}
 		log.Printf("ai_action: context: %v", ctxErr)
-		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "ctx_fail", 0, 0, 0)
+		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "ctx_fail", 0, 0, 0, resolvedOptions)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -382,14 +423,22 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		Text:      body.Text,
 		SubAction: body.SubAction,
 		Params:    body.Params,
+		Options:   resolvedOptions,
 		DB:        db.DB,
 	}
-	projectID, customerID, cooperationID := parseAICallContext(body.Params)
-	if body.IssueID > 0 && issueData.ProjectName != "" && projectID == nil {
-		if pid, err := issueProjectID(body.IssueID); err == nil && pid > 0 {
-			projectID = &pid
+	if err := assembleAIContextPack(r.Context(), ax, projectID); err != nil {
+		var ue *userError
+		if errors.As(err, &ue) {
+			auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "bad_request", 0, 0, 0, ax.Options)
+			jsonError(w, ue.msg, ue.status)
+			return
 		}
+		log.Printf("ai_action: context pack: %v", err)
+		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, settings.Model, "ctx_fail", 0, 0, 0, ax.Options)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
 	}
+	resolvedOptions = ax.Options
 
 	t0 := time.Now()
 	respBody, model, ptok, ctok, finish, err := desc.Handler(ax)
@@ -401,9 +450,11 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(ax.Ctx.Err(), context.DeadlineExceeded) {
 			outcome = "fail_timeout"
 			errorClass = "timeout"
+		} else if errors.Is(err, errAIActionJSONParse) {
+			errorClass = "response_parse"
 		}
-		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, model, outcome, latency, ptok, ctok)
-		recordAICall(r.Context(), aiCallArgs{
+		auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, model, outcome, latency, ptok, ctok, resolvedOptions)
+		callArgs := aiCallArgs{
 			RequestID:        requestID,
 			UserID:           userIDPtr,
 			ActionKey:        body.Action,
@@ -420,7 +471,9 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 			Outcome:          outcome,
 			ErrorClass:       errorClass,
 			LatencyMs:        latency.Milliseconds(),
-		})
+		}
+		resolvedOptions.applyToAICallArgs(&callArgs)
+		recordAICall(r.Context(), callArgs)
 		switch {
 		case errors.Is(err, ai.ErrProviderUnconfigured):
 			jsonError(w, "AI provider rejected the request — check API key and model", http.StatusServiceUnavailable)
@@ -428,10 +481,18 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "AI provider temporarily unavailable", http.StatusServiceUnavailable)
 		case errors.Is(err, errActionNotImplemented):
 			jsonError(w, fmt.Sprintf("Action %q is not implemented yet — see PAI-162.", body.Action), http.StatusNotImplemented)
+		case errors.Is(err, errAIActionJSONParse):
+			problemJSON(w, r, ProblemDetails{
+				Status:    http.StatusBadGateway,
+				Code:      "ai_action_invalid_response",
+				Detail:    "AI returned an invalid response. Try again or choose a different model.",
+				RequestID: requestID,
+			})
 		default:
 			jsonError(w, err.Error(), http.StatusBadGateway)
 		}
-		log.Printf("ai_action: handler error (%s): %v", body.Action, err)
+		log.Printf("ai_action: handler error request_id=%s action=%s error_class=%s outcome=%s model=%q: %v",
+			requestID, body.Action, errorClass, outcome, model, err)
 		return
 	}
 
@@ -446,8 +507,8 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		outcome = outcomeNoOp
 	}
 
-	auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, model, outcome, latency, ptok, ctok)
-	recordAICall(r.Context(), aiCallArgs{
+	auditAction(requestID, userID, body.Action, body.SubAction, body.Field, body.IssueID, model, outcome, latency, ptok, ctok, resolvedOptions)
+	callArgs := aiCallArgs{
 		RequestID:        requestID,
 		UserID:           userIDPtr,
 		ActionKey:        body.Action,
@@ -463,7 +524,9 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		CompletionTokens: ctok,
 		Outcome:          outcome,
 		LatencyMs:        latency.Milliseconds(),
-	})
+	}
+	resolvedOptions.applyToAICallArgs(&callArgs)
+	recordAICall(r.Context(), callArgs)
 	// PAI-161 meter increments AFTER audit so log + DB row agree.
 	// PAI-240 — only on a real provider call.
 	if outcome == outcomeOK {
@@ -497,13 +560,21 @@ func AIAction(w http.ResponseWriter, r *http.Request) {
 		PromptTokens:     ptok,
 		CompletionTokens: ctok,
 		FinishReason:     finish,
+		Options:          resolvedOptions,
 	})
 }
 
 // auditAction writes the structured stdout audit line for one
 // action call. Same shape as ai_optimize plus the action / sub_action
 // dimensions so dashboards can group by action.
-func auditAction(requestID string, userID int64, action, subAction, field string, issueID int64, model, outcome string, latency time.Duration, promptTokens, completionTokens int) {
+func auditAction(requestID string, userID int64, action, subAction, field string, issueID int64, model, outcome string, latency time.Duration, promptTokens, completionTokens int, opts ...resolvedAIActionOptions) {
+	if len(opts) > 0 && !opts[0].isZero() {
+		o := opts[0]
+		log.Printf("audit: ai_action request_id=%s action=%s sub_action=%s user_id=%d field=%s issue_id=%d model=%q outcome=%s latency_ms=%d prompt_tokens=%d completion_tokens=%d profile_id=%q effort=%q prompt_preset_ref=%q context_pack=%q",
+			requestID, action, subAction, userID, field, issueID, model, outcome, latency.Milliseconds(), promptTokens, completionTokens,
+			o.ProfileID, o.Effort, o.PromptPresetRef, o.ContextPack)
+		return
+	}
 	log.Printf("audit: ai_action request_id=%s action=%s sub_action=%s user_id=%d field=%s issue_id=%d model=%q outcome=%s latency_ms=%d prompt_tokens=%d completion_tokens=%d",
 		requestID, action, subAction, userID, field, issueID, model, outcome, latency.Milliseconds(), promptTokens, completionTokens)
 }
@@ -532,12 +603,14 @@ func stubHandler(ax *aiActionContext) (any, string, int, int, string, error) {
 // fetched on every page that mounts an AI menu — keeping it
 // server-side cheap matters.
 type aiActionListItem struct {
-	Key         string   `json:"key"`
-	Label       string   `json:"label"`
-	Surface     string   `json:"surface"`
-	Placement   string   `json:"placement"`
-	SubKeys     []string `json:"sub_keys,omitempty"`
-	Implemented bool     `json:"implemented"`
+	Key              string   `json:"key"`
+	Label            string   `json:"label"`
+	Surface          string   `json:"surface"`
+	Placement        string   `json:"placement"`
+	SubKeys          []string `json:"sub_keys,omitempty"`
+	Implemented      bool     `json:"implemented"`
+	DefaultProfileID string   `json:"default_profile_id,omitempty"`
+	DefaultEffort    string   `json:"default_effort,omitempty"`
 }
 
 func AIListActions(w http.ResponseWriter, r *http.Request) {

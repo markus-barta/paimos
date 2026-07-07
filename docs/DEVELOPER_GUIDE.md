@@ -9,6 +9,11 @@ For contribution mechanics (DCO, PR flow, review criteria), see
 `paimos` CLI setup, schema discovery, bulk ops, MCP wiring, and
 failure-mode guarantees.
 
+**AI control-plane UX**:
+[`AI_CONTROL_PLANE_UX.md`](AI_CONTROL_PLANE_UX.md) maps the PAI-646
+AI profile, effort, prompt, context, agent, runner, and provenance workflow
+to the current Vue and Go surfaces.
+
 **Project-context tooling**:
 - [`ANCHORS.md`](ANCHORS.md) defines `@paimos` / `@pmo` source anchors.
 - `go run ./backend/cmd/paimos anchors scan --repo-root . --output .pmo/anchors.json`
@@ -75,6 +80,8 @@ docs/
   CONFIGURATION.md     every env var
   CHANGELOG.md         release notes
   DEVELOPER_GUIDE.md   this file
+  AI_CONTROL_PLANE_UX.md
+                       PAI-646/648 UX map for AI actions, agents, and runs
   DEPLOY.md            live-deploy + backup/rollback runbook (PMO, ppm)
   DATA_MODEL.md        current schema (tables, relations, enums)
   archive/

@@ -210,7 +210,7 @@ func ExportSubject(w http.ResponseWriter, r *http.Request) {
 		"incidents":        gdprRows(`SELECT id, severity, title, detected_at, status FROM incident_log WHERE reported_by=?`, id),
 		"recent_projects":  gdprRows(`SELECT user_id, project_id, visited_at FROM user_recent_projects WHERE user_id=?`, id),
 		"project_members":  gdprRows(`SELECT user_id, project_id, access_level FROM project_members WHERE user_id=?`, id),
-		"ai_calls":         gdprRows(`SELECT id, request_id, action_key, sub_action, surface, issue_id, project_id, customer_id, cooperation_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_micro_usd, outcome, error_class, latency_ms, created_at FROM ai_calls WHERE user_id=?`, id),
+		"ai_calls":         gdprRows(`SELECT id, request_id, action_key, sub_action, surface, issue_id, project_id, customer_id, cooperation_id, provider, model, profile_id, effort, prompt_preset_ref, context_pack, prompt_tokens, completion_tokens, total_tokens, cost_micro_usd, outcome, error_class, latency_ms, created_at FROM ai_calls WHERE user_id=?`, id),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

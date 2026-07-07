@@ -61,7 +61,7 @@
           :key="action.action_key"
           class="row-run-action row-run-action--start row-act--implement"
           type="button"
-          :title="`Do this with ${action.label}`"
+          :title="`${actionVerb(action)} ${action.label}`"
           @click.stop="implement(action)"
         >
           <AppIcon name="zap" :size="12" />
@@ -77,7 +77,7 @@
         @click.stop="implement(singleExplicitAction)"
       >
         <AppIcon name="zap" :size="12" />
-        <span>{{ implementState === 'busy' ? 'Starting' : 'Run' }}</span>
+        <span>{{ implementState === 'busy' ? 'Starting' : singleActionLabel(singleExplicitAction) }}</span>
       </button>
       <button v-if="isAdmin" class="row-act row-act--hover row-act--danger" title="Move to trash (recoverable)" @click.stop="$emit('delete')">
         <AppIcon name="trash-2" :size="13" />
@@ -114,11 +114,11 @@
                 class="ellipsis-item"
                 @click.stop="implement(action)"
               >
-                <AppIcon name="zap" :size="13" /> Do with {{ shortActionLabel(action) }}
+                <AppIcon name="zap" :size="13" /> {{ actionVerb(action) }} {{ shortActionLabel(action) }}
               </button>
             </template>
             <button v-else-if="isImplementable" class="ellipsis-item" @click.stop="implement(singleExplicitAction)">
-              <AppIcon name="zap" :size="13" /> Run
+              <AppIcon name="zap" :size="13" /> {{ singleActionLabel(singleExplicitAction) }}
             </button>
             <button v-if="isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
               <AppIcon name="trash-2" :size="13" /> Move to trash
@@ -149,6 +149,7 @@ const props = defineProps<{
   isAdmin?: boolean
   aiWorkStatus?: IssueAIWorkStatus | null
   agentActions?: AgentActionCapability[]
+  agentName?: string
 }>()
 
 // PAI-610/612: "Implement this" — hand the ticket to a local agent run.
@@ -169,12 +170,26 @@ const explicitRunActions = computed(() => props.agentActions ?? [])
 const singleExplicitAction = computed(() =>
   explicitRunActions.value.length === 1 ? explicitRunActions.value[0] : undefined,
 )
+const selectedAgentName = computed(() => props.agentName?.trim() ?? '')
 
 function shortActionLabel(action: AgentActionCapability): string {
   return action.label
     .replace(/\s+Code$/i, '')
     .replace(/\s+CLI$/i, '')
     .trim()
+}
+
+function isDraftAction(action?: AgentActionCapability): boolean {
+  if (!action) return false
+  return action.run_modes?.includes('draft') || action.provider_kind !== 'local_cli'
+}
+
+function actionVerb(action?: AgentActionCapability): string {
+  return isDraftAction(action) ? 'Draft with' : 'Do this with'
+}
+
+function singleActionLabel(action?: AgentActionCapability): string {
+  return isDraftAction(action) ? 'Draft' : 'Run'
 }
 
 async function implement(action?: AgentActionCapability) {
@@ -184,12 +199,17 @@ async function implement(action?: AgentActionCapability) {
   implementMsg.value = ''
   menuOpen.value = false
   try {
-    const payload = action ? { action_key: action.action_key } : {}
+    const payload: { action_key?: string; agent_name?: string } = {}
+    if (action) payload.action_key = action.action_key
+    if (selectedAgentName.value) payload.agent_name = selectedAgentName.value
     const run = await api.post<{ id?: number }>(`/issues/${props.issueId}/implement`, payload)
     if (!alive) return
     implementState.value = 'done'
     const suffix = action ? ` with ${shortActionLabel(action)}` : ''
-    implementMsg.value = run?.id ? `Run #${run.id} queued${suffix}` : `Queued${suffix}`
+    const agent = selectedAgentName.value ? ` as ${selectedAgentName.value}` : ''
+    const noun = isDraftAction(action) ? 'Draft' : 'Run'
+    const state = isDraftAction(action) ? 'ready' : 'queued'
+    implementMsg.value = run?.id ? `${noun} #${run.id} ${state}${suffix}${agent}` : `${noun} ${state}${suffix}${agent}`
   } catch (e: unknown) {
     if (!alive) return
     implementState.value = 'error'

@@ -13,6 +13,7 @@ const emit = defineEmits<{
 const LABELS: Record<string, string> = {
   queued: "Queued",
   running: "Running",
+  drafted: "Draft ready",
   tests_passed: "Tests ok",
   tests_failed: "Tests failed",
   deployed: "Deployed",
@@ -23,6 +24,7 @@ const LABELS: Record<string, string> = {
 const PHRASES: Record<string, string> = {
   queued: "AI queued",
   running: "AI running",
+  drafted: "AI draft ready",
   tests_passed: "AI tests ok",
   tests_failed: "AI tests failed",
   deployed: "AI deployed",
@@ -57,6 +59,10 @@ function testPhrase(): string {
 const title = computed(() => {
   const bits = [phrase.value];
   if (providerLabel.value) bits.push(props.run.action_key);
+  if (props.run.profile_id) bits.push(`profile ${props.run.profile_id}`);
+  if (props.run.effort) bits.push(`effort ${props.run.effort}`);
+  if (props.run.prompt_preset_ref) bits.push(`prompt ${props.run.prompt_preset_ref}`);
+  if (props.run.context_pack) bits.push(`context ${props.run.context_pack}`);
   if (props.run.version) bits.push(`runner v${props.run.version}`);
   if (props.run.deploy_target) bits.push(`target ${props.run.deploy_target}`);
   const tests = testPhrase();
@@ -102,6 +108,10 @@ const title = computed(() => {
 .ai-work-badge--running {
   color: var(--bp-blue, #2563eb);
   background: color-mix(in srgb, var(--bp-blue, #2563eb) 16%, transparent);
+}
+.ai-work-badge--drafted {
+  color: #6d28d9;
+  background: color-mix(in srgb, #8b5cf6 18%, transparent);
 }
 .ai-work-badge--tests_passed,
 .ai-work-badge--deployed {

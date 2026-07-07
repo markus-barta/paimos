@@ -124,13 +124,21 @@ type subKey struct {
 // ActionCapability is one implement-capable action advertised by a live local
 // runner connection.
 type ActionCapability struct {
-	ActionKey    string   `json:"action_key"`
-	ProviderKind string   `json:"provider_kind"`
-	ProviderID   string   `json:"provider_id"`
-	Label        string   `json:"label"`
-	RunModes     []string `json:"run_modes,omitempty"`
-	CanTest      bool     `json:"can_test"`
-	CanDeploy    bool     `json:"can_deploy"`
+	ActionKey          string   `json:"action_key"`
+	ProviderKind       string   `json:"provider_kind"`
+	ProviderID         string   `json:"provider_id"`
+	Label              string   `json:"label"`
+	RunModes           []string `json:"run_modes,omitempty"`
+	CanTest            bool     `json:"can_test"`
+	CanDeploy          bool     `json:"can_deploy"`
+	Available          bool     `json:"available"`
+	UnavailableReason  string   `json:"unavailable_reason,omitempty"`
+	RequiresRunner     bool     `json:"requires_runner"`
+	ProfileIDs         []string `json:"profile_ids,omitempty"`
+	Efforts            []string `json:"efforts,omitempty"`
+	Models             []string `json:"models,omitempty"`
+	ContextLimitTokens int      `json:"context_limit_tokens,omitempty"`
+	EndpointLabel      string   `json:"endpoint_label,omitempty"`
 }
 
 // NewBroker returns a fresh broker. Tests use this; production code

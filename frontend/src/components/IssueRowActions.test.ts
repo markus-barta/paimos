@@ -130,6 +130,18 @@ describe("IssueRowActions — Implement this (PAI-610)", () => {
     unmount();
   });
 
+  it("includes the selected project agent when one is provided", async () => {
+    vi.mocked(api.post).mockResolvedValue({ id: 16 });
+    const { el, unmount } = mountRow({ agentName: "codex" });
+    el.querySelector<HTMLButtonElement>(".row-act--implement")!.click();
+    await settle();
+    expect(api.post).toHaveBeenCalledWith("/issues/42/implement", {
+      agent_name: "codex",
+    });
+    expect(el.textContent).toContain("Run #16 queued as codex");
+    unmount();
+  });
+
   it("ignores a re-click while a request is in flight", async () => {
     vi.mocked(api.post).mockImplementation(() => new Promise(() => {})); // never resolves
     const { el, unmount } = mountRow();

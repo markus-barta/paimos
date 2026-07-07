@@ -15,7 +15,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { useDraggedIssue } from '@/stores/draggedIssue'
 import { storeToRefs } from 'pinia'
-import type { AgentActionCapability, Issue, Tag, SavedView, Sprint, User } from '@/types'
+import type { AgentActionCapability, Issue, ProjectAgent, Tag, SavedView, Sprint, User } from '@/types'
 import type { Project } from '@/types'
 import { useViews, getLastViewId, setLastViewId } from '@/composables/useViews'
 import { useAuthStore } from '@/stores/auth'
@@ -25,6 +25,7 @@ import { useSearchStore } from '@/stores/search'
 import { useTableAppearance } from '@/composables/useTableAppearance'
 import { useIssueContext } from '@/composables/useIssueContext'
 import { formatInteger } from '@/composables/useNumberFormat'
+import type { AiExecutionOptionsCatalog, AiSelectorDefault } from '@/composables/useAiAction'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
@@ -405,7 +406,7 @@ const ISSUE_COLS: ColDefs<Issue> = {
   jira_version: { value: i => i.jira_version ?? '',        type: 'string' },
   jira_text:    { value: i => i.jira_text ?? '',           type: 'string' },
   report_summary: { value: i => i.report_summary ?? '',    type: 'string' },
-  ai_status:    { value: i => i.ai_work_status?.status ?? '', type: { order: ['', 'queued', 'running', 'tests_passed', 'tests_failed', 'deployed', 'failed', 'cancelled'] } },
+  ai_status:    { value: i => i.ai_work_status?.status ?? '', type: { order: ['', 'queued', 'running', 'drafted', 'tests_passed', 'tests_failed', 'deployed', 'failed', 'cancelled'] } },
 }
 
 const sortResult = useSort(portalFilteredIssues, ISSUE_COLS)
@@ -650,29 +651,92 @@ function copyKey(key: string, event?: MouseEvent) {
 }
 
 const agentActions = ref<AgentActionCapability[]>([])
+const projectAgents = ref<ProjectAgent[]>([])
+const selectedAgentName = ref('')
+const rowLaunchDefault = ref<AiSelectorDefault | null>(null)
+
+function runActionAvailable(action: AgentActionCapability): boolean {
+  return action.available !== false && !action.unavailable_reason
+}
 
 async function loadAgentActions() {
   if (isCustomerMode.value || props.projectId === undefined) {
     agentActions.value = []
     return
   }
+  const byKey = new Map<string, AgentActionCapability>()
   try {
     const data = await api.get<{ runners: { actions?: AgentActionCapability[] }[] }>(
       `/projects/${props.projectId}/runners`,
     )
-    const byKey = new Map<string, AgentActionCapability>()
     for (const runner of data.runners ?? []) {
       for (const action of runner.actions ?? []) {
-        if (!byKey.has(action.action_key)) byKey.set(action.action_key, action)
+        if (!byKey.has(action.action_key) && runActionAvailable(action)) byKey.set(action.action_key, action)
       }
     }
-    agentActions.value = [...byKey.values()]
   } catch {
-    agentActions.value = []
+    // Keep draft providers below usable even when the runner endpoint flakes.
+  }
+  try {
+    const data = await api.get<AiExecutionOptionsCatalog>(
+      `/ai/execution-options?project_id=${props.projectId}`,
+    )
+    rowLaunchDefault.value = data.selector_defaults?.row_launch ?? null
+    for (const action of data.run_providers ?? []) {
+      if (!byKey.has(action.action_key) && runActionAvailable(action)) byKey.set(action.action_key, action)
+    }
+    syncSelectedAgentName()
+  } catch {
+    rowLaunchDefault.value = null
+    // Draft provider availability is optional for row-level quick actions.
+  }
+  const defaultActionKey = rowLaunchDefault.value?.action_key ?? ''
+  agentActions.value = [...byKey.values()].sort((a, b) => {
+    if (!defaultActionKey) return 0
+    if (a.action_key === defaultActionKey) return -1
+    if (b.action_key === defaultActionKey) return 1
+    return 0
+  })
+}
+
+function syncSelectedAgentName() {
+  if (!projectAgents.value.length) {
+    selectedAgentName.value = ''
+    return
+  }
+  if (selectedAgentName.value && !projectAgents.value.some(agent => agent.name === selectedAgentName.value)) {
+    selectedAgentName.value = ''
+  }
+  const defaultAgent = rowLaunchDefault.value?.agent_name ?? ''
+  if (!selectedAgentName.value && defaultAgent && projectAgents.value.some(agent => agent.name === defaultAgent)) {
+    selectedAgentName.value = defaultAgent
+    return
+  }
+  if (!selectedAgentName.value && projectAgents.value.length === 1) {
+    selectedAgentName.value = projectAgents.value[0].name
   }
 }
 
-watch(() => props.projectId, () => { void loadAgentActions() }, { immediate: true })
+async function loadProjectAgentsForRuns() {
+  if (isCustomerMode.value || props.projectId === undefined) {
+    projectAgents.value = []
+    selectedAgentName.value = ''
+    return
+  }
+  try {
+    const data = await api.get<ProjectAgent[]>(`/projects/${props.projectId}/agents`)
+    projectAgents.value = Array.isArray(data) ? data : []
+    syncSelectedAgentName()
+  } catch {
+    projectAgents.value = []
+    selectedAgentName.value = ''
+  }
+}
+
+watch([() => props.projectId, isCustomerMode], () => {
+  void loadAgentActions()
+  void loadProjectAgentsForRuns()
+}, { immediate: true })
 
 type EpicMode = 'key' | 'title' | 'abbreviated'
 const epicDisplayMode = ref<EpicMode>((localStorage.getItem(EPIC_MODE_KEY) as EpicMode) || 'key')
@@ -1329,6 +1393,19 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       </button>
 
       <div class="filter-right">
+        <label
+          v-if="projectAgents.length"
+          class="run-agent-picker"
+          title="Project agent for row runs"
+        >
+          <AppIcon name="bot" :size="12" />
+          <select v-model="selectedAgentName" aria-label="Project agent for row runs">
+            <option value="">No agent</option>
+            <option v-for="agent in projectAgents" :key="agent.name" :value="agent.name">
+              {{ agent.name }}
+            </option>
+          </select>
+        </label>
         <span class="issue-count">
           {{ formatInteger(primaryIssueCount) }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}<template v-if="hasMore">
             · showing {{ formatInteger(renderedIssues.length) }}
@@ -1560,6 +1637,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :show-borders="showBorders"
         :show-stripes="showStripes"
         :agent-actions="isCustomerMode ? [] : agentActions"
+        :agent-name="selectedAgentName"
         :actions-collapsed="actionsCollapsed"
         :readonly="isCustomerMode"
         :status-labels="statusLabels"
@@ -1610,6 +1688,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :is-admin="isAdmin"
         :side-panel-issue-id="sidePanelIssueId"
         :agent-actions="agentActions"
+        :agent-name="selectedAgentName"
         @toggle-tree-node="toggleTreeNode"
         @toggle-tree-select="toggleTreeSelect"
         @toggle-select="toggleSelect"
@@ -1804,6 +1883,26 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
 .filters { display: flex; align-items: center; gap: .6rem; margin-bottom: 0; flex-wrap: wrap; }
 .filter-right { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
+.run-agent-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  height: 28px;
+  padding: 0 .45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text-muted);
+}
+.run-agent-picker select {
+  width: 8.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
 .issue-count { font-size: 12px; color: var(--text-muted); }
 .issue-count-link {
   background: none;

@@ -77,7 +77,10 @@ A trust boundary is any place where data crosses from a trusted context into a l
 - **Defences:**
   - PAIMOS does not require root; the Dockerfile drops to a non-root user.
   - Filesystem access is scoped to `$DATA_DIR`; the binary doesn't read or write outside it.
-  - Secrets live in env vars, not on disk in plaintext — except `ai_settings.api_key` (currently stored unencrypted in SQLite; documented as such in `CONFIGURATION.md` § AI assist § Operational guidance, with the explicit recommendation to keep `$DATA_DIR` on encrypted storage if that matters).
+  - Operator secrets live in env vars or in field-level encrypted SQLite
+    columns. User-entered provider secrets such as the OpenRouter API key go
+    through `backend/secretvault`; operators who keep the master key on the
+    data volume should still treat `$DATA_DIR` as sensitive.
   - No SUID, no capabilities, no host-namespace privileges.
 
 ### 2.3 · Data boundary — `$DATA_DIR` ↔ other tenants
@@ -97,7 +100,7 @@ Each optional integration adds an outbound trust assumption. PAIMOS does not —
 | MinIO/S3 | `MINIO_ACCESS_KEY` + `MINIO_SECRET_KEY` (env) | Attachments unavailable; UI hides drop zones; download endpoints return 503 |
 | SMTP | `SMTP_USER` + `SMTP_PASS` (env) | Password-reset endpoint refuses-with-warning; no link sent |
 | OIDC | `OIDC_CLIENT_SECRET` (env) | SSO button hidden from login page when unconfigured |
-| OpenRouter | `ai_settings.api_key` (DB) | AI feature surface disabled; UI falls back to "AI not configured" |
+| OpenRouter | `ai_settings.api_key_encrypted` (DB, secretvault) | AI feature surface disabled; UI falls back to "AI not configured" |
 
 A compromised upstream provider can in theory exfiltrate data PAIMOS sent — see [`INCIDENT_RESPONSE.md` § 3.5](INCIDENT_RESPONSE.md) for the response runbook. PAIMOS-side defences:
 
@@ -199,6 +202,14 @@ button" to their own PAIMOS account. A compromised account can therefore trigger
 work on any workstation that account has a live runner on — which is precisely
 why deploy stays off by default and behind two further flags.
 
+Draft Implement-this providers (`openrouter_draft.implement` and
+`local_model_draft.implement`) deliberately do **not** cross this local
+execution boundary. They are server-side model calls that can post an internal
+draft comment and store safe provenance on `agent_runs`, but they reject
+`device_id` and `deploy_target`, do not claim a runner, do not mutate a repo,
+and do not claim local test execution. Local-model endpoint labels strip
+userinfo, query strings, and fragments before display.
+
 ---
 
 ## 3 · Threat actors
@@ -290,7 +301,7 @@ PAI-110 shipped the **INV-FILES-03** application-layer fix end-to-end. Uploads n
 
 | ID | Statement | Code path | Verification |
 |---|---|---|---|
-| **INV-PROV-01** | OpenRouter API key is admin-set, stored unencrypted in `ai_settings`; never returned in API responses (the GET endpoint returns `has_api_key: bool` only). | `handlers/ai_settings.go` | `ai_test_connection_test.go` |
+| **INV-PROV-01** | OpenRouter API key is admin-set, encrypted at rest through `secretvault`, and never returned in API responses (the GET endpoint returns `has_api_key: bool` only). | `handlers/ai_settings.go` | `ai_test_connection_test.go` |
 | **INV-PROV-02** | OIDC client secret is env-var only; never written to logs. | `auth/oidc.go` | manual verification |
 | **INV-PROV-03** | SMTP password is env-var only; never written to logs. | `mail/smtp.go` | manual verification |
 | **INV-PROV-04** | Provider-rejection responses (e.g., "model not found") are surfaced to the SPA but the underlying provider error class is captured in the audit line, not the body. | `handlers/ai_action.go` | `ai_optimize_audit_test.go` |
@@ -312,6 +323,7 @@ PAI-110 shipped the **INV-FILES-03** application-layer fix end-to-end. Uploads n
 | **INV-RUNNER-02** | The runner is repo-scoped, runs one job at a time, and prompts before spawning unless `--yes`. | `cmd_run_agent.go:agentRunner.handle` + busy guard | `cmd_run_agent_test.go` |
 | **INV-RUNNER-03** | Deploy is off by default — it requires `--allow-deploy` AND `--deploy-exec` AND a run-level `deploy_target`. | `cmd_run_agent.go:agentRunner.handle` | `cmd_run_agent_test.go` |
 | **INV-RUNNER-04** | `POST /implement` is project-editor gated; run reads/updates are requester or admin only. | `handlers/agent_runs.go:canManageAgentRun` + `main.go` routes | `agent_runs_test.go` |
+| **INV-RUNNER-05** | Draft Implement-this providers cannot use local runner, repo mutation, test, or deploy paths, and local endpoint labels do not display credentials. | `handlers/agent_runs.go:implementDraftIssue`, `handlers/ai_execution_options.go:safeEndpointLabel` | `agent_runs_test.go` |
 
 ---
 

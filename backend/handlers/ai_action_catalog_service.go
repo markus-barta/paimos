@@ -13,13 +13,16 @@ func listAIActionCatalog(dbConn *sql.DB) []aiActionListItem {
 		if override, ok := placements[d.Key]; ok && override != "" {
 			placement = override
 		}
+		defaults := defaultAIActionOptionsFor(d.Key)
 		out = append(out, aiActionListItem{
-			Key:         d.Key,
-			Label:       d.Label,
-			Surface:     d.Surface,
-			Placement:   placement,
-			SubKeys:     d.SubKeys,
-			Implemented: d.Implemented,
+			Key:              d.Key,
+			Label:            d.Label,
+			Surface:          d.Surface,
+			Placement:        placement,
+			SubKeys:          d.SubKeys,
+			Implemented:      d.Implemented,
+			DefaultProfileID: defaults.ProfileID,
+			DefaultEffort:    defaults.Effort,
 		})
 	}
 	return out

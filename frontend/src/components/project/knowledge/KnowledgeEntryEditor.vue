@@ -108,6 +108,13 @@ const runbookAgentsInput = ref(runbookRelatedAgents.value.join(', '))
 
 const guidelineRule = ref(stringFromMeta(metadata.value, 'rule', ''))
 
+const aiPromptPresetInitial = aiPromptPresetFromMeta(metadata.value, title.value)
+const aiPromptPresetEnabled = ref(aiPromptPresetInitial.enabled)
+const aiPromptPresetLabel = ref(aiPromptPresetInitial.label)
+const aiPromptPresetStatus = ref(aiPromptPresetInitial.status)
+const aiPromptPresetActionsInput = ref(aiPromptPresetInitial.actions.join(', '))
+const canBeAiPromptPreset = computed(() => canCategoryBeAiPromptPreset(props.category))
+
 // ── PAI-342: Originating Tickets (memory only) ──────────────────────
 //
 // Pulls live reverse-direction rows from /api/issues/:memoryId/
@@ -303,6 +310,7 @@ function buildPayload(): KnowledgeEntryInput {
     if (guidelineRule.value.trim() !== '') meta.rule = guidelineRule.value.trim()
     else delete meta.rule
   }
+  applyAIPromptPresetMetadata(meta)
   return {
     slug: slug.value.trim(),
     title: title.value.trim(),
@@ -322,6 +330,92 @@ function parseList(raw: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s !== '')
+}
+
+function applyAIPromptPresetMetadata(meta: Record<string, unknown>) {
+  if (!canCategoryBeAiPromptPreset(props.category)) {
+    delete meta.ai_prompt_preset
+    return
+  }
+  if (!aiPromptPresetEnabled.value) {
+    delete meta.ai_prompt_preset
+    return
+  }
+  const actions = parseList(aiPromptPresetActionsInput.value)
+  meta.ai_prompt_preset = {
+    enabled: true,
+    label: aiPromptPresetLabel.value.trim() || title.value.trim(),
+    status: aiPromptPresetStatus.value || 'active',
+    actions: actions.length ? actions : ['*'],
+  }
+}
+
+interface AIPromptPresetEditorState {
+  enabled: boolean
+  label: string
+  status: 'active' | 'draft' | 'archived'
+  actions: string[]
+}
+
+function syncAIPromptPresetFields(meta: Record<string, unknown>, fallbackLabel: string) {
+  const next = aiPromptPresetFromMeta(meta, fallbackLabel)
+  aiPromptPresetEnabled.value = next.enabled
+  aiPromptPresetLabel.value = next.label
+  aiPromptPresetStatus.value = next.status
+  aiPromptPresetActionsInput.value = next.actions.join(', ')
+}
+
+function aiPromptPresetFromMeta(
+  meta: Record<string, unknown>,
+  fallbackLabel: string,
+): AIPromptPresetEditorState {
+  const raw = meta.ai_prompt_preset
+  const fallback = {
+    enabled: false,
+    label: fallbackLabel,
+    status: 'active' as const,
+    actions: ['*'],
+  }
+  if (raw === true) return { ...fallback, enabled: true }
+  if (!isRecord(raw)) return fallback
+  const status = stringFromRecord(raw, 'status', 'active').toLowerCase()
+  return {
+    enabled: boolFromRecord(raw, 'enabled', true),
+    label: stringFromRecord(raw, 'label', fallbackLabel),
+    status: status === 'draft' || status === 'archived' ? status : 'active',
+    actions: arrayOrListFromRecord(raw, 'actions', ['*']),
+  }
+}
+
+function canCategoryBeAiPromptPreset(category: KnowledgeCategory): boolean {
+  return category === 'memory' || category === 'runbook' || category === 'guideline'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function stringFromRecord(meta: Record<string, unknown>, key: string, fallback: string): string {
+  const v = meta[key]
+  return typeof v === 'string' && v.trim() !== '' ? v : fallback
+}
+
+function boolFromRecord(meta: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const v = meta[key]
+  return typeof v === 'boolean' ? v : fallback
+}
+
+function arrayOrListFromRecord(meta: Record<string, unknown>, key: string, fallback: string[]): string[] {
+  const v = meta[key]
+  if (Array.isArray(v)) {
+    const out = v.filter((s): s is string => typeof s === 'string' && s.trim() !== '').map(s => s.trim())
+    return out.length ? out : fallback
+  }
+  if (typeof v === 'string') {
+    const out = parseList(v)
+    return out.length ? out : fallback
+  }
+  return fallback
 }
 
 function stringFromMeta(meta: Record<string, unknown>, key: string, fallback: string): string {
@@ -373,6 +467,7 @@ watch(
     relatedRelationship.value = stringFromMeta(metadata.value, 'relationship', '')
     runbookAgentsInput.value = arrayFromMeta(metadata.value, 'related_agents').join(', ')
     guidelineRule.value = stringFromMeta(metadata.value, 'rule', '')
+    syncAIPromptPresetFields(metadata.value, title.value)
   },
 )
 </script>
@@ -547,6 +642,35 @@ watch(
       </div>
     </template>
 
+    <div v-if="canBeAiPromptPreset" class="ke-prompt-preset">
+      <label class="ke-inline-toggle">
+        <input
+          v-model="aiPromptPresetEnabled"
+          type="checkbox"
+          data-testid="ai-prompt-preset-enabled"
+        />
+        <span>AI prompt preset</span>
+      </label>
+      <div v-if="aiPromptPresetEnabled" class="ke-row">
+        <div class="ke-field">
+          <label>Prompt label</label>
+          <input v-model="aiPromptPresetLabel" type="text" placeholder="Spec writer" data-testid="ai-prompt-preset-label" />
+        </div>
+        <div class="ke-field">
+          <label>Status</label>
+          <select v-model="aiPromptPresetStatus" data-testid="ai-prompt-preset-status">
+            <option value="active">active</option>
+            <option value="draft">draft</option>
+            <option value="archived">archived</option>
+          </select>
+        </div>
+        <div class="ke-field">
+          <label>Actions <span class="ke-hint">comma-separated</span></label>
+          <input v-model="aiPromptPresetActionsInput" type="text" placeholder="spec_out, estimate_effort, *" class="ke-mono" data-testid="ai-prompt-preset-actions" />
+        </div>
+      </div>
+    </div>
+
     <div class="ke-field">
       <div class="ke-body-head">
         <label>Body <span class="ke-hint">markdown</span></label>
@@ -676,6 +800,7 @@ watch(
 .ke-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .ke-inline-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; font-size: 12px; }
 .ke-inline-toggle input[type="checkbox"] { width: auto; margin: 0; }
+.ke-prompt-preset { display: flex; flex-direction: column; gap: .55rem; }
 .ke-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 200px; resize: vertical; }
 .ke-body-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .ke-body-head > label { margin-bottom: 0; }

@@ -61,7 +61,7 @@ func customerRewriteHandler(ax *aiActionContext) (any, string, int, int, string,
 		subAction = "release_note"
 	}
 
-	systemPrompt := resolveActionPrompt("customer_rewrite")
+	systemPrompt := resolveActionPromptWithPreset(ax, "customer_rewrite")
 
 	var u strings.Builder
 	fmt.Fprintf(&u, "Sub-action (Ton-Bias): %s\n\n", subAction)
@@ -85,8 +85,9 @@ func customerRewriteHandler(ax *aiActionContext) (any, string, int, int, string,
 	resp, err := ax.Provider.Optimize(callCtx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt,
-		UserPrompt:      u.String(),
+		UserPrompt:      aiUserPromptWithContext(ax, u.String()),
 		MaxOutputTokens: optimizeMaxOutputTokens,
 	})
 	if err != nil {
@@ -95,4 +96,3 @@ func customerRewriteHandler(ax *aiActionContext) (any, string, int, int, string,
 	cleaned := ai.StripFenceEcho(resp.Text)
 	return customerRewriteBody{Optimized: cleaned}, resp.Model, resp.PromptTokens, resp.CompletionTokens, resp.FinishReason, nil
 }
-

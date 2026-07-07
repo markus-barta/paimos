@@ -8,7 +8,11 @@
 package handlers_test
 
 import (
+	"database/sql"
+	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -197,6 +201,270 @@ func TestImplementIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestImplementStoresRequestedProjectAgent(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	seedProjectAgent(t, projID, "codex")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Agent bridge", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie,
+		map[string]any{"agent_name": "codex", "device_id": "laptop-1"})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["agent_name"] != "codex" {
+		t.Fatalf("agent_name=%v, want codex", run["agent_name"])
+	}
+	runID := int64(run["id"].(float64))
+
+	var stored string
+	if err := db.DB.QueryRow(`SELECT agent_name FROM agent_runs WHERE id=?`, runID).Scan(&stored); err != nil {
+		t.Fatalf("reload run agent_name: %v", err)
+	}
+	if stored != "codex" {
+		t.Fatalf("stored agent_name=%q, want codex", stored)
+	}
+
+	req, _ := http.NewRequest(http.MethodPatch, ts.srv.URL+"/api/runs/"+itoa(runID),
+		strings.NewReader(`{"status":"running","if_status":"queued"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cookie", ts.adminCookie)
+	req.Header.Set("X-Paimos-Agent-Name", "runner-cli")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("claim run with reporter attribution: %v", err)
+	}
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if err := db.DB.QueryRow(`SELECT agent_name FROM agent_runs WHERE id=?`, runID).Scan(&stored); err != nil {
+		t.Fatalf("reload run agent_name after claim: %v", err)
+	}
+	if stored != "codex" {
+		t.Fatalf("reporter attribution overwrote selected agent_name=%q, want codex", stored)
+	}
+}
+
+func TestImplementRejectsAgentOutsideIssueProject(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	otherID := seedBatchProject(t, "OTHER", "OTH")
+	seedProjectAgent(t, otherID, "codex")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Wrong agent", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie,
+		map[string]any{"agent_name": "codex"})
+	assertStatus(t, resp, http.StatusNotFound)
+	resp = ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie,
+		map[string]any{"agent_name": "Web UI"})
+	assertStatus(t, resp, http.StatusBadRequest)
+
+	var count int
+	if err := db.DB.QueryRow(`SELECT COUNT(*) FROM agent_runs WHERE issue_id=?`, issueID).Scan(&count); err != nil {
+		t.Fatalf("count runs: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("agent_runs count=%d, want 0", count)
+	}
+}
+
+func TestImplementOpenRouterDraftCreatesDraftRunAndComment(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	seedProjectAgent(t, projID, "codex")
+	if _, err := db.DB.Exec(
+		`UPDATE project_agents
+		    SET body=?,
+		        bootstrap_steps=?,
+		        non_negotiable_rules=?
+		  WHERE project_id=? AND name=?`,
+		"Use the project's normal Go/Vue boundaries.",
+		`[{"title":"Load local env","command":"echo SECRET_COMMAND_SENTINEL","rationale":"Know the local environment shape."}]`,
+		`[{"title":"No secrets","body":"Never expose secrets in comments or logs.","memory_ref":"memory/security"}]`,
+		projID, "codex"); err != nil {
+		t.Fatalf("seed agent guidance: %v", err)
+	}
+
+	var capturedBody string
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Fatalf("unexpected provider path %s", r.URL.Path)
+		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read provider request: %v", err)
+		}
+		capturedBody = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model": "test/draft-served",
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "Draft body from model\n\nSuggested tests:\n- go test ./..."},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 12, "completion_tokens": 34},
+		})
+	}))
+	defer modelServer.Close()
+
+	if _, err := db.DB.Exec(
+		`UPDATE ai_settings SET enabled=1, provider='openrouter', model='test/draft', api_key='test-key', base_url=? WHERE id=1`,
+		modelServer.URL); err != nil {
+		t.Fatalf("enable ai settings: %v", err)
+	}
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status, description, acceptance_criteria, notes)
+		 VALUES(?,?,?,?,?,?,?,?)`,
+		projID, 1, "ticket", "Draft me", "backlog", "Implement draft mode.", "- Store provenance.", "Avoid secrets.")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"action_key": "openrouter_draft.implement",
+		"agent_name": "codex",
+		"options": map[string]any{
+			"profile_id":        "deep",
+			"effort":            "low",
+			"prompt_preset_ref": "default",
+			"context_pack":      "issue",
+		},
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	var run map[string]any
+	decode(t, resp, &run)
+	if run["status"] != "drafted" ||
+		run["run_mode"] != "draft" ||
+		run["provider_label"] != "OpenRouter Draft" ||
+		run["device_id"] != "" ||
+		run["deploy_target"] != "" {
+		t.Fatalf("draft run shape = %+v", run)
+	}
+	if run["profile_id"] != "deep" || run["effort"] != "low" || run["context_pack"] != "issue" {
+		t.Fatalf("draft options = %+v", run)
+	}
+	if run["prompt_tokens"] != float64(12) || run["completion_tokens"] != float64(34) || run["finish_reason"] != "stop" {
+		t.Fatalf("draft usage metadata = %+v", run)
+	}
+	if got := run["tests_summary"]; got == nil || !strings.Contains(got.(string), "no local tests") {
+		t.Fatalf("tests_summary=%v, want no local tests provenance", got)
+	}
+	runID := int64(run["id"].(float64))
+
+	body, n := firstComment(t, issueID)
+	if n != 1 {
+		t.Fatalf("comments = %d, want 1", n)
+	}
+	for _, want := range []string{"AI draft from OpenRouter Draft", "Draft body from model", "run #" + itoa(runID), "model `test/draft-served`", "draft only, no repository changes, no local tests, no deploy"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("draft comment missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "test-key") || strings.Contains(capturedBody, "SECRET_COMMAND_SENTINEL") {
+		t.Fatalf("draft path exposed a secret-bearing value")
+	}
+
+	var outcome, profileID, effort, contextPack string
+	if err := db.DB.QueryRow(
+		`SELECT outcome, profile_id, effort, context_pack FROM ai_calls WHERE action_key='openrouter_draft.implement' ORDER BY id DESC LIMIT 1`,
+	).Scan(&outcome, &profileID, &effort, &contextPack); err != nil {
+		t.Fatalf("load ai call: %v", err)
+	}
+	if outcome != "ok" || profileID != "deep" || effort != "low" || contextPack != "issue" {
+		t.Fatalf("ai call = (%q,%q,%q,%q), want ok/deep/low/issue", outcome, profileID, effort, contextPack)
+	}
+}
+
+func TestImplementDraftRejectsRunnerAndDeployInputs(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	res, err := db.DB.Exec(
+		`INSERT INTO issues(project_id, issue_number, type, title, status) VALUES(?,?,?,?,?)`,
+		projID, 1, "ticket", "Draft rejects runner", "backlog")
+	if err != nil {
+		t.Fatalf("seed issue: %v", err)
+	}
+	issueID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"action_key": "openrouter_draft.implement",
+		"device_id":  "laptop",
+	})
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp = ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"action_key":    "openrouter_draft.implement",
+		"deploy_target": "local-dev",
+	})
+	assertStatus(t, resp, http.StatusBadRequest)
+
+	var count int
+	if err := db.DB.QueryRow(`SELECT COUNT(*) FROM agent_runs WHERE issue_id=?`, issueID).Scan(&count); err != nil {
+		t.Fatalf("count runs: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("agent_runs count=%d, want 0", count)
+	}
+}
+
+func TestAIExecutionOptionsAdvertisesLocalDraftProviderSafely(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	if _, err := db.DB.Exec(
+		`UPDATE ai_settings SET enabled=1, provider='local_model', model='local/test', api_key='', base_url=? WHERE id=1`,
+		"http://user:pass@localhost:11434/v1?token=abc"); err != nil {
+		t.Fatalf("enable local model settings: %v", err)
+	}
+
+	resp := ts.get(t, "/api/ai/execution-options?project_id="+itoa(projID), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	var out struct {
+		RunProviders []struct {
+			ActionKey         string   `json:"action_key"`
+			Available         bool     `json:"available"`
+			UnavailableReason string   `json:"unavailable_reason"`
+			RequiresRunner    bool     `json:"requires_runner"`
+			Models            []string `json:"models"`
+			EndpointLabel     string   `json:"endpoint_label"`
+		} `json:"run_providers"`
+	}
+	decode(t, resp, &out)
+	var localFound, openRouterFound bool
+	for _, p := range out.RunProviders {
+		switch p.ActionKey {
+		case "local_model_draft.implement":
+			localFound = true
+			if !p.Available || p.RequiresRunner || len(p.Models) != 1 || p.Models[0] != "local/test" {
+				t.Fatalf("local draft provider = %+v", p)
+			}
+			for _, forbidden := range []string{"user", "pass", "token=abc"} {
+				if strings.Contains(p.EndpointLabel, forbidden) {
+					t.Fatalf("endpoint label exposed sensitive URL material: %q", p.EndpointLabel)
+				}
+			}
+		case "openrouter_draft.implement":
+			openRouterFound = true
+			if p.Available || p.UnavailableReason == "" {
+				t.Fatalf("openrouter provider = %+v, want unavailable with reason", p)
+			}
+		}
+	}
+	if !localFound || !openRouterFound {
+		t.Fatalf("run providers = %+v, want local and openrouter", out.RunProviders)
+	}
+}
+
 // seedRunForIssue creates an issue and a queued run on it, returning both ids.
 func seedRunForIssue(t *testing.T, ts *testServer, projID int64, num int) (int64, int64) {
 	t.Helper()
@@ -212,6 +480,16 @@ func seedRunForIssue(t *testing.T, ts *testServer, projID int64, num int) (int64
 	var run map[string]any
 	decode(t, resp, &run)
 	return issueID, int64(run["id"].(float64))
+}
+
+func seedProjectAgent(t *testing.T, projectID int64, name string) {
+	t.Helper()
+	if _, err := db.DB.Exec(
+		`INSERT INTO project_agents(project_id, name, description, body, bootstrap_steps, non_negotiable_rules)
+		 VALUES(?,?,?,?,?,?)`,
+		projectID, name, "Test agent", "Act on project issues.", "[]", "[]"); err != nil {
+		t.Fatalf("seed project agent %s: %v", name, err)
+	}
 }
 
 func seedImplementWatch(t *testing.T, userID, projectID int64, deviceID string) {
@@ -632,6 +910,117 @@ func TestIssueResponsesIncludeLatestAIWorkStatus(t *testing.T) {
 		return
 	}
 	t.Fatalf("issue %d not returned in project issue list: %+v", issueID, list.Issues)
+}
+
+func TestIssueResponsesIncludeDraftAIWorkStatusMetadata(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	issueID := seedListV2Issue(t, projID, 1, "Draft metadata", "backlog")
+	var adminID int64
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID); err != nil {
+		t.Fatalf("lookup admin id: %v", err)
+	}
+	_, err := db.DB.Exec(`
+		INSERT INTO agent_runs(
+			issue_id, project_id, requested_by,
+			action_key, provider_kind, provider_id, provider_label, model, run_mode,
+			profile_id, effort, prompt_preset_ref, context_pack,
+			status, created_at, started_at, finished_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?, 'drafted', datetime('now'), datetime('now'), datetime('now'))
+	`, issueID, projID, adminID,
+		"openrouter_draft.implement", "hosted_model", "openrouter", "OpenRouter Draft", "test/draft", "draft",
+		"balanced", "standard", "kb:runbook:draft@rev1", "knowledge")
+	if err != nil {
+		t.Fatalf("seed draft run: %v", err)
+	}
+
+	var single struct {
+		AIWorkStatus *struct {
+			Status          string `json:"status"`
+			ActionKey       string `json:"action_key"`
+			ProviderKind    string `json:"provider_kind"`
+			ProviderID      string `json:"provider_id"`
+			ProviderLabel   string `json:"provider_label"`
+			Model           string `json:"model"`
+			RunMode         string `json:"run_mode"`
+			ProfileID       string `json:"profile_id"`
+			Effort          string `json:"effort"`
+			PromptPresetRef string `json:"prompt_preset_ref"`
+			ContextPack     string `json:"context_pack"`
+		} `json:"ai_work_status"`
+	}
+	resp := ts.get(t, "/api/issues/"+itoa(issueID), ts.adminCookie)
+	assertStatus(t, resp, http.StatusOK)
+	decode(t, resp, &single)
+	if single.AIWorkStatus == nil {
+		t.Fatalf("single issue missing ai_work_status")
+	}
+	if single.AIWorkStatus.Status != "drafted" ||
+		single.AIWorkStatus.ActionKey != "openrouter_draft.implement" ||
+		single.AIWorkStatus.ProviderKind != "hosted_model" ||
+		single.AIWorkStatus.ProviderID != "openrouter" ||
+		single.AIWorkStatus.ProviderLabel != "OpenRouter Draft" ||
+		single.AIWorkStatus.Model != "test/draft" ||
+		single.AIWorkStatus.RunMode != "draft" ||
+		single.AIWorkStatus.ProfileID != "balanced" ||
+		single.AIWorkStatus.Effort != "standard" ||
+		single.AIWorkStatus.PromptPresetRef != "kb:runbook:draft@rev1" ||
+		single.AIWorkStatus.ContextPack != "knowledge" {
+		t.Fatalf("draft ai_work_status metadata = %+v", single.AIWorkStatus)
+	}
+}
+
+func TestImplementFromDraftLinksTrustedFollowupRun(t *testing.T) {
+	ts := newTestServer(t)
+	projID := seedBatchProject(t, "PAI", "PAI")
+	issueID := seedListV2Issue(t, projID, 1, "Draft handoff", "backlog")
+	var adminID int64
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE username='admin'`).Scan(&adminID); err != nil {
+		t.Fatalf("lookup admin id: %v", err)
+	}
+	res, err := db.DB.Exec(`
+		INSERT INTO agent_runs(
+			issue_id, project_id, requested_by,
+			action_key, provider_kind, provider_id, provider_label, model, run_mode,
+			profile_id, effort, prompt_preset_ref, context_pack,
+			status, created_at, started_at, finished_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?, 'drafted', datetime('now'), datetime('now'), datetime('now'))
+	`, issueID, projID, adminID,
+		"openrouter_draft.implement", "hosted_model", "openrouter", "OpenRouter Draft", "test/draft", "draft",
+		"balanced", "standard", "default", "knowledge")
+	if err != nil {
+		t.Fatalf("seed draft run: %v", err)
+	}
+	draftID, _ := res.LastInsertId()
+
+	resp := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"action_key":          "claude_cli.implement",
+		"source_draft_run_id": draftID,
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	var run struct {
+		ID               int64  `json:"id"`
+		Status           string `json:"status"`
+		ActionKey        string `json:"action_key"`
+		SourceDraftRunID int64  `json:"source_draft_run_id"`
+	}
+	decode(t, resp, &run)
+	if run.Status != "queued" || run.ActionKey != "claude_cli.implement" || run.SourceDraftRunID != draftID {
+		t.Fatalf("follow-up run = %+v, want queued trusted run linked to draft %d", run, draftID)
+	}
+	var followup sql.NullInt64
+	if err := db.DB.QueryRow(`SELECT followup_run_id FROM agent_runs WHERE id=?`, draftID).Scan(&followup); err != nil {
+		t.Fatalf("reload draft followup: %v", err)
+	}
+	if !followup.Valid || followup.Int64 != run.ID {
+		t.Fatalf("draft followup_run_id=%v, want %d", followup, run.ID)
+	}
+
+	second := ts.post(t, "/api/issues/"+itoa(issueID)+"/implement", ts.adminCookie, map[string]any{
+		"action_key":          "claude_cli.implement",
+		"source_draft_run_id": draftID,
+	})
+	assertStatus(t, second, http.StatusConflict)
 }
 
 // TestAgentRunTerminalImmutable rejects any edit (even non-status) once terminal.

@@ -60,7 +60,7 @@ func translateHandler(ax *aiActionContext) (any, string, int, int, string, error
 	// "SOURCE / TARGET languages given in the user prompt"; we
 	// pass them in the user prompt so the system prompt stays
 	// admin-editable without language-specific clutter.
-	systemPrompt := resolveActionPrompt("translate")
+	systemPrompt := resolveActionPromptWithPreset(ax, "translate")
 	userPrompt := fmt.Sprintf("Translate from %s to %s:\n\n%s", src, tgt, ax.Text)
 
 	ctx, cancel := context.WithTimeout(ax.Ctx, optimizeRequestTimeout)
@@ -68,8 +68,9 @@ func translateHandler(ax *aiActionContext) (any, string, int, int, string, error
 	resp, err := ax.Provider.Optimize(ctx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt,
-		UserPrompt:      userPrompt,
+		UserPrompt:      aiUserPromptWithContext(ax, userPrompt),
 		MaxOutputTokens: optimizeMaxOutputTokens,
 	})
 	if err != nil {

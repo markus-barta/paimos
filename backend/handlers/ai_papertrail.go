@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,10 @@ type aiCallArgs struct {
 	CooperationID    *int64
 	Provider         string
 	Model            string
+	ProfileID        string
+	Effort           string
+	PromptPresetRef  string
+	ContextPack      string
 	PromptTokens     int
 	CompletionTokens int
 	CostMicroUSD     int64
@@ -55,6 +60,10 @@ type aiCallListRow struct {
 	SubjectLabel     string `json:"subject_label"`
 	Provider         string `json:"provider"`
 	Model            string `json:"model"`
+	ProfileID        string `json:"profile_id,omitempty"`
+	Effort           string `json:"effort,omitempty"`
+	PromptPresetRef  string `json:"prompt_preset_ref,omitempty"`
+	ContextPack      string `json:"context_pack,omitempty"`
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
 	TotalTokens      int    `json:"total_tokens"`
@@ -74,6 +83,8 @@ type aiCallListResponse struct {
 
 type issueAIActivityRow struct {
 	LogID            int64  `json:"log_id"`
+	RunID            *int64 `json:"run_id,omitempty"`
+	Kind             string `json:"kind"`
 	RequestID        string `json:"request_id"`
 	ActionKey        string `json:"action_key"`
 	SubAction        string `json:"sub_action"`
@@ -81,13 +92,31 @@ type issueAIActivityRow struct {
 	UserID           *int64 `json:"user_id"`
 	UserName         string `json:"user_name"`
 	Outcome          string `json:"outcome"`
+	Status           string `json:"status,omitempty"`
+	ProviderKind     string `json:"provider_kind,omitempty"`
+	ProviderID       string `json:"provider_id,omitempty"`
+	ProviderLabel    string `json:"provider_label,omitempty"`
+	RunMode          string `json:"run_mode,omitempty"`
+	AgentName        string `json:"agent_name,omitempty"`
+	DeviceID         string `json:"device_id,omitempty"`
+	Version          string `json:"version,omitempty"`
+	DeployTarget     string `json:"deploy_target,omitempty"`
+	TestsSummary     string `json:"tests_summary,omitempty"`
+	Error            string `json:"error,omitempty"`
 	LatencyMs        int64  `json:"latency_ms"`
 	Model            string `json:"model"`
+	ProfileID        string `json:"profile_id,omitempty"`
+	Effort           string `json:"effort,omitempty"`
+	PromptPresetRef  string `json:"prompt_preset_ref,omitempty"`
+	ContextPack      string `json:"context_pack,omitempty"`
 	PromptTokens     int    `json:"prompt_tokens"`
 	CompletionTokens int    `json:"completion_tokens"`
 	CostMicroUSD     int64  `json:"cost_micro_usd"`
 	OnUserStack      bool   `json:"on_user_stack"`
 	CreatedAt        string `json:"created_at"`
+	FinishedAt       string `json:"finished_at,omitempty"`
+	SourceDraftRunID *int64 `json:"source_draft_run_id,omitempty"`
+	FollowupRunID    *int64 `json:"followup_run_id,omitempty"`
 }
 
 type issueAIActivityResponse struct {
@@ -110,6 +139,15 @@ type aiCallFilters struct {
 	SelfOnly  *int64
 }
 
+type issueAIActivityFilters struct {
+	Kind      string
+	ActionKey string
+	Provider  string
+	ProfileID string
+	Agent     string
+	Status    string
+}
+
 func newAIRequestID() string {
 	if id, err := uuid.NewV7(); err == nil {
 		return id.String()
@@ -129,9 +167,10 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 		INSERT INTO ai_calls(
 			request_id, user_id, action_key, sub_action, surface,
 			issue_id, project_id, customer_id, cooperation_id,
-			provider, model, prompt_tokens, completion_tokens, total_tokens,
+			provider, model, profile_id, effort, prompt_preset_ref, context_pack,
+			prompt_tokens, completion_tokens, total_tokens,
 			cost_micro_usd, outcome, error_class, latency_ms
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`,
 		args.RequestID,
 		args.UserID,
@@ -144,6 +183,10 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 		args.CooperationID,
 		strings.TrimSpace(args.Provider),
 		strings.TrimSpace(args.Model),
+		strings.TrimSpace(args.ProfileID),
+		strings.TrimSpace(args.Effort),
+		strings.TrimSpace(args.PromptPresetRef),
+		strings.TrimSpace(args.ContextPack),
 		args.PromptTokens,
 		args.CompletionTokens,
 		totalTokens,
@@ -161,14 +204,14 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 // the given model + token counts. PAI-448: hardened against two
 // historical bug-sources:
 //
-//   1. The old implementation walked only the six "curated" buckets
-//      (Free / OpenWeights / Frontier / Value / Cheapest / Fastest).
-//      Any model that ended up actually being called but wasn't in
-//      a curated bucket (admin-pinned, rotated out, custom) silently
-//      returned 0 cost.
-//   2. modelsCache.payload was nil until the SPA first hit
-//      /api/ai/models. AI calls issued during the cold-cache window
-//      recorded 0 cost forever.
+//  1. The old implementation walked only the six "curated" buckets
+//     (Free / OpenWeights / Frontier / Value / Cheapest / Fastest).
+//     Any model that ended up actually being called but wasn't in
+//     a curated bucket (admin-pinned, rotated out, custom) silently
+//     returned 0 cost.
+//  2. modelsCache.payload was nil until the SPA first hit
+//     /api/ai/models. AI calls issued during the cold-cache window
+//     recorded 0 cost forever.
 //
 // We now build a flat ID-keyed view (across every bucket, deduped)
 // and fall back to staticFallbackPayload when the live cache hasn't
@@ -386,7 +429,9 @@ func listAICalls(f aiCallFilters) (aiCallListResponse, error) {
 				WHEN c.cooperation_id IS NOT NULL THEN COALESCE(cp.key || ' cooperation', 'Cooperation #' || c.cooperation_id)
 				ELSE ''
 			END AS subject_label,
-			c.provider, c.model, c.prompt_tokens, c.completion_tokens, c.total_tokens,
+			c.provider, c.model, COALESCE(c.profile_id, ''), COALESCE(c.effort, ''),
+			COALESCE(c.prompt_preset_ref, ''), COALESCE(c.context_pack, ''),
+			c.prompt_tokens, c.completion_tokens, c.total_tokens,
 			c.cost_micro_usd, c.outcome, COALESCE(c.error_class, ''), c.latency_ms, c.created_at
 		FROM ai_calls c
 		LEFT JOIN users u ON u.id = c.user_id
@@ -415,7 +460,8 @@ func listAICalls(f aiCallFilters) (aiCallListResponse, error) {
 			&row.ActionKey, &row.SubAction, &row.Surface,
 			&row.IssueID, &row.ProjectID, &row.CustomerID, &row.CooperationID,
 			&row.SubjectLabel,
-			&row.Provider, &row.Model, &row.PromptTokens, &row.CompletionTokens, &row.TotalTokens,
+			&row.Provider, &row.Model, &row.ProfileID, &row.Effort, &row.PromptPresetRef, &row.ContextPack,
+			&row.PromptTokens, &row.CompletionTokens, &row.TotalTokens,
 			&row.CostMicroUSD, &row.Outcome, &errorClass, &row.LatencyMs, &row.CreatedAt,
 		); err != nil {
 			return resp, err
@@ -458,7 +504,9 @@ func getAICallByID(id int64, selfOnly *int64) (aiCallListRow, error) {
 				WHEN c.cooperation_id IS NOT NULL THEN COALESCE(cp.key || ' cooperation', 'Cooperation #' || c.cooperation_id)
 				ELSE ''
 			END AS subject_label,
-			c.provider, c.model, c.prompt_tokens, c.completion_tokens, c.total_tokens,
+			c.provider, c.model, COALESCE(c.profile_id, ''), COALESCE(c.effort, ''),
+			COALESCE(c.prompt_preset_ref, ''), COALESCE(c.context_pack, ''),
+			c.prompt_tokens, c.completion_tokens, c.total_tokens,
 			c.cost_micro_usd, c.outcome, COALESCE(c.error_class, ''), c.latency_ms, c.created_at
 		FROM ai_calls c
 		LEFT JOIN users u ON u.id = c.user_id
@@ -477,7 +525,8 @@ func getAICallByID(id int64, selfOnly *int64) (aiCallListRow, error) {
 		&row.ActionKey, &row.SubAction, &row.Surface,
 		&row.IssueID, &row.ProjectID, &row.CustomerID, &row.CooperationID,
 		&row.SubjectLabel,
-		&row.Provider, &row.Model, &row.PromptTokens, &row.CompletionTokens, &row.TotalTokens,
+		&row.Provider, &row.Model, &row.ProfileID, &row.Effort, &row.PromptPresetRef, &row.ContextPack,
+		&row.PromptTokens, &row.CompletionTokens, &row.TotalTokens,
 		&row.CostMicroUSD, &row.Outcome, &errorClass, &row.LatencyMs, &row.CreatedAt,
 	)
 	if err != nil {
@@ -579,7 +628,9 @@ func exportAICallsCSV(w http.ResponseWriter, r *http.Request, selfOnly *int64) {
 				WHEN c.cooperation_id IS NOT NULL THEN COALESCE(cp.key || ' cooperation', 'Cooperation #' || c.cooperation_id)
 				ELSE ''
 			END AS subject_label,
-			c.model, c.prompt_tokens, c.completion_tokens, c.total_tokens,
+			c.model, COALESCE(c.profile_id, ''), COALESCE(c.effort, ''),
+			COALESCE(c.prompt_preset_ref, ''), COALESCE(c.context_pack, ''),
+			c.prompt_tokens, c.completion_tokens, c.total_tokens,
 			c.cost_micro_usd, c.outcome, COALESCE(c.error_class, ''), c.latency_ms, c.request_id
 		FROM ai_calls c
 		LEFT JOIN users u ON u.id = c.user_id
@@ -606,18 +657,20 @@ func exportAICallsCSV(w http.ResponseWriter, r *http.Request, selfOnly *int64) {
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{
 		"time", "user", "action", "sub_action", "surface", "subject",
-		"model", "prompt_tokens", "completion_tokens", "total_tokens",
+		"model", "profile_id", "effort", "prompt_preset_ref", "context_pack",
+		"prompt_tokens", "completion_tokens", "total_tokens",
 		"cost_usd", "outcome", "error_class", "latency_ms", "request_id",
 	})
 	for rows.Next() {
-		var createdAt, username, actionKey, subAction, surface, subject, model, outcome, errorClass, requestID string
+		var createdAt, username, actionKey, subAction, surface, subject, model, profileID, effort, promptPresetRef, contextPack, outcome, errorClass, requestID string
 		var promptTokens, completionTokens, totalTokens int
 		var costMicroUSD, latencyMs int64
 		if err := rows.Scan(
 			&createdAt, &username,
 			&actionKey, &subAction, &surface,
 			&subject,
-			&model, &promptTokens, &completionTokens, &totalTokens,
+			&model, &profileID, &effort, &promptPresetRef, &contextPack,
+			&promptTokens, &completionTokens, &totalTokens,
 			&costMicroUSD, &outcome, &errorClass, &latencyMs, &requestID,
 		); err != nil {
 			log.Printf("ai_calls: export scan: %v", err)
@@ -625,7 +678,8 @@ func exportAICallsCSV(w http.ResponseWriter, r *http.Request, selfOnly *int64) {
 		}
 		_ = cw.Write([]string{
 			createdAt, username, actionKey, subAction, surface, subject,
-			model, strconv.Itoa(promptTokens), strconv.Itoa(completionTokens), strconv.Itoa(totalTokens),
+			model, profileID, effort, promptPresetRef, contextPack,
+			strconv.Itoa(promptTokens), strconv.Itoa(completionTokens), strconv.Itoa(totalTokens),
 			fmt.Sprintf("%.4f", float64(costMicroUSD)/1_000_000.0), outcome, errorClass, strconv.FormatInt(latencyMs, 10), requestID,
 		})
 		cw.Flush()
@@ -666,6 +720,31 @@ func AIListIssueActivity(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	filters := parseIssueAIActivityFilters(r)
+	rowsOut, lastWeekCount, err := listIssueAIActivity(id, filters)
+	if err != nil {
+		log.Printf("ai_activity: list issue: %v", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	resp := issueAIActivityResponse{Rows: rowsOut, Count: len(rowsOut), LastWeekCount: lastWeekCount}
+	jsonOK(w, resp)
+}
+
+func parseIssueAIActivityFilters(r *http.Request) issueAIActivityFilters {
+	q := r.URL.Query()
+	return issueAIActivityFilters{
+		Kind:      strings.TrimSpace(q.Get("kind")),
+		ActionKey: strings.TrimSpace(q.Get("action_key")),
+		Provider:  strings.TrimSpace(q.Get("provider")),
+		ProfileID: strings.TrimSpace(q.Get("profile_id")),
+		Agent:     strings.TrimSpace(q.Get("agent")),
+		Status:    strings.TrimSpace(q.Get("status")),
+	}
+}
+
+func listIssueAIActivity(issueID int64, filters issueAIActivityFilters) ([]issueAIActivityRow, int, error) {
+	rowsOut := make([]issueAIActivityRow, 0, 16)
 	rows, err := db.DB.Query(`
 		SELECT
 			m.id,
@@ -680,7 +759,12 @@ func AIListIssueActivity(w http.ResponseWriter, r *http.Request) {
 				ELSE COALESCE(c.outcome, 'ok')
 			END,
 			COALESCE(c.latency_ms, 0),
+			COALESCE(c.provider, ''),
 			COALESCE(c.model, ''),
+			COALESCE(c.profile_id, ''),
+			COALESCE(c.effort, ''),
+			COALESCE(c.prompt_preset_ref, ''),
+			COALESCE(c.context_pack, ''),
 			COALESCE(c.prompt_tokens, 0),
 			COALESCE(c.completion_tokens, 0),
 			COALESCE(c.cost_micro_usd, 0),
@@ -694,32 +778,50 @@ func AIListIssueActivity(w http.ResponseWriter, r *http.Request) {
 		  AND m.mutation_type LIKE 'ai.%'
 		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT 50
-	`, id)
+	`, issueID)
 	if err != nil {
-		log.Printf("ai_activity: list issue: %v", err)
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
+		return nil, 0, err
 	}
 	defer rows.Close()
 
-	resp := issueAIActivityResponse{Rows: []issueAIActivityRow{}}
 	for rows.Next() {
 		var row issueAIActivityRow
 		var onUserStack int
 		if err := rows.Scan(
 			&row.LogID, &row.RequestID, &row.ActionKey, &row.SubAction, &row.Surface,
 			&row.UserID, &row.UserName,
-			&row.Outcome, &row.LatencyMs, &row.Model, &row.PromptTokens,
+			&row.Outcome, &row.LatencyMs, &row.ProviderID, &row.Model, &row.ProfileID, &row.Effort, &row.PromptPresetRef,
+			&row.ContextPack, &row.PromptTokens,
 			&row.CompletionTokens, &row.CostMicroUSD, &onUserStack, &row.CreatedAt,
 		); err != nil {
-			log.Printf("ai_activity: scan issue: %v", err)
-			jsonError(w, "internal error", http.StatusInternalServerError)
-			return
+			return nil, 0, err
 		}
+		row.Kind = "ai_action"
+		row.Status = row.Outcome
+		row.ProviderLabel = row.ProviderID
 		row.OnUserStack = onUserStack == 1
-		resp.Rows = append(resp.Rows, row)
+		if issueAIActivityRowMatches(row, filters) {
+			rowsOut = append(rowsOut, row)
+		}
 	}
-	resp.Count = len(resp.Rows)
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	runRows, err := listIssueAIActivityRuns(issueID, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	rowsOut = append(rowsOut, runRows...)
+	sort.SliceStable(rowsOut, func(i, j int) bool {
+		if rowsOut[i].CreatedAt == rowsOut[j].CreatedAt {
+			return rowsOut[i].LogID > rowsOut[j].LogID
+		}
+		return rowsOut[i].CreatedAt > rowsOut[j].CreatedAt
+	})
+	if len(rowsOut) > 50 {
+		rowsOut = rowsOut[:50]
+	}
+	var actionLastWeek int
 	if err := db.DB.QueryRow(`
 		SELECT COUNT(*)
 		FROM mutation_log
@@ -727,10 +829,122 @@ func AIListIssueActivity(w http.ResponseWriter, r *http.Request) {
 		  AND subject_id = ?
 		  AND mutation_type LIKE 'ai.%'
 		  AND created_at >= datetime('now', '-7 days')
-	`, id).Scan(&resp.LastWeekCount); err != nil {
-		log.Printf("ai_activity: count issue: %v", err)
-		jsonError(w, "internal error", http.StatusInternalServerError)
-		return
+	`, issueID).Scan(&actionLastWeek); err != nil {
+		return nil, 0, err
 	}
-	jsonOK(w, resp)
+	var runLastWeek int
+	if err := db.DB.QueryRow(`
+		SELECT COUNT(*)
+		  FROM agent_runs
+		 WHERE issue_id = ?
+		   AND created_at >= datetime('now', '-7 days')
+	`, issueID).Scan(&runLastWeek); err != nil {
+		return nil, 0, err
+	}
+	return rowsOut, actionLastWeek + runLastWeek, nil
+}
+
+func listIssueAIActivityRuns(issueID int64, filters issueAIActivityFilters) ([]issueAIActivityRow, error) {
+	rows, err := db.DB.Query(`
+		SELECT
+			ar.id,
+			ar.requested_by,
+			COALESCE(u.username, 'deleted user'),
+			ar.action_key,
+			ar.provider_kind,
+			ar.provider_id,
+			ar.provider_label,
+			ar.model,
+			ar.run_mode,
+			ar.profile_id,
+			ar.effort,
+			ar.prompt_preset_ref,
+			ar.context_pack,
+			ar.prompt_tokens,
+			ar.completion_tokens,
+			ar.status,
+			ar.version,
+			COALESCE(ar.tests_summary, ''),
+			ar.deploy_target,
+			ar.error,
+			ar.agent_name,
+			ar.device_id,
+			ar.created_at,
+			COALESCE(ar.finished_at, ''),
+			ar.source_draft_run_id,
+			ar.followup_run_id
+		FROM agent_runs ar
+		LEFT JOIN users u ON u.id = ar.requested_by
+		WHERE ar.issue_id = ?
+		ORDER BY ar.created_at DESC, ar.id DESC
+		LIMIT 100
+	`, issueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []issueAIActivityRow{}
+	for rows.Next() {
+		var row issueAIActivityRow
+		var runID int64
+		var sourceDraftRunID, followupRunID sql.NullInt64
+		if err := rows.Scan(
+			&runID, &row.UserID, &row.UserName, &row.ActionKey, &row.ProviderKind,
+			&row.ProviderID, &row.ProviderLabel, &row.Model, &row.RunMode,
+			&row.ProfileID, &row.Effort, &row.PromptPresetRef, &row.ContextPack,
+			&row.PromptTokens, &row.CompletionTokens, &row.Status, &row.Version,
+			&row.TestsSummary, &row.DeployTarget, &row.Error, &row.AgentName,
+			&row.DeviceID, &row.CreatedAt, &row.FinishedAt, &sourceDraftRunID, &followupRunID,
+		); err != nil {
+			return nil, err
+		}
+		row.Kind = "agent_run"
+		row.RunID = &runID
+		row.RequestID = "run:" + strconv.FormatInt(runID, 10)
+		row.Surface = "issue"
+		row.Outcome = row.Status
+		if sourceDraftRunID.Valid {
+			row.SourceDraftRunID = &sourceDraftRunID.Int64
+		}
+		if followupRunID.Valid {
+			row.FollowupRunID = &followupRunID.Int64
+		}
+		if issueAIActivityRowMatches(row, filters) {
+			out = append(out, row)
+		}
+	}
+	return out, rows.Err()
+}
+
+func issueAIActivityRowMatches(row issueAIActivityRow, filters issueAIActivityFilters) bool {
+	if filters.Kind != "" && filters.Kind != row.Kind {
+		return false
+	}
+	if filters.ActionKey != "" && filters.ActionKey != row.ActionKey {
+		return false
+	}
+	if filters.Provider != "" {
+		provider := strings.ToLower(filters.Provider)
+		if !strings.Contains(strings.ToLower(row.ProviderID), provider) &&
+			!strings.Contains(strings.ToLower(row.ProviderLabel), provider) &&
+			!strings.Contains(strings.ToLower(row.ProviderKind), provider) {
+			return false
+		}
+	}
+	if filters.ProfileID != "" && filters.ProfileID != row.ProfileID {
+		return false
+	}
+	if filters.Agent != "" && !strings.Contains(strings.ToLower(row.AgentName), strings.ToLower(filters.Agent)) {
+		return false
+	}
+	if filters.Status != "" {
+		status := row.Status
+		if status == "" {
+			status = row.Outcome
+		}
+		if filters.Status != status {
+			return false
+		}
+	}
+	return true
 }

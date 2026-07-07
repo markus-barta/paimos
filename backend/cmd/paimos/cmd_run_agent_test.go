@@ -47,6 +47,28 @@ func newRunServer(t *testing.T, detail string, patchStatus int) (*httptest.Serve
 				"status":"new",
 				"priority":"low"
 			}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/agents/codex.json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"project":{"id":42,"name":"PAIMOS","key":"PAI"},
+				"agent":{
+					"id":7,
+					"project_id":42,
+					"name":"codex",
+					"description":"Implementation agent.",
+					"slash_command_name":"codex",
+					"lane_tags":["implementation","backend"],
+					"metadata":{},
+					"body":"Use bounded project context. token=supersecret123456",
+					"bootstrap_steps":[{"title":"Check tree","command":"git status --short","rationale":"Understand local changes."}],
+					"non_negotiable_rules":[{"title":"No secret output","body":"Never print password=hunter22222 in logs.","memory_ref":"memory:no_secret_output"}],
+					"created_at":"",
+					"updated_at":""
+				},
+				"repos":[{"label":"app","url":"https://github.com/example/app","default_branch":"main"}],
+				"environments":[{"name":"local-dev","url":"http://localhost:5173","host_alias":"localhost","host_ip":""}],
+				"deploy_recipes":[{"name":"local","summary":"Local check","command":"npm test"}]
+			}`))
 		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/api/runs/"):
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -126,6 +148,77 @@ func TestAgentRunnerSuccess(t *testing.T) {
 		(*patches)[0]["action_key"] != "claude_cli.implement" ||
 		(*patches)[1]["status"] != "tests_passed" {
 		t.Fatalf("patches=%+v, want claim(running,if_status=queued,device_id=dev-1,action_key=claude_cli.implement) then tests_passed", *patches)
+	}
+}
+
+func TestAgentRunnerSelectedAgentContextPromptAndEnv(t *testing.T) {
+	srv, patches := newRunServer(t, `{"issue_id":5,"project_id":42,"device_id":"","agent_name":"codex","context_pack":"issue","status":"queued"}`, http.StatusOK)
+	spawned := false
+	a := &agentRunner{
+		client: newClientForTest(srv.URL), deviceID: "dev-1", repoRoot: "/tmp/repo",
+		autoConfirm: true,
+		spawn: func(_ context.Context, _, _ string, env []string, _ io.Writer) error {
+			spawned = true
+			em := envMap(env)
+			if em["PAIMOS_AGENT_NAME"] != "codex" {
+				t.Fatalf("PAIMOS_AGENT_NAME=%q, want codex", em["PAIMOS_AGENT_NAME"])
+			}
+			if em["PAIMOS_CONTEXT_PACK"] != "issue" || em["PAIMOS_CONTEXT_PACK_LABEL"] != "Issue only" {
+				t.Fatalf("context env=%v", em)
+			}
+			artifactPath := em["PAIMOS_AGENT_ARTIFACT_FILE"]
+			if artifactPath == "" {
+				t.Fatal("spawn env missing PAIMOS_AGENT_ARTIFACT_FILE")
+			}
+			artifact, err := os.ReadFile(artifactPath)
+			if err != nil {
+				t.Fatalf("read artifact file: %v", err)
+			}
+			if !strings.Contains(string(artifact), `"name":"codex"`) {
+				t.Fatalf("artifact file missing selected agent: %s", string(artifact))
+			}
+			if strings.Contains(string(artifact), "supersecret123456") || strings.Contains(string(artifact), "hunter22222") {
+				t.Fatalf("artifact file carried obvious secret-like text: %s", string(artifact))
+			}
+			promptPath := em["PAIMOS_PROMPT_FILE"]
+			if promptPath == "" {
+				t.Fatal("spawn env missing PAIMOS_PROMPT_FILE")
+			}
+			prompt, err := os.ReadFile(promptPath)
+			if err != nil {
+				t.Fatalf("read prompt: %v", err)
+			}
+			for _, want := range []string{
+				"Context pack: issue (Issue only)",
+				"Project agent: codex",
+				"Lane tags: implementation, backend",
+				"Use bounded project context.",
+				"Agent bootstrap steps",
+				"git status --short",
+				"Agent rules",
+				"memory:no_secret_output",
+				"Agent repos",
+				"Agent environments",
+				"Agent deploy recipes",
+			} {
+				if !strings.Contains(string(prompt), want) {
+					t.Fatalf("prompt %q missing %q", string(prompt), want)
+				}
+			}
+			if strings.Contains(string(prompt), "supersecret123456") || strings.Contains(string(prompt), "hunter22222") {
+				t.Fatalf("prompt carried obvious secret-like text: %s", string(prompt))
+			}
+			return nil
+		},
+	}
+	if err := a.handleRun(context.Background(), aJob()); err != nil {
+		t.Fatalf("handleRun: %v", err)
+	}
+	if !spawned {
+		t.Error("spawn was not called")
+	}
+	if len(*patches) != 2 || (*patches)[0]["status"] != "running" || (*patches)[1]["status"] != "tests_passed" {
+		t.Fatalf("patches=%+v, want running then tests_passed", *patches)
 	}
 }
 

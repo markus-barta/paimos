@@ -37,6 +37,8 @@ import (
 	"github.com/markus-barta/paimos/backend/db"
 )
 
+var errAIActionJSONParse = errors.New("ai_action: failed to parse model JSON")
+
 // jsonActionInstructions is appended to every JSON-output action's
 // system prompt. We say "ONLY a JSON object" three different ways
 // because models occasionally smuggle a preamble or trailing prose.
@@ -63,8 +65,9 @@ func callJSONAction(
 	resp, err := ax.Provider.Optimize(ctx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt + jsonActionInstructions,
-		UserPrompt:      userPrompt,
+		UserPrompt:      aiUserPromptWithContext(ax, userPrompt),
 		MaxOutputTokens: maxTokens,
 	})
 	if err != nil {
@@ -73,7 +76,7 @@ func callJSONAction(
 	cleaned := stripJSONFences(resp.Text)
 	if uerr := json.Unmarshal([]byte(cleaned), out); uerr != nil {
 		return resp.Model, resp.PromptTokens, resp.CompletionTokens, resp.FinishReason,
-			fmt.Errorf("ai_action: failed to parse model JSON: %w (raw: %.200s)", uerr, cleaned)
+			fmt.Errorf("%w: %v", errAIActionJSONParse, uerr)
 	}
 	return resp.Model, resp.PromptTokens, resp.CompletionTokens, resp.FinishReason, nil
 }

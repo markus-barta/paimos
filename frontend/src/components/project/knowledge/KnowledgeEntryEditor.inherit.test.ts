@@ -51,15 +51,15 @@ vi.mock('@/composables/useConfirm', () => ({
 }))
 
 import KnowledgeEntryEditor from './KnowledgeEntryEditor.vue'
-import type { KnowledgeEntryInput } from '@/types'
+import type { KnowledgeCategory, KnowledgeEntryInput } from '@/types'
 
-async function mountEditor(initial: KnowledgeEntryInput) {
+async function mountEditor(initial: KnowledgeEntryInput, category: KnowledgeCategory = 'memory') {
   setActivePinia(createPinia())
   const el = document.createElement('div')
   document.body.appendChild(el)
   const savedPayloads: KnowledgeEntryInput[] = []
   const app = createApp(KnowledgeEntryEditor, {
-    category: 'memory',
+    category,
     initial,
     currentSlug: initial.slug,
     saving: false,
@@ -89,6 +89,20 @@ function checkbox(el: HTMLElement): HTMLInputElement {
     '[data-testid="memory-inherit-checkbox"]',
   ) as HTMLInputElement | null
   if (!node) throw new Error('inherit checkbox missing from rendered editor')
+  return node
+}
+
+function promptPresetCheckbox(el: HTMLElement): HTMLInputElement {
+  const node = el.querySelector(
+    '[data-testid="ai-prompt-preset-enabled"]',
+  ) as HTMLInputElement | null
+  if (!node) throw new Error('AI prompt preset checkbox missing from rendered editor')
+  return node
+}
+
+function testInput<T extends HTMLElement>(el: HTMLElement, testId: string): T {
+  const node = el.querySelector(`[data-testid="${testId}"]`) as T | null
+  if (!node) throw new Error(`${testId} missing from rendered editor`)
   return node
 }
 
@@ -197,6 +211,70 @@ describe('KnowledgeEntryEditor — PAI-348 inherit toggle', () => {
     await nextTick()
     expect(m.saved).toHaveLength(1)
     expect(m.saved[0].metadata).not.toHaveProperty('inherit')
+    m.cleanup()
+  })
+
+  it('round-trips existing AI prompt preset metadata', async () => {
+    const m = await mountEditor({
+      slug: 'spec_writer',
+      title: 'Spec writer',
+      body: 'Use crisp acceptance criteria.',
+      status: 'backlog',
+      metadata: {
+        ai_prompt_preset: {
+          enabled: true,
+          label: 'Spec Writer',
+          status: 'active',
+          actions: ['spec_out'],
+        },
+      },
+    })
+    expect(promptPresetCheckbox(m.el).checked).toBe(true)
+    expect(testInput<HTMLInputElement>(m.el, 'ai-prompt-preset-label').value).toBe('Spec Writer')
+    clickSave(m.el)
+    await nextTick()
+    expect(m.saved[0].metadata.ai_prompt_preset).toEqual({
+      enabled: true,
+      label: 'Spec Writer',
+      status: 'active',
+      actions: ['spec_out'],
+    })
+    m.cleanup()
+  })
+
+  it('creates AI prompt preset metadata for runbooks', async () => {
+    const m = await mountEditor({
+      slug: 'release_runbook',
+      title: 'Release runbook',
+      body: 'Check rollout notes.',
+      status: 'backlog',
+      metadata: {},
+    }, 'runbook')
+
+    const enabled = promptPresetCheckbox(m.el)
+    enabled.checked = true
+    enabled.dispatchEvent(new Event('change'))
+    await nextTick()
+
+    const label = testInput<HTMLInputElement>(m.el, 'ai-prompt-preset-label')
+    label.value = 'Release Prompt'
+    label.dispatchEvent(new Event('input'))
+    const status = testInput<HTMLSelectElement>(m.el, 'ai-prompt-preset-status')
+    status.value = 'draft'
+    status.dispatchEvent(new Event('change'))
+    const actions = testInput<HTMLInputElement>(m.el, 'ai-prompt-preset-actions')
+    actions.value = 'spec_out, generate_subtasks'
+    actions.dispatchEvent(new Event('input'))
+    await nextTick()
+
+    clickSave(m.el)
+    await nextTick()
+    expect(m.saved[0].metadata.ai_prompt_preset).toEqual({
+      enabled: true,
+      label: 'Release Prompt',
+      status: 'draft',
+      actions: ['spec_out', 'generate_subtasks'],
+    })
     m.cleanup()
   })
 })

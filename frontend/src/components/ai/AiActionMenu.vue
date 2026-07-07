@@ -35,7 +35,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
-import { useAiAction } from '@/composables/useAiAction'
+import {
+  useAiAction,
+  type AiActionOptions,
+  type AiExecutionOptionsScope,
+  type AiPromptPresetChoice,
+} from '@/composables/useAiAction'
 
 const props = defineProps<{
   /** Field identifier (description, customer_notes, …). May be ""
@@ -77,6 +82,10 @@ const aiAction = useAiAction()
 const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
 const submenuKey = ref<string | null>(null)
+const selectedProfileId = ref('')
+const selectedEffort = ref('')
+const selectedPromptPresetRef = ref('')
+const selectedContextPackId = ref('')
 
 const surface = computed(() => props.surface ?? 'issue')
 const placement = computed(() => props.placement ?? 'text')
@@ -105,6 +114,41 @@ onMounted(() => {
 })
 
 const defaultAction = computed(() => visibleActions.value.find(a => a.key === 'optimize'))
+const executionProfiles = computed(() => aiAction.executionOptions.value?.profiles ?? [])
+const executionEfforts = computed(() => aiAction.executionOptions.value?.efforts ?? [])
+const executionContextPacks = computed(() => aiAction.executionOptions.value?.context_packs ?? [])
+const visibleActionKeys = computed(() => new Set(visibleActions.value.map(a => a.key)))
+const executionPromptPresets = computed(() => {
+  const presets = aiAction.executionOptions.value?.prompt_presets ?? []
+  return presets.filter(p => p.status === 'active' && promptPresetAppliesToAny(p, visibleActionKeys.value))
+})
+const showProfileControl = computed(() => executionProfiles.value.length > 1)
+const showEffortControl = computed(() => executionEfforts.value.length > 1)
+const showPromptPresetControl = computed(() => executionPromptPresets.value.length > 0)
+const showContextControl = computed(() => executionContextPacks.value.length > 1)
+const showExecutionControls = computed(() => showProfileControl.value || showEffortControl.value || showPromptPresetControl.value || showContextControl.value)
+const selectedProfile = computed(() =>
+  executionProfiles.value.find(p => p.id === selectedProfileId.value) ?? null,
+)
+const selectedPromptPreset = computed(() =>
+  executionPromptPresets.value.find(p => p.ref === selectedPromptPresetRef.value) ?? null,
+)
+const selectedContextPack = computed(() =>
+  executionContextPacks.value.find(p => p.id === selectedContextPackId.value) ?? null,
+)
+const executionMetaLine = computed(() => {
+  const parts: string[] = []
+  if (selectedProfile.value) {
+    parts.push(`${selectedProfile.value.model} · ${selectedProfile.value.speed_label} · ${selectedProfile.value.cost_label}`)
+  }
+  if (selectedPromptPreset.value) {
+    parts.push(`Prompt ${selectedPromptPreset.value.ref}@${selectedPromptPreset.value.revision}`)
+  }
+  if (selectedContextPack.value) {
+    parts.push(`Context ${selectedContextPack.value.label}`)
+  }
+  return parts.join(' · ')
+})
 
 const disabled = computed(() =>
   !aiAction.available.value || aiAction.isRunning.value)
@@ -156,6 +200,7 @@ async function invoke(actionKey: string, subAction?: string) {
     issueId: props.issueId,
     onAccept: props.onAccept,
     context: props.context,
+    options: selectedActionOptions(),
   })
 }
 
@@ -170,6 +215,7 @@ function toggleMenu() {
 function openMenu() {
   menuOpen.value = true
   submenuKey.value = null
+  void aiAction.refreshExecutionOptions(executionScope())
   nextTick(() => {
     const first = menuRoot.value?.querySelector<HTMLElement>('.ai-menu-item:not(:disabled)')
     first?.focus()
@@ -215,6 +261,16 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 watch(menuOpen, (o) => {
   if (!o) submenuKey.value = null
 })
+watch(executionPromptPresets, (presets) => {
+  if (selectedPromptPresetRef.value && !presets.some(p => p.ref === selectedPromptPresetRef.value)) {
+    selectedPromptPresetRef.value = ''
+  }
+})
+watch(executionContextPacks, (packs) => {
+  if (selectedContextPackId.value && !packs.some(p => p.id === selectedContextPackId.value)) {
+    selectedContextPackId.value = ''
+  }
+})
 
 function subActionLabel(parent: string, sub: string): string {
   if (parent === 'suggest_enhancement') {
@@ -240,7 +296,80 @@ function actionTooltip(a: { key: string; implemented: boolean }): string {
   if (!a.implemented) {
     return 'Coming soon — the menu shell is here, the action handler ships in a follow-up ticket.'
   }
+  if (!selectedPromptAllowsAction(a.key)) {
+    return 'Selected prompt preset does not apply to this action.'
+  }
   return ''
+}
+
+function selectedActionOptions(): AiActionOptions | undefined {
+  const opts: AiActionOptions = {}
+  if (selectedProfileId.value) opts.profile_id = selectedProfileId.value
+  if (selectedEffort.value) opts.effort = selectedEffort.value
+  if (selectedPromptPresetRef.value) opts.prompt_preset_ref = selectedPromptPresetRef.value
+  if (selectedContextPackId.value) opts.context_pack = selectedContextPackId.value
+  return Object.keys(opts).length ? opts : undefined
+}
+
+function executionScope(): AiExecutionOptionsScope | undefined {
+  const issueId = props.issueId ?? 0
+  if (issueId > 0) return { issueId }
+  const projectId = numberFromUnknown(props.context?.project_id)
+  if (projectId > 0) return { projectId }
+  return undefined
+}
+
+function numberFromUnknown(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function selectedPromptAllowsAction(actionKey: string): boolean {
+  if (!selectedPromptPreset.value) return true
+  return promptPresetAppliesToAction(selectedPromptPreset.value, actionKey)
+}
+
+function promptPresetAppliesToAny(preset: AiPromptPresetChoice, actionKeys: Set<string>): boolean {
+  const actions = preset.actions ?? []
+  if (actions.includes('*')) return true
+  return actions.some(action => actionKeys.has(action))
+}
+
+function promptPresetAppliesToAction(preset: AiPromptPresetChoice, actionKey: string): boolean {
+  const actions = preset.actions ?? []
+  return actions.includes('*') || actions.includes(actionKey)
+}
+
+function promptActionsLabel(preset: AiPromptPresetChoice): string {
+  const actions = preset.actions ?? []
+  if (actions.includes('*')) return 'all actions'
+  return actions.map(a => actionLabel(a)).join(', ')
+}
+
+function actionLabel(key: string): string {
+  return visibleActions.value.find(a => a.key === key)?.label ?? key.replace(/[_-]+/g, ' ')
+}
+
+function actionDefaultMeta(a: { key: string; default_profile_id?: string; default_effort?: string }): string {
+  const selectorDefault = aiAction.executionOptions.value?.selector_defaults?.actions?.[a.key]
+  const parts: string[] = []
+  const profile = selectorDefault?.profile_id || a.default_profile_id
+  const effort = selectorDefault?.effort || a.default_effort
+  if (profile) parts.push(profileLabel(profile))
+  if (effort) parts.push(effortLabel(effort))
+  return parts.join(' · ')
+}
+
+function profileLabel(id: string): string {
+  return executionProfiles.value.find(p => p.id === id)?.label ?? id
+}
+
+function effortLabel(effort: string): string {
+  return effort.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 </script>
 
@@ -283,8 +412,8 @@ function actionTooltip(a: { key: string; implemented: boolean }): string {
             <button
               type="button"
               class="ai-menu-item"
-              :class="{ 'ai-menu-item--disabled': !a.implemented, 'ai-menu-item--has-sub': (a.sub_keys?.length ?? 0) > 0, 'ai-menu-item--active': submenuKey === a.key }"
-              :disabled="!a.implemented"
+              :class="{ 'ai-menu-item--disabled': !a.implemented || !selectedPromptAllowsAction(a.key), 'ai-menu-item--has-sub': (a.sub_keys?.length ?? 0) > 0, 'ai-menu-item--active': submenuKey === a.key }"
+              :disabled="!a.implemented || !selectedPromptAllowsAction(a.key)"
               :title="actionTooltip(a)"
               role="menuitem"
               @click="!a.sub_keys?.length ? invoke(a.key) : (submenuKey = submenuKey === a.key ? null : a.key)"
@@ -292,7 +421,10 @@ function actionTooltip(a: { key: string; implemented: boolean }): string {
               @mouseenter="a.sub_keys?.length && (submenuKey = a.key)"
             >
               <AppIcon :name="iconFor(a.key)" :size="12" />
-              <span class="ai-menu-item-label">{{ a.label }}</span>
+              <span class="ai-menu-item-main">
+                <span class="ai-menu-item-label">{{ a.label }}</span>
+                <span v-if="actionDefaultMeta(a)" class="ai-menu-item-default">{{ actionDefaultMeta(a) }}</span>
+              </span>
               <span v-if="!a.implemented" class="ai-menu-item-soon">soon</span>
               <AppIcon v-if="a.sub_keys?.length" name="chevron-right" :size="11" class="ai-menu-item-chev" />
             </button>
@@ -319,6 +451,54 @@ function actionTooltip(a: { key: string; implemented: boolean }): string {
           </template>
           <div v-if="!visibleActions.length" class="ai-menu-empty">
             {{ emptyStateMessage }}
+          </div>
+        </div>
+        <div
+          v-if="showExecutionControls"
+          class="ai-menu-execution"
+          :class="{ 'ai-menu-execution--single': showProfileControl !== showEffortControl }"
+          @click.stop
+          @mousedown.stop
+          @keydown.stop
+        >
+          <label v-if="showProfileControl" class="ai-menu-execution-field">
+            <span>Profile</span>
+            <select v-model="selectedProfileId" aria-label="AI profile">
+              <option value="">Recommended</option>
+              <option v-for="profile in executionProfiles" :key="profile.id" :value="profile.id">
+                {{ profile.label }}
+              </option>
+            </select>
+          </label>
+          <label v-if="showEffortControl" class="ai-menu-execution-field">
+            <span>Effort</span>
+            <select v-model="selectedEffort" aria-label="AI effort">
+              <option value="">Recommended</option>
+              <option v-for="effort in executionEfforts" :key="effort" :value="effort">
+                {{ effortLabel(effort) }}
+              </option>
+            </select>
+          </label>
+          <label v-if="showPromptPresetControl" class="ai-menu-execution-field">
+            <span>Prompt</span>
+            <select v-model="selectedPromptPresetRef" aria-label="AI prompt preset">
+              <option value="">Default</option>
+              <option v-for="preset in executionPromptPresets" :key="preset.ref" :value="preset.ref">
+                {{ preset.label }} — {{ promptActionsLabel(preset) }}
+              </option>
+            </select>
+          </label>
+          <label v-if="showContextControl" class="ai-menu-execution-field">
+            <span>Context</span>
+            <select v-model="selectedContextPackId" aria-label="AI context pack">
+              <option value="">Issue only</option>
+              <option v-for="pack in executionContextPacks.filter(p => p.id !== 'issue')" :key="pack.id" :value="pack.id">
+                {{ pack.label }}
+              </option>
+            </select>
+          </label>
+          <div v-if="executionMetaLine" class="ai-menu-execution-meta">
+            {{ executionMetaLine }}
           </div>
         </div>
       </div>
@@ -411,7 +591,7 @@ export { iconFor }
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.04);
-  min-width: 240px;
+  min-width: 260px;
   padding: .35rem;
   overflow: hidden;
 }
@@ -439,7 +619,20 @@ export { iconFor }
 }
 .ai-menu-item--disabled:hover { background: transparent; color: var(--text); }
 .ai-menu-item--active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.ai-menu-item-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .05rem;
+}
 .ai-menu-item-label { flex: 1; }
+.ai-menu-item-default {
+  font-family: "DM Mono", "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
 .ai-menu-item-soon {
   font-size: 9.5px;
   font-weight: 700;
@@ -479,6 +672,47 @@ export { iconFor }
 .ai-menu-empty {
   padding: .5rem .75rem;
   font-size: 12px;
+  color: var(--text-muted);
+}
+.ai-menu-execution {
+  margin-top: .35rem;
+  padding: .45rem .5rem .5rem;
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: .45rem;
+}
+.ai-menu-execution-field {
+  display: flex;
+  flex-direction: column;
+  gap: .18rem;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ai-menu-execution-field select {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card, white);
+  color: var(--text);
+  font: 500 12px "DM Sans", sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: .25rem .45rem;
+}
+.ai-menu-execution-meta {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "DM Mono", "JetBrains Mono", monospace;
+  font-size: 10px;
   color: var(--text-muted);
 }
 

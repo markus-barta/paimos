@@ -47,6 +47,11 @@ up, browser open, done.
 - **Implement-this provider actions.** Claude Code and Codex are now
   explicit runner actions with capability-aware UI labels, action/run
   metadata, and clearer review status on issue lists and detail views.
+- **AI control-plane next phase.** AI actions and Implement-this now share
+  profile, effort, prompt preset, context pack, provider/runner, and
+  project-agent metadata. OpenRouter and OpenAI-compatible local model
+  endpoints can draft implementation notes without local shell or deploy
+  authority; Claude/Codex runners remain the trusted repo-editing path.
 - **Claude Code adapter extracted.** The reference adapter now lives in
   its own public repo at
   <https://github.com/markus-barta/paimos-adapter-claude-code>; PAIMOS
@@ -83,13 +88,15 @@ up, browser open, done.
   generate sub-tasks · estimate effort · detect duplicates · UI
   generation · tone check · customer-style and executive-style report
   summaries. Every action carries a server-resolved system prompt
-  that admins can edit live in **Settings → AI prompts**; every result
-  is shown in a diff overlay (now with per-hunk Keep/Reject) before
-  anything is applied. Live model picker (frontier / value / fastest /
-  cheapest / open-weights / free) backed by OpenRouter. Per-user daily
-  token cap with admin-override header. Per-call cost recorded in
-  micro-USD. Audit lines metadata-only — prompts and response bodies
-  are never logged. See
+  that admins can edit live in **Settings → AI prompts**. The current
+  control-plane work adds execution profiles, effort, PPM knowledge prompt
+  presets, context packs, and safe provenance metadata across AI actions
+  and Implement-this runs. Hosted OpenRouter and OpenAI-compatible local
+  models can draft; Claude/Codex local runners can edit/test when the
+  operator grants that capability. Per-user daily token cap with
+  admin-override header. Per-call cost recorded in micro-USD. Audit lines
+  are metadata-only — prompts, response bodies, API keys, and local
+  environment values are never logged. See
   [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
 - **Customer reports with AI-assisted copy (v3.5).** Two AI styles per
   issue write into the same `report_summary` field — warm Apple-style
@@ -106,7 +113,8 @@ up, browser open, done.
   `anchors`, canonical `agents/{name}.json` artifacts, a typed entity
   `graph`, and a mixed-context `retrieve` API. Agents stop grepping six
   issues to figure out which repo to clone and where the work actually
-  lives. See
+  lives. Project knowledge can also provide scoped AI prompt presets, and
+  selected agents are now carried into run creation and provenance. See
   [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
   and the route group in
   [`api-minimal.md`](docs/api-minimal.md#agent-context).

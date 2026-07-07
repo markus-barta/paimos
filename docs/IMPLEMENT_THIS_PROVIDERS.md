@@ -2,9 +2,9 @@
 
 PAI-605/608 introduced the first execution path: a web UI action creates an
 `agent_runs` row, and a developer-owned `paimos run-agent watch` process claims
-the run and executes a local command in a repo checkout. PAI-629 and PAI-630
-extend that into an explicit provider/action model instead of a single generic
-"Implement this" button.
+the run and executes a local command in a repo checkout. The PAI-646 control
+plane turns that into an explicit provider/action model instead of a single
+generic "Implement this" button.
 
 The key product rule is: **execution location and model/provider choice must be
 visible, auditable, and capability-gated before a run starts.**
@@ -18,7 +18,7 @@ The current runner is a local-shell worker:
 - The workstation owns repo access, spawned command execution, tests, and
   optional deploy.
 - The default command is Claude Code print mode; `--exec` can point at Codex or
-  another local tool.
+  another local tool, and the runner advertises the concrete action key.
 - Deploy is triple-gated by runner flags, deploy command, and per-run
   `deploy_target`.
 
@@ -44,8 +44,9 @@ agent command.
 - First-class actions: `Do this with Claude`, `Do this with Codex`.
 
 The existing `paimos run-agent watch --exec ...` is the implementation
-foundation. The next step is to make provider identity explicit instead of
-encoded only in `agent_name` or a free-form command.
+foundation. Provider identity is now explicit through `claude_cli.implement`
+and `codex_cli.implement`, with runner/device attribution still recorded for
+local workstations.
 
 ### Local Model Providers
 
@@ -61,9 +62,10 @@ Examples: Ollama, LM Studio, llama.cpp, or an in-house local inference service.
 - First-class actions: `Draft with local model`, later `Do this with local
   model` if the worker can safely edit and test.
 
-Local model support should use the same provider names already reserved in the
-AI settings surface where possible, but implement-this must still model the
-worker capabilities separately from text-optimization availability.
+`local_model_draft.implement` uses the AI settings surface with
+`provider=local_model`, a safe endpoint label, and an OpenAI-compatible
+`/chat/completions` endpoint. It is a draft provider: it can generate a plan or
+review note, but it cannot claim repo mutation, tests, or deploy authority.
 
 ### Hosted Model Providers
 
@@ -75,8 +77,8 @@ admin-selected model.
 - Repo access: no direct repo checkout, no local shell, no deploy.
 - Secrets: provider key comes from admin AI settings; project prompt content is
   sent to the hosted provider and must be intentionally scoped.
-- Output mode: v1 should produce a plan, suggested patch, or ticket comment.
-  Applying the patch should be a separate explicit action.
+- Output mode: draft plan, suggested patch text, or ticket comment. Applying a
+  patch is a separate trusted-runner action.
 - First-class action: `Draft with OpenRouter`.
 
 Hosted providers should not use the local runner's deploy path. If a later
@@ -88,7 +90,8 @@ Add explicit provider/action fields to `agent_runs` while keeping existing rows
 valid:
 
 - `action_key`: stable UI/requested action, such as `claude_cli.implement`,
-  `codex_cli.implement`, `openrouter.draft`, or `local_model.draft`.
+  `codex_cli.implement`, `openrouter_draft.implement`, or
+  `local_model_draft.implement`.
 - `provider_kind`: stable provider class, such as `local_cli`,
   `local_model`, or `hosted_model`.
 - `provider_id`: specific provider, such as `claude_cli`, `codex_cli`,
@@ -96,6 +99,9 @@ valid:
 - `provider_label`: display label captured at run creation for audit history.
 - `model`: optional model identifier for hosted/local-model providers.
 - `run_mode`: `edit`, `draft`, `patch`, or `deploy`.
+- `profile_id`, `effort`, `prompt_preset_ref`, `context_pack`, token counts,
+  finish reason, and context-source metadata: safe execution provenance for AI
+  draft modes.
 
 `agent_name` remains executor attribution. It should answer "who reported this
 run?", not "which provider did the requester choose?"
@@ -112,6 +118,24 @@ run?", not "which provider did the requester choose?"
 
 The default remains backward compatible: an omitted action key maps to the
 current local Claude action while the old single-button UI still exists.
+
+For draft actions, `POST /api/issues/{id}/implement` also accepts:
+
+```json
+{
+  "action_key": "openrouter_draft.implement",
+  "options": {
+    "profile_id": "balanced",
+    "effort": "standard",
+    "prompt_preset_ref": "default",
+    "context_pack": "issue"
+  }
+}
+```
+
+Draft actions reject `device_id` and `deploy_target`, start and finish on the
+server, and write their output as an internal issue comment tagged as draft
+provenance. They cannot claim repository edits, local test execution, or deploy.
 
 The latest issue-level AI work status should include the provider/action fields
 so list badges, filters, and history can explain what is running without opening
@@ -142,6 +166,18 @@ current `can_implement=1` bit:
       "run_modes": ["edit"],
       "can_test": true,
       "can_deploy": true
+    },
+    {
+      "action_key": "openrouter_draft.implement",
+      "provider_id": "openrouter",
+      "label": "OpenRouter Draft",
+      "run_modes": ["draft"],
+      "can_test": false,
+      "can_deploy": false,
+      "requires_runner": false,
+      "profile_ids": ["default", "fast", "balanced", "deep"],
+      "efforts": ["low", "standard", "deep"],
+      "models": ["anthropic/claude-sonnet-4.5"]
     }
   ]
 }
@@ -173,8 +209,9 @@ single-runner installs.
   reads and updates.
 - Keep status compare-and-set, stale-running reaping, active-run uniqueness,
   and terminal immutability server-side.
-- Capture requested action, provider, model, device, deploy target, version,
-  tests, and error on the run record.
+- Capture requested action, provider, model, profile, effort, prompt preset,
+  context pack, token metadata, device, deploy target, version, tests, and error
+  on the run record.
 - Do not attach local command logs by default; preserve the explicit
   `--attach-logs` opt-in.
 - Do not send repo secrets or shell environment to hosted providers.
@@ -187,8 +224,9 @@ single-runner installs.
 
 ## Rollout
 
-Status as of PAI-629: rollout steps 1-3 are implemented for local CLI actions.
-Local model and hosted model draft/apply modes remain future work.
+Status as of PAI-658: rollout steps 1-5 are implemented for local CLI actions
+and draft providers. Apply/patch modes for hosted or local models remain future
+work.
 
 1. **Schema and API compatibility.** Add nullable provider/action fields,
    default omitted action requests to the current Claude local CLI action, and
@@ -201,9 +239,13 @@ Local model and hosted model draft/apply modes remain future work.
    are available, while preserving the old single-action button for simple
    installs. **Done in PAI-629 for issue detail and row actions.**
 4. **Local model draft mode.** Add a local-model action that creates a plan or
-   patch without autonomous deploy.
+   patch without autonomous deploy. **Done in PAI-658 via
+   `local_model_draft.implement`, OpenAI-compatible `base_url`, safe endpoint
+   labels, and no secret display.**
 5. **OpenRouter draft mode.** Reuse encrypted admin AI settings to produce a
    plan/comment/patch suggestion. Keep patch application explicit and separate.
+   **Done in PAI-657 via `openrouter_draft.implement`, run metadata, internal
+   draft comments, and no local runner/deploy path.**
 
 ## Acceptance Tests
 

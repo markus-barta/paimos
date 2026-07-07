@@ -58,7 +58,7 @@ func toneCheckHandler(ax *aiActionContext) (any, string, int, int, string, error
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "tone_check requires non-empty text"}
 	}
 
-	systemPrompt := resolveActionPrompt("tone_check")
+	systemPrompt := resolveActionPromptWithPreset(ax, "tone_check")
 
 	var u strings.Builder
 	u.WriteString("Field: ")
@@ -72,8 +72,9 @@ func toneCheckHandler(ax *aiActionContext) (any, string, int, int, string, error
 	resp, err := ax.Provider.Optimize(ctx, ai.OptimizeRequest{
 		Model:           ax.Settings.Model,
 		APIKey:          ax.Settings.APIKey,
+		BaseURL:         ax.Settings.BaseURL,
 		SystemPrompt:    systemPrompt,
-		UserPrompt:      u.String(),
+		UserPrompt:      aiUserPromptWithContext(ax, u.String()),
 		MaxOutputTokens: optimizeMaxOutputTokens,
 	})
 	if err != nil {

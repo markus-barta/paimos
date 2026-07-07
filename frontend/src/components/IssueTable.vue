@@ -40,6 +40,7 @@ const props = defineProps<{
   isAdmin: boolean
   projectId?: number
   agentActions?: AgentActionCapability[]
+  agentName?: string
   // Sort
   sortResult: {
     thProps: (key: string) => Record<string, unknown>
@@ -668,7 +669,7 @@ onUnmounted(stopColumnResize)
           <span v-else class="ai-status-empty">—</span>
         </td>
         <td v-if="!readonly && isVisible('actions')" class="col-actions" @click.stop>
-          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" :ai-work-status="i.ai_work_status" :agent-actions="agentActions" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
+          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" :ai-work-status="i.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
         </td>
       </tr>
       <!-- Expand panel for group types -->

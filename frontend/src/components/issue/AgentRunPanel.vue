@@ -12,280 +12,703 @@
 // Clicking the button creates a queued agent run (PAI-606); the developer's
 // local runner (PAI-608) picks it up over SSE and reports progress back, which
 // this panel surfaces by polling while a run is in flight.
-import { ref, computed, onMounted, onUnmounted } from "vue";
-import AppIcon from "@/components/AppIcon.vue";
-import { api, errMsg } from "@/api/client";
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
+import { api, errMsg } from '@/api/client'
+import { listProjectAgents } from '@/services/projectAgents'
+import type { AgentActionCapability, ProjectAgent } from '@/types'
+import type {
+  AiActionOptions,
+  AiExecutionOptionsCatalog,
+  AiKnowledgeSuggestion,
+  AiSelectorDefault,
+} from '@/composables/useAiAction'
 
 const props = defineProps<{
-  issueId: number;
-  issueKey: string;
-  projectId: number;
-}>();
+  issueId: number
+  issueKey: string
+  projectId: number
+}>()
 
 interface AgentRun {
-  id: number;
-  status: string;
-  version: string;
-  device_id: string;
-  action_key: string;
-  provider_label: string;
-  deploy_target: string;
-  tests_summary: string | null;
-  error: string;
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-}
-
-interface AgentActionCapability {
-  action_key: string;
-  provider_kind: string;
-  provider_id: string;
-  label: string;
-  run_modes?: string[];
-  can_test: boolean;
-  can_deploy: boolean;
+  id: number
+  status: string
+  version: string
+  device_id: string
+  action_key: string
+  provider_label: string
+  run_mode: string
+  profile_id: string
+  effort: string
+  prompt_preset_ref: string
+  context_pack: string
+  context_truncated?: boolean
+  context_sources_json?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  finish_reason?: string
+  agent_name: string
+  deploy_target: string
+  tests_summary: string | null
+  error: string
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  source_draft_run_id?: number
+  followup_run_id?: number
 }
 
 interface ProjectRunner {
-  user_id: number;
-  device_id: string;
-  last_seen: string;
-  actions?: AgentActionCapability[];
+  user_id: number
+  device_id: string
+  last_seen: string
+  actions?: AgentActionCapability[]
 }
 
-const runs = ref<AgentRun[]>([]);
-const runners = ref<ProjectRunner[]>([]);
-const selectedActionKey = ref("claude_cli.implement");
-const selectedDevice = ref("");
-const deployTarget = ref("");
-const loading = ref(true);
-const busy = ref(false);
-const error = ref("");
-const notice = ref("");
-const runnersError = ref(""); // distinct from "no runners online" (M4)
+const runs = ref<AgentRun[]>([])
+const runners = ref<ProjectRunner[]>([])
+const executionOptions = ref<AiExecutionOptionsCatalog | null>(null)
+const projectAgents = ref<ProjectAgent[]>([])
+const selectedActionKey = ref('claude_cli.implement')
+const selectedDevice = ref('')
+const selectedAgentName = ref('')
+const deployTarget = ref('')
+const selectedProfileId = ref('')
+const selectedEffort = ref('')
+const selectedPromptPresetRef = ref('')
+const selectedContextPack = ref('')
+const loading = ref(true)
+const busy = ref(false)
+const error = ref('')
+const notice = ref('')
+const runnersError = ref('') // distinct from "no runners online" (M4)
+const executionOptionsError = ref('')
+const agentsError = ref('')
 
-const IN_FLIGHT = new Set(["queued", "running"]);
-const hasActiveRun = computed(() => runs.value.some((r) => IN_FLIGHT.has(r.status)));
+const IN_FLIGHT = new Set(['queued', 'running'])
+const hasActiveRun = computed(() => runs.value.some((r) => IN_FLIGHT.has(r.status)))
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null
 // Monotonic tokens so an out-of-order response can't overwrite newer state (M2).
-let runsSeq = 0;
-let runnersSeq = 0;
+let runsSeq = 0
+let runnersSeq = 0
+let executionOptionsSeq = 0
+let agentsSeq = 0
 // Guards against a fetch that resolves AFTER unmount re-arming the poll timer (H1).
-let alive = true;
+let alive = true
 
 const STATUS_LABEL: Record<string, string> = {
-  queued: "Queued",
-  running: "Running",
-  tests_passed: "Tests passed",
-  tests_failed: "Tests failed",
-  deployed: "Deployed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
+  queued: 'Queued',
+  running: 'Running',
+  tests_passed: 'Tests passed',
+  tests_failed: 'Tests failed',
+  deployed: 'Deployed',
+  drafted: 'Draft ready',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+}
 
 function statusLabel(s: string): string {
-  return STATUS_LABEL[s] ?? s;
+  return STATUS_LABEL[s] ?? s
 }
 
 const DEPLOY_TARGETS = [
-  { value: "", label: "No deploy" },
-  { value: "local-dev", label: "local-dev" },
-];
+  { value: '', label: 'No deploy' },
+  { value: 'local-dev', label: 'local-dev' },
+]
 
 const DEFAULT_ACTION: AgentActionCapability = {
-  action_key: "claude_cli.implement",
-  provider_kind: "local_cli",
-  provider_id: "claude_cli",
-  label: "Claude Code",
-  run_modes: ["edit"],
+  action_key: 'claude_cli.implement',
+  provider_kind: 'local_cli',
+  provider_id: 'claude_cli',
+  label: 'Claude Code',
+  run_modes: ['edit'],
   can_test: true,
   can_deploy: false,
-};
-
-function runnerActions(runner: ProjectRunner): AgentActionCapability[] {
-  return runner.actions?.length ? runner.actions : [DEFAULT_ACTION];
+  available: true,
+  requires_runner: true,
 }
 
+function runnerActions(runner: ProjectRunner): AgentActionCapability[] {
+  return runner.actions?.length ? runner.actions : [DEFAULT_ACTION]
+}
+
+function actionAvailable(action: AgentActionCapability): boolean {
+  return action.available !== false && !action.unavailable_reason
+}
+
+function actionRequiresRunner(action: AgentActionCapability | undefined): boolean {
+  return action?.requires_runner ?? action?.provider_kind === 'local_cli'
+}
+
+function actionIsDraft(action: AgentActionCapability | undefined): boolean {
+  return !!action && (action.run_modes?.includes('draft') || !actionRequiresRunner(action))
+}
+
+const draftProviderActions = computed(() => executionOptions.value?.run_providers ?? [])
+const availableDraftProviderActions = computed(() =>
+  draftProviderActions.value.filter(actionAvailable),
+)
+const unavailableDraftProviderActions = computed(() =>
+  draftProviderActions.value.filter((action) => !actionAvailable(action)),
+)
+
 const availableActions = computed(() => {
-  const byKey = new Map<string, AgentActionCapability>();
+  const byKey = new Map<string, AgentActionCapability>()
+  let hasRunnerBackedAction = false
   for (const runner of runners.value) {
     for (const action of runnerActions(runner)) {
-      if (!byKey.has(action.action_key)) byKey.set(action.action_key, action);
+      if (!byKey.has(action.action_key) && actionAvailable(action)) {
+        byKey.set(action.action_key, action)
+        if (actionRequiresRunner(action)) hasRunnerBackedAction = true
+      }
     }
   }
-  if (!byKey.size) byKey.set(DEFAULT_ACTION.action_key, DEFAULT_ACTION);
-  return [...byKey.values()];
-});
+  if (!hasRunnerBackedAction) byKey.set(DEFAULT_ACTION.action_key, DEFAULT_ACTION)
+  for (const action of availableDraftProviderActions.value) {
+    if (!byKey.has(action.action_key)) byKey.set(action.action_key, action)
+  }
+  return [...byKey.values()]
+})
 
 const selectedAction = computed(
-  () => availableActions.value.find((a) => a.action_key === selectedActionKey.value) ?? availableActions.value[0],
-);
+  () =>
+    availableActions.value.find((a) => a.action_key === selectedActionKey.value) ??
+    availableActions.value[0],
+)
+const workbenchSelectorDefault = computed(
+  () => executionOptions.value?.selector_defaults?.workbench ?? null,
+)
 
 function runnerSupportsAction(runner: ProjectRunner, actionKey: string): boolean {
-  return runnerActions(runner).some((action) => action.action_key === actionKey);
+  return runnerActions(runner).some((action) => action.action_key === actionKey)
 }
 
 const actionRunners = computed(() =>
-  runners.value.filter((runner) => runnerSupportsAction(runner, selectedActionKey.value)),
-);
+  selectedActionRequiresRunner.value
+    ? runners.value.filter((runner) => runnerSupportsAction(runner, selectedActionKey.value))
+    : [],
+)
+
+const selectedProjectAgent = computed(
+  () => projectAgents.value.find((agent) => agent.name === selectedAgentName.value) ?? null,
+)
+
+const selectedActionRequiresRunner = computed(() => actionRequiresRunner(selectedAction.value))
+const selectedActionIsDraft = computed(() => actionIsDraft(selectedAction.value))
+const selectedActionCanDeploy = computed(() => selectedActionRequiresRunner.value)
+const onlineAdapterLabels = computed(() => {
+  const labels = new Set<string>()
+  for (const runner of runners.value) {
+    for (const action of runnerActions(runner)) {
+      if (actionRequiresRunner(action) && actionAvailable(action)) labels.add(action.label)
+    }
+  }
+  return [...labels]
+})
+
+const profileChoices = computed(() => {
+  const ids = selectedAction.value?.profile_ids
+  const profiles = executionOptions.value?.profiles ?? []
+  if (!ids?.length) return profiles
+  const allowed = new Set(ids)
+  return profiles.filter((profile) => allowed.has(profile.id))
+})
+
+const effortChoices = computed(() => {
+  const efforts = selectedAction.value?.efforts?.length
+    ? selectedAction.value.efforts
+    : (executionOptions.value?.efforts ?? [])
+  return efforts
+})
+
+const promptPresetChoices = computed(() => [
+  { ref: 'default', label: 'Default prompt' },
+  ...(executionOptions.value?.prompt_presets ?? []).map((preset) => ({
+    ref: preset.ref,
+    label: preset.label,
+  })),
+])
+
+const contextPackChoices = computed(() => executionOptions.value?.context_packs ?? [])
+const knowledgeSuggestions = computed(() => executionOptions.value?.knowledge_suggestions ?? [])
+const hasKnowledgeContextPack = computed(() =>
+  contextPackChoices.value.some((pack) => pack.id === 'knowledge'),
+)
+const selectedDefaultSourceLabel = computed(() => {
+  const source = selectedActionIsDraft.value
+    ? runSelectorDefault(selectedActionKey.value)?.source
+    : workbenchSelectorDefault.value?.source
+  return source === 'project' ? 'Project defaults' : 'Inherited defaults'
+})
+
+function suggestionAppliesToAction(suggestion: AiKnowledgeSuggestion): boolean {
+  const actions = suggestion.actions ?? []
+  return !actions.length || actions.includes('*') || actions.includes(selectedActionKey.value)
+}
+
+function canUseKnowledgePrompt(suggestion: AiKnowledgeSuggestion): boolean {
+  return !!(
+    suggestion.prompt_preset &&
+    suggestion.suggested_use === 'prompt' &&
+    suggestion.prompt_preset_ref &&
+    promptPresetChoices.value.some((preset) => preset.ref === suggestion.prompt_preset_ref)
+  )
+}
+
+const visibleKnowledgeSuggestions = computed(() =>
+  knowledgeSuggestions.value
+    .filter((suggestion) => !suggestion.prompt_preset || suggestionAppliesToAction(suggestion))
+    .slice(0, 6),
+)
+
+function useKnowledgeSuggestion(suggestion: AiKnowledgeSuggestion) {
+  if (canUseKnowledgePrompt(suggestion) && suggestion.prompt_preset_ref) {
+    selectedPromptPresetRef.value = suggestion.prompt_preset_ref
+    return
+  }
+  if (hasKnowledgeContextPack.value) selectedContextPack.value = 'knowledge'
+}
+
+function knowledgeSuggestionTitle(suggestion: AiKnowledgeSuggestion): string {
+  return suggestion.prompt_preset_label || suggestion.title
+}
+
+function knowledgeSuggestionMeta(suggestion: AiKnowledgeSuggestion): string {
+  const parts = [suggestion.type, suggestion.slug]
+  if (suggestion.revision) parts.push(suggestion.revision)
+  if (suggestion.prompt_preset_status && suggestion.prompt_preset_status !== 'active') {
+    parts.push(suggestion.prompt_preset_status)
+  }
+  return parts.filter(Boolean).join(' · ')
+}
+
+function agentArtifactStatus(agent: ProjectAgent): string {
+  return agent.body || agent.bootstrap_steps?.length || agent.non_negotiable_rules?.length
+    ? 'Artifact ready'
+    : 'Artifact shell'
+}
+
+const selectedAgentReadiness = computed(() => {
+  const agent = selectedProjectAgent.value
+  if (!agent) return []
+  return [
+    agent.name,
+    agentArtifactStatus(agent),
+    onlineAdapterLabels.value.length ? onlineAdapterLabels.value.join(', ') : 'No runner online',
+  ]
+})
+
+function selectedAgentCommands(agent: ProjectAgent): string[] {
+  return [
+    `paimos skill render ${agent.name}`,
+    `paimos run-agent watch --project ${props.projectId} --repo-root .`,
+  ]
+}
+
+const selectedDraftProviderMeta = computed(() => {
+  const action = selectedAction.value
+  if (!action) return ''
+  const parts: string[] = []
+  if (action.models?.length) parts.push(action.models[0])
+  if (action.endpoint_label) parts.push(action.endpoint_label)
+  return parts.join(' · ')
+})
 
 function syncActionSelection() {
   if (!availableActions.value.some((action) => action.action_key === selectedActionKey.value)) {
-    selectedActionKey.value = availableActions.value[0]?.action_key ?? DEFAULT_ACTION.action_key;
+    const defaultActionKey = workbenchSelectorDefault.value?.action_key ?? DEFAULT_ACTION.action_key
+    selectedActionKey.value = availableActions.value.some(
+      (action) => action.action_key === defaultActionKey,
+    )
+      ? defaultActionKey
+      : (availableActions.value[0]?.action_key ?? DEFAULT_ACTION.action_key)
   }
+  if (!selectedActionCanDeploy.value) deployTarget.value = ''
+  syncDraftOptions()
 }
 
 function syncDeviceSelection() {
-  if (!actionRunners.value.length) {
-    selectedDevice.value = "";
-    return;
+  if (!selectedActionRequiresRunner.value) {
+    selectedDevice.value = ''
+    return
   }
-  if (!selectedDevice.value || !actionRunners.value.some((runner) => runner.device_id === selectedDevice.value)) {
-    selectedDevice.value = actionRunners.value[0].device_id;
+  if (!actionRunners.value.length) {
+    selectedDevice.value = ''
+    return
+  }
+  if (
+    !selectedDevice.value ||
+    !actionRunners.value.some((runner) => runner.device_id === selectedDevice.value)
+  ) {
+    selectedDevice.value = actionRunners.value[0].device_id
   }
 }
 
+function syncAgentSelection() {
+  if (!projectAgents.value.length) {
+    selectedAgentName.value = ''
+    return
+  }
+  if (
+    selectedAgentName.value &&
+    !projectAgents.value.some((agent) => agent.name === selectedAgentName.value)
+  ) {
+    selectedAgentName.value = ''
+  }
+  const defaultAgent = workbenchSelectorDefault.value?.agent_name ?? ''
+  if (
+    !selectedAgentName.value &&
+    defaultAgent &&
+    projectAgents.value.some((agent) => agent.name === defaultAgent)
+  ) {
+    selectedAgentName.value = defaultAgent
+    return
+  }
+  if (!selectedAgentName.value && projectAgents.value.length === 1) {
+    selectedAgentName.value = projectAgents.value[0].name
+  }
+}
+
+function runSelectorDefault(actionKey: string): AiSelectorDefault | null {
+  return executionOptions.value?.selector_defaults?.runs?.[actionKey] ?? null
+}
+
+function syncDraftOptions() {
+  if (!selectedActionIsDraft.value || !executionOptions.value) return
+  const defaults = runSelectorDefault(selectedActionKey.value)
+  const legacyDefaults = executionOptions.value.action_defaults?.[selectedActionKey.value]
+  const profiles = profileChoices.value
+  if (
+    !selectedProfileId.value ||
+    !profiles.some((profile) => profile.id === selectedProfileId.value)
+  ) {
+    const profileID = defaults?.profile_id || legacyDefaults?.profile_id
+    selectedProfileId.value =
+      (profileID && profiles.some((profile) => profile.id === profileID)
+        ? profileID
+        : profiles[0]?.id) ?? ''
+  }
+  const efforts = effortChoices.value
+  if (!selectedEffort.value || !efforts.includes(selectedEffort.value)) {
+    const effort = defaults?.effort || legacyDefaults?.effort
+    selectedEffort.value = (effort && efforts.includes(effort) ? effort : efforts[0]) ?? ''
+  }
+  const presets = promptPresetChoices.value
+  if (
+    !selectedPromptPresetRef.value ||
+    !presets.some((preset) => preset.ref === selectedPromptPresetRef.value)
+  ) {
+    const prompt = defaults?.prompt_preset_ref || 'default'
+    selectedPromptPresetRef.value = presets.some((preset) => preset.ref === prompt)
+      ? prompt
+      : 'default'
+  }
+  const packs = contextPackChoices.value
+  if (!selectedContextPack.value || !packs.some((pack) => pack.id === selectedContextPack.value)) {
+    const pack = defaults?.context_pack || 'issue'
+    selectedContextPack.value = packs.some((candidate) => candidate.id === pack)
+      ? pack
+      : packs.some((candidate) => candidate.id === 'issue')
+        ? 'issue'
+        : (packs[0]?.id ?? 'issue')
+  }
+}
+
+function onActionChange() {
+  syncDeviceSelection()
+  syncDraftOptions()
+  if (!selectedActionCanDeploy.value) deployTarget.value = ''
+}
+
 const buttonLabel = computed(() => {
-  if (busy.value) return "Starting...";
+  if (busy.value) return selectedActionIsDraft.value ? 'Drafting...' : 'Starting...'
+  if (selectedActionIsDraft.value) return `Draft with ${selectedAction.value.label}`
   if (availableActions.value.length > 1) {
     return deployTarget.value
       ? `Do this with ${selectedAction.value.label} + deploy`
-      : `Do this with ${selectedAction.value.label}`;
+      : `Do this with ${selectedAction.value.label}`
   }
-  return deployTarget.value ? "Implement + deploy" : "Implement this";
-});
+  return deployTarget.value ? 'Implement + deploy' : 'Implement this'
+})
 
 // The API emits SQLite's "YYYY-MM-DD HH:MM:SS" (UTC). Parse it to a real Date
 // for a localized display string and a valid ISO `datetime` attribute (M6).
 function toDate(ts: string | null): Date | null {
-  if (!ts) return null;
-  let s = ts.trim().replace(" ", "T");
+  if (!ts) return null
+  let s = ts.trim().replace(' ', 'T')
   // Treat a zone-less timestamp as UTC (the API emits UTC). A present zone is a
   // trailing Z or ±HH:MM — only append Z when neither is there (L1).
-  if (!/[Zz]$|[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (!/[Zz]$|[+-]\d{2}:?\d{2}$/.test(s)) s += 'Z'
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? null : d
 }
 function isoAttr(ts: string): string {
-  return toDate(ts)?.toISOString() ?? ts;
+  return toDate(ts)?.toISOString() ?? ts
 }
 function localTime(ts: string): string {
-  return toDate(ts)?.toLocaleString() ?? ts;
+  return toDate(ts)?.toLocaleString() ?? ts
 }
 function runTimestamp(run: AgentRun): string {
-  return run.finished_at || run.started_at || run.created_at;
+  return run.finished_at || run.started_at || run.created_at
 }
 
-type StageState = "pending" | "active" | "complete" | "failed";
+type StageState = 'pending' | 'active' | 'complete' | 'failed'
 interface RunStage {
-  key: string;
-  label: string;
-  state: StageState;
+  key: string
+  label: string
+  state: StageState
 }
 
 function isFinished(run: AgentRun): boolean {
-  return ["tests_passed", "tests_failed", "deployed", "failed", "cancelled"].includes(run.status);
+  return ['tests_passed', 'tests_failed', 'deployed', 'drafted', 'failed', 'cancelled'].includes(
+    run.status,
+  )
 }
 
 function runStages(run: AgentRun): RunStage[] {
-  const isQueued = run.status === "queued";
-  const isRunning = run.status === "running";
-  const isDeployed = run.status === "deployed";
-  const isTestsPassed = run.status === "tests_passed" || isDeployed;
-  const isTestsFailed = run.status === "tests_failed";
-  const isFailed = run.status === "failed" || run.status === "cancelled";
-  const started = !!run.started_at || isRunning || isFinished(run);
-  const hasDeploy = !!run.deploy_target;
+  const isDraft = run.run_mode === 'draft' || run.status === 'drafted'
+  if (isDraft) {
+    const isRunning = run.status === 'running'
+    const isDrafted = run.status === 'drafted'
+    const isFailed = run.status === 'failed' || run.status === 'cancelled'
+    return [
+      { key: 'requested', label: 'Requested', state: 'complete' },
+      {
+        key: 'drafting',
+        label: 'Drafting',
+        state: isRunning ? 'active' : isFailed ? 'failed' : 'complete',
+      },
+      {
+        key: 'drafted',
+        label: isDrafted ? 'Draft ready' : 'Draft',
+        state: isDrafted ? 'complete' : isFailed ? 'failed' : 'pending',
+      },
+    ]
+  }
+  const isQueued = run.status === 'queued'
+  const isRunning = run.status === 'running'
+  const isDeployed = run.status === 'deployed'
+  const isTestsPassed = run.status === 'tests_passed' || isDeployed
+  const isTestsFailed = run.status === 'tests_failed'
+  const isFailed = run.status === 'failed' || run.status === 'cancelled'
+  const started = !!run.started_at || isRunning || isFinished(run)
+  const hasDeploy = !!run.deploy_target
 
   return [
-    { key: "queued", label: "Queued", state: isQueued ? "active" : "complete" },
-    { key: "claimed", label: "Claimed", state: started ? "complete" : "pending" },
+    { key: 'queued', label: 'Queued', state: isQueued ? 'active' : 'complete' },
+    { key: 'claimed', label: 'Claimed', state: started ? 'complete' : 'pending' },
     {
-      key: "editing",
-      label: "Editing",
-      state: isRunning ? "active" : started ? (isFailed ? "failed" : "complete") : "pending",
+      key: 'editing',
+      label: 'Editing',
+      state: isRunning ? 'active' : started ? (isFailed ? 'failed' : 'complete') : 'pending',
     },
     {
-      key: "tests",
-      label: isTestsPassed ? "Tests passed" : isTestsFailed ? "Tests failed" : "Tests",
-      state: isTestsPassed ? "complete" : isTestsFailed ? "failed" : started && !isFailed ? "active" : "pending",
+      key: 'tests',
+      label: isTestsPassed ? 'Tests passed' : isTestsFailed ? 'Tests failed' : 'Tests',
+      state: isTestsPassed
+        ? 'complete'
+        : isTestsFailed
+          ? 'failed'
+          : started && !isFailed
+            ? 'active'
+            : 'pending',
     },
     {
-      key: hasDeploy ? "deploy" : "report",
-      label: hasDeploy ? (isDeployed ? "Deployed" : "Deploy") : "Reported",
+      key: hasDeploy ? 'deploy' : 'report',
+      label: hasDeploy ? (isDeployed ? 'Deployed' : 'Deploy') : 'Reported',
       state: hasDeploy
         ? isDeployed
-          ? "complete"
+          ? 'complete'
           : isTestsFailed || isFailed
-            ? "failed"
+            ? 'failed'
             : isTestsPassed
-              ? "active"
-              : "pending"
+              ? 'active'
+              : 'pending'
         : isTestsPassed
-          ? "complete"
+          ? 'complete'
           : isTestsFailed || isFailed
-            ? "failed"
-            : "pending",
+            ? 'failed'
+            : 'pending',
     },
-  ];
+  ]
+}
+
+function trustedRunnerActionForDraft(): AgentActionCapability {
+  if (selectedAction.value && actionRequiresRunner(selectedAction.value))
+    return selectedAction.value
+  return availableActions.value.find((action) => actionRequiresRunner(action)) ?? DEFAULT_ACTION
+}
+
+function firstRunnerForAction(actionKey: string): ProjectRunner | null {
+  return runners.value.find((runner) => runnerSupportsAction(runner, actionKey)) ?? null
+}
+
+function draftReviewMeta(run: AgentRun): string[] {
+  const parts = ['Draft only', 'No local tests', 'Not applied']
+  if (run.profile_id && run.effort) parts.push(`${run.profile_id}/${run.effort}`)
+  if (run.prompt_preset_ref) parts.push(run.prompt_preset_ref)
+  if (run.context_pack) parts.push(run.context_pack)
+  if (run.context_truncated) parts.push('context truncated')
+  const tokens = (run.prompt_tokens ?? 0) + (run.completion_tokens ?? 0)
+  if (tokens > 0) parts.push(`${tokens} tokens`)
+  return parts
+}
+
+async function handoffDraft(run: AgentRun) {
+  const action = trustedRunnerActionForDraft()
+  busy.value = true
+  error.value = ''
+  notice.value = ''
+  try {
+    const payload: {
+      action_key: string
+      device_id?: string
+      agent_name?: string
+      source_draft_run_id: number
+    } = {
+      action_key: action.action_key,
+      source_draft_run_id: run.id,
+    }
+    if (actionRequiresRunner(action)) {
+      const selectedRunner = runners.value.find(
+        (runner) =>
+          runner.device_id === selectedDevice.value &&
+          runnerSupportsAction(runner, action.action_key),
+      )
+      const runner = selectedRunner ?? firstRunnerForAction(action.action_key)
+      if (runner?.device_id) payload.device_id = runner.device_id
+    }
+    const agentName = (run.agent_name || selectedAgentName.value).trim()
+    if (agentName) payload.agent_name = agentName
+    const followup = await api.post<AgentRun>(`/issues/${props.issueKey}/implement`, payload)
+    notice.value = followup?.id
+      ? `Follow-up run #${followup.id} queued from draft #${run.id}`
+      : `Follow-up run queued from draft #${run.id}`
+    await Promise.all([fetchRuns(), fetchRunners()])
+  } catch (e: unknown) {
+    error.value = errMsg(e, 'Could not hand off the draft.')
+  } finally {
+    busy.value = false
+  }
 }
 
 async function fetchRuns() {
-  const seq = ++runsSeq;
+  const seq = ++runsSeq
   try {
-    const data = await api.get<{ runs: AgentRun[] }>(`/issues/${props.issueId}/runs`);
-    if (!alive || seq !== runsSeq) return; // unmounted, or a newer fetch landed
-    runs.value = data.runs ?? [];
-    error.value = "";
+    const data = await api.get<{ runs: AgentRun[] }>(`/issues/${props.issueId}/runs`)
+    if (!alive || seq !== runsSeq) return // unmounted, or a newer fetch landed
+    runs.value = data.runs ?? []
+    error.value = ''
   } catch (e: unknown) {
-    if (!alive || seq !== runsSeq) return;
-    error.value = errMsg(e, "Could not load runs.");
+    if (!alive || seq !== runsSeq) return
+    error.value = errMsg(e, 'Could not load runs.')
   } finally {
-    if (alive) loading.value = false;
+    if (alive) loading.value = false
   }
-  syncPolling();
+  syncPolling()
+}
+
+async function fetchAgents() {
+  const seq = ++agentsSeq
+  try {
+    const data = await listProjectAgents(props.projectId)
+    if (!alive || seq !== agentsSeq) return
+    projectAgents.value = Array.isArray(data) ? data : []
+    agentsError.value = ''
+    syncAgentSelection()
+  } catch (e: unknown) {
+    if (!alive || seq !== agentsSeq) return
+    projectAgents.value = []
+    selectedAgentName.value = ''
+    agentsError.value = errMsg(e, 'Could not load project agents.')
+  }
+}
+
+async function fetchExecutionOptions() {
+  const seq = ++executionOptionsSeq
+  try {
+    const data = await api.get<AiExecutionOptionsCatalog>(
+      `/ai/execution-options?issue_id=${props.issueId}`,
+    )
+    if (!alive || seq !== executionOptionsSeq) return
+    executionOptions.value = data
+    executionOptionsError.value = ''
+    syncActionSelection()
+    syncAgentSelection()
+    syncDeviceSelection()
+    syncDraftOptions()
+  } catch (e: unknown) {
+    if (!alive || seq !== executionOptionsSeq) return
+    executionOptions.value = null
+    executionOptionsError.value = errMsg(e, 'Could not load AI execution options.')
+  }
 }
 
 async function fetchRunners() {
-  const seq = ++runnersSeq;
+  const seq = ++runnersSeq
   try {
-    const data = await api.get<{ runners: ProjectRunner[] }>(
-      `/projects/${props.projectId}/runners`,
-    );
-    if (!alive || seq !== runnersSeq) return;
-    runners.value = data.runners ?? [];
-    runnersError.value = "";
-    syncActionSelection();
-    syncDeviceSelection();
+    const data = await api.get<{ runners: ProjectRunner[] }>(`/projects/${props.projectId}/runners`)
+    if (!alive || seq !== runnersSeq) return
+    runners.value = data.runners ?? []
+    runnersError.value = ''
+    syncActionSelection()
+    syncDeviceSelection()
   } catch (e: unknown) {
-    if (!alive || seq !== runnersSeq) return;
-    runners.value = [];
-    runnersError.value = errMsg(e, "Could not load runners."); // M4: don't masquerade as "none online"
+    if (!alive || seq !== runnersSeq) return
+    runners.value = []
+    runnersError.value = errMsg(e, 'Could not load runners.') // M4: don't masquerade as "none online"
   }
 }
 
 async function implement() {
-  busy.value = true;
-  error.value = "";
-  notice.value = "";
+  busy.value = true
+  error.value = ''
+  notice.value = ''
   try {
-    const payload: { device_id: string; action_key: string; deploy_target?: string } = {
-      device_id: selectedDevice.value,
+    const payload: {
+      device_id?: string
+      action_key: string
+      deploy_target?: string
+      agent_name?: string
+      options?: AiActionOptions
+    } = {
       action_key: selectedActionKey.value,
-    };
-    const target = deployTarget.value.trim();
-    if (target) payload.deploy_target = target;
-    const run = await api.post<AgentRun>(`/issues/${props.issueKey}/implement`, payload);
-    const actor = availableActions.value.length > 1 ? ` with ${selectedAction.value.label}` : "";
-    const runner = selectedDevice.value ? ` for ${selectedDevice.value}` : "";
-    notice.value = run?.id ? `Run #${run.id} queued${actor}${runner}` : `Run queued${actor}${runner}`;
-    await Promise.all([fetchRuns(), fetchRunners()]); // M5: refresh the picker too
+    }
+    if (selectedActionRequiresRunner.value) payload.device_id = selectedDevice.value
+    const target = deployTarget.value.trim()
+    if (target && selectedActionCanDeploy.value) payload.deploy_target = target
+    const agentName = selectedAgentName.value.trim()
+    if (agentName) payload.agent_name = agentName
+    if (selectedActionIsDraft.value) {
+      payload.options = {
+        profile_id: selectedProfileId.value,
+        effort: selectedEffort.value,
+        prompt_preset_ref: selectedPromptPresetRef.value,
+        context_pack: selectedContextPack.value,
+      }
+    }
+    const run = await api.post<AgentRun>(`/issues/${props.issueKey}/implement`, payload)
+    const actor = availableActions.value.length > 1 ? ` with ${selectedAction.value.label}` : ''
+    const agent = selectedProjectAgent.value ? ` as ${selectedProjectAgent.value.name}` : ''
+    const runner =
+      selectedActionRequiresRunner.value && selectedDevice.value
+        ? ` for ${selectedDevice.value}`
+        : ''
+    if (run?.status === 'drafted') {
+      notice.value = run?.id
+        ? `Draft #${run.id} ready${actor}${agent}`
+        : `Draft ready${actor}${agent}`
+    } else {
+      notice.value = run?.id
+        ? `Run #${run.id} queued${actor}${agent}${runner}`
+        : `Run queued${actor}${agent}${runner}`
+    }
+    await Promise.all([fetchRuns(), fetchRunners()]) // M5: refresh the picker too
   } catch (e: unknown) {
-    error.value = errMsg(e, "Could not start the run.");
+    error.value = errMsg(e, 'Could not start the run.')
   } finally {
-    busy.value = false;
+    busy.value = false
   }
 }
 
@@ -293,45 +716,47 @@ async function implement() {
 // tab with a stuck queued run must not heartbeat forever (M1). Each tick also
 // refreshes runners so one that connects after load appears in the picker (M5).
 function pollTick() {
-  void fetchRuns();
-  void fetchRunners();
+  void fetchRuns()
+  void fetchRunners()
 }
 function syncPolling() {
   if (!alive) {
     if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
+      clearInterval(pollTimer)
+      pollTimer = null
     }
-    return;
+    return
   }
-  const shouldPoll = hasActiveRun.value && !document.hidden;
+  const shouldPoll = hasActiveRun.value && !document.hidden
   if (shouldPoll && !pollTimer) {
-    pollTimer = setInterval(pollTick, 4000);
+    pollTimer = setInterval(pollTick, 4000)
   } else if (!shouldPoll && pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
 function onVisibility() {
-  if (!document.hidden && hasActiveRun.value) void fetchRuns();
-  syncPolling();
+  if (!document.hidden && hasActiveRun.value) void fetchRuns()
+  syncPolling()
 }
 
 onMounted(() => {
-  void fetchRuns();
-  void fetchRunners();
-  document.addEventListener("visibilitychange", onVisibility);
-});
+  void fetchRuns()
+  void fetchAgents()
+  void fetchExecutionOptions()
+  void fetchRunners()
+  document.addEventListener('visibilitychange', onVisibility)
+})
 
 onUnmounted(() => {
-  alive = false;
+  alive = false
   if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+    clearInterval(pollTimer)
+    pollTimer = null
   }
-  document.removeEventListener("visibilitychange", onVisibility);
-});
+  document.removeEventListener('visibilitychange', onVisibility)
+})
 </script>
 
 <template>
@@ -348,9 +773,13 @@ onUnmounted(() => {
           class="arp-action"
           aria-label="Agent action"
           :disabled="busy"
-          @change="syncDeviceSelection"
+          @change="onActionChange"
         >
-          <option v-for="action in availableActions" :key="action.action_key" :value="action.action_key">
+          <option
+            v-for="action in availableActions"
+            :key="action.action_key"
+            :value="action.action_key"
+          >
             {{ action.label }}
           </option>
         </select>
@@ -365,6 +794,19 @@ onUnmounted(() => {
           </option>
         </select>
         <select
+          v-if="projectAgents.length"
+          v-model="selectedAgentName"
+          class="arp-agent"
+          aria-label="Project agent"
+          :disabled="busy"
+        >
+          <option value="">No project agent</option>
+          <option v-for="agent in projectAgents" :key="agent.name" :value="agent.name">
+            {{ agent.name }}
+          </option>
+        </select>
+        <select
+          v-if="selectedActionCanDeploy"
           v-model="deployTarget"
           class="arp-deploy-target"
           aria-label="Deploy target"
@@ -374,31 +816,129 @@ onUnmounted(() => {
             {{ target.label }}
           </option>
         </select>
-        <button
-          class="btn btn-primary btn-sm"
-          type="button"
-          :disabled="busy"
-          @click="implement"
-        >
+        <button class="btn btn-primary btn-sm" type="button" :disabled="busy" @click="implement">
           {{ buttonLabel }}
         </button>
+      </div>
+    </div>
+
+    <div v-if="selectedActionIsDraft" class="arp-draft-controls">
+      <select
+        v-model="selectedProfileId"
+        class="arp-draft-select"
+        aria-label="Draft profile"
+        :disabled="busy || !profileChoices.length"
+      >
+        <option v-for="profile in profileChoices" :key="profile.id" :value="profile.id">
+          {{ profile.label }}
+        </option>
+      </select>
+      <select
+        v-model="selectedEffort"
+        class="arp-draft-select"
+        aria-label="Draft effort"
+        :disabled="busy || !effortChoices.length"
+      >
+        <option v-for="effort in effortChoices" :key="effort" :value="effort">
+          {{ effort }}
+        </option>
+      </select>
+      <select
+        v-model="selectedPromptPresetRef"
+        class="arp-draft-select arp-draft-select--wide"
+        aria-label="Draft prompt preset"
+        :disabled="busy || !promptPresetChoices.length"
+      >
+        <option v-for="preset in promptPresetChoices" :key="preset.ref" :value="preset.ref">
+          {{ preset.label }}
+        </option>
+      </select>
+      <select
+        v-model="selectedContextPack"
+        class="arp-draft-select arp-draft-select--wide"
+        aria-label="Draft context pack"
+        :disabled="busy || !contextPackChoices.length"
+      >
+        <option v-for="pack in contextPackChoices" :key="pack.id" :value="pack.id">
+          {{ pack.label }}
+        </option>
+      </select>
+      <span v-if="selectedDraftProviderMeta" class="arp-draft-meta">{{
+        selectedDraftProviderMeta
+      }}</span>
+      <span class="arp-draft-source">{{ selectedDefaultSourceLabel }}</span>
+    </div>
+
+    <div v-if="selectedActionIsDraft" class="arp-knowledge" aria-label="PPM knowledge">
+      <div class="arp-knowledge-head">
+        <AppIcon name="book-open" :size="13" />
+        <span>PPM knowledge</span>
+      </div>
+      <div v-if="visibleKnowledgeSuggestions.length" class="arp-knowledge-list">
+        <article
+          v-for="suggestion in visibleKnowledgeSuggestions"
+          :key="suggestion.ref"
+          class="arp-knowledge-item"
+        >
+          <div class="arp-knowledge-copy">
+            <strong>{{ knowledgeSuggestionTitle(suggestion) }}</strong>
+            <span>{{ knowledgeSuggestionMeta(suggestion) }}</span>
+          </div>
+          <button
+            class="arp-knowledge-button"
+            type="button"
+            :disabled="busy || (!canUseKnowledgePrompt(suggestion) && !hasKnowledgeContextPack)"
+            @click="useKnowledgeSuggestion(suggestion)"
+          >
+            {{ canUseKnowledgePrompt(suggestion) ? 'Use prompt' : 'Use context' }}
+          </button>
+        </article>
+      </div>
+      <p v-else class="arp-knowledge-empty">No prompt-ready PPM knowledge yet.</p>
+    </div>
+
+    <div v-if="selectedProjectAgent" class="arp-agent-ready" aria-label="Agent readiness">
+      <div class="arp-agent-ready-row">
+        <span v-for="item in selectedAgentReadiness" :key="item" class="arp-agent-ready-pill">
+          {{ item }}
+        </span>
+      </div>
+      <div class="arp-agent-commands">
+        <code v-for="command in selectedAgentCommands(selectedProjectAgent)" :key="command">{{
+          command
+        }}</code>
       </div>
     </div>
 
     <p v-if="runnersError" class="arp-error" role="alert">
       Couldn't check for runners: {{ runnersError }}
     </p>
-    <p v-else-if="!runners.length" class="arp-hint">
+    <p v-else-if="!runners.length && !availableDraftProviderActions.length" class="arp-hint">
       No runner is online for this project. The run will queue until a
       <code>paimos run-agent watch</code> picks it up.
+    </p>
+    <p v-else-if="!runners.length && availableDraftProviderActions.length" class="arp-hint">
+      No local runner is online. Draft providers are available.
+    </p>
+    <p v-if="executionOptionsError" class="arp-error" role="alert">
+      {{ executionOptionsError }}
+    </p>
+    <p
+      v-for="provider in unavailableDraftProviderActions"
+      :key="provider.action_key"
+      class="arp-hint"
+    >
+      {{ provider.label }} unavailable: {{ provider.unavailable_reason }}
+    </p>
+    <p v-if="agentsError" class="arp-error" role="alert">
+      Couldn't load project agents: {{ agentsError }}
     </p>
 
     <p v-if="error" class="arp-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="arp-notice" role="status">{{ notice }}</p>
 
     <p v-if="!loading && !runs.length" class="arp-empty">
-      No runs yet. Click <strong>Implement this</strong> to hand
-      {{ issueKey }} to your local agent.
+      No runs yet. Click <strong>Implement this</strong> to hand {{ issueKey }} to your local agent.
     </p>
 
     <ul v-if="runs.length" class="arp-runs" aria-live="polite" aria-label="Agent runs">
@@ -411,6 +951,13 @@ onUnmounted(() => {
             <span class="arp-run-id">#{{ run.id }}</span>
             <span v-if="run.version" class="arp-ver">v{{ run.version }}</span>
             <span v-if="run.provider_label" class="arp-provider">{{ run.provider_label }}</span>
+            <span v-if="run.run_mode === 'draft' && run.profile_id" class="arp-provider"
+              >{{ run.profile_id }} / {{ run.effort }}</span
+            >
+            <span v-if="run.run_mode === 'draft' && run.context_pack" class="arp-provider">{{
+              run.context_pack
+            }}</span>
+            <span v-if="run.agent_name" class="arp-agent-name">{{ run.agent_name }}</span>
             <span v-if="run.device_id" class="arp-dev">{{ run.device_id }}</span>
             <span v-if="run.deploy_target" class="arp-target">→ {{ run.deploy_target }}</span>
             <time :datetime="isoAttr(runTimestamp(run))">{{ localTime(runTimestamp(run)) }}</time>
@@ -427,6 +974,26 @@ onUnmounted(() => {
             <span>{{ stage.label }}</span>
           </li>
         </ol>
+        <div v-if="run.run_mode === 'draft'" class="arp-draft-review">
+          <span v-for="part in draftReviewMeta(run)" :key="part" class="arp-draft-review-pill">
+            {{ part }}
+          </span>
+          <button
+            v-if="run.status === 'drafted' && !run.followup_run_id"
+            type="button"
+            class="arp-draft-handoff"
+            :disabled="busy"
+            @click="handoffDraft(run)"
+          >
+            Handoff to runner
+          </button>
+          <span v-else-if="run.followup_run_id" class="arp-draft-followup">
+            Follow-up #{{ run.followup_run_id }}
+          </span>
+        </div>
+        <span v-if="run.source_draft_run_id" class="arp-tests">
+          From draft #{{ run.source_draft_run_id }}
+        </span>
         <span v-if="run.tests_summary" class="arp-tests">{{ run.tests_summary }}</span>
         <span v-if="run.error" class="arp-run-err">{{ run.error }}</span>
       </li>
@@ -462,10 +1029,14 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .arp-action,
 .arp-device,
-.arp-deploy-target {
+.arp-agent,
+.arp-deploy-target,
+.arp-draft-select {
   font: inherit;
   font-size: 12px;
   padding: 0.25rem 0.4rem;
@@ -477,8 +1048,149 @@ onUnmounted(() => {
 .arp-action {
   width: 11rem;
 }
+.arp-agent {
+  width: 9.5rem;
+}
 .arp-deploy-target {
   width: 10rem;
+}
+.arp-draft-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.65rem;
+}
+.arp-draft-select {
+  width: 7.5rem;
+}
+.arp-draft-select--wide {
+  width: 11rem;
+}
+.arp-draft-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arp-draft-source {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.18rem 0.45rem;
+  background: var(--bg-card);
+}
+.arp-knowledge {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+.arp-knowledge-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.arp-knowledge-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+.arp-knowledge-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+}
+.arp-knowledge-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+.arp-knowledge-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text);
+}
+.arp-knowledge-copy span,
+.arp-knowledge-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.arp-knowledge-empty {
+  margin: 0.35rem 0 0;
+}
+.arp-knowledge-button {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.arp-knowledge-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.arp-agent-ready {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+.arp-agent-ready-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.arp-agent-ready-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+}
+.arp-agent-commands {
+  display: grid;
+  gap: 0.3rem;
+}
+.arp-agent-commands code {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.3rem 0.45rem;
+  color: var(--text-muted);
+  background: var(--bg);
+  font-size: 11px;
 }
 .arp-hint,
 .arp-empty {
@@ -549,6 +1261,10 @@ onUnmounted(() => {
   background: color-mix(in srgb, #2ecc71 24%, transparent);
   color: #1e8449;
 }
+.arp-pill--drafted {
+  background: color-mix(in srgb, #8e7cc3 22%, transparent);
+  color: #5d4b93;
+}
 .arp-pill--tests_failed,
 .arp-pill--failed {
   background: color-mix(in srgb, #e74c3c 22%, transparent);
@@ -577,6 +1293,38 @@ onUnmounted(() => {
   color: var(--text-muted);
   flex-basis: 100%;
 }
+.arp-draft-review {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.arp-draft-review-pill,
+.arp-draft-followup {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 0.08rem 0.45rem;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+}
+.arp-draft-handoff {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.18rem 0.5rem;
+  color: var(--text);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.arp-draft-handoff:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .arp-timeline {
   list-style: none;
   margin: 0;
@@ -594,7 +1342,7 @@ onUnmounted(() => {
   font-size: 11px;
 }
 .arp-stage:not(:last-child)::after {
-  content: "";
+  content: '';
   width: 18px;
   height: 1px;
   margin-left: 0.35rem;

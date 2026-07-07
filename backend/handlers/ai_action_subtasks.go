@@ -60,7 +60,7 @@ func subtasksHandler(ax *aiActionContext) (any, string, int, int, string, error)
 	// reminder appended to the user prompt below. Keeps the
 	// admin-editable surface small — they tune the role and
 	// rules, not the per-call data.
-	systemPrompt := resolveActionPrompt("generate_subtasks")
+	systemPrompt := resolveActionPromptWithPreset(ax, "generate_subtasks")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

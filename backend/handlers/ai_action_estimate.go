@@ -45,7 +45,7 @@ func estimateEffortHandler(ax *aiActionContext) (any, string, int, int, string, 
 		return nil, "", 0, 0, "", &userError{status: 400, msg: "estimate_effort needs at least a title or description"}
 	}
 
-	systemPrompt := resolveActionPrompt("estimate_effort")
+	systemPrompt := resolveActionPromptWithPreset(ax, "estimate_effort")
 
 	var u strings.Builder
 	if ax.IssueData.IssueKey != "" {

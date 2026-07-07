@@ -139,7 +139,7 @@ criteria (at least two must hold):
 | # | Criterion | v2.0.0 status |
 |---|---|---|
 | 1 | A plugin or extensions system exists and is used by third parties | ✗ not yet |
-| 2 | Multiple AI agents / workflows can be orchestrated together | ✓ **met** — the `POST /api/ai/action` dispatcher exposes 11 admin-tunable actions (with sub-actions, per-row placement, prompt CRUD, dry-run); the `paimos` CLI, `paimos-mcp`, and the in-app AI assist surfaces compose three control planes around the same registry |
+| 2 | Multiple AI agents / workflows can be orchestrated together | ✓ **met** — the `POST /api/ai/action` dispatcher exposes 13 admin-tunable actions (with sub-actions, per-row placement, prompt CRUD, profiles, effort, prompt presets, and context packs); Implement-this exposes explicit Claude, Codex, OpenRouter draft, and local-model draft actions; the `paimos` CLI, `paimos-mcp`, and in-app AI surfaces compose around shared project context and safe provenance |
 | 3 | A public API enables integration with other tools | ✓ **met** — `/api/openapi.json`, `/api/schema` (self-describing), the agent-context layer (`/projects/:id/{repos,knowledge,anchors,graph,retrieve}` + `/projects/:id/agents/{name}.json` + `/issues/:id/anchors`), `paimos-mcp` for MCP clients |
 | 4 | A marketplace or template store is live | ✗ not yet |
 
@@ -473,9 +473,10 @@ added once they are earned — never at the cost of the previous ones.
 
 The v2.0.0 release earned the Phase 2 declaration via two of four
 trigger criteria (workflow orchestration through the `POST /api/ai/action`
-dispatcher with 11 admin-tunable actions; public API integration via
-`/api/openapi.json`, `/api/schema`, the project-context layer, and
-`paimos-mcp`). The remaining two criteria (third-party plugin loop;
+dispatcher, Implement-this runner/draft providers, and shared project context;
+public API integration via `/api/openapi.json`, `/api/schema`, the
+project-context layer, and `paimos-mcp`). The remaining two criteria
+(third-party plugin loop;
 marketplace / template store) frame the open Phase 2 roadmap. Brand
 color and trademark are Phase 2 *deliverables*, not Phase 2 gates,
 and stay deferred until they're earned in their own right.

@@ -359,6 +359,7 @@ func buildRouter() http.Handler {
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/reset", handlers.AIResetPrompt)
 			r.With(auth.RequireAdmin).Post("/ai/prompts/{id}/dry-run", handlers.AIDryRunPrompt)
 			r.Get("/ai/actions", handlers.AIListActions)
+			r.Get("/ai/execution-options", handlers.AIExecutionOptions)
 			r.Get("/ai/status", handlers.AIStatus)
 			r.Get("/ai/calls/me", handlers.AIListMyCalls)
 			r.Get("/ai/calls/me/export.csv", handlers.AIExportMyCallsCSV)
