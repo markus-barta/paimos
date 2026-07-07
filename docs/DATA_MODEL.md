@@ -530,6 +530,21 @@ The post-M101 migration ledger is active in `backend/db/db.go` and should stay r
 | M112 | `idempotency_keys` | Duplicate-prone create-write idempotency cache scoped by key, user, route, and method. |
 | M113 | `project_issue_counters`, `idx_issues_project_number_unique` | Atomic per-project issue-number allocation plus a database uniqueness backstop (PAI-554). |
 | M114 | `customers.tax_id`, `customers.company_register_number` | Explicit customer legal identifiers: UID/tax number and Firmenbuchnummer/FN (PAI-558). |
+| M115 | `issues.content_rev`, list-freshness triggers | Derived issue-list content marker for time entries, tags, relations, and tag metadata. |
+| M116 | `time_entries.material_lp` | Optional per-entry material LP for time-and-material reporting. |
+| M117 | `entity_embeddings.provider/status/error` | Retrieval metadata for provider and degraded indexing state. |
+| M118 | `issue_relations.type='parent'` | Backfill and mirror hierarchy into parent edges while keeping legacy column compatibility. |
+| M119 | `idx_issue_relations_one_parent` | Database invariant: at most one parent edge per child. |
+| M120 | `issues.parent_id` drop | Parent relation edge becomes the hierarchy source of truth. |
+| M121 | `issue_relations.type='cost_unit'/'release'` | Typed relation edges for cost-unit and release containers. |
+| M122 | cost-unit/release backfill + unique indexes | Create missing containers, edge labelled issues, and enforce one edge per ticket. |
+| M123 | `issues.cost_unit`, `issues.release` drop | Cost-unit/release relation edges become the source of truth. |
+| M124 | `issues.content_revised_at`, `issues.deps_reviewed_at` | Knowledge dependency review timestamps for computed needs-re-review state. |
+| M125 | `agent_runs` | Implement-this run lifecycle records. |
+| M126 | `auto_watch_subscriptions.can_implement` | Runner capability advertisement for implement-capable subscribers. |
+| M127 | `idx_agent_runs_active_issue` | Database invariant: at most one active implement run per issue. |
+| M128 | `agent_runs.claimed_by` | Claim ownership for queued-to-running implement runs. |
+| M129 | `agent_runs` provider/action fields, `auto_watch_subscriptions.actions_json` | Explicit implement-this provider/action metadata and runner capability payloads. |
 
 PAI-553 tracks the remaining hardening: keep this ledger and the published schema version aligned whenever future migrations land.
 

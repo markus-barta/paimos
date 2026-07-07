@@ -39,24 +39,22 @@ the team board.
 Single Go binary serving a Vue SPA on one port, backed by SQLite. Docker
 up, browser open, done.
 
-### What's new in v3.5
+### What's new in v4.7
 
-- **Customer-facing report summaries.** Two admin-tunable AI actions
-  (`customer_rewrite` for warm Apple-Notes-Stil German release-note copy,
-  `exec_summary` for technical TL;DRs) write into a per-issue
-  `report_summary` field used by the Projektbericht PDF and the portal
-  acceptance page (PAI-418). Bulk generator runs 3 AI workers in
-  parallel with 429/5xx retry-with-backoff, ETA + items/min throughput,
-  resume after accidental close, and a pre-run cost estimate.
-- **Per-hunk diff decisions.** The diff overlay (optimize / translate /
-  customer-rewrite / executive-summary / tone-check) gained per-hunk
-  Keep/Reject toggles in v3.5.1 (PAI-219). Keep one paragraph of an AI
-  rewrite, reject another — finally not all-or-nothing.
-- **AI cost tracking, repaired.** The per-call cost lookup is no longer
-  silent-zero when the active model isn't in a curated bucket (PAI-448).
-- **Acceptance workflow.** Projektbericht PDF snapshots, QR-code +
-  short-URL portal acceptance, batch-accept of included issues, signed
-  artifact upload (v3.4.10).
+- **Live project changes.** Authenticated `GET /api/changes` streams
+  metadata-only mutation events into issue and project views, so lists
+  refresh from real writes instead of waiting for coarse polling.
+- **Implement-this provider actions.** Claude Code and Codex are now
+  explicit runner actions with capability-aware UI labels, action/run
+  metadata, and clearer review status on issue lists and detail views.
+- **Claude Code adapter extracted.** The reference adapter now lives in
+  its own public repo at
+  <https://github.com/markus-barta/paimos-adapter-claude-code>; PAIMOS
+  keeps a bundled fallback so existing `paimos skill render --harness
+  claude-code` workflows continue to work.
+- **Knowledge-plane polish.** Project open-ticket counts now exclude
+  knowledge entries, and knowledge updates preserve existing metadata
+  unless callers explicitly replace it.
 
 > The [phase-1 → phase-2 brand transition](docs/brand/BRAND.md#phasing-plan)
 > story (v2.0 milestone — workflow orchestration through `POST /api/ai/action`
@@ -103,21 +101,20 @@ up, browser open, done.
   retry-with-backoff, ETA, throughput, resume-after-close, and a
   pre-run cost estimate.
 - **Project Context for code-aware agents.** A structured surface above
-  tickets: linked `repos`, project `manifests` (stack, commands,
-  services, owners, NFRs, ADRs), issue→file `anchors`, a typed entity
+  tickets: linked `repos`, the unified `knowledge` plane (memories,
+  runbooks, guidelines, external systems, related projects), issue→file
+  `anchors`, canonical `agents/{name}.json` artifacts, a typed entity
   `graph`, and a mixed-context `retrieve` API. Agents stop grepping six
   issues to figure out which repo to clone and where the work actually
-  lives. The manifest editor is a three-tab surface (Manifest /
-  Guardrails / Glossary) with a per-tab "Structure with AI" button that
-  turns prose into structured JSON via the unified `/ai/action`
-  dispatcher. See
+  lives. See
   [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
   and the route group in
   [`api-minimal.md`](docs/api-minimal.md#agent-context).
 - **Agent-native toolchain.** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
   [`paimos-mcp`](docs/AGENT_INTERFACE.md#6-mcp-integration) facade for
   Claude Desktop and friends. File-first multi-line inputs, `--dry-run`,
-  `--json`, idempotent transitions, declarative YAML `apply` — no more
+  `--json`, idempotent transitions, declarative YAML `apply`, and a
+  harness-adapter registry/conformance suite — no more
   shell-quoted-JSON foot-gun.
 - **Self-describing API.** `GET /api/schema` is the single source of
   truth for enums, status transitions, relation types, and field
@@ -550,7 +547,7 @@ obligation.
 - Optional MinIO for attachments (graceful disable)
 - Optional SMTP for password reset (dev mode = log to stdout)
 - SQLite with WAL + 5-second busy timeout + connection pool
-- 108 additive migrations run on startup
+- Additive migrations run on startup
 - Health endpoint: `GET /api/health` → `{ "status": "ok", "service": "...", "version": "<VERSION>" }` (`version` is stamped from `VERSION` at build time; local non-Docker builds report `"dev"`)
 - Instance endpoint: `GET /api/instance` (label, hostname,
   attachments-enabled flag)
@@ -585,6 +582,9 @@ obligation.
 - **Schema discovery**: `GET /api/schema` — versioned enums,
   transitions, entity shapes, conventions. Public, strong-ETagged,
   `Cache-Control: public, max-age=300`
+- **Live changes**: `GET /api/changes` — authenticated SSE feed of
+  mutation-log events with project access filtering and metadata-only
+  payloads
 - **Bulk**: `POST /api/projects/{key}/issues/batch` (atomic
   create-many with same-batch `parent_ref:"#N"` cross-refs),
   `PATCH /api/issues` (atomic update-many by ref),

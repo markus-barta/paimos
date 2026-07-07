@@ -378,13 +378,14 @@ External harnesses (e.g. cursor, aider, your-tool) plug into
 `paimos skill render` via the adapter SDK at `docs/adapter-protocol.md`:
 
 1. A discoverable adapter is a directory on `$PAIMOS_ADAPTER_PATH`
-   containing a `manifest.json` (declared name, version, render
-   capabilities) plus the rendering binary.
-2. Adapters speak a small line-oriented protocol over stdin/stdout —
-   PAIMOS hands them the canonical agent artifact JSON; they emit the
-   harness-specific file path + content.
-3. `paimos skill test-adapter <path>` runs the PAI-332 conformance
-   suite — drop-in CI gate for adapter authors.
+   containing `paimos-adapter.json` plus an executable named
+   `paimos-adapter-<name>`.
+2. External adapters implement three verbs: `render --input -`,
+   `describe`, and `validate --input -`. PAIMOS writes the managed
+   header and output path; the adapter owns only the canonical-agent
+   JSON to harness-specific content transform.
+3. `paimos skill test-adapter <name>` runs the PAI-332 conformance
+   suite. Passing conformance is the gate for public registry entries.
 
 ### Changing brand defaults
 
