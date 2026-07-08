@@ -55,11 +55,11 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(p.logo_path, ''),
 		       COALESCE(MAX(i.updated_at), '') as last_activity,
 		       COUNT(CASE
-		               WHEN i.status NOT IN ('done','delivered','cancelled')
+		               WHEN i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')
 		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
 		              THEN 1 END) as open_issue_count,
 		       COUNT(CASE
-		               WHEN i.status IN ('done','delivered')
+		               WHEN i.status IN ('done','delivered','accepted','invoiced')
 		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
 		              THEN 1 END) as done_issue_count,
 		       COUNT(CASE
@@ -541,7 +541,7 @@ func loadProjectCounts(projectID int64) (projectCounts, error) {
 	err := db.DB.QueryRow(`
 		SELECT
 		  COUNT(CASE
-		          WHEN status NOT IN ('done','delivered','cancelled')
+		          WHEN status NOT IN ('done','delivered','accepted','invoiced','cancelled')
 		           AND type NOT IN ('memory','runbook','external_system','related_project','guideline')
 		         THEN 1 END),
 		  COUNT(CASE
@@ -590,17 +590,26 @@ func getProjectByID(id int64) *models.Project {
 		       p.product_owner, p.customer_label, p.customer_id,
 		       COALESCE(c.name, ''),
 		       p.created_at, p.updated_at,
-		       COUNT(i.id),
+		       COUNT(CASE WHEN i.type NOT IN ('memory','runbook','external_system','related_project','guideline') THEN 1 END),
 		       COALESCE(p.logo_path, ''),
 		       COALESCE(MAX(i.updated_at), ''),
-		       COUNT(CASE WHEN i.status NOT IN ('done','delivered','cancelled') THEN 1 END),
-		       COUNT(CASE WHEN i.status IN ('done','delivered') THEN 1 END),
-		       COUNT(CASE WHEN i.status != 'cancelled' THEN 1 END),
+		       COUNT(CASE
+		               WHEN i.status NOT IN ('done','delivered','accepted','invoiced','cancelled')
+		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		              THEN 1 END),
+		       COUNT(CASE
+		               WHEN i.status IN ('done','delivered','accepted','invoiced')
+		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		              THEN 1 END),
+		       COUNT(CASE
+		               WHEN i.status != 'cancelled'
+		                AND i.type NOT IN ('memory','runbook','external_system','related_project','guideline')
+		              THEN 1 END),
 		       p.rate_hourly, p.rate_lp,
 		       c.rate_hourly, c.rate_lp,
 		       COALESCE(p.ai_defaults_json, ''), COALESCE(p.ai_policy_json, '')
 		FROM projects p
-		LEFT JOIN issues i    ON i.project_id=p.id
+		LEFT JOIN issues i    ON i.project_id = p.id AND i.deleted_at IS NULL
 		LEFT JOIN customers c ON c.id = p.customer_id
 		WHERE p.id=?
 		GROUP BY p.id

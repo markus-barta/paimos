@@ -21,7 +21,7 @@ const VIEWPORTS = [
   { name: 'narrow', width: 390, height: 844 },
 ] as const
 
-async function devLogin(request: APIRequestContext, username = 'dev_admin'): Promise<void> {
+async function devLogin(request: APIRequestContext, username = 'debug-admin'): Promise<void> {
   const res = await request.post(`${API}/api/auth/dev-login`, {
     data: { username, token: TOKEN },
   })
@@ -116,20 +116,30 @@ async function stabilizePage(page: Page): Promise<void> {
       FrozenDate.UTC = RealDate.UTC;
       FrozenDate.prototype = RealDate.prototype;
       globalThis.Date = FrozenDate;
+      const css = \`
+        html { scroll-behavior: auto !important; }
+        *, *::before, *::after {
+          animation-delay: 0s !important;
+          animation-duration: 0s !important;
+          caret-color: transparent !important;
+          transition-delay: 0s !important;
+          transition-duration: 0s !important;
+        }
+      \`;
+      const installStyle = () => {
+        if (document.getElementById('paimos-visual-stability')) return;
+        const style = document.createElement('style');
+        style.id = 'paimos-visual-stability';
+        style.textContent = css;
+        document.head.appendChild(style);
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', installStyle, { once: true });
+      } else {
+        installStyle();
+      }
     })();
   `)
-  await page.addStyleTag({
-    content: `
-      html { scroll-behavior: auto !important; }
-      *, *::before, *::after {
-        animation-delay: 0s !important;
-        animation-duration: 0s !important;
-        caret-color: transparent !important;
-        transition-delay: 0s !important;
-        transition-duration: 0s !important;
-      }
-    `,
-  })
 }
 
 async function gotoAndSettle(page: Page, path: string): Promise<void> {

@@ -55,9 +55,11 @@ just visual-baseline --update-snapshots # refresh baselines after intended UI ch
 
 `just visual-baseline` boots the same throwaway dev-login stack as
 `scripts/e2e.sh`, generates local fixture passwords at runtime, and needs no
-production secrets. The test freezes the browser clock so relative timestamps
-do not churn the PNGs. Baselines live in `frontend/e2e/__screenshots__/`; review
-changed images in git before committing an update.
+production secrets. Internal admin captures use the `debug-admin` fixture so
+2FA reminder chrome does not pollute the baseline. The test freezes the browser
+clock so relative timestamps do not churn the PNGs. Baselines live in
+`frontend/e2e/__screenshots__/`; review changed images in git before committing
+an update.
 
 ## Notes
 
