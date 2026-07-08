@@ -5,6 +5,15 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.6] — 2026-07-08
+
+### Fixed
+
+- **Project-list counters ignore soft-deleted issues (PAI-677).** The
+  `/api/projects` aggregate now joins only non-deleted issue rows, matching
+  `/api/projects/:id` counts and preventing deleted backlog rows from
+  inflating project overview/list open totals.
+
 ## [4.7.5] — 2026-07-08
 
 ### Added
