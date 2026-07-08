@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.3] — 2026-07-08
+
+### Changed
+
+- **Issue-list chrome has one saved-view control (PAI-669).** Global and
+  project issue lists no longer render a second saved-view tab strip above the
+  table; the shared IssueList picker owns the active view, filters, and display
+  options. The picker row is grouped more tightly, server-backed counts now read
+  as loaded/total once, and the views dropdown puts defaults, personal views,
+  shared views, and epic-column display preferences in one compact panel.
+
 ## [4.7.2] — 2026-07-08
 
 ### Fixed

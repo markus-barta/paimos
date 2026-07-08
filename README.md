@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <code>phase 2 — platform</code> · <code>v4.7.2</code> · <code>AGPL-3.0</code>
+  <code>phase 2 — platform</code> · <code>v4.7.3</code> · <code>AGPL-3.0</code>
 </p>
 
 <p align="center">
