@@ -15,7 +15,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useNewIssueStore } from '@/stores/newIssue'
 import { useDraggedIssue } from '@/stores/draggedIssue'
 import { storeToRefs } from 'pinia'
-import type { AgentActionCapability, Issue, ProjectAgent, Tag, SavedView, Sprint, User } from '@/types'
+import type { Issue, Tag, SavedView, Sprint, User } from '@/types'
 import type { Project } from '@/types'
 import { useViews, getLastViewId, setLastViewId } from '@/composables/useViews'
 import { useAuthStore } from '@/stores/auth'
@@ -25,7 +25,6 @@ import { useSearchStore } from '@/stores/search'
 import { useTableAppearance } from '@/composables/useTableAppearance'
 import { useIssueContext } from '@/composables/useIssueContext'
 import { formatInteger } from '@/composables/useNumberFormat'
-import type { AiExecutionOptionsCatalog, AiSelectorDefault } from '@/composables/useAiAction'
 
 // ── Extracted composables ──────────────────────────────────────────────────
 import { useIssueFilter } from '@/composables/useIssueFilter'
@@ -35,6 +34,7 @@ import { useSprintNav } from '@/composables/useSprintNav'
 import { useTreeView } from '@/composables/useTreeView'
 import { useSelection } from '@/composables/useSelection'
 import { useInlineEdit } from '@/composables/useInlineEdit'
+import { useIssueListRunActions } from '@/composables/useIssueListRunActions'
 
 // ── Extracted sub-components ──────────────────────────────────────────────
 import IssueTable from '@/components/IssueTable.vue'
@@ -666,93 +666,14 @@ function copyKey(key: string, event?: MouseEvent) {
   flash(`'${key}' copied to clipboard`)
 }
 
-const agentActions = ref<AgentActionCapability[]>([])
-const projectAgents = ref<ProjectAgent[]>([])
-const selectedAgentName = ref('')
-const rowLaunchDefault = ref<AiSelectorDefault | null>(null)
-
-function runActionAvailable(action: AgentActionCapability): boolean {
-  return action.available !== false && !action.unavailable_reason
-}
-
-async function loadAgentActions() {
-  if (isCustomerMode.value || props.projectId === undefined) {
-    agentActions.value = []
-    return
-  }
-  const byKey = new Map<string, AgentActionCapability>()
-  try {
-    const data = await api.get<{ runners: { actions?: AgentActionCapability[] }[] }>(
-      `/projects/${props.projectId}/runners`,
-    )
-    for (const runner of data.runners ?? []) {
-      for (const action of runner.actions ?? []) {
-        if (!byKey.has(action.action_key) && runActionAvailable(action)) byKey.set(action.action_key, action)
-      }
-    }
-  } catch {
-    // Keep draft providers below usable even when the runner endpoint flakes.
-  }
-  try {
-    const data = await api.get<AiExecutionOptionsCatalog>(
-      `/ai/execution-options?project_id=${props.projectId}`,
-    )
-    rowLaunchDefault.value = data.selector_defaults?.row_launch ?? null
-    for (const action of data.run_providers ?? []) {
-      if (!byKey.has(action.action_key) && runActionAvailable(action)) byKey.set(action.action_key, action)
-    }
-    syncSelectedAgentName()
-  } catch {
-    rowLaunchDefault.value = null
-    // Draft provider availability is optional for row-level quick actions.
-  }
-  const defaultActionKey = rowLaunchDefault.value?.action_key ?? ''
-  agentActions.value = [...byKey.values()].sort((a, b) => {
-    if (!defaultActionKey) return 0
-    if (a.action_key === defaultActionKey) return -1
-    if (b.action_key === defaultActionKey) return 1
-    return 0
-  })
-}
-
-function syncSelectedAgentName() {
-  if (!projectAgents.value.length) {
-    selectedAgentName.value = ''
-    return
-  }
-  if (selectedAgentName.value && !projectAgents.value.some(agent => agent.name === selectedAgentName.value)) {
-    selectedAgentName.value = ''
-  }
-  const defaultAgent = rowLaunchDefault.value?.agent_name ?? ''
-  if (!selectedAgentName.value && defaultAgent && projectAgents.value.some(agent => agent.name === defaultAgent)) {
-    selectedAgentName.value = defaultAgent
-    return
-  }
-  if (!selectedAgentName.value && projectAgents.value.length === 1) {
-    selectedAgentName.value = projectAgents.value[0].name
-  }
-}
-
-async function loadProjectAgentsForRuns() {
-  if (isCustomerMode.value || props.projectId === undefined) {
-    projectAgents.value = []
-    selectedAgentName.value = ''
-    return
-  }
-  try {
-    const data = await api.get<ProjectAgent[]>(`/projects/${props.projectId}/agents`)
-    projectAgents.value = Array.isArray(data) ? data : []
-    syncSelectedAgentName()
-  } catch {
-    projectAgents.value = []
-    selectedAgentName.value = ''
-  }
-}
-
-watch([() => props.projectId, isCustomerMode], () => {
-  void loadAgentActions()
-  void loadProjectAgentsForRuns()
-}, { immediate: true })
+const {
+  agentActions,
+  projectAgents,
+  selectedAgentName,
+} = useIssueListRunActions({
+  projectId: projectIdRef,
+  disabled: isCustomerMode,
+})
 
 type EpicMode = 'key' | 'title' | 'abbreviated'
 const epicDisplayMode = ref<EpicMode>((localStorage.getItem(EPIC_MODE_KEY) as EpicMode) || 'key')

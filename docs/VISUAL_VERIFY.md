@@ -41,6 +41,24 @@ proxy, navigates, waits for async lists to settle, and screenshots at
 | `PAIMOS_DEV_USER` | `dev_admin` | dev-login user (also `dev_member`, `dev_external`, …) |
 | `PAIMOS_DEV_LOGIN_TOKEN` | from token file | overrides the token file |
 
+## Regression baseline
+
+PAI-673 adds an opt-in Playwright screenshot baseline for the daily-work
+surfaces that most often regress: project issue list, issue detail / AI
+Workbench, settings, customer detail, and the customer portal dashboard. Each
+surface is captured at desktop and narrow widths.
+
+```sh
+just visual-baseline                    # compare against committed baselines
+just visual-baseline --update-snapshots # refresh baselines after intended UI changes
+```
+
+`just visual-baseline` boots the same throwaway dev-login stack as
+`scripts/e2e.sh`, generates local fixture passwords at runtime, and needs no
+production secrets. The test freezes the browser clock so relative timestamps
+do not churn the PNGs. Baselines live in `frontend/e2e/__screenshots__/`; review
+changed images in git before committing an update.
+
 ## Notes
 
 - Functional/layout breakage and obvious visual bugs are catchable here;

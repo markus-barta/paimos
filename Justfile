@@ -89,3 +89,8 @@ dev-up:
 # Bootstraps headless Chromium on first run. See docs/VISUAL_VERIFY.md.
 shot route="" out="/tmp/paimos-shot.png":
     @./scripts/visual-shot.sh "{{route}}" "{{out}}"
+
+# Run the committed daily-work visual baseline (boots throwaway dev stack).
+# Pass `--update-snapshots` after intentional UI changes.
+visual-baseline *FLAGS:
+    @PAIMOS_VISUAL_BASELINE=1 ./scripts/e2e.sh e2e/visual-daily-work.spec.ts {{FLAGS}}

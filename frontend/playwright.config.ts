@@ -6,6 +6,7 @@ import { defineConfig, devices } from '@playwright/test'
 // one debuggable place and the same script works on a dev box and on a runner.
 export default defineConfig({
   testDir: './e2e',
+  snapshotPathTemplate: '{testDir}/__screenshots__/{testFilePath}/{arg}{ext}',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

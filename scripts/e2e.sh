@@ -12,6 +12,31 @@ TOKDIR=$(mktemp -d)
 printf 'PAIMOS_DEV_LOGIN_TOKEN=%s\n' "$E2E_TOKEN" >"$TOKDIR/token.env"
 export PAIMOS_DEV_LOGIN_TOKEN_FILE="$TOKDIR/token.env"
 
+# Role-smoke tests use the richer debug-* fixture accounts because they carry
+# explicit editor/viewer/none and portal grants. Generate throwaway local
+# passwords only so dev-seed can create those accounts; tests still authenticate
+# through dev-login and never print or persist these values.
+debug_password() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    printf 'e2e-debug-password-local-only-not-secret-%s-%s-%s-%s\n' "$RANDOM" "$RANDOM" "$RANDOM" "$RANDOM"
+  fi
+}
+
+ensure_debug_password() {
+  local name=$1
+  if [[ -z "${!name:-}" ]]; then
+    export "$name=$(debug_password)"
+  fi
+}
+
+export PAIMOS_DEBUG_ACCOUNTS=1
+ensure_debug_password PAIMOS_DEBUG_SUPERADMIN_PASSWORD
+ensure_debug_password PAIMOS_DEBUG_ADMIN_PASSWORD
+ensure_debug_password PAIMOS_DEBUG_USER_PASSWORD
+ensure_debug_password PAIMOS_DEBUG_CUSTOMER_PASSWORD
+
 # The backend defaults DATA_DIR to /app/data (the container path), which isn't
 # writable on a CI runner with no direnv to point it elsewhere. Give it an
 # isolated, writable, throwaway dir so dev-seed can create the DB.
@@ -33,7 +58,9 @@ cleanup() {
   pkill -f 'dev-up-backend' 2>/dev/null || true
   pkill -f 'vite' 2>/dev/null || true
   rm -rf "$TOKDIR"
-  [[ "${CLEAN_DATA_DIR:-}" == 1 ]] && rm -rf "$DATA_DIR"
+  if [[ "${CLEAN_DATA_DIR:-}" == 1 ]]; then
+    rm -rf "$DATA_DIR"
+  fi
 }
 trap cleanup EXIT
 
