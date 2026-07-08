@@ -39,27 +39,26 @@ the team board.
 Single Go binary serving a Vue SPA on one port, backed by SQLite. Docker
 up, browser open, done.
 
-### What's new in v4.7
+### What's new in v4.8
 
-- **Live project changes.** Authenticated `GET /api/changes` streams
-  metadata-only mutation events into issue and project views, so lists
-  refresh from real writes instead of waiting for coarse polling.
-- **Implement-this provider actions.** Claude Code and Codex are now
-  explicit runner actions with capability-aware UI labels, action/run
-  metadata, and clearer review status on issue lists and detail views.
-- **AI control-plane next phase.** AI actions and Implement-this now share
+- **Production SSO.** Generic OIDC login is live-ready with auth-code +
+  PKCE, verified-email mapping, invite-only default provisioning, and
+  local PAIMOS authorization preserved. The maintainer's ppm deployment
+  now exercises this path against Zitadel.
+- **AI control plane stabilized.** AI actions and Implement-this now share
   profile, effort, prompt preset, context pack, provider/runner, and
   project-agent metadata. OpenRouter and OpenAI-compatible local model
   endpoints can draft implementation notes without local shell or deploy
   authority; Claude/Codex runners remain the trusted repo-editing path.
-- **Claude Code adapter extracted.** The reference adapter now lives in
-  its own public repo at
-  <https://github.com/markus-barta/paimos-adapter-claude-code>; PAIMOS
-  keeps a bundled fallback so existing `paimos skill render --harness
-  claude-code` workflows continue to work.
-- **Knowledge-plane polish.** Project open-ticket counts now exclude
-  knowledge entries, and knowledge updates preserve existing metadata
-  unless callers explicitly replace it.
+- **Agent implementation paths are explicit.** Claude Code and Codex are
+  first-class local runner actions with capability-aware UI labels,
+  action/run provenance, and project-agent context handoff.
+- **Knowledge-plane polish.** Project open-ticket counts exclude
+  knowledge entries, prompt-ready knowledge can feed AI actions/runs, and
+  knowledge updates preserve existing metadata unless callers explicitly
+  replace it.
+- **Release and public-site housekeeping.** Docs, trust claims, and the
+  public website have been aligned with the current SSO and AI surfaces.
 
 > The [phase-1 → phase-2 brand transition](docs/brand/BRAND.md#phasing-plan)
 > story (v2.0 milestone — workflow orchestration through `POST /api/ai/action`

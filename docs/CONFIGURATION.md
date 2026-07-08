@@ -102,9 +102,12 @@ Provisioning rules:
   who run IdPs that omit `email_verified` should set the claim to `true`
   on the IdP side or the redirect lands on
   `/login?sso_error=email_required`.
-- For Zitadel, configure a web application with authorization code + PKCE,
-  add the exact `OIDC_REDIRECT_URL` as an allowed redirect URI, and make
-  sure the `email` and `email_verified` claims are present in userinfo.
+- For Zitadel, configure an authorization-code + PKCE application, add
+  the exact `OIDC_REDIRECT_URL` as an allowed redirect URI, and make sure
+  the `email` and `email_verified` claims are present in userinfo. PAIMOS
+  works well with a public PKCE client (`OIDC_CLIENT_SECRET` unset);
+  confidential clients are supported when the IdP accepts
+  `client_secret_post` at the token endpoint.
 
 The id_token signature is not verified locally; trust comes from the
 TLS-protected userinfo round trip back to the issuer. This trade-off

@@ -44,7 +44,7 @@ A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* refer
 
 ## 2 · Active reference deployments
 
-Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy target for current work; pmo is historical/inactive after the BytePoets exit. The current ppm proof is the live `4.7.0` deployment verified on 2026-07-07.
+Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy target for current work; pmo is historical/inactive after the BytePoets exit. The current ppm proof is the live `4.8.0` deployment verified on 2026-07-08.
 
 ### 2.1 · ppm · `pm.barta.cm`
 
@@ -56,9 +56,9 @@ Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy
 | Reverse proxy | Traefik (TLS via Let's Encrypt / `default` resolver) |
 | Attachments | MinIO (separate bucket) |
 | AI assist | OpenRouter (configured), `anthropic/claude-sonnet-4.5` model |
-| OIDC | not configured (local password + TOTP) |
+| OIDC | configured against Zitadel (`auth.inspr.at`) via generic OIDC + PKCE; local password + TOTP remain available |
 | Active since | v1.x (continuously upgraded; no fresh-install in current era) |
-| Last verified runtime | 2026-07-07: `4.7.0` (`/api/health`, `paimos --instance ppm doctor`) |
+| Last verified runtime | 2026-07-08: `4.8.0` (`/api/health`, OIDC status, SSO browser round-trip) |
 | Backup pattern | per-deploy via `scripts/deploy.sh`; `$BACKUP_ROOT` on the same host (acknowledged limitation tracked under [§3 Findings](#3--structured-findings) F-08) |
 | Audience | the maintainer + a small group; canary for every release before pmo |
 
@@ -111,6 +111,7 @@ Findings logged in chronological order. Each finding has the **observation** (wh
 | **F-11** | 2026-04-26 | both | Test report visibility in production was implicit — a deploy could ship a green-CI version with no actual test reports surfaced in the admin UI | The product confused "no reports" with "ready" | Test-report runtime visibility hardening: explicit `ready` / `partial` / `missing_reports` states surfaced; admin-side bundle ingest path | v2.0.1 / PAI-188 |
 | **F-12** | 2026-04-26 | both | The empty-AI-action-catalog F-01 fix was tested by hand but had no regression coverage — a future refactor could regress it silently | Bug-fix-without-test is debt | `ai_action_catalog_test.go` covers the catalogue assembly across registry / placement / admin override; CI regression layer covers it | v2.0.1 / PAI-189 wave-1 |
 | **F-13** | 2026-06-01 | ppm | ppm was behind pmo even though the release flow expects ppm to lead | Deploy config edited a deprecated compose path; live ppm compose came from nixcfg | `scripts/deploy.ppm.conf` now points at the nixcfg compose directory and the nixcfg ppm image pin is `3.8.3`; `scripts/check-knowledge-freshness.sh` catches stale runtime/version claims before release | PAI-551 |
+| **F-14** | 2026-07-08 | ppm | The public SSO claim was shipped before the reference-deployment register reflected a real OIDC login | PAIMOS had app-side generic OIDC support, but the production Zitadel app/env bridge was not yet wired | PAI-680 shipped generic OIDC + PKCE, ppm was wired to `auth.inspr.at`, the browser round-trip succeeded, and INSPR-198 records the remaining declarative-import follow-up for the imperatively created Zitadel app | PAI-680 / INSPR-198 |
 
 ### What this list demonstrates
 
@@ -137,13 +138,13 @@ Per workflow, has each reference deployment exercised it in a way that produced 
 | Branding customisation | ✓ (per-instance branding via Settings → Visual) | ✓ (per-instance branding) |
 | Multi-user roles + permissions | ✓ (admin + member combinations) | ✓ |
 | External-role / portal | ❌ (not exercised in production yet) | partial |
-| OIDC SSO | ❌ (not configured) | ❌ (not configured) |
+| OIDC SSO | ✓ (Zitadel via generic OIDC + PKCE) | ❌ (not configured) |
 | Attachments via MinIO | ✓ | ✓ |
 | Email password-reset (SMTP) | partial | ✓ |
 | Cosign signature verification on a release pull | ✓ (verified during release process) | ✓ |
 | SBOM attestation pull | ✓ (verified) | ✓ |
 
-**Reading the matrix:** the green rows are workflows we have observational evidence for. The red rows are workflows whose code paths are tested in CI but haven't been exercised against real production data; that's an honest gap, not a defect. **External-role / portal**, **OIDC SSO**, and **incident response above tabletop** are the most prominent.
+**Reading the matrix:** the green rows are workflows we have observational evidence for. The red rows are workflows whose code paths are tested in CI but haven't been exercised against real production data; that's an honest gap, not a defect. **External-role / portal** and **incident response above tabletop** remain the most prominent gaps after ppm's OIDC SSO validation.
 
 ---
 
@@ -166,7 +167,7 @@ The most useful third deployment would be one in **a different environment class
 - **Air-gapped / on-prem** (validates the no-egress posture in earnest)
 - **Larger team** (validates multi-user authz scaling; the current ppm + pmo are small-team)
 - **Different OS / arch** (e.g., arm64 host) — validates cross-arch image builds
-- **OIDC-configured** (validates the SSO path against a real IdP)
+- **OIDC-configured outside the maintainer's own instance** (validates the SSO path against a real IdP and a non-maintainer operator)
 - **Heavy-attachment workload** (validates MinIO at scale)
 
 Operators considering becoming a reference deployment should reach out via the disclosure / support channels in [`SECURITY.md`](../SECURITY.md). The bar is high but the value to the project is correspondingly high — this register is the difference between a maintainer's-personal-tool and a production-validated FOSS project.
