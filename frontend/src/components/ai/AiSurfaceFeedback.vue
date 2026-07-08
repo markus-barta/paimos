@@ -377,7 +377,7 @@ async function undoLastApply() {
       :context-pack-label="optimizeOverlay.contextPackLabel"
       :context-truncated="optimizeOverlay.contextTruncated"
       :retrying="optimizeOverlay.retrying"
-      @accept="aiOptimize.accept()"
+      @accept="(text) => aiOptimize.accept(text)"
       @reject="aiOptimize.reject()"
       @retry="aiOptimize.retry()"
     />

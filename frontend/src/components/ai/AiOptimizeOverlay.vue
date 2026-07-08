@@ -33,7 +33,7 @@
      diff-match-patch then.
 -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { lineDiff } from './lineDiff'
 
 const props = defineProps<{
@@ -94,6 +94,7 @@ const executionMeta = computed(() => {
 // ref on every mutation.
 type Decision = 'accept' | 'reject'
 const decisions = reactive(new Map<number, Decision>())
+const focusedHunkId = ref<number | null>(null)
 
 watch(
   diff,
@@ -115,11 +116,11 @@ function decisionFor(id: number): Decision {
 function setDecision(id: number, value: Decision) {
   decisions.set(id, value)
 }
-function toggleDecision(id: number) {
-  setDecision(id, decisionFor(id) === 'accept' ? 'reject' : 'accept')
-}
 function setAllDecisions(value: Decision) {
   for (const h of diff.value.hunks) decisions.set(h.id, value)
+}
+function focusHunk(id: number) {
+  focusedHunkId.value = id
 }
 
 // Map row index → hunk id (or null for eq rows), used by the row
@@ -187,6 +188,11 @@ function onRetry() {
 // Esc closes the overlay (= reject). Click on backdrop also closes.
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') onReject()
+  const key = e.key.toLowerCase()
+  if (focusedHunkId.value != null && (key === 'k' || key === 'r')) {
+    e.preventDefault()
+    setDecision(focusedHunkId.value, key === 'k' ? 'accept' : 'reject')
+  }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
@@ -268,6 +274,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             v-for="(h, idx) in diff.hunks"
             :key="h.id"
             :class="['ai-hunk', `ai-hunk--${decisionFor(h.id)}`]"
+            @focusin="focusHunk(h.id)"
           >
             <span class="ai-hunk-tag">Hunk {{ idx + 1 }}</span>
             <div class="ai-hunk-preview">
@@ -280,15 +287,27 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                 <code>{{ h.added.join(' / ') }}</code>
               </div>
             </div>
-            <button
-              type="button"
-              class="ai-hunk-toggle"
-              :class="{ 'ai-hunk-toggle--active': decisionFor(h.id) === 'accept' }"
-              :title="decisionFor(h.id) === 'accept' ? 'Reject this hunk to keep the original text' : 'Keep the AI rewrite for this hunk'"
-              @click="toggleDecision(h.id)"
-            >{{ decisionFor(h.id) === 'accept' ? 'Keep' : 'Reject' }}</button>
+            <div class="ai-hunk-controls" role="group" :aria-label="`Decision for hunk ${idx + 1}`">
+              <button
+                type="button"
+                class="ai-hunk-choice"
+                :class="{ 'ai-hunk-choice--active': decisionFor(h.id) === 'accept' }"
+                :aria-pressed="decisionFor(h.id) === 'accept'"
+                title="Keep this AI rewrite hunk"
+                @click="setDecision(h.id, 'accept')"
+              >Keep</button>
+              <button
+                type="button"
+                class="ai-hunk-choice"
+                :class="{ 'ai-hunk-choice--active': decisionFor(h.id) === 'reject' }"
+                :aria-pressed="decisionFor(h.id) === 'reject'"
+                title="Reject this hunk and keep the original text"
+                @click="setDecision(h.id, 'reject')"
+              >Reject</button>
+            </div>
           </li>
         </ul>
+        <p class="ai-hunks-keyboard">Keyboard: focus a hunk, press K to keep or R to reject.</p>
       </div>
 
       <footer class="ai-overlay-foot">
@@ -469,15 +488,42 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .ai-hunk-removed code { color: #b91c1c; }
 .ai-hunk-added code { color: #047857; }
 .ai-hunk-side-tag { font-weight: 700; opacity: .6; font-family: inherit; }
-.ai-hunk-toggle {
-  font-size: 11.5px; font-weight: 600;
-  background: transparent; color: var(--text-muted);
-  border: 1px solid var(--border); border-radius: 4px;
-  padding: .2rem .65rem;
-  cursor: pointer;
-  min-width: 64px;
+.ai-hunk-controls {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--bp-blue, #2b6cb0) 22%, var(--border));
+  border-radius: 999px;
+  background: #fff;
 }
-.ai-hunk-toggle--active { background: var(--bp-blue-pale, #e8f1fb); color: var(--bp-blue-dark, #155078); border-color: var(--bp-blue, #4a7); }
+.ai-hunk-choice {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: .2rem .55rem;
+  cursor: pointer;
+}
+.ai-hunk-choice + .ai-hunk-choice {
+  border-left: 1px solid color-mix(in srgb, var(--bp-blue, #2b6cb0) 14%, var(--border));
+}
+.ai-hunk-choice:hover,
+.ai-hunk-choice:focus-visible {
+  background: color-mix(in srgb, var(--bp-blue, #2b6cb0) 7%, #fff);
+  color: var(--bp-blue-dark, #1f4d75);
+  outline: none;
+}
+.ai-hunk-choice--active {
+  background: color-mix(in srgb, var(--bp-blue, #2b6cb0) 14%, #fff);
+  color: var(--bp-blue-dark, #1f4d75);
+}
+.ai-hunks-keyboard {
+  margin: .45rem 0 0;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
 
 /* ── Footer ─────────────────────────────────────────────────────── */
 .ai-overlay-foot {

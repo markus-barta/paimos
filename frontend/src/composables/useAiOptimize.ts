@@ -32,7 +32,8 @@
 //   - overlay: the AiOptimizeOverlay state slot (use with v-if)
 //   - run(): start an optimize call
 //   - retry(): re-run the same call (used by the overlay's Retry btn)
-//   - accept(): apply the optimized text via the saved onAccept cb
+//   - accept(): apply the optimized text (or a per-hunk mixed text) via
+//     the saved onAccept cb
 //   - reject(): close the overlay without applying
 //
 // IMPORTANT consumer note: the returned object is a plain object,
@@ -454,10 +455,10 @@ async function retry(): Promise<void> {
   }
 }
 
-function accept(): void {
+function accept(textOverride?: string): void {
   if (!overlay.visible || !pendingArgs) return
   const cb = pendingArgs.onAccept
-  const text = overlay.optimized
+  const text = textOverride ?? overlay.optimized
   // Reset before calling the callback so a callback that triggers
   // a re-render with the new text doesn't see a stale overlay.
   resetOverlayState()

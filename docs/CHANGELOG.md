@@ -5,6 +5,17 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.2] — 2026-07-08
+
+### Fixed
+
+- **AI optimize per-hunk decisions apply the selected mix (PAI-219).** The
+  optimize diff overlay now sends its mixed keep/reject text through the
+  shared AI surface instead of applying the full model output regardless of
+  hunk decisions. The hunk controls are explicit Keep/Reject segments with
+  keyboard support (`K` keep, `R` reject) and regression coverage for a
+  multi-hunk mixed accept flow.
+
 ## [4.7.1] — 2026-07-08
 
 ### Added
