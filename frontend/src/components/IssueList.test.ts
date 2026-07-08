@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { api } from '@/api/client'
 import i18n from '@/i18n'
 import { provideIssueContext } from '@/composables/useIssueContext'
-import type { Issue } from '@/types'
+import type { Issue, SavedView } from '@/types'
 import IssueList from './IssueList.vue'
 
 vi.mock('@/api/client', () => ({
@@ -186,6 +186,25 @@ function makeIssue(id: number): Issue {
   }
 }
 
+function makeSavedView(id: number, title: string): SavedView {
+  return {
+    id,
+    user_id: 0,
+    owner_username: 'system',
+    title,
+    description: '',
+    columns_json: '[]',
+    filters_json: '{}',
+    is_shared: true,
+    is_admin_default: true,
+    sort_order: 0,
+    hidden: false,
+    pinned: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
 async function settle() {
   for (let i = 0; i < 5; i += 1) {
     await Promise.resolve()
@@ -198,6 +217,7 @@ function mountIssueList(
   props: {
     projectId?: number
     resultTotal?: number
+    resultHasMore?: boolean
     selectionFingerprint?: string
     mode?: 'internal' | 'customer'
     statusLabels?: Record<string, string>
@@ -227,6 +247,7 @@ function mountIssueList(
         :issues="issues"
         :project-id="props.projectId"
         :result-total="props.resultTotal"
+        :result-has-more="props.resultHasMore"
         :selection-fingerprint="props.selectionFingerprint"
         :mode="props.mode"
         :status-labels="props.statusLabels"
@@ -303,6 +324,39 @@ describe('IssueList progressive rendering', () => {
     expect(mounted.el.querySelector('.issue-count')?.textContent).toContain('443 issues')
     expect(mounted.el.querySelector('.issue-count')?.textContent).not.toContain('showing')
     expect(mounted.el.querySelector('.issue-count-link')).toBeNull()
+
+    mounted.unmount()
+  })
+
+  it('summarizes server-loaded results without repeating the issue count', async () => {
+    const mounted = mountIssueList(Array.from({ length: 100 }, (_, i) => makeIssue(i + 1)), {
+      resultTotal: 596,
+      resultHasMore: true,
+    })
+    await settle()
+
+    const countText = mounted.el.querySelector('.issue-count')?.textContent ?? ''
+    expect(countText).toContain('100 loaded · 596 total')
+    expect(countText).toContain('load all')
+    expect(countText).not.toContain('100 issues')
+
+    mounted.unmount()
+  })
+
+  it('uses the IssueList view picker as the single saved-view control', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/views') return Promise.resolve([makeSavedView(10, 'Default')]) as never
+      return Promise.resolve([]) as never
+    })
+
+    const mounted = mountIssueList([makeIssue(1)])
+    await settle()
+
+    const viewButtons = mounted.el.querySelectorAll('.views-btn')
+    expect(viewButtons).toHaveLength(1)
+    expect(viewButtons[0]?.textContent).toContain('View')
+    expect(viewButtons[0]?.textContent).toContain('Default')
+    expect(mounted.el.querySelector('.view-tabs')).toBeNull()
 
     mounted.unmount()
   })

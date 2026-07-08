@@ -159,6 +159,8 @@ describe('IssuesView search summary', () => {
     const header = document.getElementById('app-header-left')!
     expect(issueUrls[0]).toBe('/issues?fields=list&limit=100&offset=0&sort=created_at&order=desc')
     expect(header.textContent).toContain('123 issues · 100 loaded')
+    expect(document.querySelector('.view-tabs')).toBeNull()
+    expect(api.get).not.toHaveBeenCalledWith('/views')
 
     // Search summary is view-level reactive (the controller search itself is
     // debounced and covered by issueListV2Matrix.test.ts).

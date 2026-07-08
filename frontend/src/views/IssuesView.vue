@@ -2,7 +2,6 @@
 import LoadingText from "@/components/LoadingText.vue";
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import IssueList from '@/components/IssueList.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import { api } from '@/api/client'
 import { useIssueQuery } from '@/composables/useIssueQuery'
 import { createInternalFetcher, controllerFreshnessPath } from '@/composables/issueQueryFetchers'
@@ -12,7 +11,7 @@ import { useFreshness } from '@/composables/useFreshness'
 import { useIssueRefreshPromptStore } from '@/stores/issueRefreshPrompt'
 import { issueSearchSummary } from '@/utils/issueSearchSummary'
 import { formatInteger } from '@/composables/useNumberFormat'
-import type { Issue, IssueListEnvelope, Project, Tag, Sprint, User, SavedView } from '@/types'
+import type { Issue, IssueListEnvelope, Project, Tag, Sprint, User } from '@/types'
 
 const search = useSearchStore()
 const issueRefreshPrompt = useIssueRefreshPromptStore()
@@ -48,45 +47,6 @@ const displaySelFingerprint = computed(() => ctrl.selectionFingerprint.value)
 
 const issueListRef = ref<InstanceType<typeof IssueList> | null>(null)
 const trimmedSearchQuery = computed(() => search.query.trim())
-
-// ── Saved view tabs ──────────────────────────────────────────────────────────
-
-const FALLBACK_VIEWS: SavedView[] = [
-  {
-    id: -200, user_id: 0, owner_username: 'system', title: 'All Issues',
-    description: 'All issues across projects.',
-    columns_json: '["billing_type","total_budget","rate_hourly","rate_lp","group_state","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["ticket","task"],"treeView":false}',
-    is_shared: true, is_admin_default: true, sort_order: 0, hidden: false, pinned: null, created_at: '', updated_at: '',
-  },
-  {
-    id: -201, user_id: 0, owner_username: 'system', title: 'Epics',
-    description: 'Epic planning view.',
-    columns_json: '["cost_unit","release","sprint","sprint_state","jira_id","jira_version","jira_text"]',
-    filters_json: '{"type":["epic"],"treeView":false}',
-    is_shared: true, is_admin_default: true, sort_order: 1, hidden: false, pinned: null, created_at: '', updated_at: '',
-  },
-]
-
-const allViews    = ref<SavedView[]>([])
-const activeTabId = ref<number | null>(null)
-
-const displayTabs = computed(() => {
-  const defaults = allViews.value
-    .filter(v => v.is_admin_default && (!v.hidden || v.pinned === true) && v.pinned !== false)
-    .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title))
-  const pinnedPersonal = allViews.value
-    .filter(v => !v.is_admin_default && v.pinned === true)
-    .sort((a, b) => a.title.localeCompare(b.title))
-  const tabs = [...defaults, ...pinnedPersonal]
-  return tabs.length ? tabs : FALLBACK_VIEWS
-})
-
-async function selectTab(view: SavedView) {
-  activeTabId.value = view.id
-  // applyView drives IssueList -> server-filter-change -> the controller fetch.
-  nextTick(() => issueListRef.value?.applyView(view))
-}
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 
@@ -141,14 +101,13 @@ watch(
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function fetchMeta() {
-  const [u, p, cu, rel, tags, spr, views] = await Promise.all([
+  const [u, p, cu, rel, tags, spr] = await Promise.all([
     api.get<User[]>('/users'),
     api.get<Project[]>('/projects'),
     api.get<string[]>('/cost-units').catch(() => [] as string[]),
     api.get<string[]>('/releases').catch(() => [] as string[]),
     api.get<Tag[]>('/tags').catch(() => [] as Tag[]),
     api.get<Sprint[]>('/sprints').catch(() => [] as Sprint[]),
-    api.get<SavedView[]>('/views').catch(() => [] as SavedView[]),
   ])
   users.value     = u
   projects.value  = p
@@ -156,7 +115,6 @@ async function fetchMeta() {
   releases.value  = rel
   allTags.value   = tags
   sprints.value   = spr
-  allViews.value  = views
 }
 
 async function load() {
@@ -165,11 +123,6 @@ async function load() {
   await Promise.all([ctrl.start(), fetchMeta()])
   await freshness.prime().catch(() => {}) // baseline the poll; never block load
   loading.value = false
-  // Apply first tab
-  if (displayTabs.value.length && activeTabId.value == null) {
-    activeTabId.value = displayTabs.value[0].id
-    nextTick(() => issueListRef.value?.applyView(displayTabs.value[0]))
-  }
 }
 
 async function loadMore() {
@@ -256,21 +209,6 @@ function onDeleted() {
     <div v-else-if="error" class="load-error">{{ error }}</div>
 
     <template v-else>
-      <!-- Tabs -->
-      <div class="view-tabs">
-        <button
-          v-for="v in displayTabs"
-          :key="v.id"
-          class="tab-btn"
-          :class="{ active: activeTabId === v.id }"
-          :data-label="v.title"
-          @click="selectTab(v)"
-        >
-          {{ v.title }}
-          <AppIcon v-if="activeTabId === v.id" name="refresh-cw" :size="11" class="tab-refresh-icon" />
-        </button>
-      </div>
-
       <IssueList
         ref="issueListRef"
         :issues="displayIssues"
@@ -306,8 +244,7 @@ function onDeleted() {
 /* PAI-274 / PAI-361: participate in AppLayout's `.main-content--self-scroll` flex chain
    so IssueList's table-wrap (flex:1; min-height:0; overflow:auto) actually
    has a bounded scrolling viewport — restoring sticky thead + frozen
-   columns. The `<template v-else>` fragment below collapses two flex
-   children (.view-tabs + IssueList) into the column; that's intentional. */
+   columns. */
 .issues-view-root {
   flex: 1;
   min-height: 0;
@@ -320,32 +257,6 @@ function onDeleted() {
   color: var(--text-muted); padding: 2rem 0; font-size: 13px;
 }
 .load-error { color: #c0392b; }
-
-.view-tabs {
-  display: flex; gap: 0; margin-bottom: .75rem;
-  border-bottom: 2px solid var(--border);
-}
-.tab-btn {
-  position: relative;
-  display: inline-flex; align-items: center;
-  background: none; border: none; cursor: pointer;
-  padding: .45rem .75rem; font-size: 13px; font-weight: 500;
-  color: var(--text-muted); border-bottom: 2px solid transparent;
-  margin-bottom: -2px; transition: color .15s, border-color .15s;
-  font-family: inherit;
-}
-.tab-btn::after {
-  content: attr(data-label);
-  font-weight: 600;
-  visibility: hidden;
-  height: 0;
-  display: block;
-  overflow: hidden;
-}
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--bp-blue); border-bottom-color: var(--bp-blue); font-weight: 600; }
-.tab-refresh-icon { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); opacity: .35; transition: opacity .15s; pointer-events: none; }
-.tab-btn:hover .tab-refresh-icon { opacity: .7; }
 
 .empty-filter-banner {
   margin-top: .75rem; padding: .65rem 1rem;

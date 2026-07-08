@@ -11,7 +11,6 @@ export interface ProjectDetailData {
   allTags: Tag[]
   costUnits: string[]
   releases: string[]
-  allViews: SavedView[]
   customers: Customer[]
 }
 
@@ -72,7 +71,7 @@ export async function loadProjectDetailData(
   filters = '',
   issueOpts: ProjectIssuesRequestOptions = {},
 ): Promise<ProjectDetailData> {
-  const [project, issuePayload, users, costUnits, releases, allTags, allViews, customers] = await Promise.all([
+  const [project, issuePayload, users, costUnits, releases, allTags, customers] = await Promise.all([
     api.get<Project>(`/projects/${projectId}`),
     issueOpts.envelope
       ? loadProjectIssuesEnvelope(projectId, query, filters, issueOpts)
@@ -81,7 +80,6 @@ export async function loadProjectDetailData(
     api.get<string[]>(`/projects/${projectId}/cost-units`).catch(() => []),
     api.get<string[]>(`/projects/${projectId}/releases`).catch(() => []),
     api.get<Tag[]>('/tags'),
-    api.get<SavedView[]>('/views').catch(() => []),
     api.get<Customer[]>('/customers').catch(() => [] as Customer[]),
   ])
 
@@ -98,7 +96,6 @@ export async function loadProjectDetailData(
     allTags,
     costUnits,
     releases,
-    allViews,
     customers,
   }
 }

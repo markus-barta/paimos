@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
-import AppModal from '@/components/AppModal.vue'
 import type { SavedView } from '@/types'
 
 type EpicMode = 'key' | 'title' | 'abbreviated'
 
-const props = defineProps<{
+defineProps<{
   // Views data
   myViews: SavedView[]
   basicsViews: SavedView[]
@@ -34,51 +32,27 @@ const emit = defineEmits<{
 <template>
   <div class="views-panel">
     <div class="vp-header">
-      <span class="fp-title">Views</span>
-      <button class="fp-clear" @click="emit('openSaveView')">+ Save as new</button>
+      <span class="fp-title">Saved views</span>
+      <button class="fp-clear" @click="emit('openSaveView')">Save current</button>
     </div>
 
-    <!-- Modified banner -->
     <div v-if="viewIsModified && activeViewId !== null && activeViewId >= 0" class="vp-modified-banner">
       <span class="vp-modified-dot">&#8226;</span>
       <span class="vp-modified-label">Unsaved changes</span>
       <button class="vp-modified-btn" @click="emit('updateCurrentView')">Update view</button>
     </div>
 
-    <!-- My Views -->
-    <template v-if="myViews.length > 0 || basicsViews.length === 0">
-      <div class="vp-section-label">My Views</div>
-      <div v-if="myViews.length === 0" class="vp-empty">No saved views yet — save your current columns &amp; filters to get started.</div>
-      <div
-        v-for="v in myViews" :key="v.id"
-        :class="['vp-row', { 'vp-row--active': activeViewId === v.id }]"
-        @click="emit('applyView', v)"
-      >
-        <span class="vp-dot vp-dot--mine"></span>
-        <div class="vp-row-body">
-          <span class="vp-row-title">{{ v.title }}</span>
-          <span v-if="v.description" class="vp-row-desc">{{ v.description }}</span>
-        </div>
-        <span v-if="v.is_admin_default" class="vp-pill vp-pill--basics">default</span>
-        <span v-else-if="v.is_shared" class="vp-pill vp-pill--shared">shared</span>
-        <div class="vp-row-actions" @click.stop>
-          <button :class="['vp-act', { 'vp-act--pinned': v.pinned }]" :title="v.pinned ? 'Unpin view' : 'Pin view'" @click="v.pinned ? emit('unpinView', v.id) : emit('pinView', v.id)">
-            <AppIcon :name="v.pinned ? 'pin' : 'pin-off'" :size="11" />
-          </button>
-          <button class="vp-act" @click="emit('openEditView', v)" title="Edit"><AppIcon name="pencil" :size="11" /></button>
-          <button class="vp-act vp-act--danger" @click="emit('deleteView', v)" title="Delete"><AppIcon name="trash-2" :size="11" /></button>
-        </div>
-      </div>
-    </template>
-
-    <!-- Defaults -->
     <template v-if="basicsViews.length > 0">
-      <div :class="['vp-section-label', { 'vp-section-label--gap': myViews.length > 0 }]">Defaults</div>
+      <div class="vp-section-label">
+        <span>Defaults</span>
+        <span>{{ basicsViews.length }}</span>
+      </div>
       <div
         v-for="v in basicsViews" :key="v.id"
         :class="['vp-row', { 'vp-row--active': activeViewId === v.id, 'vp-row--hidden': v.hidden }]"
         @click="emit('applyView', v)"
       >
+        <AppIcon v-if="activeViewId === v.id" name="check" :size="13" class="vp-check" />
         <span class="vp-dot vp-dot--basics"></span>
         <div class="vp-row-body">
           <span class="vp-row-title">{{ v.title }}</span>
@@ -98,14 +72,46 @@ const emit = defineEmits<{
       </div>
     </template>
 
-    <!-- Shared -->
+    <template v-if="myViews.length > 0 || basicsViews.length === 0">
+      <div :class="['vp-section-label', { 'vp-section-label--gap': basicsViews.length > 0 }]">
+        <span>My views</span>
+        <span>{{ myViews.length }}</span>
+      </div>
+      <div v-if="myViews.length === 0" class="vp-empty">No saved views yet.</div>
+      <div
+        v-for="v in myViews" :key="v.id"
+        :class="['vp-row', { 'vp-row--active': activeViewId === v.id }]"
+        @click="emit('applyView', v)"
+      >
+        <AppIcon v-if="activeViewId === v.id" name="check" :size="13" class="vp-check" />
+        <span class="vp-dot vp-dot--mine"></span>
+        <div class="vp-row-body">
+          <span class="vp-row-title">{{ v.title }}</span>
+          <span v-if="v.description" class="vp-row-desc">{{ v.description }}</span>
+        </div>
+        <span v-if="v.is_admin_default" class="vp-pill vp-pill--basics">default</span>
+        <span v-else-if="v.is_shared" class="vp-pill vp-pill--shared">shared</span>
+        <div class="vp-row-actions" @click.stop>
+          <button :class="['vp-act', { 'vp-act--pinned': v.pinned }]" :title="v.pinned ? 'Unpin view' : 'Pin view'" @click="v.pinned ? emit('unpinView', v.id) : emit('pinView', v.id)">
+            <AppIcon :name="v.pinned ? 'pin' : 'pin-off'" :size="11" />
+          </button>
+          <button class="vp-act" @click="emit('openEditView', v)" title="Edit"><AppIcon name="pencil" :size="11" /></button>
+          <button class="vp-act vp-act--danger" @click="emit('deleteView', v)" title="Delete"><AppIcon name="trash-2" :size="11" /></button>
+        </div>
+      </div>
+    </template>
+
     <template v-if="sharedViews.length > 0">
-      <div :class="['vp-section-label', { 'vp-section-label--gap': myViews.length > 0 || basicsViews.length > 0 }]">Shared</div>
+      <div :class="['vp-section-label', { 'vp-section-label--gap': myViews.length > 0 || basicsViews.length > 0 }]">
+        <span>Shared</span>
+        <span>{{ sharedViews.length }}</span>
+      </div>
       <div
         v-for="v in sharedViews" :key="v.id"
         :class="['vp-row', { 'vp-row--active': activeViewId === v.id }]"
         @click="emit('applyView', v)"
       >
+        <AppIcon v-if="activeViewId === v.id" name="check" :size="13" class="vp-check" />
         <span class="vp-dot vp-dot--shared"></span>
         <div class="vp-row-body">
           <span class="vp-row-title">{{ v.title }}</span>
@@ -118,8 +124,9 @@ const emit = defineEmits<{
       </div>
     </template>
 
-    <!-- Display options -->
-    <div class="vp-section-label vp-section-label--gap">Display</div>
+    <div class="vp-section-label vp-section-label--gap vp-section-label--display">
+      <span>Display</span>
+    </div>
     <div class="vp-display-option">
       <span class="vp-display-label">Epic column</span>
       <div class="vp-display-toggle">
@@ -134,11 +141,12 @@ const emit = defineEmits<{
 
 <style scoped>
 .views-panel {
-  margin-top: .75rem; margin-bottom: 1.25rem;
+  margin-top: .55rem; margin-bottom: 1rem;
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 8px; box-shadow: var(--shadow);
-  padding: .85rem 1rem;
-  max-width: 480px;
+  padding: .7rem;
+  width: min(26rem, 100%);
+  max-width: calc(100vw - 3rem);
 }
 .vp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .65rem; }
 .fp-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); }
@@ -162,11 +170,16 @@ const emit = defineEmits<{
 .vp-modified-btn:hover { color: var(--bp-blue); }
 
 .vp-section-label {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .07em; color: var(--text-muted);
   padding: .1rem 0 .3rem;
 }
 .vp-section-label--gap { margin-top: .75rem; }
+.vp-section-label--display {
+  border-top: 1px solid var(--border);
+  padding-top: .65rem;
+}
 
 .vp-display-option { display: flex; align-items: center; justify-content: space-between; padding: .4rem 0; }
 .vp-display-label { font-size: 12px; color: var(--text); font-weight: 500; }
@@ -179,13 +192,18 @@ const emit = defineEmits<{
 
 .vp-row {
   display: flex; align-items: center; gap: .6rem;
-  padding: .45rem .5rem; border-radius: 6px; cursor: pointer;
+  padding: .42rem .5rem .42rem 1.85rem; border-radius: 6px; cursor: pointer;
   transition: background .1s; position: relative;
 }
 .vp-row:hover { background: #f0f2f5; }
 .vp-row--active { background: var(--bp-blue-pale); }
 .vp-row--active:hover { background: #d5e8f8; }
 .vp-row--hidden { opacity: .5; }
+.vp-check {
+  position: absolute;
+  left: .48rem;
+  color: var(--bp-blue-dark);
+}
 
 .vp-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .vp-dot--mine   { background: var(--bp-blue); }

@@ -29,9 +29,8 @@ import {
   projectToEditForm,
 } from '@/config/projectDetailEdit'
 import { buildProjectPurgePayload, emptyProjectPurgeForm } from '@/config/projectPurge'
-import type { Tag, Issue, Project, User, SavedView, Sprint, Customer } from '@/types'
+import type { Tag, Issue, Project, User, Sprint, Customer } from '@/types'
 import type { IssueListEnvelope } from '@/types'
-import { buildProjectDisplayTabs } from '@/config/projectDefaultViews'
 import {
   addProjectTag as addProjectTagRequest,
   buildProjectCsvExportUrl,
@@ -42,7 +41,6 @@ import {
   loadProjectPurgeUsers,
   preflightProjectCsvImport,
   previewProjectTimeEntryPurge,
-  refreshProjectViews,
   removeProjectTag as removeProjectTagRequest,
   runProjectCsvImport,
   saveProjectDetail,
@@ -277,9 +275,6 @@ const initialTab: ProjectPrimaryTab = (() => {
   return 'issues'
 })()
 const primaryTab = ref<ProjectPrimaryTab>(initialTab)
-function setPrimaryTab(t: ProjectPrimaryTab) {
-  primaryTab.value = t
-}
 // PAI-342 — deep-link target for the Knowledge tab. When present
 // (e.g. ?tab=knowledge&memory=feedback_lock_signature), the
 // Knowledge panel auto-selects the memory category and opens the
@@ -291,13 +286,6 @@ const initialKnowledgeSlug = computed<string>(() => {
   return typeof m === 'string' ? m : ''
 })
 
-// ── Admin-default views as tabs ───────────────────────────────────────────────
-
-// Synthetic fallback views used when no admin-default views exist in the DB.
-// Negative IDs ensure they never collide with real DB rows.
-const allViews = ref<SavedView[]>([])
-const activeTabId = ref<number | null>(null)
-
 // PAI-350 — knowledge tab view mode (list ↔ graph), deep-linked via ?kview=graph.
 const knowledgeView = ref<'list' | 'graph'>(route.query.kview === 'graph' ? 'graph' : 'list')
 watch(knowledgeView, (v) => {
@@ -306,27 +294,6 @@ watch(knowledgeView, (v) => {
   else delete q.kview
   void router.replace({ query: q })
 })
-
-// Tabs: admin-default (not hidden, or user-pinned) + pinned personal views
-const displayTabs = computed(() => buildProjectDisplayTabs(allViews.value))
-
-async function selectTab(view: SavedView) {
-  activeTabId.value = view.id
-  // applyView drives IssueList -> server-filter-change -> the controller fetch.
-  nextTick(() => issueListRef.value?.applyView(view))
-}
-
-function onViewApplied(viewId: number) {
-  activeTabId.value = viewId
-}
-
-async function refreshViews() {
-  try {
-    allViews.value = await refreshProjectViews()
-  } catch {
-    /* ignore */
-  }
-}
 
 // PAI-359 — workspace-dock state (`workspacePanel`, `toggleWorkspace`,
 // `workspaceSummary`, aux-panel exclusion plumbing) deleted with the
@@ -732,9 +699,7 @@ async function load() {
   costUnits.value = data.costUnits
   releases.value = data.releases
   allTags.value = data.allTags
-  allViews.value = data.allViews
   customers.value = data.customers
-  // activeTabId is set by IssueList's view-applied emit (MRU-based)
   loading.value = false
   void nextTick(applyLieferberichtHandoffFromRoute)
 }
@@ -749,7 +714,6 @@ watch(
   (newId, oldId) => {
     if (newId && newId !== oldId) {
       resetWorkspaceState()
-      activeTabId.value = null
       load()
     }
   },
@@ -1025,27 +989,7 @@ watch(
 
       <!-- Issues tab (existing UX preserved verbatim) ───────────────── -->
       <template v-if="primaryTab === 'issues'">
-        <!-- Tab nav — driven by admin-default views (fallback to synthetic set) -->
-        <nav class="tab-nav">
-          <button
-            v-for="v in displayTabs"
-            :key="v.id"
-            class="tab-btn"
-            :class="{ active: activeTabId === v.id }"
-            :data-label="v.title"
-            @click="selectTab(v)"
-          >
-            {{ v.title }}
-            <AppIcon
-              name="refresh-cw"
-              :size="11"
-              class="tab-refresh-icon"
-              :class="{ 'tab-refresh-icon--visible': activeTabId === v.id }"
-            />
-          </button>
-        </nav>
-
-        <!-- Single IssueList for all tabs. Project-level workspaces now live
+        <!-- Single IssueList for project issues. Project-level workspaces now live
              in the footer rail instead of competing with issue-list controls. -->
         <IssueList
           ref="issueListRef"
@@ -1063,8 +1007,6 @@ watch(
           @created="onCreated"
           @updated="onUpdated"
           @deleted="onDeleted"
-          @view-applied="onViewApplied"
-          @views-changed="refreshViews"
           @server-filter-change="onServerFilterChange"
           @server-sort-change="onServerSortChange"
         />
@@ -1942,81 +1884,6 @@ textarea {
   border: 1px solid #c4e0c4;
   border-radius: var(--radius);
   padding: 0.6rem 0.75rem;
-}
-
-/* ── Tabs ───────────────────────────────────────────────────────────────────── */
-/* PAI-356 — primary tabs moved to ProjectFooterBar; the .pd-primary-tabs
-   styles that lived here have been removed. Sub-tabs (view filters)
-   continue to use .tab-nav / .tab-btn below. */
-.tab-nav {
-  display: flex;
-  gap: 0;
-  margin-bottom: 1.25rem;
-  border-bottom: 2px solid var(--border);
-}
-.tab-btn {
-  position: relative;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem 1rem;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  display: inline-flex;
-  align-items: center;
-  transition:
-    color 0.15s,
-    border-color 0.15s;
-  font-family: inherit;
-}
-/* Pre-reserve bold width to prevent layout shift */
-.tab-btn::after {
-  content: attr(data-label);
-  font-weight: 600;
-  visibility: hidden;
-  height: 0;
-  display: block;
-  overflow: hidden;
-}
-.tab-btn:hover {
-  color: var(--text);
-}
-.tab-btn.active {
-  color: var(--bp-blue);
-  border-bottom-color: var(--bp-blue);
-  font-weight: 600;
-}
-.tab-count {
-  font-size: 11px;
-  font-weight: 700;
-  background: var(--surface-2);
-  color: var(--text-muted);
-  border-radius: 10px;
-  padding: 0 0.45rem;
-  line-height: 1.6;
-}
-.tab-btn.active .tab-count {
-  background: var(--bp-blue);
-  color: #fff;
-}
-.tab-refresh-icon {
-  opacity: 0;
-  margin-left: 0.25rem;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-  pointer-events: none;
-}
-.tab-btn:hover .tab-refresh-icon--visible {
-  opacity: 0.5;
-}
-.tab-refresh-icon--visible:hover {
-  opacity: 0.8;
-}
-.tab-btn:hover .tab-refresh-icon {
-  opacity: 0.7;
 }
 
 /* ── Group list ─────────────────────────────────────────────────────────────── */

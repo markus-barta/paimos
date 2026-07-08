@@ -69,7 +69,6 @@ describe('projectDetail service', () => {
       .mockResolvedValueOnce(['OPS'] as never)
       .mockResolvedValueOnce(['R1'] as never)
       .mockResolvedValueOnce([{ id: 3 }] as never)
-      .mockResolvedValueOnce([{ id: 4 }] as never)
       .mockResolvedValueOnce([{ id: 5 }] as never)
 
     const data = await loadProjectDetailData(7, 'ab')
@@ -78,6 +77,7 @@ describe('projectDetail service', () => {
     expect(data.issues).toHaveLength(1)
     expect(data.issueTotal).toBe(1)
     expect(api.get).toHaveBeenCalledWith('/projects/7/issues?fields=list&q=ab')
+    expect(api.get).not.toHaveBeenCalledWith('/views')
   })
 
   it('preserves project issue envelope metadata when requested', async () => {
@@ -94,7 +94,6 @@ describe('projectDetail service', () => {
     vi.mocked(api.get)
       .mockResolvedValueOnce({ id: 7 } as never)
       .mockResolvedValueOnce(envelope as never)
-      .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never)

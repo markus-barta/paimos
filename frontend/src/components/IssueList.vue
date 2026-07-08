@@ -493,6 +493,8 @@ const {
   pinView: _pinView, unpinView: _unpinView,
 } = useViews(() => authStore.user?.id)
 
+const activeViewLabel = computed(() => activeView.value?.title ?? (viewsLoading.value ? 'Loading views...' : 'Custom view'))
+
 async function pinView(id: number) { await _pinView(id); emit('views-changed') }
 async function unpinView(id: number) { await _unpinView(id); emit('views-changed') }
 
@@ -1208,7 +1210,7 @@ const primaryIssueCount = computed(() => {
 })
 const loadedCountLabel = computed(() => {
   if (props.resultTotal === undefined) return `${formatInteger(props.issues.length)} loaded`
-  return `${formatInteger(props.issues.length)} loaded of ${formatInteger(props.resultTotal)} total`
+  return `${formatInteger(props.issues.length)} loaded · ${formatInteger(props.resultTotal)} total`
 })
 
 function showAllRenderedIssues() {
@@ -1334,95 +1336,99 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Filter bar (full mode only) -->
     <div v-if="!compact && !isCustomerMode" class="filters">
-      <button v-if="projectId !== undefined && canCreateIssues" class="btn btn-primary btn-sm" @click="openCreate()">+ New issue</button>
+      <div class="filter-primary">
+        <button v-if="projectId !== undefined && canCreateIssues" class="btn btn-primary btn-sm" @click="openCreate()">+ New issue</button>
 
-      <!-- Views toggle button -->
-      <button
-        ref="viewsBtnEl"
-        :class="['btn btn-ghost btn-sm filter-btn views-btn', { active: viewsPanelOpen, 'views-btn--has-view': activeViewId !== null }]"
-        :aria-expanded="viewsPanelOpen"
-        @mousedown.stop
-        @click="openPanel(viewsPanelOpen ? null : 'views')"
-      >
-        <AppIcon name="eye" :size="12" />
-        <span class="views-btn-label">{{ activeView ? activeView.title : 'Views' }}</span>
-        <span class="views-modified-dot" :class="{ 'views-modified-dot--active': viewIsModified }" title="Unsaved changes">&#8226;</span>
-        <AppIcon v-if="activeViewId !== null" name="x" :size="10" :stroke-width="2.5"
-          class="views-clear-x" @click.stop="clearActiveView" title="Clear view" />
-      </button>
+        <!-- Views toggle button -->
+        <button
+          ref="viewsBtnEl"
+          :class="['btn btn-ghost btn-sm filter-btn views-btn', { active: viewsPanelOpen, 'views-btn--has-view': activeViewId !== null }]"
+          :aria-expanded="viewsPanelOpen"
+          @mousedown.stop
+          @click="openPanel(viewsPanelOpen ? null : 'views')"
+        >
+          <AppIcon name="list-filter" :size="12" />
+          <span class="views-btn-prefix">View</span>
+          <span class="views-btn-label">{{ activeViewLabel }}</span>
+          <span class="views-modified-dot" :class="{ 'views-modified-dot--active': viewIsModified }" title="Unsaved changes">&#8226;</span>
+          <AppIcon v-if="activeViewId !== null" name="x" :size="10" :stroke-width="2.5"
+            class="views-clear-x" @click.stop="clearActiveView" title="Clear view" />
+          <AppIcon name="chevron-down" :size="12" class="views-chevron" />
+        </button>
 
-      <!-- Sprint navigator -->
-      <div v-if="inlineEdit.allSprints().length" :class="['sprint-nav', { 'sprint-nav--active': sprintNav.toolbarSprintIds.value.length > 0 }]">
-        <button class="sn-btn" :disabled="!sprintNav.canPrev.value" @click="sprintNav.navPrev" title="Previous sprint">
-          <AppIcon name="chevron-left" :size="13" />
-        </button>
-        <button class="sn-btn" :disabled="!sprintNav.canNext.value" @click="sprintNav.navNext" title="Next sprint">
-          <AppIcon name="chevron-right" :size="13" />
-        </button>
-        <button ref="sprintNav.snSelectorEl.value" :class="['sn-selector', { 'sn-selector--active': sprintNav.sprintNavOpen.value }]" @click.stop="sprintNav.sprintNavOpen.value = !sprintNav.sprintNavOpen.value">
-          {{ sprintNav.navLabel.value }} <AppIcon name="chevron-down" :size="11" />
-        </button>
-        <button v-for="n in [1, 2, 3]" :key="n"
-          :class="['sn-range', { 'sn-range--active': sprintNav.activeRange.value === n }]"
-          @click="sprintNav.navRange(n)">{{ n }}S</button>
-        <button v-if="sprintNav.toolbarSprintIds.value.length" class="sn-btn sn-clear" @click="sprintNav.navClear" title="Clear sprint filter">
-          <AppIcon name="x" :size="12" />
-        </button>
-      </div>
+        <!-- Sprint navigator -->
+        <div v-if="inlineEdit.allSprints().length" :class="['sprint-nav', { 'sprint-nav--active': sprintNav.toolbarSprintIds.value.length > 0 }]">
+          <button class="sn-btn" :disabled="!sprintNav.canPrev.value" @click="sprintNav.navPrev" title="Previous sprint">
+            <AppIcon name="chevron-left" :size="13" />
+          </button>
+          <button class="sn-btn" :disabled="!sprintNav.canNext.value" @click="sprintNav.navNext" title="Next sprint">
+            <AppIcon name="chevron-right" :size="13" />
+          </button>
+          <button ref="sprintNav.snSelectorEl.value" :class="['sn-selector', { 'sn-selector--active': sprintNav.sprintNavOpen.value }]" @click.stop="sprintNav.sprintNavOpen.value = !sprintNav.sprintNavOpen.value">
+            {{ sprintNav.navLabel.value }} <AppIcon name="chevron-down" :size="11" />
+          </button>
+          <button v-for="n in [1, 2, 3]" :key="n"
+            :class="['sn-range', { 'sn-range--active': sprintNav.activeRange.value === n }]"
+            @click="sprintNav.navRange(n)">{{ n }}S</button>
+          <button v-if="sprintNav.toolbarSprintIds.value.length" class="sn-btn sn-clear" @click="sprintNav.navClear" title="Clear sprint filter">
+            <AppIcon name="x" :size="12" />
+          </button>
+        </div>
 
-      <!-- Filter toggle button -->
-      <button
-        :class="['btn btn-ghost btn-sm filter-btn', { active: filterPanelOpen, 'has-filters': activeFilterCount > 0 }]"
-        :aria-expanded="filterPanelOpen"
-        @mousedown.stop
-        @click="toggleFilterPanel"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-        Filter
-        <span v-if="activeFilterCount > 0" class="filter-count">{{ activeFilterCount }}</span>
-        <span v-if="activeFilterCount > 0" class="filter-clear-x" @click.stop="clearAllFilters" title="Clear all filters">
-          <AppIcon name="x" :size="10" :stroke-width="2.5" />
-        </span>
-      </button>
-
-      <!-- Active filter chips -->
-      <div v-if="filterChipGroups.length" class="filter-chips">
-        <template v-for="grp in filterChipGroups" :key="grp.group">
-          <span
-            v-for="chip in grp.chips" :key="chip.value"
-            :class="['filter-chip', `filter-chip--${grp.group}`, { 'filter-chip--neg': chip.negated }]"
-            :title="chip.negated ? 'Click to include' : 'Click to exclude'"
-            @click.stop="toggleChipNegation(chip.group, chip.value)"
-          >
-            <span :class="['chip-bang', { 'chip-bang--active': chip.negated }]">!</span>
-            <span :class="{ 'chip-label--neg': chip.negated }">{{ chip.label }}</span>
-            <button class="chip-x" @click.stop="removeChip(chip.group, chip.value)" title="Remove filter"><AppIcon name="x" :size="10" :stroke-width="2.5" /></button>
+        <!-- Filter toggle button -->
+        <button
+          :class="['btn btn-ghost btn-sm filter-btn', { active: filterPanelOpen, 'has-filters': activeFilterCount > 0 }]"
+          :aria-expanded="filterPanelOpen"
+          @mousedown.stop
+          @click="toggleFilterPanel"
+        >
+          <AppIcon name="sliders-horizontal" :size="12" />
+          Filter
+          <span v-if="activeFilterCount > 0" class="filter-count">{{ activeFilterCount }}</span>
+          <span v-if="activeFilterCount > 0" class="filter-clear-x" @click.stop="clearAllFilters" title="Clear all filters">
+            <AppIcon name="x" :size="10" :stroke-width="2.5" />
           </span>
-        </template>
-      </div>
+        </button>
 
-      <!-- PAI-466: three-state CUSTOMERPORTAL quick filter. Sits alongside
-           the other active chips; clicking cycles visible → hidden → any.
-           Always rendered so the discoverability is high — the active
-           state is what most teams will spend the day in. -->
-      <button
-        type="button"
-        :class="[
-          'filter-chip',
-          'filter-chip--portal',
-          'filter-chip--portal--' + portalVisibilityFilter,
-        ]"
-        :title="t('visibility.filterTitle')"
-        @click.stop="cyclePortalFilter"
-      >
-        <AppIcon name="eye" :size="11" />
-        <span>{{ t('visibility.filterTitle') }}:</span>
-        <span class="filter-chip-state">
-          <template v-if="portalVisibilityFilter === 'visible'">{{ t('visibility.filterVisible') }}</template>
-          <template v-else-if="portalVisibilityFilter === 'hidden'">{{ t('visibility.filterHidden') }}</template>
-          <template v-else>{{ t('visibility.filterAny') }}</template>
-        </span>
-      </button>
+        <!-- Active filter chips -->
+        <div v-if="filterChipGroups.length" class="filter-chips">
+          <template v-for="grp in filterChipGroups" :key="grp.group">
+            <span
+              v-for="chip in grp.chips" :key="chip.value"
+              :class="['filter-chip', `filter-chip--${grp.group}`, { 'filter-chip--neg': chip.negated }]"
+              :title="chip.negated ? 'Click to include' : 'Click to exclude'"
+              @click.stop="toggleChipNegation(chip.group, chip.value)"
+            >
+              <span :class="['chip-bang', { 'chip-bang--active': chip.negated }]">!</span>
+              <span :class="{ 'chip-label--neg': chip.negated }">{{ chip.label }}</span>
+              <button class="chip-x" @click.stop="removeChip(chip.group, chip.value)" title="Remove filter"><AppIcon name="x" :size="10" :stroke-width="2.5" /></button>
+            </span>
+          </template>
+        </div>
+
+        <!-- PAI-466: three-state CUSTOMERPORTAL quick filter. Sits alongside
+             the other active chips; clicking cycles visible → hidden → any.
+             Always rendered so the discoverability is high — the active
+             state is what most teams will spend the day in. -->
+        <button
+          type="button"
+          :class="[
+            'filter-chip',
+            'filter-chip--portal',
+            'filter-chip--portal--' + portalVisibilityFilter,
+          ]"
+          :title="t('visibility.filterTitle')"
+          @click.stop="cyclePortalFilter"
+        >
+          <AppIcon name="eye" :size="11" />
+          <span>{{ t('visibility.filterTitle') }}:</span>
+          <span class="filter-chip-state">
+            <template v-if="portalVisibilityFilter === 'visible'">{{ t('visibility.filterVisible') }}</template>
+            <template v-else-if="portalVisibilityFilter === 'hidden'">{{ t('visibility.filterHidden') }}</template>
+            <template v-else>{{ t('visibility.filterAny') }}</template>
+          </span>
+        </button>
+      </div>
 
       <div class="filter-right">
         <label
@@ -1439,16 +1445,8 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
           </select>
         </label>
         <span class="issue-count">
-          {{ formatInteger(primaryIssueCount) }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}<template v-if="hasMore">
-            · showing {{ formatInteger(renderedIssues.length) }}
-            · <button
-              type="button"
-              class="issue-count-link"
-              :aria-label="`Show all ${formatInteger(filteredIssues.length)} issues`"
-              @click="showAllRenderedIssues"
-            >show all</button>
-          </template><template v-if="serverHasMore">
-            · {{ loadedCountLabel }}
+          <template v-if="serverHasMore">
+            {{ loadedCountLabel }}
             · <button
               type="button"
               class="issue-count-link"
@@ -1456,6 +1454,17 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
               :aria-label="`Load all ${props.resultTotal != null ? formatInteger(props.resultTotal) : ''} issues`"
               @click="emit('load-all')"
             >load all</button>
+          </template>
+          <template v-else>
+            {{ formatInteger(primaryIssueCount) }} issue{{ primaryIssueCount !== 1 ? 's' : '' }}
+          </template><template v-if="hasMore">
+            · showing {{ formatInteger(renderedIssues.length) }}
+            · <button
+              type="button"
+              class="issue-count-link"
+              :aria-label="`Show all ${formatInteger(filteredIssues.length)} issues`"
+              @click="showAllRenderedIssues"
+            >show all</button>
           </template>
         </span>
         <button
@@ -1916,8 +1925,30 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .compact-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
 .compact-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); }
 
-.filters { display: flex; align-items: center; gap: .6rem; margin-bottom: 0; flex-wrap: wrap; }
-.filter-right { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
+.filters {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+.filter-primary {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  flex: 1 1 34rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.filter-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .45rem;
+  margin-left: auto;
+  min-width: min(100%, 18rem);
+  flex-wrap: wrap;
+}
 .run-agent-picker {
   display: inline-flex;
   align-items: center;
@@ -1938,7 +1969,11 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
   font-size: 12px;
   outline: none;
 }
-.issue-count { font-size: 12px; color: var(--text-muted); }
+.issue-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 .issue-count-link {
   background: none;
   border: 0;
@@ -2048,13 +2083,22 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 .fp-clear { background: none; border: none; font-size: 12px; color: var(--bp-blue); cursor: pointer; padding: 0; font-family: inherit; }
 .fp-clear:hover { text-decoration: underline; }
 
+.views-btn {
+  min-width: 0;
+  max-width: min(19rem, 100%);
+}
 .views-btn--has-view { background: #e9ecef !important; color: var(--text) !important; border-color: #ced4da !important; }
 .views-btn--has-view:hover { background: #dde1e6 !important; }
-.views-btn-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.views-btn-prefix {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.views-btn-label { max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .views-modified-dot { color: #f59e0b; font-size: 16px; line-height: 1; margin-left: .1rem; flex-shrink: 0; margin-top: -2px; opacity: 0; transition: opacity .15s; }
 .views-modified-dot--active { opacity: 1; }
 .views-clear-x { margin-left: .1rem; opacity: .5; flex-shrink: 0; display: inline-flex; align-items: center; transition: opacity .1s; }
 .views-clear-x:hover { opacity: 1; }
+.views-chevron { opacity: .55; flex-shrink: 0; }
 
 .view-form { display: flex; flex-direction: column; gap: .85rem; }
 .form-group { display: flex; flex-direction: column; gap: .3rem; }
