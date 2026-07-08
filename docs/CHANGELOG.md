@@ -5,6 +5,19 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.8] — 2026-07-08
+
+### Changed
+
+- **Generic OIDC SSO is invite-only by default (PAI-680).** The OIDC callback
+  now requires an explicit `email_verified: true` claim, maps existing active
+  users by verified email, refuses unknown emails unless
+  `OIDC_PROVISION_MODE=auto-create` is set, and supports `member`/`external`
+  auto-create roles without changing PAIMOS authorization rules. OIDC session
+  creation now matches normal login lifetime semantics, and token/userinfo
+  error handling avoids logging response bodies. Mocked-issuer tests cover
+  PKCE, invite-only refusal, auto-create, and missing or unverified email.
+
 ## [4.7.7] — 2026-07-08
 
 ### Fixed
