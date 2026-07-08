@@ -5,6 +5,20 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.0] — 2026-07-08
+
+### Changed
+
+- **SSO, AI control-plane, and public evidence move into the v4.8 baseline.**
+  Generic OIDC SSO is now validated on the ppm reference deployment with
+  Zitadel, the reference-deployment register and claim matrix reflect that
+  live path, and the public site describes the stabilized AI control plane
+  consistently: Codex and Claude Code runner actions, profile/effort/prompt
+  and context controls, PPM knowledge prompt presets, repo-scoped local
+  runners, hosted OpenRouter drafts, OpenAI-compatible local-model drafts, and
+  the external Claude Code adapter path. This release is intentionally a
+  housekeeping minor after the v4.7 stabilization line.
+
 ## [4.7.8] — 2026-07-08
 
 ### Changed
