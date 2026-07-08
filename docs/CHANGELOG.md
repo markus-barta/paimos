@@ -5,6 +5,28 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.5] — 2026-07-08
+
+### Added
+
+- **Daily-work visual regression baseline (PAI-673).** Added an opt-in
+  Playwright screenshot baseline for project issue lists, issue detail / AI
+  Workbench, settings, customer detail, and the customer portal dashboard at
+  desktop and narrow widths. `just visual-baseline` boots disposable dev
+  fixtures, compares the committed PNGs, and `--update-snapshots` refreshes
+  them after intentional UI changes.
+- **Role smoke coverage for debug fixtures (PAI-674).** The E2E stack now
+  seeds disposable debug-role accounts and verifies admin, editor, viewer, and
+  customer portal access across daily-work screens without printing or
+  persisting generated passwords.
+
+### Changed
+
+- **Issue-list run actions have a clearer ownership boundary (PAI-672).**
+  Row-level agent/run action discovery moved out of `IssueList.vue` into a
+  focused composable with tests for runner discovery, draft-provider fallback,
+  row defaults, and disabled/customer-mode reset behavior.
+
 ## [4.7.4] — 2026-07-08
 
 ### Fixed
