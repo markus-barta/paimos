@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -160,6 +161,9 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 		args.RequestID = newAIRequestID()
 	}
 	if args.CostMicroUSD == 0 && args.Model != "" && (args.PromptTokens > 0 || args.CompletionTokens > 0) {
+		if modelPricingCacheNeedsWarmup() {
+			refreshModelsCacheAsync("ai_call_cost_lookup")
+		}
 		args.CostMicroUSD = lookupAICallCostMicroUSD(args.Model, args.PromptTokens, args.CompletionTokens)
 	}
 	totalTokens := args.PromptTokens + args.CompletionTokens
@@ -197,6 +201,14 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 	)
 	if err != nil {
 		log.Printf("ai_calls: insert: %v", err)
+		return
+	}
+	if args.CostMicroUSD == 0 && args.Model != "" && (args.PromptTokens > 0 || args.CompletionTokens > 0) {
+		if modelPricingCacheNeedsWarmup() {
+			refreshModelsCacheAsync("ai_call_zero_cost_insert")
+		} else {
+			backfillRecentAICallCostsAsync("ai_call_zero_cost_insert")
+		}
 	}
 }
 
@@ -213,7 +225,8 @@ func recordAICall(ctx context.Context, args aiCallArgs) {
 //     /api/ai/models. AI calls issued during the cold-cache window
 //     recorded 0 cost forever.
 //
-// We now build a flat ID-keyed view (across every bucket, deduped)
+// We now build a private flat ID-keyed view from the full canonical
+// /v1/models response, keep bucket scan as a compatibility fallback,
 // and fall back to staticFallbackPayload when the live cache hasn't
 // been hydrated. The unit math is unchanged — and worth restating:
 // PricingPromptPerMtok is USD per million tokens, multiplied by raw
@@ -232,10 +245,11 @@ func lookupAICallCostMicroUSD(model string, promptTokens, completionTokens int) 
 	return int64(math.Round(cost))
 }
 
-// findModelByID returns the pickedModel for an ID across every
-// curated bucket, with a static-fallback safety net for the
-// cold-cache window. Exported (to the package) so other handlers
-// — e.g. the bulk cost-estimate endpoint — share the same lookup.
+// findModelByID returns the pickedModel for an ID across the full
+// private pricing index first, then the curated buckets, with a
+// static-fallback safety net for the cold-cache window. Exported
+// (to the package) so other handlers — e.g. the bulk cost-estimate
+// endpoint — share the same lookup.
 func findModelByID(id string) (pickedModel, bool) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -246,6 +260,11 @@ func findModelByID(id string) (pickedModel, bool) {
 	modelsCache.mu.RUnlock()
 	if payload == nil {
 		payload = staticFallbackPayload(0)
+	}
+	if payload.allModels != nil {
+		if m, ok := payload.allModels[id]; ok {
+			return m, true
+		}
 	}
 	for _, bucket := range [][]pickedModel{
 		payload.Categories.Free,
@@ -262,6 +281,84 @@ func findModelByID(id string) (pickedModel, bool) {
 		}
 	}
 	return pickedModel{}, false
+}
+
+func backfillRecentAICallCosts(ctx context.Context, since time.Duration, limit int) (int, error) {
+	if db.DB == nil {
+		return 0, nil
+	}
+	if since <= 0 {
+		since = 90 * 24 * time.Hour
+	}
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+	cutoff := time.Now().UTC().Add(-since).Format("2006-01-02 15:04:05")
+	rows, err := db.DB.QueryContext(ctx, `
+		SELECT id, model, prompt_tokens, completion_tokens
+		FROM ai_calls
+		WHERE cost_micro_usd = 0
+		  AND TRIM(COALESCE(model, '')) != ''
+		  AND (prompt_tokens > 0 OR completion_tokens > 0)
+		  AND created_at >= ?
+		ORDER BY id DESC
+		LIMIT ?
+	`, cutoff, limit)
+	if err != nil {
+		return 0, err
+	}
+	type row struct {
+		id               int64
+		model            string
+		promptTokens     int
+		completionTokens int
+	}
+	var pending []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.model, &r.promptTokens, &r.completionTokens); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		pending = append(pending, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if len(pending) == 0 {
+		return 0, nil
+	}
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	updated := 0
+	for _, r := range pending {
+		cost := lookupAICallCostMicroUSD(r.model, r.promptTokens, r.completionTokens)
+		if cost <= 0 {
+			continue
+		}
+		res, err := tx.ExecContext(ctx, `
+			UPDATE ai_calls
+			SET cost_micro_usd = ?
+			WHERE id = ? AND cost_micro_usd = 0
+		`, cost, r.id)
+		if err != nil {
+			return updated, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			updated++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return updated, err
+	}
+	return updated, nil
 }
 
 func parseAICallContext(raw json.RawMessage) (projectID, customerID, cooperationID *int64) {

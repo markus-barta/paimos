@@ -5,6 +5,15 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.4] — 2026-07-08
+
+### Fixed
+
+- **AI call costs use the full model catalog (PAI-448).** `ai_calls` pricing
+  now checks a private full OpenRouter model index before falling back to
+  curated picker buckets, starts a background model refresh when the cache is
+  cold, and backfills recent zero-cost rows once pricing is available.
+
 ## [4.7.3] — 2026-07-08
 
 ### Changed

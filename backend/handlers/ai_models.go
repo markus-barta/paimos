@@ -43,6 +43,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -169,6 +170,10 @@ type modelsResponse struct {
 	FastestUnofficial bool      `json:"fastest_unofficial"`
 	Source            string    `json:"source"`
 	UpstreamLatencyMs int64     `json:"upstream_latency_ms"`
+
+	// Private cost/audit index. The SPA only needs curated categories,
+	// but ai_calls accounting must know every upstream model ID.
+	allModels map[string]pickedModel `json:"-"`
 }
 
 // modelsCache is the package-level cache. A single struct + mutex is
@@ -178,6 +183,11 @@ var modelsCache struct {
 	mu        sync.RWMutex
 	payload   *modelsResponse
 	fetchedAt time.Time
+}
+
+var modelsBackgroundRefresh struct {
+	mu      sync.Mutex
+	running bool
 }
 
 // AIListModels handles GET /api/ai/models. Admin-only (mounted under
@@ -225,12 +235,76 @@ func AIListModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pl.UpstreamLatencyMs = latency.Milliseconds()
+	publishModelsPayload(pl)
+	backfillRecentAICallCostsAsync("ai_models_refresh")
+
+	jsonOK(w, pl)
+}
+
+func publishModelsPayload(pl *modelsResponse) {
 	modelsCache.mu.Lock()
 	modelsCache.payload = pl
 	modelsCache.fetchedAt = pl.FetchedAt
 	modelsCache.mu.Unlock()
+}
 
-	jsonOK(w, pl)
+func modelPricingCacheNeedsWarmup() bool {
+	modelsCache.mu.RLock()
+	defer modelsCache.mu.RUnlock()
+	return modelsCache.payload == nil ||
+		len(modelsCache.payload.allModels) == 0 ||
+		time.Since(modelsCache.fetchedAt) >= modelsCacheTTL
+}
+
+func refreshModelsCacheAsync(reason string) {
+	if os.Getenv("PAIMOS_TEST_MODE") == "1" {
+		return
+	}
+	if !modelPricingCacheNeedsWarmup() {
+		return
+	}
+	modelsBackgroundRefresh.mu.Lock()
+	if modelsBackgroundRefresh.running {
+		modelsBackgroundRefresh.mu.Unlock()
+		return
+	}
+	modelsBackgroundRefresh.running = true
+	modelsBackgroundRefresh.mu.Unlock()
+
+	go func() {
+		defer func() {
+			modelsBackgroundRefresh.mu.Lock()
+			modelsBackgroundRefresh.running = false
+			modelsBackgroundRefresh.mu.Unlock()
+		}()
+		pl, err := buildModelsPayload(context.Background())
+		if err != nil {
+			log.Printf("ai_models: async refresh (%s) failed: %v", reason, err)
+			return
+		}
+		publishModelsPayload(pl)
+		backfillRecentAICallCostsFromWarmCache(reason)
+	}()
+}
+
+func backfillRecentAICallCostsAsync(reason string) {
+	if os.Getenv("PAIMOS_TEST_MODE") == "1" {
+		return
+	}
+	go backfillRecentAICallCostsFromWarmCache(reason)
+}
+
+func backfillRecentAICallCostsFromWarmCache(reason string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	n, err := backfillRecentAICallCosts(ctx, 90*24*time.Hour, 1000)
+	if err != nil {
+		log.Printf("ai_calls: cost backfill after %s failed: %v", reason, err)
+		return
+	}
+	if n > 0 {
+		log.Printf("ai_calls: backfilled %d zero-cost rows after %s", n, reason)
+	}
 }
 
 // buildModelsPayload makes both upstream calls and assembles the
@@ -254,6 +328,7 @@ func buildModelsPayload(parent context.Context) (*modelsResponse, error) {
 		FetchedAt: time.Now().UTC(),
 		Source:    "openrouter",
 	}
+	pl.allModels = indexCanonicalModels(canonical)
 	pl.Categories.Free = pickFree(canonical)
 	pl.Categories.OpenWeights = pickOpenWeights(canonical)
 	pl.Categories.Value = pickValue(canonical)
@@ -284,6 +359,25 @@ func buildModelsPayload(parent context.Context) (*modelsResponse, error) {
 	}
 
 	return pl, nil
+}
+
+func indexCanonicalModels(all []orModel) map[string]pickedModel {
+	out := make(map[string]pickedModel, len(all))
+	for _, m := range all {
+		id := strings.TrimSpace(m.ID)
+		if id == "" {
+			continue
+		}
+		out[id] = pickedModel{
+			ID:                       id,
+			Name:                     m.Name,
+			ContextLength:            m.ContextLength,
+			PricingPromptPerMtok:     m.Pricing.promptUSD() * 1_000_000,
+			PricingCompletionPerMtok: m.Pricing.completionUSD() * 1_000_000,
+			Tags:                     []string{"catalog"},
+		}
+	}
+	return out
 }
 
 func fetchOpenRouterModels(ctx context.Context) ([]orModel, error) {
