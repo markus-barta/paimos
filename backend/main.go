@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -208,6 +209,11 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func liveUpdatesConfigured() bool {
+	v := strings.TrimSpace(os.Getenv("PAIMOS_LIVE_UPDATES_ENABLED"))
+	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
+
 func instanceHandler(w http.ResponseWriter, r *http.Request) {
 	label := os.Getenv("INSTANCE_LABEL")
 	hostname, _ := os.Hostname()
@@ -216,9 +222,10 @@ func instanceHandler(w http.ResponseWriter, r *http.Request) {
 	// don't have MinIO wired up — otherwise the first upload surfaces a
 	// 503 with a stuck 0% progress bar. See ACME-1.
 	json.NewEncoder(w).Encode(map[string]any{
-		"label":               label,
-		"hostname":            hostname,
-		"attachments_enabled": storage.Enabled(),
+		"label":                label,
+		"hostname":             hostname,
+		"attachments_enabled":  storage.Enabled(),
+		"live_updates_enabled": liveUpdatesConfigured(),
 	})
 }
 

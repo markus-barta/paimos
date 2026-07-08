@@ -13,7 +13,7 @@
 // Layered structure (each layer is independently idempotent):
 //
 //   1. Users — 4 dev users with pinned ids 9001–9004, no password.
-//   2. Projects — PAIT / ACME / BUGZ / LOGS via natural keys.
+//   2. Projects — PAI / ACME / BUGZ / LOGS via natural keys.
 //   3. Memberships — the per-user × per-project access matrix.
 //   4. Phase-1 issues — 5 issues per project covering the status enum;
 //      enough to exercise list filters before the rich seed lands.
@@ -39,10 +39,17 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
+)
+
+const (
+	debugAccountsFlagEnv = "PAIMOS_DEBUG_ACCOUNTS"
+	debugPasswordMinLen  = 40
 )
 
 // devUser is one row in the user matrix. ID is pinned so the
@@ -73,6 +80,17 @@ type memberRow struct {
 	Level     string
 }
 
+// debugUser is the normal-login counterpart to the token-only dev_ users.
+// These accounts exist for interactive browser QA across roles and are only
+// seeded when PAIMOS_DEBUG_ACCOUNTS=1 is explicitly set.
+type debugUser struct {
+	ID          int64
+	Username    string
+	PublicRole  string
+	PasswordEnv string
+	FirstName   string
+}
+
 var (
 	devUsers = []devUser{
 		{ID: 9001, Username: "dev_admin", Role: "admin"},
@@ -82,10 +100,17 @@ var (
 	}
 
 	devProjects = []devProject{
-		{Key: "PAIT", Name: "Paimos Testing", Description: "RBAC sandbox — dev_admin / dev_editor / dev_viewer / dev_outsider exercise the permissions matrix here."},
+		{Key: "PAI", Name: "PAIMOS", Description: "PAIMOS RBAC sandbox — dev_admin / dev_editor / dev_viewer / dev_outsider exercise the permissions matrix here."},
 		{Key: "ACME", Name: "Acme GmbH", Description: "Commercial customer engagement fixture — billing surface, sprint flows, customer detail."},
 		{Key: "BUGZ", Name: "Open-source bug tracker", Description: "List virtualisation, search, bulk ops, trash + restore. Phase-1 carries minimal issues; rich fixture variety is a follow-up."},
 		{Key: "LOGS", Name: "Personal-OS captain's log", Description: "Issue detail surfaces — comments, attachments, activity timeline. Phase-1 carries minimal issues; rich fixture variety is a follow-up."},
+	}
+
+	debugUsers = []debugUser{
+		{ID: 9011, Username: "debug-superadmin", PublicRole: auth.RoleSuperAdmin, PasswordEnv: "PAIMOS_DEBUG_SUPERADMIN_PASSWORD", FirstName: "Debug Superadmin"},
+		{ID: 9012, Username: "debug-admin", PublicRole: auth.RoleAdmin, PasswordEnv: "PAIMOS_DEBUG_ADMIN_PASSWORD", FirstName: "Debug Admin"},
+		{ID: 9013, Username: "debug-user", PublicRole: auth.RoleMember, PasswordEnv: "PAIMOS_DEBUG_USER_PASSWORD", FirstName: "Debug User"},
+		{ID: 9014, Username: "debug-customer", PublicRole: auth.RoleExternal, PasswordEnv: "PAIMOS_DEBUG_CUSTOMER_PASSWORD", FirstName: "Debug Customer"},
 	}
 )
 
@@ -108,6 +133,9 @@ func Run() error {
 	}
 	if err := seedMemberships(tx, projectIDs); err != nil {
 		return fmt.Errorf("seed memberships: %w", err)
+	}
+	if err := seedDebugAccounts(tx, projectIDs); err != nil {
+		return fmt.Errorf("seed debug accounts: %w", err)
 	}
 	if err := seedIssues(tx, projectIDs); err != nil {
 		return fmt.Errorf("seed issues: %w", err)
@@ -138,10 +166,16 @@ func Run() error {
 // flow's bcrypt compare always fails — the only way in is dev-login.
 func seedUsers(tx *sql.Tx) error {
 	for _, u := range devUsers {
+		superAdminFlag := 0
+		if u.Role == auth.RoleSuperAdmin {
+			superAdminFlag = 1
+		}
 		_, err := tx.Exec(`
-			INSERT OR IGNORE INTO users (id, username, password, role, status, first_name, last_name)
-			VALUES (?, ?, '', ?, 'active', ?, 'Dev')
-		`, u.ID, u.Username, u.Role, u.Username)
+			INSERT OR IGNORE INTO users (
+				id, username, password, role, role_key, is_super_admin, status, first_name, last_name, must_change_password
+			)
+			VALUES (?, ?, '', ?, ?, ?, 'active', ?, 'Dev', 0)
+		`, u.ID, u.Username, auth.LegacyRoleForPublicRole(u.Role), u.Role, superAdminFlag, u.Username)
 		if err != nil {
 			return fmt.Errorf("insert user %s: %w", u.Username, err)
 		}
@@ -149,10 +183,128 @@ func seedUsers(tx *sql.Tx) error {
 	return nil
 }
 
+func seedDebugAccounts(tx *sql.Tx, projectIDs map[string]int64) error {
+	requested, err := debugAccountsRequested()
+	if err != nil {
+		return err
+	}
+	if !requested {
+		return nil
+	}
+
+	passwords := map[string]string{}
+	missing := []string{}
+	for _, u := range debugUsers {
+		password := os.Getenv(u.PasswordEnv)
+		if strings.TrimSpace(password) == "" {
+			missing = append(missing, u.PasswordEnv)
+			continue
+		}
+		if len(password) < debugPasswordMinLen {
+			return fmt.Errorf("%s must be at least %d characters", u.PasswordEnv, debugPasswordMinLen)
+		}
+		passwords[u.Username] = password
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("debug accounts requested but missing %s; run scripts/dev-debug-accounts.sh", strings.Join(missing, ", "))
+	}
+
+	for _, u := range debugUsers {
+		hash, err := auth.HashPassword(passwords[u.Username])
+		if err != nil {
+			return fmt.Errorf("hash password for %s: %w", u.Username, err)
+		}
+		superAdminFlag := 0
+		if u.PublicRole == auth.RoleSuperAdmin {
+			superAdminFlag = 1
+		}
+		_, err = tx.Exec(`
+			INSERT INTO users (
+				id, username, password, role, role_key, is_super_admin, status,
+				first_name, last_name, email, must_change_password, locale
+			)
+			VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 'Debug', ?, 0, 'en')
+			ON CONFLICT(username) DO UPDATE SET
+				password = excluded.password,
+				role = excluded.role,
+				role_key = excluded.role_key,
+				is_super_admin = excluded.is_super_admin,
+				status = 'active',
+				first_name = excluded.first_name,
+				last_name = excluded.last_name,
+				email = excluded.email,
+				must_change_password = 0,
+				locale = 'en'
+		`, u.ID, u.Username, hash, auth.LegacyRoleForPublicRole(u.PublicRole), u.PublicRole, superAdminFlag, u.FirstName, u.Username+"@local.invalid")
+		if err != nil {
+			return fmt.Errorf("upsert debug user %s: %w", u.Username, err)
+		}
+		var gotID int64
+		if err := tx.QueryRow("SELECT id FROM users WHERE username=?", u.Username).Scan(&gotID); err != nil {
+			return fmt.Errorf("resolve debug user %s: %w", u.Username, err)
+		}
+		if gotID != u.ID {
+			return fmt.Errorf("debug user %s has id %d, want pinned id %d", u.Username, gotID, u.ID)
+		}
+	}
+	if err := seedDebugMemberships(tx, projectIDs); err != nil {
+		return err
+	}
+	log.Printf("dev-seed: %d debug accounts seeded from local env (passwords not logged)", len(debugUsers))
+	return nil
+}
+
+func debugAccountsRequested() (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(debugAccountsFlagEnv))) {
+	case "":
+		return false, nil
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be one of 1/true/yes/on or 0/false/no/off", debugAccountsFlagEnv)
+	}
+}
+
+func seedDebugMemberships(tx *sql.Tx, projectIDs map[string]int64) error {
+	idByKey := func(k string) int64 { return projectIDs[k] }
+	debugUser := debugUserByName("debug-user").ID
+	debugCustomer := debugUserByName("debug-customer").ID
+
+	if _, err := tx.Exec(`
+		INSERT OR REPLACE INTO project_members (user_id, project_id, access_level)
+		SELECT ?, p.id, 'none'
+		FROM projects p
+		WHERE p.status != 'deleted'
+	`, debugUser); err != nil {
+		return fmt.Errorf("deny debug-user on existing projects: %w", err)
+	}
+
+	rows := []memberRow{
+		{UserID: debugUser, ProjectID: idByKey("PAI"), Level: "editor"},
+		{UserID: debugUser, ProjectID: idByKey("ACME"), Level: "editor"},
+		{UserID: debugUser, ProjectID: idByKey("BUGZ"), Level: "viewer"},
+		{UserID: debugCustomer, ProjectID: idByKey("ACME"), Level: "viewer"},
+	}
+	for _, r := range rows {
+		if _, err := tx.Exec(`
+			INSERT OR REPLACE INTO project_members (user_id, project_id, access_level)
+			VALUES (?, ?, ?)
+		`, r.UserID, r.ProjectID, r.Level); err != nil {
+			return fmt.Errorf("upsert debug membership user=%d project=%d: %w", r.UserID, r.ProjectID, err)
+		}
+	}
+	return nil
+}
+
 // seedProjects idempotently inserts the four fixture projects keyed on
-// PAIT/ACME/BUGZ/LOGS. Returns project_id-by-key so downstream seeders
+// PAI/ACME/BUGZ/LOGS. Returns project_id-by-key so downstream seeders
 // can resolve memberships + issues without re-querying.
 func seedProjects(tx *sql.Tx) (map[string]int64, error) {
+	if err := normalizeLegacyPAITProject(tx); err != nil {
+		return nil, err
+	}
 	out := map[string]int64{}
 	for _, p := range devProjects {
 		if _, err := tx.Exec(`
@@ -170,6 +322,24 @@ func seedProjects(tx *sql.Tx) (map[string]int64, error) {
 	return out, nil
 }
 
+func normalizeLegacyPAITProject(tx *sql.Tx) error {
+	var paiCount int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM projects WHERE key='PAI'").Scan(&paiCount); err != nil {
+		return fmt.Errorf("count PAI project: %w", err)
+	}
+	if paiCount > 0 {
+		return nil
+	}
+	if _, err := tx.Exec(`
+		UPDATE projects
+		SET key='PAI', name='PAIMOS'
+		WHERE key='PAIT'
+	`); err != nil {
+		return fmt.Errorf("normalize legacy PAIT fixture project: %w", err)
+	}
+	return nil
+}
+
 // seedMemberships writes the per-user × per-project access matrix.
 // dev_admin has global role=admin so it does not need explicit rows
 // (admin inherits all-access); the other three get explicit grants
@@ -177,8 +347,8 @@ func seedProjects(tx *sql.Tx) (map[string]int64, error) {
 //
 // User × project access matrix (per PAI-267 spec):
 //
-//	dev_editor:   PAIT=editor, ACME=editor, BUGZ=viewer, LOGS=(absent)
-//	dev_viewer:   PAIT=viewer, ACME=(absent), BUGZ=(absent), LOGS=viewer
+//	dev_editor:   PAI=editor, ACME=editor, BUGZ=viewer, LOGS=(absent)
+//	dev_viewer:   PAI=viewer, ACME=(absent), BUGZ=(absent), LOGS=viewer
 //	dev_outsider: all absent (and global role=external means no
 //	              auto-grants either)
 func seedMemberships(tx *sql.Tx, projectIDs map[string]int64) error {
@@ -187,12 +357,12 @@ func seedMemberships(tx *sql.Tx, projectIDs map[string]int64) error {
 	devViewer := devUserByName("dev_viewer").ID
 
 	rows := []memberRow{
-		{UserID: devEditor, ProjectID: idByKey("PAIT"), Level: "editor"},
+		{UserID: devEditor, ProjectID: idByKey("PAI"), Level: "editor"},
 		{UserID: devEditor, ProjectID: idByKey("ACME"), Level: "editor"},
 		{UserID: devEditor, ProjectID: idByKey("BUGZ"), Level: "viewer"},
 		// dev_editor on LOGS: no row (absent = no access since global role=member
 		// only gets editor on projects via explicit grants in this seed model)
-		{UserID: devViewer, ProjectID: idByKey("PAIT"), Level: "viewer"},
+		{UserID: devViewer, ProjectID: idByKey("PAI"), Level: "viewer"},
 		{UserID: devViewer, ProjectID: idByKey("LOGS"), Level: "viewer"},
 		// dev_outsider: no rows at all.
 	}
@@ -262,6 +432,15 @@ func devUserByName(name string) devUser {
 		}
 	}
 	panic("devseed: unknown dev user " + name) // build-time invariant
+}
+
+func debugUserByName(name string) debugUser {
+	for _, u := range debugUsers {
+		if u.Username == name {
+			return u
+		}
+	}
+	panic("devseed: unknown debug user " + name) // build-time invariant
 }
 
 // nextIssueNumber returns the next per-project issue_number to use,

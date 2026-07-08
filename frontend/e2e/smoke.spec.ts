@@ -29,13 +29,13 @@ test.beforeAll(() => {
 test('backend + DB: dev-login, seeded projects, issues list endpoint', async ({ request }) => {
   await devLogin(request)
   const projects = await listProjects(request)
-  expect(projects.map((p) => p.key)).toContain('PAIT')
+  expect(projects.map((p) => p.key)).toContain('PAI')
 
-  const pait = projects.find((p) => p.key === 'PAIT')
-  expect(pait, 'seeded PAIT project should exist').toBeTruthy()
-  if (!pait) return
+  const pai = projects.find((p) => p.key === 'PAI')
+  expect(pai, 'seeded PAI project should exist').toBeTruthy()
+  if (!pai) return
 
-  const issues = await request.get(`${API}/api/projects/${pait.id}/issues`)
+  const issues = await request.get(`${API}/api/projects/${pai.id}/issues`)
   expect(issues.ok(), `issues list failed: ${issues.status()}`).toBeTruthy()
 })
 
@@ -49,18 +49,18 @@ test('frontend serves the authenticated shell (no login bounce)', async ({ page,
 
 test('project view renders issues fetched from the backend', async ({ page, context }) => {
   await devLogin(context.request)
-  const pait = (await listProjects(context.request)).find((p) => p.key === 'PAIT')
-  expect(pait, 'seeded PAIT project should exist').toBeTruthy()
-  if (!pait) return
+  const pai = (await listProjects(context.request)).find((p) => p.key === 'PAI')
+  expect(pai, 'seeded PAI project should exist').toBeTruthy()
+  if (!pai) return
 
   // tie the rendered view to a real backend response, not just a static shell
   const apiCall = page.waitForResponse(
-    (r) => r.url().includes(`/api/projects/${pait.id}`) && r.ok(),
+    (r) => r.url().includes(`/api/projects/${pai.id}`) && r.ok(),
     { timeout: 15_000 },
   )
-  await page.goto(`/projects/${pait.id}`)
+  await page.goto(`/projects/${pai.id}`)
   await apiCall
 
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
-  await expect(page.getByText(/PAIT|Paimos Testing/i).first()).toBeVisible()
+  await expect(page.getByText(/PAI|PAIMOS/i).first()).toBeVisible()
 })

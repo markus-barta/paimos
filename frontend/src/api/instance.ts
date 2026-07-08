@@ -32,11 +32,13 @@ import { api } from './client'
 export const instanceLabel       = ref('')
 export const instanceHostname    = ref('')
 export const attachmentsEnabled  = ref(true)
+export const liveUpdatesEnabled  = ref(true)
 
 interface InstanceInfo {
   label?: string
   hostname?: string
   attachments_enabled?: boolean
+  live_updates_enabled?: boolean
 }
 
 let loadPromise: Promise<void> | null = null
@@ -48,6 +50,7 @@ export function loadInstance(): Promise<void> {
       instanceLabel.value      = d.label ?? ''
       instanceHostname.value   = d.hostname ?? ''
       attachmentsEnabled.value = d.attachments_enabled ?? true
+      liveUpdatesEnabled.value = d.live_updates_enabled ?? true
     })
     .catch(() => {
       // Swallow — not logged in yet (401), network blip, etc.

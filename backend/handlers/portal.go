@@ -177,6 +177,7 @@ var portalSortColumns = map[string]string{
 	"title":       "i.title",
 	"status":      "i.status",
 	"priority":    "i.priority",
+	"created_at":  "i.created_at",
 	"updated_at":  "i.updated_at",
 	"accepted_at": "i.accepted_at",
 }

@@ -46,7 +46,7 @@ initKeyboardShortcuts()
 
 // ── Local state ──────────────────────────────────────────────────────────────
 const isAdmin = computed(() => auth.isAdmin)
-const show2FAWarning = computed(() => auth.checked && !!auth.user && auth.totpChecked && !auth.totpEnabled)
+const show2FAWarning = computed(() => auth.checked && !!auth.user && auth.totpChecked && !auth.totpEnabled && !auth.suppressSecurityNags)
 
 function isActive(path: string) {
   if (path === '/') return route.path === '/'
@@ -102,7 +102,21 @@ const { branding } = useBranding()
 loadInstance()
 
 // ── New Issue button — context-aware ─────────────────────────────────────────
+const routeProjectId = computed(() => {
+  const projectParam = route.params.id
+  const numericParam = Array.isArray(projectParam) ? projectParam[0] : projectParam
+  const fromParam = numericParam ? Number(numericParam) : NaN
+  if (Number.isFinite(fromParam) && route.path.startsWith('/projects/')) return fromParam
+  const match = route.path.match(/^\/projects\/(\d+)/)
+  return match ? Number(match[1]) : null
+})
+
+const canCreateIssue = computed(() =>
+  routeProjectId.value != null ? auth.canEdit(routeProjectId.value) : auth.canEditAnyProject,
+)
+
 function openNewIssue() {
+  if (!canCreateIssue.value) return
   const p = route.path
   const issueMatch = p.match(/^\/projects\/(\d+)\/issues\/(\d+)$/)
   const projectMatch = p.match(/^\/projects\/(\d+)$/)
@@ -188,6 +202,7 @@ onBeforeUnmount(() => {
 
         <!-- New Issue button — very top, above nav -->
         <button
+          v-if="canCreateIssue"
           class="new-issue-btn"
           :class="{ 'new-issue-btn--collapsed': !isExpanded }"
           :title="isExpanded ? '' : 'New Issue'"

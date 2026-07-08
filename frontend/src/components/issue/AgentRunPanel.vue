@@ -24,11 +24,14 @@ import type {
   AiSelectorDefault,
 } from '@/composables/useAiAction'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueId: number
   issueKey: string
   projectId: number
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 interface AgentRun {
   id: number
@@ -84,6 +87,7 @@ const notice = ref('')
 const runnersError = ref('') // distinct from "no runners online" (M4)
 const executionOptionsError = ref('')
 const agentsError = ref('')
+const canStartRun = computed(() => props.canEdit !== false)
 
 const IN_FLIGHT = new Set(['queued', 'running'])
 const hasActiveRun = computed(() => runs.value.some((r) => IN_FLIGHT.has(r.status)))
@@ -263,6 +267,7 @@ const visibleKnowledgeSuggestions = computed(() =>
 )
 
 function useKnowledgeSuggestion(suggestion: AiKnowledgeSuggestion) {
+  if (!canStartRun.value) return
   if (canUseKnowledgePrompt(suggestion) && suggestion.prompt_preset_ref) {
     selectedPromptPresetRef.value = suggestion.prompt_preset_ref
     return
@@ -313,6 +318,30 @@ const selectedDraftProviderMeta = computed(() => {
   if (action.models?.length) parts.push(action.models[0])
   if (action.endpoint_label) parts.push(action.endpoint_label)
   return parts.join(' · ')
+})
+const selectedActionModels = computed(() => selectedAction.value?.models?.join(', ') ?? '')
+const selectedPromptPresetLabel = computed(
+  () =>
+    promptPresetChoices.value.find((preset) => preset.ref === selectedPromptPresetRef.value)?.label ??
+    selectedPromptPresetRef.value,
+)
+const selectedContextPackLabel = computed(
+  () =>
+    contextPackChoices.value.find((pack) => pack.id === selectedContextPack.value)?.label ??
+    selectedContextPack.value,
+)
+const selectorSummary = computed(() => {
+  const parts = [
+    selectedDefaultSourceLabel.value,
+    selectedAction.value?.label,
+    selectedActionModels.value ? `Model ${selectedActionModels.value}` : selectedDraftProviderMeta.value,
+    selectedActionIsDraft.value && selectedProfileId.value ? `Profile ${selectedProfileId.value}` : '',
+    selectedActionIsDraft.value && selectedEffort.value ? `Effort ${selectedEffort.value}` : '',
+    selectedActionIsDraft.value && selectedPromptPresetLabel.value ? `Prompt ${selectedPromptPresetLabel.value}` : '',
+    selectedActionIsDraft.value && selectedContextPackLabel.value ? `Context ${selectedContextPackLabel.value}` : '',
+    selectedProjectAgent.value ? `Agent ${selectedProjectAgent.value.name}` : '',
+  ]
+  return parts.filter(Boolean)
 })
 
 function syncActionSelection() {
@@ -556,6 +585,7 @@ function draftReviewMeta(run: AgentRun): string[] {
 }
 
 async function handoffDraft(run: AgentRun) {
+  if (!canStartRun.value) return
   const action = trustedRunnerActionForDraft()
   busy.value = true
   error.value = ''
@@ -662,6 +692,7 @@ async function fetchRunners() {
 }
 
 async function implement() {
+  if (!canStartRun.value) return
   busy.value = true
   error.value = ''
   notice.value = ''
@@ -772,7 +803,7 @@ onUnmounted(() => {
           v-model="selectedActionKey"
           class="arp-action"
           aria-label="Agent action"
-          :disabled="busy"
+          :disabled="busy || !canStartRun"
           @change="onActionChange"
         >
           <option
@@ -788,6 +819,7 @@ onUnmounted(() => {
           v-model="selectedDevice"
           class="arp-device"
           aria-label="Target runner"
+          :disabled="busy || !canStartRun"
         >
           <option v-for="r in actionRunners" :key="r.device_id" :value="r.device_id">
             {{ r.device_id }}
@@ -798,7 +830,7 @@ onUnmounted(() => {
           v-model="selectedAgentName"
           class="arp-agent"
           aria-label="Project agent"
-          :disabled="busy"
+          :disabled="busy || !canStartRun"
         >
           <option value="">No project agent</option>
           <option v-for="agent in projectAgents" :key="agent.name" :value="agent.name">
@@ -810,16 +842,21 @@ onUnmounted(() => {
           v-model="deployTarget"
           class="arp-deploy-target"
           aria-label="Deploy target"
-          :disabled="busy"
+          :disabled="busy || !canStartRun"
         >
           <option v-for="target in DEPLOY_TARGETS" :key="target.value" :value="target.value">
             {{ target.label }}
           </option>
         </select>
-        <button class="btn btn-primary btn-sm" type="button" :disabled="busy" @click="implement">
+        <button v-if="canStartRun" class="btn btn-primary btn-sm" type="button" :disabled="busy" @click="implement">
           {{ buttonLabel }}
         </button>
       </div>
+    </div>
+
+    <div v-if="selectorSummary.length" class="arp-defaults" aria-label="AI defaults">
+      <span class="arp-defaults-label">Defaults</span>
+      <span v-for="item in selectorSummary" :key="item" class="arp-defaults-pill">{{ item }}</span>
     </div>
 
     <div v-if="selectedActionIsDraft" class="arp-draft-controls">
@@ -827,7 +864,7 @@ onUnmounted(() => {
         v-model="selectedProfileId"
         class="arp-draft-select"
         aria-label="Draft profile"
-        :disabled="busy || !profileChoices.length"
+        :disabled="busy || !canStartRun || !profileChoices.length"
       >
         <option v-for="profile in profileChoices" :key="profile.id" :value="profile.id">
           {{ profile.label }}
@@ -837,7 +874,7 @@ onUnmounted(() => {
         v-model="selectedEffort"
         class="arp-draft-select"
         aria-label="Draft effort"
-        :disabled="busy || !effortChoices.length"
+        :disabled="busy || !canStartRun || !effortChoices.length"
       >
         <option v-for="effort in effortChoices" :key="effort" :value="effort">
           {{ effort }}
@@ -847,7 +884,7 @@ onUnmounted(() => {
         v-model="selectedPromptPresetRef"
         class="arp-draft-select arp-draft-select--wide"
         aria-label="Draft prompt preset"
-        :disabled="busy || !promptPresetChoices.length"
+        :disabled="busy || !canStartRun || !promptPresetChoices.length"
       >
         <option v-for="preset in promptPresetChoices" :key="preset.ref" :value="preset.ref">
           {{ preset.label }}
@@ -857,7 +894,7 @@ onUnmounted(() => {
         v-model="selectedContextPack"
         class="arp-draft-select arp-draft-select--wide"
         aria-label="Draft context pack"
-        :disabled="busy || !contextPackChoices.length"
+        :disabled="busy || !canStartRun || !contextPackChoices.length"
       >
         <option v-for="pack in contextPackChoices" :key="pack.id" :value="pack.id">
           {{ pack.label }}
@@ -887,7 +924,7 @@ onUnmounted(() => {
           <button
             class="arp-knowledge-button"
             type="button"
-            :disabled="busy || (!canUseKnowledgePrompt(suggestion) && !hasKnowledgeContextPack)"
+            :disabled="!canStartRun || busy || (!canUseKnowledgePrompt(suggestion) && !hasKnowledgeContextPack)"
             @click="useKnowledgeSuggestion(suggestion)"
           >
             {{ canUseKnowledgePrompt(suggestion) ? 'Use prompt' : 'Use context' }}
@@ -937,8 +974,11 @@ onUnmounted(() => {
     <p v-if="error" class="arp-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="arp-notice" role="status">{{ notice }}</p>
 
-    <p v-if="!loading && !runs.length" class="arp-empty">
+    <p v-if="!loading && !runs.length && canStartRun" class="arp-empty">
       No runs yet. Click <strong>Implement this</strong> to hand {{ issueKey }} to your local agent.
+    </p>
+    <p v-else-if="!loading && !runs.length" class="arp-empty">
+      No runs yet.
     </p>
 
     <ul v-if="runs.length" class="arp-runs" aria-live="polite" aria-label="Agent runs">
@@ -979,7 +1019,7 @@ onUnmounted(() => {
             {{ part }}
           </span>
           <button
-            v-if="run.status === 'drafted' && !run.followup_run_id"
+            v-if="canStartRun && run.status === 'drafted' && !run.followup_run_id"
             type="button"
             class="arp-draft-handoff"
             :disabled="busy"
@@ -1031,6 +1071,31 @@ onUnmounted(() => {
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.arp-defaults {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.65rem;
+  font-size: 11px;
+}
+.arp-defaults-label {
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.arp-defaults-pill {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.16rem 0.45rem;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  color: var(--text);
 }
 .arp-action,
 .arp-device,

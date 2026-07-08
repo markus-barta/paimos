@@ -1,5 +1,6 @@
-import { onBeforeUnmount, onMounted } from "vue";
+import { onBeforeUnmount, onMounted, watch, type Ref } from "vue";
 
+import { liveUpdatesEnabled, loadInstance } from "@/api/instance";
 import { useChangesStore, type MutationChangeEvent } from "@/stores/changes";
 
 const LAST_SEQ_KEY = "paimos.changes.lastSeq";
@@ -18,8 +19,9 @@ function writeLastSeq(id: number) {
   }
 }
 
-export function useChangesStream() {
+export function useChangesStream(enabled?: Ref<boolean>) {
   const changes = useChangesStore();
+  let stopWatch: (() => void) | null = null;
 
   function connect() {
     if (source) return;
@@ -57,6 +59,28 @@ export function useChangesStream() {
     source = null;
   }
 
-  onMounted(connect);
-  onBeforeUnmount(disconnect);
+  async function sync() {
+    if (enabled && !enabled.value) {
+      disconnect();
+      return;
+    }
+    await loadInstance();
+    if (!liveUpdatesEnabled.value) {
+      disconnect();
+      return;
+    }
+    connect();
+  }
+
+  onMounted(() => {
+    stopWatch = watch(
+      [() => enabled?.value ?? true, liveUpdatesEnabled],
+      () => { void sync(); },
+      { immediate: true },
+    );
+  });
+  onBeforeUnmount(() => {
+    stopWatch?.();
+    disconnect();
+  });
 }

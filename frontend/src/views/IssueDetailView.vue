@@ -316,6 +316,7 @@ onBeforeRouteLeave(async () => {
 })
 
 function enterEditMode() {
+  if (!canEditThisProject.value) return
   resetForm()
   editing.value = true
   nextTick(() => {
@@ -333,6 +334,7 @@ async function reloadOnConflict() {
 }
 
 async function save() {
+  if (!canEditThisProject.value) return
   if (pendingInlineUploads.value > 0) {
     saveError.value = `Please wait — ${pendingInlineUploads.value} attachment upload${pendingInlineUploads.value > 1 ? 's' : ''} still in progress.`
     return
@@ -379,6 +381,7 @@ async function save() {
 }
 
 async function deleteIssue() {
+  if (!authStore.isAdmin || !canEditThisProject.value) return
   if (saving.value) return
   if (
     !(await confirm({
@@ -400,6 +403,7 @@ async function deleteIssue() {
 // ── Clone ────────────────────────────────────────────────────────────────────
 const cloning = ref(false)
 async function cloneIssue() {
+  if (!canEditThisProject.value) return
   if (cloning.value) return
   cloning.value = true
   try {
@@ -539,6 +543,7 @@ function startUpload(job: UploadJob) {
 }
 
 function uploadInlineFiles(files: FileList | File[], modelField: InlineField, insertAt: number) {
+  if (!canEditThisProject.value) return
   const list = Array.from(files)
   if (!list.length) return
 
@@ -577,6 +582,7 @@ const isVisibleToPortal = computed(() =>
   (issue.value?.tags ?? []).some((t) => t.name === CUSTOMER_PORTAL_TAG_NAME),
 )
 async function onVisibilityToggle(makeVisible: boolean) {
+  if (!canEditThisProject.value) return
   const tagId = customerPortalTagId.value
   if (!tagId) return
   if (makeVisible) {
@@ -587,12 +593,14 @@ async function onVisibilityToggle(makeVisible: boolean) {
 }
 
 async function addTag(tagId: number) {
+  if (!canEditThisProject.value) return
   await addIssueTag(issueId.value, tagId)
   const tag = allTags.value.find((t) => t.id === tagId)
   if (tag && issue.value) issue.value = { ...issue.value, tags: [...(issue.value.tags ?? []), tag] }
 }
 
 async function removeTag(tagId: number) {
+  if (!canEditThisProject.value) return
   if (!(await confirm({ message: 'Remove this tag?', confirmLabel: 'Remove' }))) return
   await removeIssueTag(issueId.value, tagId)
   if (issue.value)
@@ -636,6 +644,7 @@ const availableSprintsFiltered = computed(() => {
 })
 
 function toggleSprintDropdown() {
+  if (!canEditThisProject.value) return
   sprintDropdownOpen.value = !sprintDropdownOpen.value
   if (sprintDropdownOpen.value) {
     nextTick(() => {
@@ -649,6 +658,7 @@ function toggleSprintDropdown() {
 }
 
 async function assignSprint(sprint: Sprint) {
+  if (!canEditThisProject.value) return
   if (!issue.value) return
   await assignIssueSprint(issueId.value, sprint.id)
   issue.value = {
@@ -660,6 +670,7 @@ async function assignSprint(sprint: Sprint) {
 }
 
 async function removeSprint(sprintId: number) {
+  if (!canEditThisProject.value) return
   if (!issue.value) return
   if (
     !(await confirm({
@@ -682,6 +693,7 @@ const newIssueStore = useNewIssueStore()
 watch(
   () => newIssueStore.trigger,
   () => {
+    if (!canEditThisProject.value) return
     const ctx = newIssueStore.context
     if (ctx.projectId !== undefined && ctx.projectId !== effectiveProjectId.value) return
     if (ctx.parentId !== undefined && ctx.parentId !== issueId.value) return
@@ -1124,6 +1136,7 @@ async function cancelEdit() {
                    buttons so admins discover it where they expect
                    issue-scoped controls. -->
             <AiActionMenu
+              v-if="canEditThisProject"
               surface="issue"
               placement="issue"
               :host-key="`issue-detail:${issueId}:record`"
@@ -1137,11 +1150,12 @@ async function cancelEdit() {
                 }
               "
             />
-            <button v-if="authStore.isAdmin" class="btn btn-danger" @click="deleteIssue">
+            <button v-if="authStore.isAdmin && canEditThisProject" class="btn btn-danger" @click="deleteIssue">
               Delete
             </button>
             <button
               v-if="
+                canEditThisProject &&
                 issue.type === 'epic' && issue.status !== 'done' && issue.status !== 'cancelled'
               "
               class="btn btn-ghost"
@@ -1149,10 +1163,10 @@ async function cancelEdit() {
             >
               Mark as Done
             </button>
-            <button class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
+            <button v-if="canEditThisProject" class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
               <AppIcon name="copy" :size="13" /> Clone
             </button>
-            <button class="btn btn-ghost" @click="enterEditMode">Edit</button>
+            <button v-if="canEditThisProject" class="btn btn-ghost" @click="enterEditMode">Edit</button>
             <button class="btn btn-ghost" @click="router.push(projectRoute)">
               <AppIcon name="x" :size="13" /> Close
             </button>
@@ -1160,6 +1174,7 @@ async function cancelEdit() {
           <template v-else>
             <!-- PAI-179: same issue-level menu in edit mode. -->
             <AiActionMenu
+              v-if="canEditThisProject"
               surface="issue"
               placement="issue"
               :host-key="`issue-detail:${issueId}:record`"
@@ -1173,10 +1188,10 @@ async function cancelEdit() {
                 }
               "
             />
-            <button v-if="authStore.isAdmin" class="btn btn-danger" @click="deleteIssue">
+            <button v-if="authStore.isAdmin && canEditThisProject" class="btn btn-danger" @click="deleteIssue">
               Delete
             </button>
-            <button class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
+            <button v-if="canEditThisProject" class="btn btn-ghost" :disabled="cloning" @click="cloneIssue">
               <AppIcon name="copy" :size="13" /> Clone
             </button>
             <button class="btn btn-ghost" @click="cancelEdit">Cancel</button>
@@ -1187,7 +1202,7 @@ async function cancelEdit() {
                 pendingInlineUploads > 0 ? `--upload-progress:${avgUploadProgress}%` : undefined
               "
               @click="save"
-              :disabled="saving || pendingInlineUploads > 0"
+              :disabled="!canEditThisProject || saving || pendingInlineUploads > 0"
             >
               {{
                 pendingInlineUploads > 0
@@ -1216,6 +1231,7 @@ async function cancelEdit() {
           :time-label="timeLabel"
           :format-hours="formatHours"
           :toggle-time-unit="toggleTimeUnit"
+          :can-edit="canEditThisProject"
           v-model:md-mode="mdMode"
           @remove-sprint="removeSprint"
           @toggle-sprint-dropdown="toggleSprintDropdown"
@@ -1276,7 +1292,7 @@ async function cancelEdit() {
       />
 
       <!-- Time Entries -->
-      <IssueTimeEntries ref="timeEntriesRef" :issue-id="issueId" />
+      <IssueTimeEntries ref="timeEntriesRef" :issue-id="issueId" :can-edit="canEditThisProject" />
 
       <!-- PAI-464: status-transition nudge. Sits between the metadata
            strip and the body so it interrupts the read-flow exactly
@@ -1452,6 +1468,7 @@ async function cancelEdit() {
         :default-parent-id="issueId"
         compact
         :title="childLabel(issue.type)!"
+        :can-edit="canEditThisProject"
         @created="onChildCreated"
         @updated="onChildUpdated"
         @deleted="onChildDeleted"
@@ -1485,6 +1502,7 @@ async function cancelEdit() {
       :issue-id="issueId"
       :project-id="effectiveProjectId"
       :project-issues="projectIssues"
+      :can-edit="canEditThisProject"
     />
 
     <!-- PAI-663: one AI Workbench region owns run controls, PPM knowledge,
@@ -1500,6 +1518,7 @@ async function cancelEdit() {
       :issue-type="issue.type"
       :issue-status="issue.status"
       :issue-title="issue.title"
+      :can-edit="canEditThisProject"
     />
 
     <!-- PAI-342: Applicable memories. Same gate as IssueRelations —
@@ -1509,6 +1528,7 @@ async function cancelEdit() {
       v-if="issue.type === 'ticket' || issue.type === 'task' || issue.type === 'epic'"
       :issue-id="issueId"
       :project-id="effectiveProjectId"
+      :can-edit="canEditThisProject"
     />
 
     <IssueAnchors
@@ -1517,7 +1537,7 @@ async function cancelEdit() {
     />
 
     <!-- Attachments -->
-    <IssueAttachments ref="attachmentsRef" :issue-id="issueId" />
+    <IssueAttachments ref="attachmentsRef" :issue-id="issueId" :can-edit="canEditThisProject" />
 
     <!-- Comments -->
     <IssueComments
@@ -1525,6 +1545,7 @@ async function cancelEdit() {
       :issue-id="issueId"
       :md-mode="mdMode"
       :is-monospace="isMonospace"
+      :can-edit="canEditThisProject"
     />
 
     <!-- Footer -->

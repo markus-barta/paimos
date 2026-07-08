@@ -12,9 +12,12 @@ import type { TimeEntry } from '@/types'
 import { LS_TIME_ENTRIES_EXPANDED } from '@/constants/storage'
 import { createIssueTimeEntry, deleteTimeEntryById, loadIssueTimeEntries, updateTimeEntry, type CreateTimeEntryPayload } from '@/services/issueTimeEntries'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueId: number
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 const authStore  = useAuthStore()
 const timerStore = useTimerStore()
@@ -87,6 +90,7 @@ const isActingAsOther = computed(() =>
 )
 
 const isTimerIssue = computed(() => timerStore.isRunning(props.issueId))
+const canEditTimeEntries = computed(() => props.canEdit !== false)
 
 // Collapsible time bar state
 const tePref = localStorage.getItem(LS_TIME_ENTRIES_EXPANDED) === '1'
@@ -126,6 +130,7 @@ defineExpose({ load, totalHours })
 watch(() => props.issueId, () => load())
 
 function openTeForm() {
+  if (!canEditTimeEntries.value) return
   teForm.value = {
     duration: '',
     material: '',
@@ -193,6 +198,7 @@ async function submitTimeEntry() {
 }
 
 async function toggleTimer() {
+  if (!canEditTimeEntries.value) return
   if (isTimerIssue.value) {
     const entry = timerStore.getRunningEntry(props.issueId)
     if (entry) await timerStore.stop(entry.id)
@@ -203,6 +209,7 @@ async function toggleTimer() {
 }
 
 async function stopAndRefresh(entry: TimeEntry) {
+  if (!canEditTimeEntries.value) return
   if (entry.user_id !== authStore.user?.id) {
     if (!await confirm({ message: `You are stopping ${entry.username}'s timer. Continue?`, confirmLabel: 'Stop' })) return
   }
@@ -215,7 +222,7 @@ const editingTeId = ref<number | null>(null)
 const editingTeValue = ref('')
 
 function canEditEntry(entry: TimeEntry): boolean {
-  return authStore.isSuperAdmin || entry.user_id === authStore.user?.id
+  return canEditTimeEntries.value && (authStore.isSuperAdmin || entry.user_id === authStore.user?.id)
 }
 
 function startEditDuration(entry: TimeEntry) {
@@ -292,12 +299,14 @@ async function saveDate(entry: TimeEntry) {
 }
 
 async function clearOverride(entry: TimeEntry) {
+  if (!canEditEntry(entry)) return
   if (!await confirm({ message: 'Clear the manual time override? The original tracked duration will be restored.', confirmLabel: 'Clear', danger: true })) return
   await updateTimeEntry(entry.id, { clear_override: true })
   await load()
 }
 
 async function deleteTimeEntry(entry: TimeEntry) {
+  if (!canEditEntry(entry)) return
   const isOther = entry.user_id !== authStore.user?.id
   const msg = isOther
     ? `You are deleting ${entry.username}'s time entry. You can undo this from Recent activity.`
@@ -324,7 +333,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
         </template>
       </div>
       <div class="te-bar-right">
-        <template v-if="!teExpanded && !perUserTotals.length && !isTimerIssue">
+        <template v-if="canEditTimeEntries && !teExpanded && !perUserTotals.length && !isTimerIssue">
           <button class="te-ghost-btn" @click.stop="toggleTimer" title="Start timer">
             <AppIcon name="play" :size="12" /> Start
           </button>
@@ -340,15 +349,15 @@ async function deleteTimeEntry(entry: TimeEntry) {
     <Transition name="te-expand">
       <div v-if="teExpanded" class="te-bar-content">
         <div class="te-bar-toolbar">
-          <button v-if="!isTimerIssue" class="te-ghost-btn" @click.stop="toggleTimer" title="Start timer">
+          <button v-if="canEditTimeEntries && !isTimerIssue" class="te-ghost-btn" @click.stop="toggleTimer" title="Start timer">
             <AppIcon name="play" :size="12" /> Start
           </button>
-          <button class="te-ghost-btn" @click.stop="openTeForm" title="Log time manually">
+          <button v-if="canEditTimeEntries" class="te-ghost-btn" @click.stop="openTeForm" title="Log time manually">
             <AppIcon name="plus" :size="12" /> Log
           </button>
         </div>
 
-        <div v-if="showTeForm" class="te-form">
+        <div v-if="canEditTimeEntries && showTeForm" class="te-form">
           <div class="te-form-row">
             <div class="field" style="flex:0 0 auto">
               <label>Date</label>

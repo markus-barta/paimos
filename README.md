@@ -227,6 +227,11 @@ and prints the `curl` recipe for grabbing a session cookie. The
 dev-login route is build-tag-gated and **does not exist in
 production binaries** (CI re-asserts this on every push).
 
+For normal login-form QA across roles, run
+`scripts/dev-debug-accounts.sh` once before `just dev-up`. It creates
+local `debug-*` fixture accounts with long random passwords stored in a
+gitignored AGE-encrypted env file.
+
 ## Agent integration
 
 PAIMOS is built for humans **and** AI agents. The recommended way to

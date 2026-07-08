@@ -91,6 +91,7 @@ export interface MeResponse {
   user: User
   access: AccessResponse
   via_dev_login?: boolean
+  suppress_security_nags?: boolean
   impersonation?: ImpersonationState | null
 }
 
@@ -117,16 +118,30 @@ export const useAuthStore = defineStore('auth', () => {
   // AppLayout. Always false in production frontend builds talking to a
   // production backend — the backend simply never sets the field.
   const viaDevLogin = ref(false)
+  const suppressSecurityNags = ref(false)
   const impersonation = ref<ImpersonationState | null>(null)
 
   function hydrateSession(resp: MeResponse) {
     user.value = resp.user
     hydrateAccess(resp.access)
     viaDevLogin.value = !!resp.via_dev_login
+    suppressSecurityNags.value = !!resp.suppress_security_nags
     impersonation.value = resp.impersonation?.active ? resp.impersonation : null
     setDisplayLocale(user.value?.locale)
     if (user.value?.locale) i18n.global.locale.value = user.value.locale as 'en' | 'de'
     setDisplayTimezone(user.value?.timezone)
+  }
+
+  function completeLogin(resp: MeResponse) {
+    hydrateSession(resp)
+    checked.value = true
+    // PAI-320: a fresh login means the next epoch we see is the new
+    // baseline — don't let a leftover from before logout retrigger
+    // refreshMe.
+    resetEpochBaseline()
+    // PAI-322: broadcast session-restored so sibling tabs dismiss their
+    // session-expired modals. Local ref clear is included in the helper.
+    announceSessionRestored()
   }
 
   function hydrateAccess(access: AccessResponse | undefined | null) {
@@ -153,6 +168,9 @@ export const useAuthStore = defineStore('auth', () => {
     return accessibleProjects.value.get(projectId) === 'editor'
   }
 
+  const canEditAnyProject = computed(() =>
+    allProjects.value || [...accessibleProjects.value.values()].some((level) => level === 'editor'),
+  )
   const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'super_admin')
   const isSuperAdmin = computed(() => user.value?.role === 'super_admin' || !!user.value?.is_super_admin)
 
@@ -166,6 +184,7 @@ export const useAuthStore = defineStore('auth', () => {
       allProjects.value = false
       accessibleProjects.value = new Map()
       viaDevLogin.value = false
+      suppressSecurityNags.value = false
       impersonation.value = null
       totpEnabled.value = false
       totpChecked.value = false
@@ -177,15 +196,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(username: string, password: string) {
     const resp = await api.post<MeResponse>('/auth/login', { username, password })
-    hydrateSession(resp)
-    checked.value = true
-    // PAI-320: a fresh login means the next epoch we see is the new
-    // baseline — don't let a leftover from before logout retrigger
-    // refreshMe.
-    resetEpochBaseline()
-    // PAI-322: broadcast session-restored so sibling tabs dismiss their
-    // session-expired modals. Local ref clear is included in the helper.
-    announceSessionRestored()
+    completeLogin(resp)
     await fetchTOTPStatus()
   }
 
@@ -228,6 +239,7 @@ export const useAuthStore = defineStore('auth', () => {
     allProjects.value = false
     accessibleProjects.value = new Map()
     viaDevLogin.value = false
+    suppressSecurityNags.value = false
     impersonation.value = null
     totpEnabled.value = false
     totpChecked.value = false
@@ -301,13 +313,16 @@ export const useAuthStore = defineStore('auth', () => {
     accessibleProjects,
     allProjects,
     viaDevLogin,
+    suppressSecurityNags,
     impersonation,
     fetchMe,
     login,
+    completeLogin,
     setUser,
     hydrateAccess,
     canView,
     canEdit,
+    canEditAnyProject,
     isAdmin,
     isSuperAdmin,
     fetchTOTPStatus,

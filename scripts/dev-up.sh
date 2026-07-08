@@ -6,16 +6,18 @@
 # Flow:
 #   1. Source ~/Secrets/dev/PAIMOS_DEV_LOGIN_TOKEN.env (gitignored)
 #      so PAIMOS_DEV_LOGIN_TOKEN lands in this script's env.
-#   2. Build the backend with `-tags dev_login` so the dev-login
+#   2. Source optional .local/debug-accounts.env for normal-login
+#      debug-superadmin/debug-admin/debug-user/debug-customer accounts.
+#   3. Build the backend with `-tags dev_login` so the dev-login
 #      handler symbol is in the binary; production builds omit it.
-#   3. Run `paimos dev-seed` if the dev fixture rows are missing,
+#   4. Run `paimos dev-seed` if the dev fixture rows are missing,
 #      so a fresh DB gets the 4 users + 4 projects without the user
 #      having to remember a separate command.
-#   4. Start the backend (port 8888) in the background and log to
+#   5. Start the backend (port 8888) in the background and log to
 #      ./.dev-up-backend.log.
-#   5. Start vite (port 5173) in the foreground; Ctrl-C tears the
+#   6. Start vite (port 5173) in the foreground; Ctrl-C tears the
 #      whole stack down via the trap below.
-#   6. Print an example curl command so the agent can grab a
+#   7. Print an example curl command so the agent can grab a
 #      session cookie in one round-trip.
 
 set -euo pipefail
@@ -54,6 +56,26 @@ if [[ -z "${PAIMOS_DEV_LOGIN_TOKEN:-}" ]]; then
 fi
 export PAIMOS_DEV_LOGIN_TOKEN
 export PAIMOS_ENV="${PAIMOS_ENV:-development}"
+
+DEBUG_ENV_FILE="${PAIMOS_DEBUG_ACCOUNTS_ENV_FILE:-$ROOT/.local/debug-accounts.env}"
+DEBUG_AGE_FILE="${PAIMOS_DEBUG_ACCOUNTS_AGE_FILE:-$ROOT/.local/debug-accounts.env.age}"
+DEBUG_AGE_IDENTITY="${PAIMOS_DEBUG_ACCOUNTS_AGE_IDENTITY:-$ROOT/.local/debug-accounts.agekey}"
+if [[ ! -f "$DEBUG_ENV_FILE" && -f "$DEBUG_AGE_FILE" && -f "$DEBUG_AGE_IDENTITY" ]]; then
+  if ! command -v age >/dev/null 2>&1; then
+    echo "error: $DEBUG_AGE_FILE exists but age is not on PATH to decrypt it" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$DEBUG_ENV_FILE")"
+  age -d -i "$DEBUG_AGE_IDENTITY" -o "$DEBUG_ENV_FILE" "$DEBUG_AGE_FILE"
+  chmod 600 "$DEBUG_ENV_FILE"
+fi
+if [[ -f "$DEBUG_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$DEBUG_ENV_FILE"
+  set +a
+  echo "→ loaded local debug account env"
+fi
 
 # Build the backend with the dev_login tag. Cached when sources haven't
 # changed, so the round-trip is fast on incremental runs.

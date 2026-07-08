@@ -29,10 +29,13 @@ import { addIssueRelation, removeIssueRelation } from '@/services/issueRelations
 import { listKnowledgeEntries } from '@/services/projectKnowledge'
 import type { KnowledgeEntry } from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueId: number
   projectId: number | null
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -109,6 +112,7 @@ async function unlinkMemory(memoryId: number) {
 }
 
 async function acceptSuggestion(s: ApplicableMemory) {
+  if (!canEdit.value) return
   try {
     await linkMemory(s.id)
     suggestions.value = suggestions.value.filter((x) => x.id !== s.id)
@@ -119,6 +123,7 @@ async function acceptSuggestion(s: ApplicableMemory) {
 }
 
 async function acceptAllSuggestions() {
+  if (!canEdit.value) return
   try {
     for (const s of suggestions.value) {
       await linkMemory(s.id)
@@ -136,6 +141,7 @@ function dismissSuggestions() {
 }
 
 async function removeLinked(m: ApplicableMemory) {
+  if (!canEdit.value) return
   if (!await confirm({ message: `Unlink memory "${m.slug}" from this issue?`, confirmLabel: 'Unlink' })) return
   try {
     await unlinkMemory(m.id)
@@ -165,6 +171,7 @@ function hideSuggestionList() {
 }
 
 async function addByCandidate(m: KnowledgeEntry) {
+  if (!canEdit.value) return
   addError.value = ''
   adding.value = true
   try {
@@ -181,6 +188,7 @@ async function addByCandidate(m: KnowledgeEntry) {
 }
 
 async function addBySlug() {
+  if (!canEdit.value) return
   addError.value = ''
   const q = addQuery.value.trim().toLowerCase()
   if (!q) {
@@ -211,7 +219,7 @@ function memoryRoute(m: { project_id: number; slug: string }): string {
 const canEdit = computed(() => {
   // Same gate as IssueRelations: admins see edit affordances. The
   // backend rejects non-admin writes anyway, so this is purely UX.
-  return authStore.isAdmin
+  return props.canEdit !== false && authStore.isAdmin
 })
 </script>
 

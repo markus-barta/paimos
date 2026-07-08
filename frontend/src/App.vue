@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import LoadingText from "@/components/LoadingText.vue";
-import { onMounted, onBeforeUnmount } from "vue";
-import { RouterView } from "vue-router";
+import { computed, onMounted, onBeforeUnmount } from "vue";
+import { RouterView, useRoute } from "vue-router";
 import AppLayout from "@/components/AppLayout.vue";
 import PortalLayout from "@/components/PortalLayout.vue";
 import AppConfirmDialog from "@/components/AppConfirmDialog.vue";
@@ -15,7 +15,11 @@ import { useChangesStream } from "@/composables/useChangesStream";
 
 const auth = useAuthStore();
 const undo = useUndoStore();
-useChangesStream();
+const route = useRoute();
+const internalChromeEnabled = computed(
+  () => auth.checked && !!auth.user && auth.user.role !== "external" && !route.meta.portal && !route.meta.public,
+);
+useChangesStream(internalChromeEnabled);
 
 // ── Session-death heartbeat (PAI-322) ────────────────────────
 // Two complementary triggers:
@@ -87,9 +91,10 @@ onBeforeUnmount(() => {
 
 <template>
   <AppConfirmDialog />
-  <UndoToast />
-  <UndoActivityPanel />
+  <UndoToast v-if="internalChromeEnabled" />
+  <UndoActivityPanel v-if="internalChromeEnabled" />
   <UndoConflictModal
+    v-if="internalChromeEnabled"
     :conflict="undo.conflict"
     :loading="undo.resolving"
     @cancel="undo.clearConflict()"

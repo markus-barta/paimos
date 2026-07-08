@@ -98,10 +98,10 @@ func TOTPSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonOKMap(w, map[string]string{
-		"secret":         key.Secret(),
-		"qr_png_base64":  qrB64,
-		"issuer":         brand.Default.TOTPIssuer,
-		"account":        user.Username,
+		"secret":        key.Secret(),
+		"qr_png_base64": qrB64,
+		"issuer":        brand.Default.TOTPIssuer,
+		"account":       user.Username,
 	})
 }
 
@@ -291,7 +291,8 @@ func TOTPVerify(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MeResponse{
-		User:   &totpUser,
-		Access: BuildAccessResponse(&totpUser),
+		User:                 &totpUser,
+		Access:               BuildAccessResponse(&totpUser),
+		SuppressSecurityNags: SuppressSecurityNags(&totpUser),
 	})
 }

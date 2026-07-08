@@ -41,6 +41,7 @@ const props = defineProps<{
   projectId?: number
   agentActions?: AgentActionCapability[]
   agentName?: string
+  canEditIssue?: (issue: Issue) => boolean
   // Sort
   sortResult: {
     thProps: (key: string) => Record<string, unknown>
@@ -111,6 +112,10 @@ const emit = defineEmits<{
 }>()
 
 const { showTypeIcon, showTypeText } = useIssueDisplay()
+
+function rowCanEdit(issue: Issue): boolean {
+  return !props.readonly && (props.canEditIssue?.(issue) ?? true)
+}
 
 // PAI-466: tiny helper for the always-visible CUSTOMERPORTAL marker
 // rendered in the type cell. Lives here (not in useIssueDisplay) so it
@@ -385,12 +390,12 @@ onUnmounted(stopColumnResize)
             },
           ]"
           :data-issue-id="i.id"
-          :draggable="!readonly"
-          @dragstart="!readonly && emit('set-dragging', i)"
-          @dragend="!readonly && emit('drag-end')"
-          @dragover.prevent="!readonly && issueSprintGroup.has(i.id) && emit('section-drag-over', $event, issueSprintGroup.get(i.id)!)"
-          @dragleave="!readonly && issueSprintGroup.has(i.id) && emit('section-drag-leave', $event, issueSprintGroup.get(i.id)!)"
-          @drop.prevent="!readonly && issueSprintGroup.has(i.id) && emit('section-drop', $event, issueSprintGroup.get(i.id)!)"
+          :draggable="rowCanEdit(i)"
+          @dragstart="rowCanEdit(i) && emit('set-dragging', i)"
+          @dragend="rowCanEdit(i) && emit('drag-end')"
+          @dragover.prevent="rowCanEdit(i) && issueSprintGroup.has(i.id) && emit('section-drag-over', $event, issueSprintGroup.get(i.id)!)"
+          @dragleave="rowCanEdit(i) && issueSprintGroup.has(i.id) && emit('section-drag-leave', $event, issueSprintGroup.get(i.id)!)"
+          @drop.prevent="rowCanEdit(i) && issueSprintGroup.has(i.id) && emit('section-drop', $event, issueSprintGroup.get(i.id)!)"
           @click="onRowClick(i)">
         <td v-if="selectionMode" class="sel-td" @click.stop="emit('toggle-select', i.id)">
           <input type="checkbox" class="sel-cb" :checked="selectedIds.has(i.id)" @change="emit('toggle-select', i.id)" @click.stop />
@@ -438,7 +443,7 @@ onUnmounted(stopColumnResize)
         </td>
         <td v-if="!compact && isVisible('title')" class="issue-title-cell inline-edit-cell">
           <input
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'title'"
+            v-if="rowCanEdit(i) && editingCell?.issueId === i.id && editingCell?.field === 'title'"
             ref="titleInputRef"
             class="title-inline-input"
             :value="cellEditValue"
@@ -450,8 +455,8 @@ onUnmounted(stopColumnResize)
           <span
             v-else
             class="issue-link"
-            @dblclick.stop.prevent="!readonly && emit('open-cell', i, 'title', $event)"
-            :title="readonly ? undefined : 'Double-click to rename'"
+            @dblclick.stop.prevent="rowCanEdit(i) && emit('open-cell', i, 'title', $event)"
+            :title="rowCanEdit(i) ? 'Double-click to rename' : undefined"
             v-html="highlight(i.title, searchQuery)"
           />
         </td>
@@ -459,7 +464,7 @@ onUnmounted(stopColumnResize)
            <span class="issue-link" v-html="highlight(i.title, searchQuery)" />
          </td>
         <td v-if="!compact && isVisible('status')" class="inline-edit-cell" :style="colStyle('status')">
-          <div v-if="!readonly && isEditing(i, 'status')" class="inline-control inline-control--status">
+          <div v-if="rowCanEdit(i) && isEditing(i, 'status')" class="inline-control inline-control--status">
             <IssueStatusSelect
               :model-value="i.status"
               size="sm"
@@ -468,7 +473,7 @@ onUnmounted(stopColumnResize)
             />
           </div>
           <button
-            v-else-if="!readonly"
+            v-else-if="rowCanEdit(i)"
             type="button"
             class="inline-read-value inline-read-value--status"
             title="Change status"
@@ -492,7 +497,7 @@ onUnmounted(stopColumnResize)
           </span>
         </td>
         <td v-if="!compact && isVisible('priority')" class="inline-edit-cell" :style="colStyle('priority')">
-          <div v-if="!readonly && isEditing(i, 'priority')" class="inline-control inline-control--priority">
+          <div v-if="rowCanEdit(i) && isEditing(i, 'priority')" class="inline-control inline-control--priority">
             <MetaSelect
               :model-value="i.priority"
               :options="INLINE_PRIORITY_OPTIONS"
@@ -502,7 +507,7 @@ onUnmounted(stopColumnResize)
             />
           </div>
           <button
-            v-else-if="!readonly"
+            v-else-if="rowCanEdit(i)"
             type="button"
             class="inline-read-value inline-read-value--priority"
             title="Change priority"
@@ -528,7 +533,7 @@ onUnmounted(stopColumnResize)
         <td v-if="!compact && isVisible('accepted_at')" class="meta-cell">{{ i.accepted_at || '—' }}</td>
         <td v-if="!compact && isVisible('cost_unit')" class="meta-cell inline-edit-cell">
           <AutocompleteInput
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'cost_unit'"
+            v-if="rowCanEdit(i) && editingCell?.issueId === i.id && editingCell?.field === 'cost_unit'"
             :model-value="cellEditValue"
             :suggestions="costUnits"
             placeholder="Cost unit..."
@@ -536,11 +541,12 @@ onUnmounted(stopColumnResize)
             @keydown.enter.stop="emit('save-cell-edit', i, 'cost_unit', cellEditValue)"
             @keydown.escape.stop="emit('close-cell', false)"
           />
-          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'cost_unit', $event)">{{ i.cost_unit?.label || '—' }}</span>
+          <span v-else-if="rowCanEdit(i)" class="clickable-cell" @click.stop="emit('open-cell', i, 'cost_unit', $event)">{{ i.cost_unit?.label || '—' }}</span>
+          <span v-else class="meta-cell">{{ i.cost_unit?.label || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('release')" class="meta-cell inline-edit-cell">
           <select
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'release'"
+            v-if="rowCanEdit(i) && editingCell?.issueId === i.id && editingCell?.field === 'release'"
             class="meta-inline-select"
             :value="cellEditValue"
             @change="emit('save-cell-edit', i, 'release', ($event.target as HTMLSelectElement).value)"
@@ -549,10 +555,11 @@ onUnmounted(stopColumnResize)
             <option value="">— None —</option>
             <option v-for="r in releases" :key="r" :value="r">{{ r }}</option>
           </select>
-          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release?.label || '—' }}</span>
+          <span v-else-if="rowCanEdit(i)" class="clickable-cell" @click.stop="emit('open-cell', i, 'release', $event)">{{ i.release?.label || '—' }}</span>
+          <span v-else class="meta-cell">{{ i.release?.label || '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('assignee')" class="meta-cell inline-edit-cell" :style="colStyle('assignee')">
-          <div v-if="isEditing(i, 'assignee_id')" class="inline-control inline-control--assignee">
+          <div v-if="rowCanEdit(i) && isEditing(i, 'assignee_id')" class="inline-control inline-control--assignee">
             <IssueAssigneeSelect
               :model-value="i.assignee_id !== null ? String(i.assignee_id) : ''"
               :users="users"
@@ -563,7 +570,7 @@ onUnmounted(stopColumnResize)
             />
           </div>
           <button
-            v-else
+            v-else-if="rowCanEdit(i)"
             type="button"
             class="inline-read-value inline-read-value--assignee"
             title="Change assignee"
@@ -573,6 +580,7 @@ onUnmounted(stopColumnResize)
             <span class="inline-read-label">{{ assigneeLabel(i) }}</span>
             <AppIcon name="pencil" :size="11" class="inline-edit-ghost" />
           </button>
+          <span v-else class="inline-read-label">{{ assigneeLabel(i) }}</span>
         </td>
         <td v-if="!compact && isVisible('tags')" class="tags-cell">
           <div v-if="i.tags?.length" class="row-tags">
@@ -587,7 +595,7 @@ onUnmounted(stopColumnResize)
           <span v-else class="meta-cell">—</span>
         </td>
         <td v-if="!compact && isVisible('sprint')" class="meta-cell inline-edit-cell">
-          <div v-if="editingCell?.issueId === i.id && editingCell?.field === 'sprint'" class="sprint-picker-wrap">
+          <div v-if="rowCanEdit(i) && editingCell?.issueId === i.id && editingCell?.field === 'sprint'" class="sprint-picker-wrap">
             <Teleport to="body">
               <div class="sprint-picker sprint-picker--teleported" :style="sprintPickerPos">
                 <input :value="sprintPickerSearch" @input="emit('update:sprint-picker-search', ($event.target as HTMLInputElement).value)" class="sprint-picker-search" placeholder="Search sprints..." autocomplete="off" @keydown.escape.stop="emit('close-cell', false)" />
@@ -606,7 +614,15 @@ onUnmounted(stopColumnResize)
               </div>
             </Teleport>
           </div>
-          <span v-else class="clickable-cell" @click.stop="emit('open-sprint-picker', i, $event)">
+          <span v-else-if="rowCanEdit(i)" class="clickable-cell" @click.stop="emit('open-sprint-picker', i, $event)">
+            <template v-if="i.sprint_ids?.length">
+              <span v-for="sid in i.sprint_ids" :key="sid" class="sprint-link-inline">
+                {{ sprints?.find(s => s.id === sid)?.title ?? loadedSprints.find(s => s.id === sid)?.title ?? `#${sid}` }}
+              </span>
+            </template>
+            <template v-else>—</template>
+          </span>
+          <span v-else>
             <template v-if="i.sprint_ids?.length">
               <span v-for="sid in i.sprint_ids" :key="sid" class="sprint-link-inline">
                 {{ sprints?.find(s => s.id === sid)?.title ?? loadedSprints.find(s => s.id === sid)?.title ?? `#${sid}` }}
@@ -621,7 +637,7 @@ onUnmounted(stopColumnResize)
         <td v-if="!compact && isVisible('rate_lp')" class="meta-cell">{{ i.rate_lp != null ? i.rate_lp : '—' }}</td>
         <td v-if="!compact && isVisible('estimate_hours')" class="meta-cell inline-edit-cell">
           <input
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'estimate_hours'"
+            v-if="rowCanEdit(i) && editingCell?.issueId === i.id && editingCell?.field === 'estimate_hours'"
             class="numeric-inline-input"
             type="text"
             :value="cellEditValue"
@@ -630,13 +646,14 @@ onUnmounted(stopColumnResize)
             @keydown.escape.stop="emit('close-cell', false)"
             @blur="emit('close-cell', true)"
           />
-          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'estimate_hours', $event)">
+          <span v-else-if="rowCanEdit(i)" class="clickable-cell" @click.stop="emit('open-cell', i, 'estimate_hours', $event)">
             {{ i.estimate_hours != null ? formatHours(i.estimate_hours, 'table') : '—' }}
           </span>
+          <span v-else>{{ i.estimate_hours != null ? formatHours(i.estimate_hours, 'table') : '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('estimate_lp')" class="meta-cell inline-edit-cell">
           <input
-            v-if="editingCell?.issueId === i.id && editingCell?.field === 'estimate_lp'"
+            v-if="rowCanEdit(i) && editingCell?.issueId === i.id && editingCell?.field === 'estimate_lp'"
             class="numeric-inline-input"
             type="text"
             :value="cellEditValue"
@@ -645,9 +662,10 @@ onUnmounted(stopColumnResize)
             @keydown.escape.stop="emit('close-cell', false)"
             @blur="emit('close-cell', true)"
           />
-          <span v-else class="clickable-cell" @click.stop="emit('open-cell', i, 'estimate_lp', $event)">
+          <span v-else-if="rowCanEdit(i)" class="clickable-cell" @click.stop="emit('open-cell', i, 'estimate_lp', $event)">
             {{ i.estimate_lp != null ? i.estimate_lp : '—' }}
           </span>
+          <span v-else>{{ i.estimate_lp != null ? i.estimate_lp : '—' }}</span>
         </td>
         <td v-if="!compact && isVisible('ar_hours')" class="meta-cell">{{ i.ar_hours != null ? formatHours(i.ar_hours, 'table') : '—' }}</td>
         <td v-if="!compact && isVisible('ar_lp')" class="meta-cell">{{ i.ar_lp != null ? i.ar_lp : '—' }}</td>
@@ -669,7 +687,7 @@ onUnmounted(stopColumnResize)
           <span v-else class="ai-status-empty">—</span>
         </td>
         <td v-if="!readonly && isVisible('actions')" class="col-actions" @click.stop>
-          <IssueRowActions :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin" :ai-work-status="i.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
+          <IssueRowActions :can-edit="rowCanEdit(i)" :can-have-children="true" :compact="compact" :collapsed="actionsCollapsed" :issue-id="i.id" :issue-type="i.type" :booked-hours="i.booked_hours" :is-admin="isAdmin && rowCanEdit(i)" :ai-work-status="i.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', i)" @edit="emit('open-side-panel', i, true)" @view="emit('open-side-panel', i, false)" @copy="emit('copy-key', i.issue_key)" @delete="emit('delete-row', i)" />
         </td>
       </tr>
       <!-- Expand panel for group types -->

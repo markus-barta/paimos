@@ -53,6 +53,7 @@ data/*.db-wal
 backend/data/
 
 # ── Environment & secrets ─────────────────────────────────────────────────────
+.local/
 .env
 .env.*
 !.env.example

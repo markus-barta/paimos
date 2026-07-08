@@ -33,6 +33,21 @@ seeds the dev fixtures (4 users, 4 projects, memberships matrix),
 starts the backend on `:8888`, hands off to vite on `:5173`, and
 prints the agent recipe for grabbing a session cookie.
 
+Optional normal-login debug accounts:
+
+```bash
+# one-time per machine; passwords are not printed
+scripts/dev-debug-accounts.sh
+
+# then start normally
+just dev-up
+```
+
+This adds `debug-superadmin`, `debug-admin`, `debug-user`, and
+`debug-customer` to the same local fixture DB. Their long random
+passwords live in `.local/debug-accounts.env` and are encrypted to
+`.local/debug-accounts.env.age` with AGE. `.local/` is gitignored.
+
 ---
 
 ## 1 · Token generation
@@ -178,11 +193,12 @@ you who you are without inspecting cookies.
 
 ## 6 · The user × project matrix
 
-`paimos dev-seed` creates four users (pinned ids `9001–9004` so
-playwright selectors are stable) and four fixture projects. The
-matrix below is what each user gets when they log in.
+`paimos dev-seed` always creates four token-only users (pinned ids
+`9001–9004` so playwright selectors are stable) and four fixture
+projects. The matrix below is what each user gets when they log in
+through `/api/auth/dev-login`.
 
-| User           | Global role | PAIT     | ACME     | BUGZ     | LOGS     |
+| User           | Global role | PAI      | ACME     | BUGZ     | LOGS     |
 |----------------|-------------|----------|----------|----------|----------|
 | `dev_admin`    | `admin`     | (all)    | (all)    | (all)    | (all)    |
 | `dev_editor`   | `member`    | editor   | editor   | viewer   | —        |
@@ -206,9 +222,36 @@ matrix below is what each user gets when they log in.
   empty state and be redirected away from internal routes. Use it
   to verify the portal-only experience for external users.
 
+### Normal-login debug accounts
+
+Set up with `scripts/dev-debug-accounts.sh`. These accounts are
+opt-in because they have real bcrypt password hashes and authenticate
+through the normal `/auth/login` form.
+
+| User                 | Global role    | PAI    | ACME   | BUGZ   | LOGS |
+|----------------------|----------------|--------|--------|--------|------|
+| `debug-superadmin`   | `super_admin`  | (all)  | (all)  | (all)  | (all) |
+| `debug-admin`        | `admin`        | (all)  | (all)  | (all)  | (all) |
+| `debug-user`         | `member`       | editor | editor | viewer | none |
+| `debug-customer`     | `external`     | —      | viewer | —      | — |
+
+`just dev-up` sources `.local/debug-accounts.env` when it exists. If
+only `.local/debug-accounts.env.age` exists and the local AGE identity
+is present, it decrypts the env file locally before seeding. The script
+does not print passwords; inspect/decrypt the local env file yourself
+when you need to type one into the login screen.
+
+The SPA hides 2FA reminder bars for these `debug-*` fixture accounts
+only in a backend compiled with `-tags dev_login`. Production binaries
+compile a stub that always returns false.
+
+`debug-user` is seeded as deny-by-default for every active project, then
+gets the explicit grants above. Re-running `dev-seed` converges any
+extra local projects back to `none` for this user.
+
 | Project key | What it is | Phase-1 surface |
 |-------------|------------|-----------------|
-| `PAIT`      | Paimos Testing — RBAC sandbox | 5 issues spanning the status enum |
+| `PAI`       | PAIMOS — RBAC sandbox | 5 issues spanning the status enum |
 | `ACME`      | Acme GmbH — commercial customer engagement | 5 issues; rich-fixture variety pending in PAI-269 |
 | `BUGZ`      | Open-source bug tracker | 5 issues; 100+ issues + relations + soft-deletes pending in PAI-269 |
 | `LOGS`      | Personal-OS captain's log | 5 issues; comment threads + attachments pending in PAI-269 |

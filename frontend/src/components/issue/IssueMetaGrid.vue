@@ -15,7 +15,7 @@ import { formatCurrency, formatDecimalFlex } from '@/composables/useNumberFormat
 import { fmtDate as formatDisplayDate, fmtDateTime as formatDisplayDateTime } from '@/utils/formatTime'
 import type { Issue, Sprint } from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issue: Issue
   parentIssue: Issue | null
   projectId: number | null
@@ -27,7 +27,10 @@ const props = defineProps<{
   timeLabel: () => string
   formatHours: (h: number) => string
   toggleTimeUnit: () => void
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 const showEstimateHours = computed(() => { const bt = props.linkedBillingType; return !bt || bt === 'time_and_material' || bt === 'mixed' })
 const showEstimateLp    = computed(() => { const bt = props.linkedBillingType; return !bt || bt === 'fixed_price' || bt === 'mixed' })
@@ -215,10 +218,10 @@ function issueRoute(issueId: number): string {
               v-if="assignedSprints.length"
               :sprint-ids="assignedSprints.map(s => s.id)"
               :sprints="assignedSprints"
-              removable
+              :removable="canEdit !== false"
               @remove="(sid: number) => $emit('remove-sprint', sid)"
             />
-            <div class="sprint-add-wrap">
+            <div v-if="canEdit !== false" class="sprint-add-wrap">
               <button class="sprint-add-btn" @click="$emit('toggle-sprint-dropdown')">
                 <AppIcon name="plus" :size="12" /> Add sprint
               </button>

@@ -8,11 +8,14 @@ import AppIcon from '@/components/AppIcon.vue'
 import type { Issue, IssueRelation } from '@/types'
 import { addIssueRelation, loadIssueRelations, removeIssueRelation } from '@/services/issueRelations'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueId: number
   projectId: number | null
   projectIssues: Issue[]
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -24,6 +27,7 @@ const relFormTarget  = ref('')
 const relFormType    = ref<'depends_on' | 'impacts' | 'follows_from' | 'blocks' | 'related'>('depends_on')
 const relFormError   = ref('')
 const relSaving      = ref(false)
+const canEditRelations = computed(() => props.canEdit !== false)
 
 async function load() {
   if (!props.issueId) return
@@ -59,6 +63,7 @@ function selectRelSuggestion(iss: Issue) {
 }
 
 async function addRelation() {
+  if (!canEditRelations.value) return
   relFormError.value = ''
   const key = relFormTarget.value.trim().toUpperCase()
   if (!key) { relFormError.value = 'Enter an issue key.'; return }
@@ -74,6 +79,7 @@ async function addRelation() {
 }
 
 async function removeRelation(rel: IssueRelation) {
+  if (!canEditRelations.value || !authStore.isAdmin) return
   if (!await confirm({ message: 'Remove this relation?', confirmLabel: 'Remove' })) return
   await removeIssueRelation(props.issueId, rel.target_id, rel.type)
   relations.value = relations.value.filter(r => !(r.target_id === rel.target_id && r.type === rel.type))
@@ -120,10 +126,10 @@ function splitByDirection(rels: IssueRelation[]) {
   <div class="relations-section">
     <div class="section-header">
       <h3 class="section-title">Relations</h3>
-      <button class="btn btn-ghost btn-sm" @click="showRelForm = !showRelForm">+ Add</button>
+      <button v-if="canEditRelations" class="btn btn-ghost btn-sm" @click="showRelForm = !showRelForm">+ Add</button>
     </div>
 
-    <div v-if="showRelForm" class="rel-form rel-form--inline">
+    <div v-if="canEditRelations && showRelForm" class="rel-form rel-form--inline">
       <select v-model="relFormType" class="rel-type-select">
         <option value="depends_on">Depends On</option>
         <option value="impacts">Impacts</option>
@@ -160,7 +166,7 @@ function splitByDirection(rels: IssueRelation[]) {
             {{ r.target_key || r.target_id }}
           </RouterLink>
           <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
-          <button v-if="authStore.isAdmin" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+          <button v-if="canEditRelations && authStore.isAdmin" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
         </div>
       </div>
     </div>
@@ -172,7 +178,7 @@ function splitByDirection(rels: IssueRelation[]) {
             {{ r.target_key || r.target_id }}
           </RouterLink>
           <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
-          <button v-if="authStore.isAdmin" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+          <button v-if="canEditRelations && authStore.isAdmin" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
         </div>
       </div>
     </div>
@@ -186,7 +192,7 @@ function splitByDirection(rels: IssueRelation[]) {
                 {{ r.target_key || r.target_id }}
               </RouterLink>
               <span v-if="r.target_title" class="rel-chip-title">{{ r.target_title }}</span>
-              <button v-if="authStore.isAdmin && r.direction !== 'incoming'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
+              <button v-if="canEditRelations && authStore.isAdmin && r.direction !== 'incoming'" class="rel-chip-del" @click="removeRelation(r)" title="Remove"><AppIcon name="x" :size="11" /></button>
             </div>
           </div>
         </div>

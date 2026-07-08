@@ -11,9 +11,12 @@ import AppIcon from '@/components/AppIcon.vue'
 import type { Attachment } from '@/types'
 import { deleteIssueAttachment, loadIssueAttachments, uploadIssueAttachment } from '@/services/issueAttachments'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueId: number
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -50,6 +53,7 @@ function formatSize(bytes: number): string {
 }
 
 async function uploadFiles(files: FileList | File[]) {
+  if (props.canEdit === false) return
   if (!attachmentsEnabled.value) {
     attachError.value = 'File storage is not configured on this instance.'
     return
@@ -85,10 +89,12 @@ function onFilePick(e: Event) {
 function onDrop(e: DragEvent) {
   e.preventDefault()
   dragOver.value = false
+  if (props.canEdit === false) return
   if (e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files)
 }
 
 async function deleteAttachment(a: Attachment) {
+  if (props.canEdit === false) return
   if (!await confirm({ message: `Delete "${a.filename}"?`, confirmLabel: 'Delete', danger: true })) return
   try {
     await deleteIssueAttachment(a.id)
@@ -110,8 +116,8 @@ async function deleteAttachment(a: Attachment) {
 
     <div
       class="attach-drop-zone"
-      :class="{ 'attach-drop-zone--over': dragOver && attachmentsEnabled, 'attach-drop-zone--disabled': !attachmentsEnabled }"
-      @dragover.prevent="attachmentsEnabled ? (dragOver = true) : null"
+      :class="{ 'attach-drop-zone--over': dragOver && attachmentsEnabled && canEdit !== false, 'attach-drop-zone--disabled': !attachmentsEnabled || canEdit === false }"
+      @dragover.prevent="attachmentsEnabled && canEdit !== false ? (dragOver = true) : null"
       @dragleave="dragOver = false"
       @drop="onDrop"
     >
@@ -133,7 +139,7 @@ async function deleteAttachment(a: Attachment) {
           <div class="attach-meta">
             <span class="attach-size">{{ formatSize(a.size_bytes) }}</span>
             <span class="attach-uploader">{{ a.uploader }}</span>
-            <button v-if="attachmentsEnabled && (authStore.isAdmin || a.uploaded_by === authStore.user?.id)" class="attach-delete" @click="deleteAttachment(a)" title="Delete">
+            <button v-if="canEdit !== false && attachmentsEnabled && (authStore.isAdmin || a.uploaded_by === authStore.user?.id)" class="attach-delete" @click="deleteAttachment(a)" title="Delete">
               <AppIcon name="x" :size="12" />
             </button>
           </div>
@@ -145,12 +151,12 @@ async function deleteAttachment(a: Attachment) {
       </div>
 
       <!-- Upload UI — only shown when storage is configured. -->
-      <label v-if="attachmentsEnabled" class="attach-upload-label">
+      <label v-if="canEdit !== false && attachmentsEnabled" class="attach-upload-label">
         <input type="file" multiple class="attach-upload-input" @change="onFilePick" />
         <span v-if="!attachments.length" class="attach-empty">No attachments — drag files here or click to upload</span>
         <span v-else class="attach-add">+ Add files</span>
       </label>
-      <div v-else class="attach-disabled-notice">
+      <div v-else-if="!attachmentsEnabled" class="attach-disabled-notice">
         File storage is not configured on this instance.
       </div>
     </div>

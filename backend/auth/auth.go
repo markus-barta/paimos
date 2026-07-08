@@ -514,8 +514,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("audit: login_ok username=%q ip=%s", body.Username, clientIP(r))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MeResponse{
-		User:   &loginUser,
-		Access: BuildAccessResponse(&loginUser),
+		User:                 &loginUser,
+		Access:               BuildAccessResponse(&loginUser),
+		SuppressSecurityNags: SuppressSecurityNags(&loginUser),
 	})
 }
 
@@ -549,10 +550,11 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 // a dev session for a real one. Always false on production builds
 // (the dev_login_prod stub never sets the context flag).
 type MeResponse struct {
-	User          *models.User           `json:"user"`
-	Access        AccessResponse         `json:"access"`
-	ViaDevLogin   bool                   `json:"via_dev_login,omitempty"`
-	Impersonation *ImpersonationResponse `json:"impersonation,omitempty"`
+	User                 *models.User           `json:"user"`
+	Access               AccessResponse         `json:"access"`
+	ViaDevLogin          bool                   `json:"via_dev_login,omitempty"`
+	SuppressSecurityNags bool                   `json:"suppress_security_nags,omitempty"`
+	Impersonation        *ImpersonationResponse `json:"impersonation,omitempty"`
 }
 
 func MeHandler(w http.ResponseWriter, r *http.Request) {
@@ -567,10 +569,11 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(MeResponse{
-		User:          user,
-		Access:        BuildAccessResponse(user),
-		ViaDevLogin:   IsViaDevLogin(r.Context()),
-		Impersonation: impersonation,
+		User:                 user,
+		Access:               BuildAccessResponse(user),
+		ViaDevLogin:          IsViaDevLogin(r.Context()),
+		SuppressSecurityNags: SuppressSecurityNags(user),
+		Impersonation:        impersonation,
 	})
 }
 

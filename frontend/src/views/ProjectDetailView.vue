@@ -1058,6 +1058,7 @@ watch(
           :selection-fingerprint="projectIssueSelectionFingerprint"
           :loading-more="projectIssuesLoadingMore"
           :url-sync-selection="true"
+          :can-edit="canEditProject"
           @load-all="loadAllProjectIssues"
           @created="onCreated"
           @updated="onUpdated"

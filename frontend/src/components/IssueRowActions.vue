@@ -17,17 +17,29 @@
 
     <!-- Timer — always visible, never collapsed -->
     <!-- State 1: Running timer — green pulsing badge -->
-    <span v-if="timerStore.isRunning(issueId)" class="timer-badge timer-badge--running" @click.stop="stopTimer" title="Stop timer">
+    <span
+      v-if="timerStore.isRunning(issueId)"
+      class="timer-badge timer-badge--running"
+      :class="{ 'timer-badge--readonly': !canEdit }"
+      @click.stop="canEdit && stopTimer()"
+      :title="canEdit ? 'Stop timer' : 'Timer running'"
+    >
       <span class="timer-badge-dot"></span>
       <span class="timer-badge-time">{{ smartElapsed }}</span>
     </span>
     <!-- State 2: Booked time but no running timer — greenish badge + play icon -->
-    <span v-else-if="(bookedHours ?? 0) > 0" class="timer-badge timer-badge--booked" @click.stop="timerStore.start(issueId)" title="Start timer">
+    <span
+      v-else-if="(bookedHours ?? 0) > 0"
+      class="timer-badge timer-badge--booked"
+      :class="{ 'timer-badge--readonly': !canEdit }"
+      @click.stop="canEdit && timerStore.start(issueId)"
+      :title="canEdit ? 'Start timer' : 'Booked time'"
+    >
       <AppIcon name="play" :size="8" class="badge-play-icon" />
       <span class="timer-badge-time">{{ formatSmart(bookedHours ?? 0) }}</span>
     </span>
     <!-- State 3: No time — ghost play on hover -->
-    <button v-else class="row-act row-act--hover row-act--play" @click.stop="timerStore.start(issueId)" title="Start timer">
+    <button v-else-if="canEdit" class="row-act row-act--hover row-act--play" @click.stop="timerStore.start(issueId)" title="Start timer">
       <AppIcon name="play" :size="13" />
     </button>
 
@@ -39,14 +51,14 @@
       <button class="row-act row-act--hover" title="View" @click.stop="$emit('view')">
         <AppIcon name="eye" :size="14" />
       </button>
-      <button class="row-act row-act--hover" title="Quick edit" @click.stop="$emit('edit')">
+      <button v-if="canEdit" class="row-act row-act--hover" title="Quick edit" @click.stop="$emit('edit')">
         <AppIcon name="pencil" :size="13" />
       </button>
-      <button v-if="canHaveChildren && !compact" class="row-act row-act--hover" title="Add child issue" @click.stop="$emit('add-child')">
+      <button v-if="canEdit && canHaveChildren && !compact" class="row-act row-act--hover" title="Add child issue" @click.stop="$emit('add-child')">
         <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" />
       </button>
       <button
-        v-if="isImplementable && hasRun && implementState === 'idle'"
+        v-if="canEdit && isImplementable && hasRun && implementState === 'idle'"
         class="row-run-action row-run-action--open"
         type="button"
         title="Open run history"
@@ -55,7 +67,7 @@
         <AppIcon name="history" :size="12" />
         <span>Open run</span>
       </button>
-      <template v-else-if="isImplementable && implementState === 'idle' && explicitRunActions.length > 1">
+      <template v-else-if="canEdit && isImplementable && implementState === 'idle' && explicitRunActions.length > 1">
         <button
           v-for="action in explicitRunActions"
           :key="action.action_key"
@@ -69,7 +81,7 @@
         </button>
       </template>
       <button
-        v-else-if="isImplementable"
+        v-else-if="canEdit && isImplementable"
         class="row-run-action row-run-action--start row-act--implement"
         type="button"
         title="Run local agent"
@@ -79,7 +91,7 @@
         <AppIcon name="zap" :size="12" />
         <span>{{ implementState === 'busy' ? 'Starting' : singleActionLabel(singleExplicitAction) }}</span>
       </button>
-      <button v-if="isAdmin" class="row-act row-act--hover row-act--danger" title="Move to trash (recoverable)" @click.stop="$emit('delete')">
+      <button v-if="canEdit && isAdmin" class="row-act row-act--hover row-act--danger" title="Move to trash (recoverable)" @click.stop="$emit('delete')">
         <AppIcon name="trash-2" :size="13" />
       </button>
     </template>
@@ -98,16 +110,16 @@
             <button class="ellipsis-item" @click.stop="$emit('view'); menuOpen = false">
               <AppIcon name="eye" :size="14" /> View
             </button>
-            <button class="ellipsis-item" @click.stop="$emit('edit'); menuOpen = false">
+            <button v-if="canEdit" class="ellipsis-item" @click.stop="$emit('edit'); menuOpen = false">
               <AppIcon name="pencil" :size="13" /> Edit
             </button>
-            <button v-if="canHaveChildren && !compact" class="ellipsis-item" @click.stop="$emit('add-child'); menuOpen = false">
+            <button v-if="canEdit && canHaveChildren && !compact" class="ellipsis-item" @click.stop="$emit('add-child'); menuOpen = false">
               <AppIcon name="git-branch-plus" :size="14" style="transform: rotate(90deg)" /> Add child
             </button>
-            <button v-if="isImplementable && hasRun && implementState === 'idle'" class="ellipsis-item" @click.stop="$emit('view'); menuOpen = false">
+            <button v-if="canEdit && isImplementable && hasRun && implementState === 'idle'" class="ellipsis-item" @click.stop="$emit('view'); menuOpen = false">
               <AppIcon name="history" :size="13" /> Open run
             </button>
-            <template v-else-if="isImplementable && explicitRunActions.length > 1">
+            <template v-else-if="canEdit && isImplementable && explicitRunActions.length > 1">
               <button
                 v-for="action in explicitRunActions"
                 :key="action.action_key"
@@ -117,10 +129,10 @@
                 <AppIcon name="zap" :size="13" /> {{ actionVerb(action) }} {{ shortActionLabel(action) }}
               </button>
             </template>
-            <button v-else-if="isImplementable" class="ellipsis-item" @click.stop="implement(singleExplicitAction)">
+            <button v-else-if="canEdit && isImplementable" class="ellipsis-item" @click.stop="implement(singleExplicitAction)">
               <AppIcon name="zap" :size="13" /> {{ singleActionLabel(singleExplicitAction) }}
             </button>
-            <button v-if="isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
+            <button v-if="canEdit && isAdmin" class="ellipsis-item ellipsis-item--danger" @click.stop="$emit('delete'); menuOpen = false">
               <AppIcon name="trash-2" :size="13" /> Move to trash
             </button>
           </div>
@@ -137,7 +149,7 @@ import { api, errMsg } from '@/api/client'
 import { useTimerStore } from '@/stores/timer'
 import type { AgentActionCapability, IssueAIWorkStatus } from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   canHaveChildren: boolean
   compact?: boolean
   collapsed?: boolean
@@ -145,12 +157,15 @@ const props = defineProps<{
   issueType?: string
   issueKey?: string
   issueTitle?: string
+  canEdit?: boolean
   bookedHours?: number
   isAdmin?: boolean
   aiWorkStatus?: IssueAIWorkStatus | null
   agentActions?: AgentActionCapability[]
   agentName?: string
-}>()
+}>(), {
+  canEdit: true,
+})
 
 // PAI-610/612: "Implement this" — hand the ticket to a local agent run.
 const isImplementable = computed(
@@ -165,6 +180,7 @@ let implementTimer: ReturnType<typeof setTimeout> | null = null
 let alive = true // guards post-await writes/timer after unmount (M3)
 
 const aiWorkStatus = computed(() => props.aiWorkStatus ?? null)
+const canEdit = computed(() => props.canEdit !== false)
 const hasRun = computed(() => !!aiWorkStatus.value)
 const explicitRunActions = computed(() => props.agentActions ?? [])
 const singleExplicitAction = computed(() =>
@@ -193,6 +209,7 @@ function singleActionLabel(action?: AgentActionCapability): string {
 }
 
 async function implement(action?: AgentActionCapability) {
+  if (!canEdit.value) return
   if (implementState.value === 'busy') return
   if (implementTimer) clearTimeout(implementTimer) // M3: don't let a prior reset fire mid-action
   implementState.value = 'busy'
@@ -255,6 +272,7 @@ const smartElapsed = computed(() => {
 })
 
 function stopTimer() {
+  if (!canEdit.value) return
   if (runningEntry.value) timerStore.stop(runningEntry.value.id)
 }
 
@@ -349,6 +367,19 @@ tr:hover .row-act--hover,
 }
 .badge-play-icon { flex-shrink: 0; display: inline-flex; }
 .timer-badge--booked:hover .badge-play-icon { color: #059669; }
+.timer-badge--readonly {
+  cursor: default;
+  opacity: .75;
+}
+.timer-badge--running.timer-badge--readonly:hover {
+  background: var(--bp-green, #16a34a);
+  color: #fff;
+}
+.timer-badge--booked.timer-badge--readonly:hover {
+  background: color-mix(in srgb, #10b981 6%, var(--bg));
+  color: color-mix(in srgb, #10b981 8%, #637383);
+  border-color: color-mix(in srgb, #10b981 12%, var(--border));
+}
 .row-act--play:hover { color: var(--bp-green, #16a34a); }
 .row-act--danger:hover { color: #dc2626; background: #fef2f2; }
 .row-act--implement:hover { color: var(--bp-blue, #2563eb); }

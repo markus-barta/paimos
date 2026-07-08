@@ -11,9 +11,9 @@
  * PAI-267 — single source of truth for the "is this a dev fixture user?"
  * predicate. Dev users created by `paimos dev-seed` follow the
  * `dev_*` username convention (dev_admin / dev_editor / dev_viewer /
- * dev_outsider). Production user pickers use this helper to filter
- * them out so fixture rows never pollute real assignment dropdowns
- * or member lists.
+ * dev_outsider). Optional PAI-667 debug accounts follow `debug-*`.
+ * Production user pickers use this helper to filter them out so fixture
+ * rows never pollute real assignment dropdowns or member lists.
  *
  * The convention is enforced server-side (the seeder hard-codes
  * those four usernames) so the regex here is the contract — change
@@ -21,5 +21,5 @@
  */
 export function isDevFixtureUser(username: string | null | undefined): boolean {
   if (!username) return false
-  return username.startsWith('dev_')
+  return username.startsWith('dev_') || username.startsWith('debug-')
 }

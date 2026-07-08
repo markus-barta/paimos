@@ -83,9 +83,9 @@ async function submit() {
       totpToken.value    = result.totp_token
       totpRequired.value = true
     } else {
-      // Successful login envelope: { user, access }.
-      auth.setUser(result.user)
-      auth.hydrateAccess(result.access)
+      // Successful login envelope: { user, access, ...session flags }.
+      auth.completeLogin(result)
+      await auth.fetchTOTPStatus()
       finishLogin()
     }
   } catch (e) {
@@ -104,8 +104,8 @@ async function submitOTP() {
       totp_token: totpToken.value,
       code: otpCode.value,
     })
-    auth.setUser(result.user)
-    auth.hydrateAccess(result.access)
+    auth.completeLogin(result)
+    await auth.fetchTOTPStatus()
     finishLogin()
   } catch (e) {
     error.value = 'Invalid code. Please try again.'

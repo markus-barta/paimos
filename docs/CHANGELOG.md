@@ -5,6 +5,36 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.1] — 2026-07-08
+
+### Added
+
+- **Normal-login debug fixtures (PAI-667).** Local dev builds can now seed
+  `debug-superadmin`, `debug-admin`, `debug-user`, and `debug-customer` via
+  an AGE-backed local env file, with 2FA reminder suppression limited to the
+  `dev_login` build tag.
+- **AI workbench selector summary (PAI-28).** The issue AI panel now surfaces
+  the chosen action, model/default source, effort profile, prompt source,
+  context mode, and project agent in one compact read-only summary.
+
+### Changed
+
+- **Dev fixture project key corrected to `PAI`.** The old `PAIT` seed key is
+  normalized to `PAI` on dev-seed so local RBAC test data matches the canonical
+  PAIMOS project key.
+- **Viewer contexts are read-only end-to-end (PAI-24).** Project and issue
+  list/detail surfaces now gate create, edit, delete, timer, upload,
+  comment, relation, memory-curation, and implement-run controls by project
+  edit access.
+
+### Fixed
+
+- **Portal list sort accepts `created_at` (PAI-25).** The customer portal list
+  path now recognizes the shared issue-list created-date sort key.
+- **Customer portal chrome stays internal-free (PAI-26/PAI-27).** Portal users
+  no longer start the internal live-changes stream, saved-view loads, or undo
+  controls that only belong in the authenticated internal app.
+
 ## [4.7.0] — 2026-07-07
 
 ### Added

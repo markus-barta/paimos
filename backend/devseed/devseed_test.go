@@ -10,8 +10,10 @@
 package devseed_test
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/markus-barta/paimos/backend/auth"
 	"github.com/markus-barta/paimos/backend/db"
 	"github.com/markus-barta/paimos/backend/devseed"
 )
@@ -38,9 +40,9 @@ func TestRun_Idempotency(t *testing.T) {
 		t.Fatalf("first Run: %v", err)
 	}
 	users1 := count(t, "SELECT COUNT(*) FROM users WHERE username LIKE 'dev_%'")
-	projects1 := count(t, "SELECT COUNT(*) FROM projects WHERE key IN ('PAIT','ACME','BUGZ','LOGS')")
+	projects1 := count(t, "SELECT COUNT(*) FROM projects WHERE key IN ('PAI','ACME','BUGZ','LOGS')")
 	memberships1 := count(t, "SELECT COUNT(*) FROM project_members WHERE user_id IN (9001,9002,9003,9004)")
-	issues1 := count(t, "SELECT COUNT(*) FROM issues WHERE project_id IN (SELECT id FROM projects WHERE key IN ('PAIT','ACME','BUGZ','LOGS'))")
+	issues1 := count(t, "SELECT COUNT(*) FROM issues WHERE project_id IN (SELECT id FROM projects WHERE key IN ('PAI','ACME','BUGZ','LOGS'))")
 
 	if users1 != 4 {
 		t.Errorf("first run: users count = %d, want 4", users1)
@@ -49,13 +51,13 @@ func TestRun_Idempotency(t *testing.T) {
 		t.Errorf("first run: projects count = %d, want 4", projects1)
 	}
 	// PAI-269: phase-1 + phase-2 totals.
-	//   PAIT  =   5  (phase-1 only — no rich seed)
+	//   PAI   =   5  (phase-1 only — no rich seed)
 	//   ACME  =  33  (phase-1's 5 + 3 sprints + 25 rich tickets)
 	//   BUGZ  = 100  (phase-2 fills to 100 regardless of phase-1 floor)
 	//   LOGS  =  10  (phase-2 fills to 10)
 	const wantIssues = 148
 	if issues1 != wantIssues {
-		t.Errorf("first run: issues count = %d, want %d (PAIT 5 + ACME 33 + BUGZ 100 + LOGS 10)", issues1, wantIssues)
+		t.Errorf("first run: issues count = %d, want %d (PAI 5 + ACME 33 + BUGZ 100 + LOGS 10)", issues1, wantIssues)
 	}
 
 	// Second seed — must be a no-op
@@ -63,9 +65,9 @@ func TestRun_Idempotency(t *testing.T) {
 		t.Fatalf("second Run: %v", err)
 	}
 	users2 := count(t, "SELECT COUNT(*) FROM users WHERE username LIKE 'dev_%'")
-	projects2 := count(t, "SELECT COUNT(*) FROM projects WHERE key IN ('PAIT','ACME','BUGZ','LOGS')")
+	projects2 := count(t, "SELECT COUNT(*) FROM projects WHERE key IN ('PAI','ACME','BUGZ','LOGS')")
 	memberships2 := count(t, "SELECT COUNT(*) FROM project_members WHERE user_id IN (9001,9002,9003,9004)")
-	issues2 := count(t, "SELECT COUNT(*) FROM issues WHERE project_id IN (SELECT id FROM projects WHERE key IN ('PAIT','ACME','BUGZ','LOGS'))")
+	issues2 := count(t, "SELECT COUNT(*) FROM issues WHERE project_id IN (SELECT id FROM projects WHERE key IN ('PAI','ACME','BUGZ','LOGS'))")
 
 	if users2 != users1 {
 		t.Errorf("re-run grew users: %d → %d", users1, users2)
@@ -78,6 +80,22 @@ func TestRun_Idempotency(t *testing.T) {
 	}
 	if issues2 != issues1 {
 		t.Errorf("re-run grew issues: %d → %d", issues1, issues2)
+	}
+}
+
+func TestRun_RenamesLegacyPAITFixtureProject(t *testing.T) {
+	openDevseedTestDB(t)
+	if _, err := db.DB.Exec(`INSERT INTO projects(name, key, description, status) VALUES('Paimos Testing', 'PAIT', 'legacy fixture', 'active')`); err != nil {
+		t.Fatalf("insert legacy project: %v", err)
+	}
+	if err := devseed.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := count(t, "SELECT COUNT(*) FROM projects WHERE key='PAIT'"); got != 0 {
+		t.Fatalf("legacy PAIT projects = %d, want 0", got)
+	}
+	if got := count(t, "SELECT COUNT(*) FROM projects WHERE key='PAI'"); got != 1 {
+		t.Fatalf("PAI projects = %d, want 1", got)
 	}
 }
 
@@ -162,6 +180,102 @@ func TestRun_PasswordsAreEmpty(t *testing.T) {
 	}
 }
 
+func TestRun_DebugAccountsOptIn(t *testing.T) {
+	openDevseedTestDB(t)
+	if err := devseed.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := count(t, "SELECT COUNT(*) FROM users WHERE username LIKE 'debug-%'"); got != 0 {
+		t.Fatalf("debug accounts without opt-in = %d, want 0", got)
+	}
+}
+
+func TestRun_DebugAccountsRequirePasswords(t *testing.T) {
+	openDevseedTestDB(t)
+	t.Setenv("PAIMOS_DEBUG_ACCOUNTS", "1")
+	t.Setenv("PAIMOS_DEBUG_SUPERADMIN_PASSWORD", strings.Repeat("s", 48))
+
+	err := devseed.Run()
+	if err == nil {
+		t.Fatal("Run returned nil with missing debug account passwords")
+	}
+	if !strings.Contains(err.Error(), "PAIMOS_DEBUG_ADMIN_PASSWORD") {
+		t.Fatalf("Run error = %q, want missing admin password env", err.Error())
+	}
+}
+
+func TestRun_DebugAccountsSeededFromEnv(t *testing.T) {
+	openDevseedTestDB(t)
+	passwords := map[string]string{
+		"debug-superadmin": "superadmin-local-debug-password-000000000000000000000000000001",
+		"debug-admin":      "admin-local-debug-password-000000000000000000000000000000001",
+		"debug-user":       "user-local-debug-password-0000000000000000000000000000000001",
+		"debug-customer":   "customer-local-debug-password-000000000000000000000000000001",
+	}
+	t.Setenv("PAIMOS_DEBUG_ACCOUNTS", "1")
+	t.Setenv("PAIMOS_DEBUG_SUPERADMIN_PASSWORD", passwords["debug-superadmin"])
+	t.Setenv("PAIMOS_DEBUG_ADMIN_PASSWORD", passwords["debug-admin"])
+	t.Setenv("PAIMOS_DEBUG_USER_PASSWORD", passwords["debug-user"])
+	t.Setenv("PAIMOS_DEBUG_CUSTOMER_PASSWORD", passwords["debug-customer"])
+
+	if err := devseed.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if _, err := db.DB.Exec(`INSERT INTO projects(name, key, description, status) VALUES('Extra Project', 'EXTR', '', 'active')`); err != nil {
+		t.Fatalf("insert extra project: %v", err)
+	}
+	if err := devseed.Run(); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+
+	cases := []struct {
+		username       string
+		wantID         int64
+		wantRole       string
+		wantRoleKey    string
+		wantSuperAdmin int
+	}{
+		{"debug-superadmin", 9011, "admin", "super_admin", 1},
+		{"debug-admin", 9012, "admin", "admin", 0},
+		{"debug-user", 9013, "member", "member", 0},
+		{"debug-customer", 9014, "external", "external", 0},
+	}
+	for _, c := range cases {
+		var id int64
+		var role, roleKey, hash string
+		var superAdmin, mustChange int
+		if err := db.DB.QueryRow(`
+			SELECT id, role, role_key, is_super_admin, password, must_change_password
+			FROM users WHERE username=?
+		`, c.username).Scan(&id, &role, &roleKey, &superAdmin, &hash, &mustChange); err != nil {
+			t.Errorf("%s: %v", c.username, err)
+			continue
+		}
+		if id != c.wantID {
+			t.Errorf("%s: id = %d, want %d", c.username, id, c.wantID)
+		}
+		if role != c.wantRole || roleKey != c.wantRoleKey || superAdmin != c.wantSuperAdmin {
+			t.Errorf("%s: role/role_key/is_super_admin = %q/%q/%d, want %q/%q/%d",
+				c.username, role, roleKey, superAdmin, c.wantRole, c.wantRoleKey, c.wantSuperAdmin)
+		}
+		if mustChange != 0 {
+			t.Errorf("%s: must_change_password = %d, want 0", c.username, mustChange)
+		}
+		if !auth.CheckPassword(hash, passwords[c.username]) {
+			t.Errorf("%s: stored password hash did not verify", c.username)
+		}
+	}
+
+	assertMembership(t, "debug-user", "PAI", "editor")
+	assertMembership(t, "debug-user", "ACME", "editor")
+	assertMembership(t, "debug-user", "BUGZ", "viewer")
+	assertMembership(t, "debug-user", "LOGS", "none")
+	assertMembership(t, "debug-user", "EXTR", "none")
+	assertMembership(t, "debug-customer", "ACME", "viewer")
+	assertNoMembership(t, "debug-customer", "PAI")
+	assertNoMembership(t, "debug-customer", "EXTR")
+}
+
 func count(t *testing.T, query string) int {
 	t.Helper()
 	var n int
@@ -169,6 +283,55 @@ func count(t *testing.T, query string) int {
 		t.Fatalf("count %q: %v", query, err)
 	}
 	return n
+}
+
+func openDevseedTestDB(t *testing.T) {
+	t.Helper()
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("PAIMOS_TEST_MODE", "1")
+	if err := db.Open(); err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if db.DB != nil {
+			db.DB.Close()
+			db.DB = nil
+		}
+	})
+}
+
+func assertMembership(t *testing.T, username, projectKey, want string) {
+	t.Helper()
+	var got string
+	if err := db.DB.QueryRow(`
+		SELECT pm.access_level
+		FROM project_members pm
+		JOIN users u ON u.id = pm.user_id
+		JOIN projects p ON p.id = pm.project_id
+		WHERE u.username=? AND p.key=?
+	`, username, projectKey).Scan(&got); err != nil {
+		t.Fatalf("%s/%s membership: %v", username, projectKey, err)
+	}
+	if got != want {
+		t.Fatalf("%s/%s membership = %q, want %q", username, projectKey, got, want)
+	}
+}
+
+func assertNoMembership(t *testing.T, username, projectKey string) {
+	t.Helper()
+	var got int
+	if err := db.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM project_members pm
+		JOIN users u ON u.id = pm.user_id
+		JOIN projects p ON p.id = pm.project_id
+		WHERE u.username=? AND p.key=?
+	`, username, projectKey).Scan(&got); err != nil {
+		t.Fatalf("%s/%s membership count: %v", username, projectKey, err)
+	}
+	if got != 0 {
+		t.Fatalf("%s/%s membership count = %d, want 0", username, projectKey, got)
+	}
 }
 
 // TestRun_RichFixtures pins the PAI-269 phase-2 surface assertions:

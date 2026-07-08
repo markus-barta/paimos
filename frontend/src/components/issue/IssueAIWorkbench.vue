@@ -3,14 +3,17 @@ import AppIcon from '@/components/AppIcon.vue'
 import AgentRunPanel from '@/components/issue/AgentRunPanel.vue'
 import IssueAiActivity from '@/components/issue/IssueAiActivity.vue'
 
-defineProps<{
+withDefaults(defineProps<{
   issueId: number
   issueKey: string
   projectId: number
   issueType: string
   issueStatus: string
   issueTitle: string
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 </script>
 
 <template>
@@ -28,7 +31,7 @@ defineProps<{
       </div>
     </div>
 
-    <AgentRunPanel :issue-id="issueId" :issue-key="issueKey" :project-id="projectId" />
+    <AgentRunPanel :issue-id="issueId" :issue-key="issueKey" :project-id="projectId" :can-edit="canEdit !== false" />
     <IssueAiActivity :issue-id="issueId" start-open />
   </section>
 </template>

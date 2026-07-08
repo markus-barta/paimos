@@ -131,7 +131,9 @@ func TestQuick_Portal(t *testing.T) {
 	t.Run("external user sees no projects without access", func(t *testing.T) {
 		resp := ts.get(t, "/api/portal/projects", ts.externalCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var projects []struct{ ID int64 `json:"id"` }
+		var projects []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &projects)
 		if len(projects) != 0 {
 			t.Errorf("expected 0 projects, got %d", len(projects))
@@ -148,7 +150,9 @@ func TestQuick_Portal(t *testing.T) {
 	t.Run("external user sees assigned project", func(t *testing.T) {
 		resp := ts.get(t, "/api/portal/projects", ts.externalCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var projects []struct{ ID int64 `json:"id"` }
+		var projects []struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &projects)
 		if len(projects) != 1 {
 			t.Fatalf("expected 1 project, got %d", len(projects))
@@ -207,7 +211,9 @@ func TestQuick_Portal(t *testing.T) {
 	t.Run("portal issues filtered by q", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?q=onboarding", projectID), ts.externalCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var issues []struct{ Title string `json:"title"` }
+		var issues []struct {
+			Title string `json:"title"`
+		}
 		decode(t, resp, &issues)
 		if len(issues) != 1 || issues[0].Title != "Onboarding Checklist" {
 			t.Errorf("expected 1 issue 'Onboarding Checklist', got %+v", issues)
@@ -276,12 +282,16 @@ func TestQuick_Portal(t *testing.T) {
 			"title": "Status Check", "description": "Verify default status",
 		})
 		assertStatus(t, resp, http.StatusCreated)
-		var result struct{ ID int64 `json:"id"` }
+		var result struct {
+			ID int64 `json:"id"`
+		}
 		decode(t, resp, &result)
 		// Fetch via admin to check the status
 		resp = ts.get(t, fmt.Sprintf("/api/issues/%d", result.ID), ts.adminCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var issue struct{ Status string `json:"status"` }
+		var issue struct {
+			Status string `json:"status"`
+		}
 		decode(t, resp, &issue)
 		if issue.Status != "new" {
 			t.Errorf("portal request status = %q, want new", issue.Status)
@@ -824,6 +834,11 @@ func TestQuick_PortalCustomerPortalFilter(t *testing.T) {
 		if len(issues) < 2 || issues[0].IssueKey >= issues[1].IssueKey {
 			t.Errorf("ascending sort failed: %+v", issues)
 		}
+	})
+
+	t.Run("PAI-461 sort=created_at is accepted", func(t *testing.T) {
+		resp := ts.get(t, fmt.Sprintf("/api/portal/projects/%d/issues?sort=created_at&order=desc", projectID), ts.externalCookie)
+		assertStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("PAI-461 order=sideways is rejected with 400", func(t *testing.T) {
@@ -1533,7 +1548,9 @@ func TestQuick_UserProjectAccess(t *testing.T) {
 	t.Run("list empty", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var items []struct{ ProjectID int64 `json:"project_id"` }
+		var items []struct {
+			ProjectID int64 `json:"project_id"`
+		}
 		decode(t, resp, &items)
 		if len(items) != 0 {
 			t.Errorf("expected 0, got %d", len(items))
@@ -1550,7 +1567,9 @@ func TestQuick_UserProjectAccess(t *testing.T) {
 	t.Run("list shows project", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var items []struct{ ProjectID int64 `json:"project_id"` }
+		var items []struct {
+			ProjectID int64 `json:"project_id"`
+		}
 		decode(t, resp, &items)
 		if len(items) != 1 || items[0].ProjectID != projectID {
 			t.Errorf("expected 1 project with id %d, got %v", projectID, items)
@@ -1572,7 +1591,9 @@ func TestQuick_UserProjectAccess(t *testing.T) {
 	t.Run("list empty after remove", func(t *testing.T) {
 		resp := ts.get(t, fmt.Sprintf("/api/users/%d/projects", extUserID), ts.adminCookie)
 		assertStatus(t, resp, http.StatusOK)
-		var items []struct{ ProjectID int64 `json:"project_id"` }
+		var items []struct {
+			ProjectID int64 `json:"project_id"`
+		}
 		decode(t, resp, &items)
 		if len(items) != 0 {
 			t.Errorf("expected 0 after remove, got %d", len(items))

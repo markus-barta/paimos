@@ -62,7 +62,7 @@ import {
 } from '@/composables/useSidePanelExclusion'
 import { useSidebarSelectionUrl } from '@/composables/useSidebarSelectionUrl'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   projectId?: number
   issues: Issue[]
   compact?: boolean
@@ -82,12 +82,15 @@ const props = defineProps<{
   mode?: 'internal' | 'customer'
   statusLabels?: Record<string, string>
   typeLabels?: Record<string, string>
+  canEdit?: boolean
   // PAI-479. When true, this IssueList owns the `?selected=<ISSUE_KEY>` query
   // param: row-clicks write it (replaceState), and a key already in the URL on
   // mount auto-opens the sidebar. Default false so sub-uses inside
   // IssueDetailView's children section don't fight the parent for the URL.
   urlSyncSelection?: boolean
-}>()
+}>(), {
+  canEdit: true,
+})
 
 const { users, allTags, costUnits, releases, projects, sprints } = useIssueContext()
 const emit = defineEmits<{
@@ -118,6 +121,17 @@ const searchQuery = computed(() => (props.searchQueryOverride ?? searchStore.que
 const { formatHours, label: timeLabel, toggle: toggleTimeUnit } = useTimeUnit()
 const authStore = useAuthStore()
 const isAdmin   = computed(() => authStore.isAdmin)
+const canEditList = computed(() => !isCustomerMode.value && props.canEdit !== false)
+const canCreateIssues = computed(() =>
+  canEditList.value &&
+  (props.projectId !== undefined ? authStore.canEdit(props.projectId) : authStore.canEditAnyProject),
+)
+
+function canEditIssue(issue?: Issue | null): boolean {
+  if (!canEditList.value) return false
+  const pid = issue?.project_id ?? props.projectId
+  return authStore.canEdit(pid)
+}
 
 const colScope = computed(() => `project-${props.projectId ?? 'global'}`)
 const { ALL_COLUMNS, isVisible, toggle: toggleCol, reset: resetCols, setFromJSON: setColsFromJSON, toJSON: colsToJSON } = useColumnConfig(colScope)
@@ -775,6 +789,8 @@ const showCreate = ref(false)
 const createModalRef = ref<InstanceType<typeof CreateIssueModal> | null>(null)
 
 function openCreate(parentIssue?: Issue, overrideType?: string, overrideParentId?: number) {
+  if (!canCreateIssues.value) return
+  if (parentIssue && !canEditIssue(parentIssue)) return
   showCreate.value = true
   nextTick(() => {
     createModalRef.value?.openCreate(parentIssue, overrideType, overrideParentId)
@@ -783,6 +799,7 @@ function openCreate(parentIssue?: Issue, overrideType?: string, overrideParentId
 
 watch(() => newIssueStore.trigger, () => {
   if (isCustomerMode.value) return
+  if (!canCreateIssues.value) return
   if (props.compact) return
   const ctx = newIssueStore.context
   if (ctx.projectId !== undefined && props.projectId !== undefined && ctx.projectId !== props.projectId) return
@@ -809,6 +826,7 @@ const showBulkSummary = ref(false)
 const bulkSummaryIds  = ref<number[]>([])
 
 async function openBulkChange() {
+  if (!canBulkEditSelection.value) return
   if (!loadedSprints.value.length) {
     loadedSprints.value = await api.get<Sprint[]>('/sprints').catch(() => [])
   }
@@ -824,6 +842,7 @@ function onBulkChangeDone() {
 
 function openBulkSummary() {
   if (selectedIds.value.size === 0) return
+  if (!canBulkEditSelection.value) return
   bulkSummaryIds.value = [...selectedIds.value]
   showBulkSummary.value = true
 }
@@ -838,6 +857,7 @@ function onBulkSummaryDone() {
 }
 
 async function confirmBulkDelete() {
+  if (!canBulkEditSelection.value) return
   bulkDeleting.value = true
   const ids = [...selectedIds.value]
   for (const id of ids) {
@@ -867,6 +887,7 @@ const customerPortalTagId = computed<number | null>(() => {
 })
 
 async function bulkVisibility(op: 'add' | 'remove') {
+  if (!canBulkEditSelection.value) return
   const tagId = customerPortalTagId.value
   if (!tagId) return
   const ids = [...selectedIds.value]
@@ -919,6 +940,7 @@ async function bulkVisibility(op: 'add' | 'remove') {
 
 // ── Single-issue delete (soft-delete — recoverable from Settings → Trash) ──
 async function deleteRow(issue: Issue) {
+  if (!canEditIssue(issue)) return
   if (!await confirm({
     message: `Move ${issue.issue_key} "${issue.title}" to Trash? Any child tasks will be moved too. You can restore from Settings → Trash.`,
     confirmLabel: 'Move to trash',
@@ -940,6 +962,11 @@ const sidePanelEdit    = ref(false)
 const { pinned: sidePanelPinned } = useSidePanelPinned()
 
 const sidePanelIssueIds = computed(() => finalIssues.value.map(i => i.id))
+const selectedSidePanelIssue = computed(() =>
+  sidePanelIssueId.value == null
+    ? null
+    : (finalIssues.value.find((issue) => issue.id === sidePanelIssueId.value) ?? null),
+)
 
 watch(() => props.initialPanelIssueId, (id) => {
   if (id) sidePanelIssueId.value = id
@@ -984,7 +1011,7 @@ function openSidePanel(issue: Issue, edit = false) {
     return
   }
   sidePanelIssueId.value = issue.id
-  sidePanelEdit.value = edit
+  sidePanelEdit.value = edit && canEditIssue(issue)
   notifySidePanelOpened('issue')
 }
 
@@ -1160,6 +1187,11 @@ async function onSectionDrop(e: DragEvent, groupId: number | 'backlog') {
 }
 
 const renderedIssues = computed(() => finalIssues.value.slice(0, renderLimit.value))
+const canBulkEditSelection = computed(() => {
+  if (!canEditList.value || selectedIds.value.size === 0) return false
+  const selected = finalIssues.value.filter((issue) => selectedIds.value.has(issue.id))
+  return selected.length === selectedIds.value.size && selected.every((issue) => canEditIssue(issue))
+})
 const hasMore = computed(() => (props.compact || !treeView.value) && renderLimit.value < finalIssues.value.length)
 const serverHasMore = computed(() =>
   props.resultHasMore ?? (props.resultTotal !== undefined && props.resultTotal > props.issues.length),
@@ -1208,7 +1240,7 @@ onMounted(async () => {
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('mousedown', onMousedown)
   document.addEventListener('mousedown', onGlobalMousedownCell)
-  if (!props.compact) {
+  if (!props.compact && !isCustomerMode.value) {
     await loadViews()
     if (props.initialViewId !== undefined) {
       const initView = savedViews.value.find(v => v.id === props.initialViewId)
@@ -1297,12 +1329,12 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     <!-- Section title (compact mode) -->
     <div v-if="compact && title" class="compact-header">
       <h3 class="compact-title">{{ title }}</h3>
-      <button v-if="!isCustomerMode" class="btn btn-primary btn-sm" @click="openCreate()">+ Add {{ title }}</button>
+      <button v-if="canCreateIssues" class="btn btn-primary btn-sm" @click="openCreate()">+ Add {{ title }}</button>
     </div>
 
     <!-- Filter bar (full mode only) -->
     <div v-if="!compact && !isCustomerMode" class="filters">
-      <button v-if="projectId !== undefined" class="btn btn-primary btn-sm" @click="openCreate()">+ New issue</button>
+      <button v-if="projectId !== undefined && canCreateIssues" class="btn btn-primary btn-sm" @click="openCreate()">+ New issue</button>
 
       <!-- Views toggle button -->
       <button
@@ -1394,7 +1426,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
       <div class="filter-right">
         <label
-          v-if="projectAgents.length"
+          v-if="projectAgents.length && canEditList"
           class="run-agent-picker"
           title="Project agent for row runs"
         >
@@ -1427,14 +1459,14 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
           </template>
         </span>
         <button
-          v-if="selectionMode && selectedIds.size > 0"
+          v-if="selectionMode && selectedIds.size > 0 && canBulkEditSelection"
           class="btn btn-ghost btn-sm"
           @click="openBulkChange"
         >
           Change {{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}...
         </button>
         <button
-          v-if="selectionMode && selectedIds.size > 0"
+          v-if="selectionMode && selectedIds.size > 0 && canBulkEditSelection"
           class="btn btn-ghost btn-sm"
           :title="t('reportSummary.bulk.issueListButtonTitle')"
           @click="openBulkSummary"
@@ -1447,27 +1479,27 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
              arrive) so the toolbar never invokes the endpoint with a
              missing tag id. -->
         <button
-          v-if="selectionMode && selectedIds.size > 0 && customerPortalTagId !== null"
+          v-if="selectionMode && selectedIds.size > 0 && canBulkEditSelection && customerPortalTagId !== null"
           class="btn btn-ghost btn-sm"
           @click="bulkVisibility('add')"
         >
           {{ t('visibility.bulkMakeVisible') }}
         </button>
         <button
-          v-if="selectionMode && selectedIds.size > 0 && customerPortalTagId !== null"
+          v-if="selectionMode && selectedIds.size > 0 && canBulkEditSelection && customerPortalTagId !== null"
           class="btn btn-ghost btn-sm"
           @click="bulkVisibility('remove')"
         >
           {{ t('visibility.bulkHide') }}
         </button>
         <button
-          v-if="isAdmin && selectionMode && selectedIds.size > 0"
+          v-if="isAdmin && selectionMode && selectedIds.size > 0 && canBulkEditSelection"
           class="btn btn-danger btn-sm"
           @click="showBulkDelete = true"
         >
           Delete {{ formatInteger(selectedIds.size) }}
         </button>
-        <button :class="['btn btn-ghost btn-sm', { active: selectionMode }]" @click="toggleSelectionMode" title="Toggle selection mode">
+        <button v-if="canCreateIssues" :class="['btn btn-ghost btn-sm', { active: selectionMode }]" @click="toggleSelectionMode" title="Toggle selection mode">
           {{ selectionMode ? `✓ ${formatInteger(selectedIds.size)} selected` : 'Select' }}
         </button>
         <button
@@ -1638,6 +1670,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :show-stripes="showStripes"
         :agent-actions="isCustomerMode ? [] : agentActions"
         :agent-name="selectedAgentName"
+        :can-edit-issue="canEditIssue"
         :actions-collapsed="actionsCollapsed"
         :readonly="isCustomerMode"
         :status-labels="statusLabels"
@@ -1649,17 +1682,17 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :time-label="timeLabel"
         @toggle-select="toggleSelect"
         @toggle-select-all="toggleSelectAll"
-        @open-cell="(issue, field, event) => openCell(issue, field, event)"
+        @open-cell="(issue, field, event) => canEditIssue(issue) && openCell(issue, field, event)"
         @close-cell="(save) => closeCell(save)"
-        @save-cell-edit="(issue, field, value) => saveCellEdit(issue, field, value)"
-        @open-sprint-picker="(issue, event) => openSprintPicker(issue, event)"
-        @toggle-sprint="(issue, sprintId) => toggleSprint(issue, sprintId)"
+        @save-cell-edit="(issue, field, value) => canEditIssue(issue) && saveCellEdit(issue, field, value)"
+        @open-sprint-picker="(issue, event) => canEditIssue(issue) && openSprintPicker(issue, event)"
+        @toggle-sprint="(issue, sprintId) => canEditIssue(issue) && toggleSprint(issue, sprintId)"
         @copy-key="(key, event) => copyKey(key, event)"
         @navigate-to="navigateTo"
-        @open-create="(issue) => openCreate(issue)"
+        @open-create="(issue) => canEditIssue(issue) && openCreate(issue)"
         @open-side-panel="(issue, edit) => openSidePanel(issue, edit)"
         @delete-row="deleteRow"
-        @set-dragging="setDragging"
+        @set-dragging="issue => canEditIssue(issue) && setDragging(issue)"
         @drag-end="onRowDragEnd"
         @section-drag-over="onSectionDragOver"
         @section-drag-leave="onSectionDragLeave"
@@ -1689,12 +1722,13 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
         :side-panel-issue-id="sidePanelIssueId"
         :agent-actions="agentActions"
         :agent-name="selectedAgentName"
+        :can-edit-issue="canEditIssue"
         @toggle-tree-node="toggleTreeNode"
         @toggle-tree-select="toggleTreeSelect"
         @toggle-select="toggleSelect"
         @navigate-to="navigateTo"
         @copy-key="(key, event) => copyKey(key, event)"
-        @open-create="(issue) => openCreate(issue)"
+        @open-create="(issue) => canEditIssue(issue) && openCreate(issue)"
         @open-side-panel="(issue, edit) => openSidePanel(issue, edit)"
         @delete-row="deleteRow"
       />
@@ -1702,7 +1736,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Create modal -->
     <CreateIssueModal
-      v-if="!isCustomerMode"
+      v-if="canCreateIssues"
       ref="createModalRef"
       :open="showCreate"
       :project-id="projectId"
@@ -1719,7 +1753,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
 
     <!-- Bulk change modal -->
     <BulkChangeModal
-      v-if="!isCustomerMode"
+      v-if="!isCustomerMode && canBulkEditSelection"
       ref="bulkChangeRef"
       :open="showBulkChange"
       :selected-ids="selectedIds"
@@ -1735,7 +1769,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
          exclude-terminal toggles so the modal can pre-filter the
          user's selection by status + existing-summary state. -->
     <BulkGenerateSummaryModal
-      v-if="!isCustomerMode"
+      v-if="!isCustomerMode && canBulkEditSelection"
       :open="showBulkSummary"
       :issue-ids="bulkSummaryIds"
       :in-scope-issues="filteredIssues"
@@ -1745,7 +1779,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
     />
 
     <!-- Bulk delete confirm -->
-    <AppModal v-if="!isCustomerMode" title="Delete Issues" :open="showBulkDelete" @close="showBulkDelete=false" confirm-key="d" @confirm="confirmBulkDelete">
+    <AppModal v-if="!isCustomerMode && canBulkEditSelection" title="Delete Issues" :open="showBulkDelete" @close="showBulkDelete=false" confirm-key="d" @confirm="confirmBulkDelete">
       <p style="font-size:14px;color:var(--text);margin-bottom:1.25rem">
         Permanently delete <strong>{{ formatInteger(selectedIds.size) }} issue{{ selectedIds.size !== 1 ? 's' : '' }}</strong>? This cannot be undone.
       </p>
@@ -1812,6 +1846,7 @@ defineExpose({ selectionMode, selectedIds, toggleSelectionMode, activeFilterCoun
       :issue-id="sidePanelIssueId"
       :issue-ids="sidePanelIssueIds"
       :start-in-edit="sidePanelEdit"
+      :readonly="!canEditIssue(selectedSidePanelIssue)"
       :pinned="sidePanelPinned"
       @close="closeSidePanel"
       @updated="onSidePanelUpdated"

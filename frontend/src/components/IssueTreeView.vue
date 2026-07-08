@@ -23,6 +23,7 @@ const props = defineProps<{
   sidePanelIssueId: number | null
   agentActions?: AgentActionCapability[]
   agentName?: string
+  canEditIssue?: (issue: Issue) => boolean
 }>()
 
 const emit = defineEmits<{
@@ -44,6 +45,10 @@ function typeLabel(type: string): string {
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
+}
+
+function rowCanEdit(issue: Issue): boolean {
+  return props.canEditIssue?.(issue) ?? true
 }
 </script>
 
@@ -71,7 +76,7 @@ function typeLabel(type: string): string {
         <span v-if="epic.type === 'release' && epic.group_state" :class="['v2-tree-badge', `v2-tree--${epic.group_state}`]">{{ epic.group_state }}</span>
         <span v-if="epic.type === 'sprint' && epic.sprint_state" :class="['v2-tree-badge', `v2-tree--${epic.sprint_state}`]">{{ epic.sprint_state }}</span>
         <div class="tree-actions" @click.stop>
-          <IssueRowActions :can-have-children="true" :issue-id="epic.id" :issue-type="epic.type" :booked-hours="epic.booked_hours" :is-admin="isAdmin" :ai-work-status="epic.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', epic)" @edit="emit('open-side-panel', epic, true)" @view="emit('open-side-panel', epic, false)" @copy="emit('copy-key', epic.issue_key)" @delete="emit('delete-row', epic)" />
+          <IssueRowActions :can-edit="rowCanEdit(epic)" :can-have-children="true" :issue-id="epic.id" :issue-type="epic.type" :booked-hours="epic.booked_hours" :is-admin="isAdmin && rowCanEdit(epic)" :ai-work-status="epic.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', epic)" @edit="emit('open-side-panel', epic, true)" @view="emit('open-side-panel', epic, false)" @copy="emit('copy-key', epic.issue_key)" @delete="emit('delete-row', epic)" />
         </div>
       </div>
       <template v-if="treeExpanded.has(epic.id)">
@@ -96,7 +101,7 @@ function typeLabel(type: string): string {
           <span v-if="ticket.cost_unit" class="meta-pill">{{ ticket.cost_unit?.label }}</span>
           <span v-if="ticket.release" class="meta-pill release-pill">{{ ticket.release?.label }}</span>
           <div class="tree-actions" @click.stop>
-            <IssueRowActions :can-have-children="true" :issue-id="ticket.id" :issue-type="ticket.type" :booked-hours="ticket.booked_hours" :is-admin="isAdmin" :ai-work-status="ticket.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', ticket)" @edit="emit('open-side-panel', ticket, true)" @view="emit('open-side-panel', ticket, false)" @copy="emit('copy-key', ticket.issue_key)" @delete="emit('delete-row', ticket)" />
+            <IssueRowActions :can-edit="rowCanEdit(ticket)" :can-have-children="true" :issue-id="ticket.id" :issue-type="ticket.type" :booked-hours="ticket.booked_hours" :is-admin="isAdmin && rowCanEdit(ticket)" :ai-work-status="ticket.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @add-child="emit('open-create', ticket)" @edit="emit('open-side-panel', ticket, true)" @view="emit('open-side-panel', ticket, false)" @copy="emit('copy-key', ticket.issue_key)" @delete="emit('delete-row', ticket)" />
           </div>
         </div>
         <template v-if="treeExpanded.has(ticket.id)">
@@ -120,7 +125,7 @@ function typeLabel(type: string): string {
           <span v-if="task.cost_unit" class="meta-pill">{{ task.cost_unit?.label }}</span>
           <span v-if="task.release" class="meta-pill release-pill">{{ task.release?.label }}</span>
           <div class="tree-actions" @click.stop>
-            <IssueRowActions :can-have-children="false" :issue-id="task.id" :issue-type="task.type" :booked-hours="task.booked_hours" :is-admin="isAdmin" :ai-work-status="task.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @edit="emit('open-side-panel', task, true)" @view="emit('open-side-panel', task, false)" @copy="emit('copy-key', task.issue_key)" @delete="emit('delete-row', task)" />
+            <IssueRowActions :can-edit="rowCanEdit(task)" :can-have-children="false" :issue-id="task.id" :issue-type="task.type" :booked-hours="task.booked_hours" :is-admin="isAdmin && rowCanEdit(task)" :ai-work-status="task.ai_work_status" :agent-actions="agentActions" :agent-name="agentName" @edit="emit('open-side-panel', task, true)" @view="emit('open-side-panel', task, false)" @copy="emit('copy-key', task.issue_key)" @delete="emit('delete-row', task)" />
           </div>
         </div>
         </template>

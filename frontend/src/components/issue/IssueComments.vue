@@ -21,11 +21,14 @@ import {
   type IssueComment as Comment,
 } from '@/services/issueComments'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueId: number
   mdMode: boolean
   isMonospace: boolean
-}>()
+  canEdit?: boolean
+}>(), {
+  canEdit: true,
+})
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -59,6 +62,7 @@ function sanitiseComment(s: string): string {
 }
 
 async function submitComment() {
+  if (props.canEdit === false) return
   commentError.value = ''
   if (!commentBody.value.trim()) return
   commentSaving.value = true
@@ -78,6 +82,7 @@ async function submitComment() {
 }
 
 async function deleteComment(comment: Comment) {
+  if (props.canEdit === false) return
   const isOther = comment.author_id !== authStore.user?.id
   const msg = isOther
     ? `Delete ${comment.author ?? 'another user'}'s comment? You can undo this from Recent activity.`
@@ -91,6 +96,7 @@ async function deleteComment(comment: Comment) {
 // somebody composed an internal answer and then realised the customer
 // should see it (or vice versa).
 function canFlipVisibility(comment: Comment): boolean {
+  if (props.canEdit === false) return false
   if (!authStore.user) return false
   return comment.author_id === authStore.user.id || authStore.isAdmin
 }
@@ -149,7 +155,7 @@ async function flipVisibility(comment: Comment) {
                 : t('comments.visibility.badgeInternal') }}
             </button>
             <button
-              v-if="authStore.user && (c.author_id === authStore.user.id || authStore.isAdmin)"
+              v-if="canEdit !== false && authStore.user && (c.author_id === authStore.user.id || authStore.isAdmin)"
               class="comment-delete" @click="deleteComment(c)" title="Delete comment"
             ><AppIcon name="x" :size="11" /></button>
           </div>
@@ -161,7 +167,7 @@ async function flipVisibility(comment: Comment) {
       </div>
     </div>
 
-    <div class="comment-form">
+    <div v-if="canEdit !== false" class="comment-form">
       <UserAvatar :user="authStore.user" size="md" class="comment-avatar-ua comment-avatar-self" />
       <div class="comment-input-wrap">
         <textarea
