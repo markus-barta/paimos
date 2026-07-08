@@ -70,7 +70,7 @@ func ListProjects(w http.ResponseWriter, r *http.Request) {
 		       c.rate_hourly, c.rate_lp,
 		       COALESCE(p.ai_defaults_json, ''), COALESCE(p.ai_policy_json, '')
 		FROM projects p
-		LEFT JOIN issues i    ON i.project_id = p.id
+		LEFT JOIN issues i    ON i.project_id = p.id AND i.deleted_at IS NULL
 		LEFT JOIN customers c ON c.id = p.customer_id
 		WHERE p.status = ?`+filter+`
 		GROUP BY p.id

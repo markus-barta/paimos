@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/markus-barta/paimos/backend/db"
 )
 
 func Test_ProjectCounts_OpenIssuesExcludesKnowledge(t *testing.T) {
@@ -70,7 +72,8 @@ func Test_ListProjects_CountsExcludeKnowledge(t *testing.T) {
 	ts := newTestServer(t)
 	projectID := createTestProject(t, ts, "List Counts Project", "LCP")
 
-	// Work items: 1 open, 1 done, 1 cancelled.
+	// Work items: 1 open, 1 done, 1 cancelled, plus one soft-deleted open
+	// ticket that must not inflate list counters.
 	for i, status := range []string{"backlog", "done", "cancelled"} {
 		resp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
 			"title":    fmt.Sprintf("Ticket %d", i),
@@ -79,6 +82,19 @@ func Test_ListProjects_CountsExcludeKnowledge(t *testing.T) {
 			"priority": "medium",
 		})
 		assertStatus(t, resp, http.StatusCreated)
+	}
+	deletedResp := ts.post(t, fmt.Sprintf("/api/projects/%d/issues", projectID), ts.adminCookie, map[string]any{
+		"title":    "Deleted backlog ticket",
+		"type":     "ticket",
+		"status":   "backlog",
+		"priority": "medium",
+	})
+	assertStatus(t, deletedResp, http.StatusCreated)
+	if _, err := db.DB.Exec(
+		`UPDATE issues SET deleted_at=datetime('now') WHERE project_id=? AND title='Deleted backlog ticket'`,
+		projectID,
+	); err != nil {
+		t.Fatalf("soft-delete fixture issue: %v", err)
 	}
 
 	// Knowledge entries are stored in issues but must not inflate project-list
