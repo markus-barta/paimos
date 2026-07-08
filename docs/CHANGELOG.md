@@ -5,6 +5,16 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.7] — 2026-07-08
+
+### Fixed
+
+- **Project counters and visual baselines tightened after audit (PAI-678).**
+  Project list/detail counters now share the same completed-status and
+  soft-delete semantics for accepted and invoiced work, while the daily-work
+  visual baseline uses the debug-admin fixture and stable per-document CSS so
+  screenshots do not capture account reminder chrome.
+
 ## [4.7.6] — 2026-07-08
 
 ### Fixed
