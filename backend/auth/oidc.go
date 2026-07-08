@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU Affero General Public
 // License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// PAI-120: enterprise SSO via OpenID Connect — single provider,
-// end-to-end, JIT user provisioning. The implementation deliberately
-// uses only the standard library and the existing session machinery to
-// keep the dependency surface minimal:
+// PAI-120 / PAI-680: enterprise SSO via OpenID Connect — single provider,
+// end-to-end, invite-only by default with optional JIT user provisioning.
+// The implementation deliberately uses only the standard library and the
+// existing session machinery to keep the dependency surface minimal:
 //
 //   - Discovery: GET ${OIDC_ISSUER_URL}/.well-known/openid-configuration
 //   - Authorisation: redirect with state + PKCE (S256), nonce, scope.
@@ -39,6 +39,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -61,11 +62,13 @@ import (
 // Loaded lazily on the first request so an operator who flips the env
 // vars at runtime sees the change without a restart.
 type oidcConfig struct {
-	IssuerURL    string
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string
-	Scopes       string
+	IssuerURL      string
+	ClientID       string
+	ClientSecret   string
+	RedirectURL    string
+	Scopes         string
+	ProvisionMode  string
+	AutoCreateRole string
 
 	// Discovery results — filled from .well-known/openid-configuration.
 	AuthorizationEndpoint string
@@ -80,24 +83,39 @@ var (
 	oidcCfgOnce sync.Mutex
 )
 
+const (
+	oidcProvisionInviteOnly = "invite-only"
+	oidcProvisionAutoCreate = "auto-create"
+)
+
 // loadOIDCConfig hydrates oidcCfg from env + discovery. Idempotent;
 // returns an error when any required env var is missing or when
 // discovery fails.
 func loadOIDCConfig(ctx context.Context) (oidcConfig, error) {
 	oidcCfgOnce.Lock()
 	defer oidcCfgOnce.Unlock()
-	if oidcCfg.loaded {
-		return oidcCfg, nil
-	}
+
 	cfg := oidcConfig{
-		IssuerURL:    strings.TrimRight(os.Getenv("OIDC_ISSUER_URL"), "/"),
-		ClientID:     os.Getenv("OIDC_CLIENT_ID"),
-		ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
-		RedirectURL:  os.Getenv("OIDC_REDIRECT_URL"),
-		Scopes:       envDefault("OIDC_SCOPES", "openid email profile"),
+		IssuerURL:      strings.TrimRight(os.Getenv("OIDC_ISSUER_URL"), "/"),
+		ClientID:       strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")),
+		ClientSecret:   os.Getenv("OIDC_CLIENT_SECRET"),
+		RedirectURL:    strings.TrimSpace(os.Getenv("OIDC_REDIRECT_URL")),
+		Scopes:         envDefault("OIDC_SCOPES", "openid email profile"),
+		ProvisionMode:  strings.ToLower(strings.TrimSpace(envDefault("OIDC_PROVISION_MODE", oidcProvisionInviteOnly))),
+		AutoCreateRole: strings.ToLower(strings.TrimSpace(envDefault("OIDC_AUTO_CREATE_ROLE", "member"))),
 	}
 	if cfg.IssuerURL == "" || cfg.ClientID == "" || cfg.RedirectURL == "" {
 		return cfg, errors.New("OIDC not configured")
+	}
+	if cfg.ProvisionMode != oidcProvisionInviteOnly && cfg.ProvisionMode != oidcProvisionAutoCreate {
+		return cfg, fmt.Errorf("OIDC_PROVISION_MODE must be %q or %q", oidcProvisionInviteOnly, oidcProvisionAutoCreate)
+	}
+	if cfg.AutoCreateRole != "member" && cfg.AutoCreateRole != "external" {
+		return cfg, errors.New("OIDC_AUTO_CREATE_ROLE must be member or external")
+	}
+
+	if oidcCfg.loaded && oidcCfg.sameConfigInput(cfg) {
+		return oidcCfg, nil
 	}
 	doc, err := fetchDiscovery(ctx, cfg.IssuerURL)
 	if err != nil {
@@ -109,6 +127,16 @@ func loadOIDCConfig(ctx context.Context) (oidcConfig, error) {
 	cfg.loaded = true
 	oidcCfg = cfg
 	return cfg, nil
+}
+
+func (c oidcConfig) sameConfigInput(other oidcConfig) bool {
+	return c.IssuerURL == other.IssuerURL &&
+		c.ClientID == other.ClientID &&
+		c.ClientSecret == other.ClientSecret &&
+		c.RedirectURL == other.RedirectURL &&
+		c.Scopes == other.Scopes &&
+		c.ProvisionMode == other.ProvisionMode &&
+		c.AutoCreateRole == other.AutoCreateRole
 }
 
 // envDefault returns the env value or fallback when unset.
@@ -289,16 +317,23 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		ssoError(w, r, "userinfo_failed")
 		return
 	}
-	if info.Email == "" || (info.EmailVerified != nil && !*info.EmailVerified) {
+	if info.Email == "" || info.EmailVerified == nil || !*info.EmailVerified {
 		log.Printf("oidc: refusing unverified or missing email: sub=%q", info.Sub)
 		ssoError(w, r, "email_required")
 		return
 	}
 
-	user, err := provisionOIDCUser(info)
+	user, err := provisionOIDCUser(info, cfg)
 	if err != nil {
 		log.Printf("oidc: provision: %v", err)
-		ssoError(w, r, "provision_failed")
+		switch {
+		case errors.Is(err, errOIDCInviteRequired):
+			ssoError(w, r, "invite_required")
+		case errors.Is(err, errOIDCAccountDisabled):
+			ssoError(w, r, "account_disabled")
+		default:
+			ssoError(w, r, "provision_failed")
+		}
 		return
 	}
 
@@ -308,10 +343,13 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		ssoError(w, r, "session_failed")
 		return
 	}
-	expiresAt := time.Now().Add(sessionDuration)
+	now := time.Now()
+	expiresAt := now.Add(sessionDuration)
 	if _, err := db.DB.Exec(
-		"INSERT INTO sessions(id,user_id,expires_at) VALUES(?,?,?)",
-		sid, user.ID, expiresAt.UTC().Format("2006-01-02 15:04:05"),
+		"INSERT INTO sessions(id,user_id,expires_at,created_at) VALUES(?,?,?,?)",
+		sid, user.ID,
+		expiresAt.UTC().Format("2006-01-02 15:04:05"),
+		now.UTC().Format("2006-01-02 15:04:05"),
 	); err != nil {
 		ssoError(w, r, "session_failed")
 		return
@@ -321,7 +359,7 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		Name:     sessionCookie,
 		Value:    sid,
 		Path:     "/",
-		Expires:  expiresAt,
+		Expires:  now.Add(sessionAbsoluteLifetime),
 		HttpOnly: true,
 		Secure:   cookieSecure,
 		SameSite: http.SameSiteLaxMode,
@@ -374,8 +412,7 @@ func exchangeCode(ctx context.Context, cfg oidcConfig, code, verifier string) (*
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("token endpoint status %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("token endpoint status %d", resp.StatusCode)
 	}
 	var out oidcTokenResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&out); err != nil {
@@ -410,8 +447,7 @@ func fetchUserinfo(ctx context.Context, cfg oidcConfig, accessToken string) (*oi
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("userinfo status %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("userinfo status %d", resp.StatusCode)
 	}
 	var info oidcUserinfo
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&info); err != nil {
@@ -420,11 +456,15 @@ func fetchUserinfo(ctx context.Context, cfg oidcConfig, accessToken string) (*oi
 	return &info, nil
 }
 
-// provisionOIDCUser finds an existing PAIMOS user by email (case-insensitive)
-// or creates one with role=member, status=active, no password set. Returning
-// users with status='deleted' or 'inactive' are refused with a clean error
-// the caller can show.
-func provisionOIDCUser(info *oidcUserinfo) (*models.User, error) {
+var (
+	errOIDCInviteRequired  = errors.New("oidc user not invited")
+	errOIDCAccountDisabled = errors.New("oidc user account disabled")
+)
+
+// provisionOIDCUser finds an existing PAIMOS user by verified email
+// (case-insensitive). Unknown users are refused by default; operators can opt
+// into auto-create via OIDC_PROVISION_MODE=auto-create.
+func provisionOIDCUser(info *oidcUserinfo, cfg oidcConfig) (*models.User, error) {
 	email := strings.ToLower(strings.TrimSpace(info.Email))
 	row := db.DB.QueryRow(
 		"SELECT id, status FROM users WHERE lower(email) = ? LIMIT 1", email,
@@ -433,7 +473,7 @@ func provisionOIDCUser(info *oidcUserinfo) (*models.User, error) {
 	var status string
 	if err := row.Scan(&id, &status); err == nil {
 		if status != "active" {
-			return nil, fmt.Errorf("user %d not active (%s)", id, status)
+			return nil, fmt.Errorf("%w: user_id=%d status=%s", errOIDCAccountDisabled, id, status)
 		}
 		u := &models.User{}
 		if err := db.DB.QueryRow(
@@ -442,12 +482,23 @@ func provisionOIDCUser(info *oidcUserinfo) (*models.User, error) {
 			return nil, err
 		}
 		return u, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
 
-	// New user — JIT provision as a regular member with auto-seeded
-	// project access. Username defaults to the OIDC `preferred_username`,
-	// falling back to the email local-part. Any future username collision
-	// gets a -<random> suffix to keep INSERT atomic.
+	if cfg.ProvisionMode != oidcProvisionAutoCreate {
+		return nil, fmt.Errorf("%w: email=%q", errOIDCInviteRequired, email)
+	}
+
+	role := cfg.AutoCreateRole
+	if role != "member" && role != "external" {
+		return nil, errors.New("invalid OIDC auto-create role")
+	}
+
+	// New user — JIT provision with the configured low-privilege role.
+	// Username defaults to the OIDC `preferred_username`, falling back to the
+	// email local-part. Any future username collision gets a random suffix to
+	// keep INSERT atomic.
 	username := strings.ToLower(strings.TrimSpace(info.PreferredUsername))
 	if username == "" {
 		if at := strings.Index(email, "@"); at > 0 {
@@ -464,21 +515,21 @@ func provisionOIDCUser(info *oidcUserinfo) (*models.User, error) {
 	// violation. Try only twice — if a name is that contended, surfacing
 	// the error is the right call.
 	res, err := db.DB.Exec(`
-		INSERT INTO users(username, password, role, status, email, first_name, last_name)
-		VALUES(?, '', 'member', 'active', ?, ?, ?)
-	`, username, email, info.GivenName, info.FamilyName)
+		INSERT INTO users(username, password, role, role_key, status, email, first_name, last_name)
+		VALUES(?, '', ?, ?, 'active', ?, ?, ?)
+	`, username, role, role, email, info.GivenName, info.FamilyName)
 	if err != nil {
 		username = username + "-" + mustRandom(4)
 		res, err = db.DB.Exec(`
-			INSERT INTO users(username, password, role, status, email, first_name, last_name)
-			VALUES(?, '', 'member', 'active', ?, ?, ?)
-		`, username, email, info.GivenName, info.FamilyName)
+			INSERT INTO users(username, password, role, role_key, status, email, first_name, last_name)
+			VALUES(?, '', ?, ?, 'active', ?, ?, ?)
+		`, username, role, role, email, info.GivenName, info.FamilyName)
 		if err != nil {
 			return nil, fmt.Errorf("create user: %w", err)
 		}
 	}
 	uid, _ := res.LastInsertId()
-	SeedAccessForUser(uid, "member")
+	SeedAccessForUser(uid, role)
 
 	u := &models.User{}
 	if err := db.DB.QueryRow(

@@ -250,7 +250,7 @@ A gap (no test, manual-only verification, etc.) is named explicitly. Gaps drive 
 | **INV-AUTH-05** | TOTP secrets are per-user; admin reset rotates the secret, does not expose it. | `auth/totp.go` | `quick_test.go`; manual smoke on admin-reset flow |
 | **INV-AUTH-06** | Password-reset tokens are 32-byte random, sha256-stored, single-use, 60-minute TTL. | `auth/password_reset.go` | `password_reset_test.go` |
 | **INV-AUTH-07** | Password reset invalidates all active sessions for that user (defence in depth). | `auth/password_reset.go:Reset` | `password_reset_test.go` |
-| **INV-AUTH-08** | OIDC `email_verified` claim must be true for JIT provisioning; users with unverified email are refused. | `auth/oidc.go` | manual verification with mocked IdP; **gap**: no integration test |
+| **INV-AUTH-08** | OIDC `email_verified` claim must be explicitly true; users with missing/unverified email are refused, and unknown emails are invite-only unless auto-create is explicitly enabled. | `auth/oidc.go` | `auth/oidc_test.go` mocked-issuer flow |
 
 ### 4.2 · Authorization
 

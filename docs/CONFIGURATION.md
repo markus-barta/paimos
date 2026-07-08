@@ -70,12 +70,13 @@ reset and anyone with log access can use it (PAI-115).
 | `SMTP_PASS` | *(empty)* | Pair with `SMTP_USER` |
 | `PAIMOS_DEV_MODE` | *(unset)* | When `true` AND `SMTP_HOST` unset, log reset links to stdout. Local dev only. |
 
-## Single Sign-On (OpenID Connect — PAI-120)
+## Single Sign-On (OpenID Connect — PAI-120 / PAI-680)
 
-PAIMOS supports a single OIDC provider end-to-end with PKCE and JIT
-user provisioning. The flow is hidden from the login page until all
-three required vars are set; once configured, the SPA renders an
-"SSO" button alongside the password form.
+PAIMOS supports a single OIDC provider end-to-end with authorization code +
+PKCE. The flow is hidden from the login page until all three required vars
+are set; once configured, the SPA renders an "SSO" button alongside the
+password form. SSO answers identity only; PAIMOS roles and per-project
+permissions remain local authorization.
 
 | Var | Default | Notes |
 |---|---|---|
@@ -86,15 +87,24 @@ three required vars are set; once configured, the SPA renders an
 | `OIDC_SCOPES` | `openid email profile` | Space-separated. |
 | `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Shown on the login page. |
 | `OIDC_POST_LOGIN_REDIRECT` | `/` | SPA path to land on after a successful SSO login. |
+| `OIDC_PROVISION_MODE` | `invite-only` | `invite-only` matches only existing active users by verified email. `auto-create` creates missing users. |
+| `OIDC_AUTO_CREATE_ROLE` | `member` | Used only when `OIDC_PROVISION_MODE=auto-create`. Allowed: `member`, `external`. |
 
-JIT provisioning rules:
+Provisioning rules:
 - A returning user is matched by case-insensitive email.
-- A new user is created with role `member`, status `active`, no password,
-  username derived from `preferred_username` (or the email local-part),
-  with a random suffix on collision.
-- An OIDC user with no verified email is refused — operators who run
-  IdPs that omit `email_verified` should set the claim to `true` on the
-  IdP side or the redirect lands on `/login?sso_error=email_required`.
+- By default, an unknown email is refused and the user lands on
+  `/login?sso_error=invite_required`. Create the PAIMOS user first, with
+  the same email, to invite them.
+- With `OIDC_PROVISION_MODE=auto-create`, a new user is created with
+  status `active`, no local password, the configured default role, and a
+  username derived from `preferred_username` or the email local-part.
+- An OIDC user with no `email_verified: true` claim is refused. Operators
+  who run IdPs that omit `email_verified` should set the claim to `true`
+  on the IdP side or the redirect lands on
+  `/login?sso_error=email_required`.
+- For Zitadel, configure a web application with authorization code + PKCE,
+  add the exact `OIDC_REDIRECT_URL` as an allowed redirect URI, and make
+  sure the `email` and `email_verified` claims are present in userinfo.
 
 The id_token signature is not verified locally; trust comes from the
 TLS-protected userinfo round trip back to the issuer. This trade-off

@@ -40,6 +40,10 @@ const ssoError = computed(() => {
       return 'SSO handshake expired — please try again.'
     case 'email_required':
       return 'SSO did not return a verified email; sign in with a password instead.'
+    case 'invite_required':
+      return 'No PAIMOS account is linked to this SSO email yet. Ask an admin for access.'
+    case 'account_disabled':
+      return 'This PAIMOS account is disabled. Ask an admin to restore access.'
     case 'not_configured':
       return 'SSO is not configured on this server.'
     default:
