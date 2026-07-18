@@ -2,9 +2,9 @@ module github.com/markus-barta/paimos/backend
 
 go 1.25.0
 
-// Pin the build toolchain to a patched stdlib: go1.25.11 fixes GO-2026-5037/
-// 5038/5039 (crypto/x509, mime, net/textproto) flagged by govulncheck.
-toolchain go1.25.11
+// Pin the build toolchain to a patched stdlib: go1.25.12 fixes GO-2026-5856
+// (crypto/tls) and retains the earlier 1.25.x security fixes.
+toolchain go1.25.12
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5

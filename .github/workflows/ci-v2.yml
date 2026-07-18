@@ -36,11 +36,9 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.11'
-          # Pull the latest 1.25.x patch on every run so newly-published
-          # stdlib vulnerability fixes (e.g. GO-2026-4971 in net@go1.25.10)
-          # land without a workflow edit.
-          check-latest: true
+          go-version: '1.25.12'
+          # Keep CI, release, container and go.mod on one audited patch.
+          # Bump deliberately when govulncheck flags the standard library.
           cache-dependency-path: backend/go.sum
 
       - uses: actions/setup-node@v4
@@ -143,8 +141,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.11'
-          check-latest: true
+          go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
 
       - uses: actions/setup-node@v4
@@ -189,11 +186,9 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.11'
-          # Pull the latest 1.25.x patch on every run so newly-published
-          # stdlib vulnerability fixes (e.g. GO-2026-4971 in net@go1.25.10)
-          # land without a workflow edit.
-          check-latest: true
+          go-version: '1.25.12'
+          # Keep CI, release, container and go.mod on one audited patch.
+          # Bump deliberately when govulncheck flags the standard library.
           cache-dependency-path: backend/go.sum
 
       - uses: actions/setup-node@v4
