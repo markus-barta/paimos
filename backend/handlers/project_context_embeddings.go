@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
@@ -38,27 +39,36 @@ type retrievalDoc struct {
 
 type projectContextEmbeddingIndexState struct {
 	mu      sync.Mutex
-	queued  map[int64]bool
-	running map[int64]bool
-	rerun   map[int64]bool
+	queued  map[projectContextEmbeddingJob]bool
+	running map[projectContextEmbeddingJob]bool
+	rerun   map[projectContextEmbeddingJob]bool
+}
+
+type projectContextEmbeddingJob struct {
+	db        *sql.DB
+	projectID int64
 }
 
 var (
-	projectContextEmbeddingQueue      = make(chan int64, 128)
+	projectContextEmbeddingQueue      = make(chan projectContextEmbeddingJob, 128)
 	projectContextEmbeddingWorkerOnce sync.Once
 	projectContextEmbeddingState      = projectContextEmbeddingIndexState{
-		queued:  map[int64]bool{},
-		running: map[int64]bool{},
-		rerun:   map[int64]bool{},
+		queued:  map[projectContextEmbeddingJob]bool{},
+		running: map[projectContextEmbeddingJob]bool{},
+		rerun:   map[projectContextEmbeddingJob]bool{},
 	}
 )
 
 func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[string]any, error) {
-	docs, err := collectProjectRetrievalDocs(projectID)
+	conn := db.DB
+	if conn == nil {
+		return nil, fmt.Errorf("database not open")
+	}
+	docs, err := collectProjectRetrievalDocs(conn, projectID)
 	if err != nil {
 		return nil, err
 	}
-	enqueueProjectContextEmbeddingIndex(projectID)
+	enqueueProjectContextEmbeddingIndexForDB(conn, projectID)
 	docByKey := map[string]retrievalDoc{}
 	for _, doc := range docs {
 		docByKey[retrievalDocKey(doc.EntityType, doc.EntityID)] = doc
@@ -68,7 +78,7 @@ func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[s
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.DB.Query(`
+	rows, err := conn.Query(`
 		SELECT entity_type, entity_id, vector, paimos_cosine(vector, ?) AS score
 		FROM entity_embeddings
 		WHERE project_id = ? AND model = ? AND dim = ? AND status = 'ready'
@@ -128,72 +138,77 @@ func retrieveProjectContextVectorHits(projectID int64, q string, k int) ([]map[s
 }
 
 func enqueueProjectContextEmbeddingIndex(projectID int64) {
-	if projectID <= 0 {
+	enqueueProjectContextEmbeddingIndexForDB(db.DB, projectID)
+}
+
+func enqueueProjectContextEmbeddingIndexForDB(conn *sql.DB, projectID int64) {
+	if conn == nil || projectID <= 0 {
 		return
 	}
+	job := projectContextEmbeddingJob{db: conn, projectID: projectID}
 	projectContextEmbeddingWorkerOnce.Do(func() {
 		go runProjectContextEmbeddingWorker()
 	})
 	projectContextEmbeddingState.mu.Lock()
-	if projectContextEmbeddingState.queued[projectID] {
+	if projectContextEmbeddingState.queued[job] {
 		projectContextEmbeddingState.mu.Unlock()
 		return
 	}
-	if projectContextEmbeddingState.running[projectID] {
-		projectContextEmbeddingState.rerun[projectID] = true
+	if projectContextEmbeddingState.running[job] {
+		projectContextEmbeddingState.rerun[job] = true
 		projectContextEmbeddingState.mu.Unlock()
 		return
 	}
-	projectContextEmbeddingState.queued[projectID] = true
+	projectContextEmbeddingState.queued[job] = true
 	projectContextEmbeddingState.mu.Unlock()
 
 	select {
-	case projectContextEmbeddingQueue <- projectID:
+	case projectContextEmbeddingQueue <- job:
 	default:
-		go func() { projectContextEmbeddingQueue <- projectID }()
+		go func() { projectContextEmbeddingQueue <- job }()
 	}
 }
 
 func runProjectContextEmbeddingWorker() {
-	for projectID := range projectContextEmbeddingQueue {
-		runProjectContextEmbeddingJob(projectID)
+	for job := range projectContextEmbeddingQueue {
+		runProjectContextEmbeddingJob(job)
 	}
 }
 
-func runProjectContextEmbeddingJob(projectID int64) {
+func runProjectContextEmbeddingJob(job projectContextEmbeddingJob) {
 	for {
 		projectContextEmbeddingState.mu.Lock()
-		projectContextEmbeddingState.queued[projectID] = false
-		projectContextEmbeddingState.running[projectID] = true
+		projectContextEmbeddingState.queued[job] = false
+		projectContextEmbeddingState.running[job] = true
 		projectContextEmbeddingState.mu.Unlock()
 
 		time.Sleep(projectContextEmbeddingDebounce)
-		if err := indexProjectContextEmbeddingsWithRetry(projectID); err != nil {
-			log.Printf("project context embedding index project=%d: %v", projectID, err)
+		if err := indexProjectContextEmbeddingsWithRetry(job.db, job.projectID); err != nil {
+			log.Printf("project context embedding index project=%d: %v", job.projectID, err)
 		}
 
 		projectContextEmbeddingState.mu.Lock()
-		if projectContextEmbeddingState.rerun[projectID] {
-			projectContextEmbeddingState.rerun[projectID] = false
-			projectContextEmbeddingState.queued[projectID] = true
+		if projectContextEmbeddingState.rerun[job] {
+			projectContextEmbeddingState.rerun[job] = false
+			projectContextEmbeddingState.queued[job] = true
 			projectContextEmbeddingState.mu.Unlock()
 			continue
 		}
-		delete(projectContextEmbeddingState.queued, projectID)
-		delete(projectContextEmbeddingState.running, projectID)
-		delete(projectContextEmbeddingState.rerun, projectID)
+		delete(projectContextEmbeddingState.queued, job)
+		delete(projectContextEmbeddingState.running, job)
+		delete(projectContextEmbeddingState.rerun, job)
 		projectContextEmbeddingState.mu.Unlock()
 		return
 	}
 }
 
-func indexProjectContextEmbeddingsWithRetry(projectID int64) error {
+func indexProjectContextEmbeddingsWithRetry(conn *sql.DB, projectID int64) error {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(projectContextEmbeddingRetryDelay)
 		}
-		err := indexProjectContextEmbeddings(projectID)
+		err := indexProjectContextEmbeddings(conn, projectID)
 		if err == nil {
 			return nil
 		}
@@ -213,33 +228,37 @@ func isSQLiteBusyError(err error) bool {
 	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
 }
 
-func indexProjectContextEmbeddings(projectID int64) error {
-	if db.DB == nil {
+func indexProjectContextEmbeddings(conn *sql.DB, projectID int64) error {
+	if conn == nil {
 		return fmt.Errorf("database not open")
 	}
-	docs, err := collectProjectRetrievalDocs(projectID)
+	docs, err := collectProjectRetrievalDocs(conn, projectID)
 	if err != nil {
 		return err
 	}
-	return syncProjectContextEmbeddings(projectID, docs)
+	return syncProjectContextEmbeddings(conn, projectID, docs)
 }
 
 func projectContextEmbeddingFreshness(projectID int64) map[string]any {
 	out := map[string]any{
 		"model": projectContextEmbeddingModel,
 	}
-	projectContextEmbeddingState.mu.Lock()
-	out["queued"] = projectContextEmbeddingState.queued[projectID]
-	out["running"] = projectContextEmbeddingState.running[projectID]
-	projectContextEmbeddingState.mu.Unlock()
-	if db.DB == nil {
+	conn := db.DB
+	if conn == nil {
+		out["queued"] = false
+		out["running"] = false
 		out["status"] = "degraded"
 		out["error"] = "database not open"
 		return out
 	}
+	job := projectContextEmbeddingJob{db: conn, projectID: projectID}
+	projectContextEmbeddingState.mu.Lock()
+	out["queued"] = projectContextEmbeddingState.queued[job]
+	out["running"] = projectContextEmbeddingState.running[job]
+	projectContextEmbeddingState.mu.Unlock()
 	var count int
 	var lastIndexed string
-	if err := db.DB.QueryRow(`
+	if err := conn.QueryRow(`
 		SELECT COUNT(*), COALESCE(MAX(last_indexed_at), '')
 		FROM entity_embeddings
 		WHERE project_id = ? AND model = ?
@@ -258,7 +277,10 @@ func projectContextEmbeddingFreshness(projectID int64) map[string]any {
 	return out
 }
 
-func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
+func syncProjectContextEmbeddings(conn *sql.DB, projectID int64, docs []retrievalDoc) error {
+	if conn == nil {
+		return fmt.Errorf("database not open")
+	}
 	type embeddingRow struct {
 		entityType string
 		entityID   int64
@@ -290,7 +312,7 @@ func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
 		})
 	}
 
-	tx, err := db.DB.Begin()
+	tx, err := conn.Begin()
 	if err != nil {
 		return err
 	}
@@ -355,16 +377,19 @@ func syncProjectContextEmbeddings(projectID int64, docs []retrievalDoc) error {
 	return tx.Commit()
 }
 
-func collectProjectRetrievalDocs(projectID int64) ([]retrievalDoc, error) {
-	issues, err := collectProjectIssueDocs(projectID)
+func collectProjectRetrievalDocs(conn *sql.DB, projectID int64) ([]retrievalDoc, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("database not open")
+	}
+	issues, err := collectProjectIssueDocs(conn, projectID)
 	if err != nil {
 		return nil, err
 	}
-	anchors, err := collectProjectAnchorDocs(projectID)
+	anchors, err := collectProjectAnchorDocs(conn, projectID)
 	if err != nil {
 		return nil, err
 	}
-	symbols, err := collectProjectSymbolDocs(projectID)
+	symbols, err := collectProjectSymbolDocs(conn, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -378,8 +403,8 @@ func collectProjectRetrievalDocs(projectID int64) ([]retrievalDoc, error) {
 	return out, nil
 }
 
-func collectProjectIssueDocs(projectID int64) ([]retrievalDoc, error) {
-	rows, err := db.DB.Query(`
+func collectProjectIssueDocs(conn *sql.DB, projectID int64) ([]retrievalDoc, error) {
+	rows, err := conn.Query(`
 		SELECT i.id, i.title, COALESCE(i.description,''), COALESCE(i.acceptance_criteria,''), COALESCE(i.notes,''),
 		       COALESCE(i.type,''), COALESCE(p.key,''), i.issue_number
 		FROM issues i
@@ -418,8 +443,8 @@ func collectProjectIssueDocs(projectID int64) ([]retrievalDoc, error) {
 	return out, rows.Err()
 }
 
-func collectProjectAnchorDocs(projectID int64) ([]retrievalDoc, error) {
-	rows, err := db.DB.Query(`
+func collectProjectAnchorDocs(conn *sql.DB, projectID int64) ([]retrievalDoc, error) {
+	rows, err := conn.Query(`
 		SELECT a.id, a.issue_id, a.file_path, a.line, a.label,
 		       COALESCE(pr.label,''), pr.url, COALESCE(p.key,''), i.issue_number
 		FROM issue_anchors a
@@ -468,8 +493,8 @@ func collectProjectAnchorDocs(projectID int64) ([]retrievalDoc, error) {
 
 // PAI-358: collectProjectManifestDocs deleted with the manifest blob.
 
-func collectProjectSymbolDocs(projectID int64) ([]retrievalDoc, error) {
-	rows, err := db.DB.Query(`
+func collectProjectSymbolDocs(conn *sql.DB, projectID int64) ([]retrievalDoc, error) {
+	rows, err := conn.Query(`
 		SELECT a.repo_id, a.file_path, a.symbol_json
 		FROM issue_anchors a
 		WHERE a.project_id = ? AND a.symbol_json != ''
