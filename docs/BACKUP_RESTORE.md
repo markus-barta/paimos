@@ -158,7 +158,7 @@ docker compose up -d
 curl -fsS https://your.host/api/health  # expect: {"status":"ok","service":"...","version":"<tag>"}
 ```
 
-**Step 6 is the most-forgotten step.** Migrations in `backend/db/db.go` are additive-only and one-way. A v-current binary expecting (say) M79's `placement` column will crash against a backup that doesn't have it. Image-pin and DB-restore must move together.
+**Step 6 is the most-forgotten step.** Migrations in `backend/db/db.go` are tracked, forward-only, and may rebuild or replace schema objects. A v-current binary expecting (say) M79's `placement` column will crash against a backup that doesn't have it. Image-pin and DB-restore must move together.
 
 ### 3.3 · Forensic / partial restore
 

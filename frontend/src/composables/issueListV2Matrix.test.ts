@@ -2,7 +2,7 @@
  * PAIMOS — Your Professional & Personal AI Project OS
  * Copyright (C) 2026 Markus Barta <markus@barta.com>
  *
- * Licensed under the GNU AGPL v3. See the project LICENSE.
+ * Licensed under AGPL-3.0-only. See the project LICENSE.
  */
 
 /**

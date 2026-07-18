@@ -56,9 +56,9 @@ function isActive(path: string) {
     </template>
   </div>
   <div class="sidebar-meta-row">
-    <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener" class="meta-badge" title="Licensed under AGPL-3.0">
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener" class="meta-badge" title="Licensed under AGPL-3.0-only">
       <AppIcon name="shield" :size="9" />
-      <span class="sl">AGPL-3.0</span>
+      <span class="sl">AGPL-3.0-only</span>
     </a>
     <!-- PAI-280: upstream attribution. Was AppFooter's only unique
          payload; merged here so we don't lose the outbound link when

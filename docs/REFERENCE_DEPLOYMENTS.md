@@ -20,7 +20,7 @@ The bar matters because solo-maintainer FOSS projects are everywhere; **producti
 
 It is **not**:
 
-- A claim that PAIMOS is enterprise-validated. The reference set is two deployments (one is the maintainer's, one is at a small consultancy). That's a real but small base.
+- A claim that PAIMOS is enterprise-validated. The register contains two validated deployment histories: one active maintainer-operated deployment and one historical independent deployment. That's a real but small base.
 - A list of every install. Self-hosters elsewhere are presumably running PAIMOS, but unless the operator submits structured findings the install isn't a *reference* — it's an unaudited install.
 - A promise that adoption beyond the reference set is supported the same way. See [`SECURITY.md` § Supported versions](../SECURITY.md#supported-versions) for the actual support boundary.
 
@@ -42,9 +42,9 @@ A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* refer
 
 ---
 
-## 2 · Active reference deployments
+## 2 · Reference deployment register
 
-Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy target for current work; pmo is historical/inactive after the BytePoets exit. The current ppm proof is the live `4.8.0` deployment verified on 2026-07-08.
+The register contains two validated deployment histories. As of 2026-06-30, ppm is the only active deploy target; pmo is historical and inactive after the BytePoets exit. The current ppm proof is the live `4.8.0` deployment verified on 2026-07-08.
 
 ### 2.1 · ppm · `pm.barta.cm`
 
@@ -60,9 +60,9 @@ Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy
 | Active since | v1.x (continuously upgraded; no fresh-install in current era) |
 | Last verified runtime | 2026-07-08: `4.8.0` (`/api/health`, OIDC status, SSO browser round-trip) |
 | Backup pattern | per-deploy via `scripts/deploy.sh`; `$BACKUP_ROOT` on the same host (acknowledged limitation tracked under [§3 Findings](#3--structured-findings) F-08) |
-| Audience | the maintainer + a small group; canary for every release before pmo |
+| Audience | the maintainer + a small group; current production canary |
 
-**Role in the project:** ppm is the **first production deployment for every release**. The release flow is `just release` → `just verify-release` → `just deploy-ppm` → wait → `just deploy-pmo`. ppm is where bugs in a release first show up if they do; pmo is the second deployment that validates it.
+**Role in the project:** ppm is the **active production deployment and release canary**. When pmo was active, the release flow continued from ppm to that independent second deployment. Current releases stop at ppm unless another active reference operator is added.
 
 **This is the maintainer's own instance**, which is both a strength (real engagement, every defect is felt) and a weakness (operator and maintainer are the same person, so the validation isn't independent).
 
@@ -81,12 +81,12 @@ Two as of 2026-06-01. 2026-06-30 operational note: ppm is the only active deploy
 | Attachments | MinIO (separate bucket) |
 | AI assist | OpenRouter (separately-configured key, separate billing) |
 | OIDC | not configured |
-| Active since | v1.x |
+| Active period | v1.x through June 2026; historical/inactive now |
 | Last verified runtime | 2026-06-01: `3.8.2` (`/api/health`, schema `1.5.0`) |
 | Backup pattern | per-deploy + scheduled (operator-controlled cadence) |
-| Audience | bytepoets internal; second canary; **operator is independent of maintainer** |
+| Audience | historical bytepoets internal deployment; **operator was independent of maintainer** |
 
-**Role in the project:** pmo is the **independence test**. Operator and maintainer are different people; the deploy / restore / upgrade runbooks have to be readable by someone who didn't write them. Configuration is documented in `scripts/deploy.pmo.conf` and the deployment flow is identical to ppm's. **If pmo upgrades cleanly without intervention, the runbook works.**
+**Historical role in the project:** pmo was the **independence test**. Operator and maintainer were different people, so the deploy, restore, and upgrade runbooks had to be readable by someone who did not write them. Configuration remains documented in `scripts/deploy.pmo.conf` as historical operating evidence.
 
 This is the deployment that converted PAIMOS from "the maintainer's project" to "a project that can be run by a second party" — and which therefore validates the bus-factor framing in [`CONTINUITY.md`](CONTINUITY.md).
 

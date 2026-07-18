@@ -45,7 +45,7 @@ shouldn't need to read it.
 If you've sent a report and aren't getting a reply, see
 [`docs/CONTINUITY.md`](docs/CONTINUITY.md) — the solo-maintainer
 continuity plan. It documents how the project responds when the
-maintainer is unreachable, including the AGPL-3.0 fork pathway and
+maintainer is unreachable, including the AGPL-3.0-only fork pathway and
 the operator self-care steps.
 
 For the security architecture model — what the project commits to
@@ -55,8 +55,8 @@ domain (auth / authz / files / audit / export-delete) — see
 
 ## Supported versions
 
-Only the most recent release is supported with security fixes. PAIMOS
-is pre-1.0 and I can't maintain multiple release branches yet.
+Only the most recent release is supported with security fixes. The project
+currently maintains one release line rather than parallel security branches.
 
 ## Scope
 

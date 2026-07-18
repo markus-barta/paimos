@@ -1,6 +1,6 @@
 # Contributing to PAIMOS
 
-Thanks for considering a contribution! PAIMOS is AGPL-3.0, developed
+Thanks for considering a contribution! PAIMOS is AGPL-3.0-only, developed
 openly, and happy to take pull requests from anyone.
 
 ## Before you start
@@ -83,7 +83,7 @@ Signed-off-by: Your Name <you@example.com>
 Add it automatically with `git commit -s` (or `-sm "message"`).
 
 The sign-off certifies that you wrote the change or otherwise have the
-right to submit it under AGPL-3.0. By signing off, you acknowledge the
+right to submit it under AGPL-3.0-only. By signing off, you acknowledge the
 DCO terms in `DCO.md`.
 
 Enable the repo's pre-commit hook once:
@@ -120,7 +120,7 @@ git config core.hooksPath .githooks
 - UI changes that break keyboard-first flows
 - Backwards-incompatible API or DB-schema changes without a migration
   path
-- Contributions that require giving up the AGPL-3.0 license (no
+- Contributions that require giving up the AGPL-3.0-only license (no
   re-licensing without a real CLA, which we don't have)
 
 ## Issue labels

@@ -701,7 +701,7 @@ PAIMOS deliberately makes the "what happens when X breaks" contract explicit so 
 - **Missing issue**: 404 `{"error": "not found"}`. Never a misleading 200 with `null` body.
 - **Malformed ref**: 400 `{"error": "invalid id"}`. Distinct from 404 so agents can distinguish "garbage input" from "nothing matched".
 - **Server-side validation failure in a batch**: the whole batch rolls back, response is 400 with `{"errors": [{index, ref?, error}], "rolled_back": true}`. No half-commits.
-- **Session audit**: off by default in v1 (see [`CHANGELOG 1.4.0`](CHANGELOG.md)). Enable with `PAIMOS_AUDIT_SESSIONS=true` on the backend. When on, every mutation is tagged with the CLI's auto-generated UUIDv7 `X-PAIMOS-Session-Id` so you can replay "what did my agent do?" via `GET /api/sessions/:id/activity`.
+- **Session audit**: on by default. Set `PAIMOS_AUDIT_SESSIONS=false` (or `0`) on the backend to opt out. Every mutation is recorded with the CLI's auto-generated UUIDv7 `X-PAIMOS-Session-Id` when present, so you can replay "what did my agent do?" via `GET /api/sessions/:id/activity`. Calls without the header remain valid and are recorded with a null session id.
 - **Schema version drift**: the server bumps `SchemaVersion` on any enum / transition / field change. `paimos schema --refresh` reports whether the server moved vs. your local cache.
 
 ---

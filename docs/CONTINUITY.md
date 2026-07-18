@@ -13,7 +13,7 @@ This is the bus-factor plan for a solo-maintained FOSS project. It says **what s
 It is **not**:
 
 - An enterprise BCP / SLA. PAIMOS makes no uptime promises; users self-host.
-- A succession contract. AGPL-3.0 is the legal continuity layer; this document is operational guidance, not a binding handover.
+- A succession contract. AGPL-3.0-only is the legal continuity layer; this document is operational guidance, not a binding handover.
 - A guarantee that "the project keeps running automatically forever." It guarantees that a competent stranger reading this document plus the rest of the repo can pick up the pieces.
 
 The bar to clear: a contributor or external auditor reading this on day 1 of an outage should be able to take meaningful action on day 2 without having to reconstruct intent from chat logs or GitHub history.
@@ -26,7 +26,7 @@ The single best fact about a solo-maintained FOSS project is that **most of the 
 
 | Artefact | Where it lives | Survives loss of maintainer? |
 |---|---|---|
-| Source code | GitHub `markus-barta/paimos` + `markus-barta/paimos-site` (and every clone, fork, and CI runner cache) | ✓ AGPL-3.0; cannot be retracted. |
+| Source code | GitHub `markus-barta/paimos` + `markus-barta/paimos-site` (and every clone, fork, and CI runner cache) | ✓ AGPL-3.0-only; cannot be retracted. |
 | Release artefacts | `ghcr.io/markus-barta/paimos:<x.y.z>` (immutable per tag) + GitHub Releases page (SBOMs, signatures) | ✓ Immutable on registry; survives indefinitely unless the registry itself goes dark. See §3.6. |
 | User data | Each operator's own `$DATA_DIR/paimos.db` + their MinIO/S3 bucket if attachments | ✓ Always — self-hosted; the maintainer never had a copy. |
 | Documentation | In the same repo as the code, including this document. | ✓ Travels with the code. |
@@ -141,12 +141,12 @@ The maintainer is unable or unwilling to continue. Could be permanent (life even
 **Recover** — three legitimate paths:
 
 1. **A designated successor steps in.** The successor has GitHub-org admin transferred to them, takes over the domain renewal, and continues the release cadence. Communicate via a single GitHub Discussions post pinned at the repo top.
-2. **The community forks.** Per AGPL-3.0, anyone may fork. The fork takes a new domain (`paimos-community.org` or similar — name doesn't matter), publishes a "we are the active fork" notice, and signals to operators where to point their next image pull. The original `paimos.com` becomes archival.
+2. **The community forks.** Per AGPL-3.0-only, anyone may fork. The fork takes a new domain (`paimos-community.org` or similar — name doesn't matter), publishes a "we are the active fork" notice, and signals to operators where to point their next image pull. The original `paimos.com` becomes archival.
 3. **Project enters honest dormancy.** The repo is marked archived on GitHub. Existing images on `ghcr.io` continue to work indefinitely; no new releases ship. Operators can keep running until they choose to migrate. The trust page is updated to say "no longer maintained" and link to the AGPL fork rights.
 
 **Don't:**
 - Don't pretend the project is still active when it isn't. Honest dormancy preserves the tool's usefulness for current operators; pretended activity erodes trust.
-- Don't transfer the GitHub org to anyone who hasn't demonstrated commitment to the AGPL-3.0 stance and to the brand framework in [`docs/brand/BRAND.md`](brand/BRAND.md). The legal stance is part of what users adopted; a hostile re-license would betray that.
+- Don't transfer the GitHub org to anyone who hasn't demonstrated commitment to the AGPL-3.0-only stance and to the brand framework in [`docs/brand/BRAND.md`](brand/BRAND.md). The legal stance is part of what users adopted; a hostile re-license would betray that.
 
 ### 3.3 · Domain expiry or DNS lapse
 
@@ -238,7 +238,7 @@ GitHub Container Registry (`ghcr.io`) becomes unavailable to operators. Could be
 
 ## 4 · Designated successor / fork pathway
 
-The legal continuity layer is **AGPL-3.0**: anyone with a copy of the source can continue the project. The project does not have a single named successor in this public document, by design — naming a successor here is a soft promise the project can't keep, since people change roles.
+The legal continuity layer is **AGPL-3.0-only**: anyone with a copy of the source can continue the project. The project does not have a single named successor in this public document, by design — naming a successor here is a soft promise the project can't keep, since people change roles.
 
 What the project **does** commit to:
 
@@ -246,7 +246,7 @@ What the project **does** commit to:
 - If a successor steps in, the trust page and this document will be updated to reflect that — explicitly, not implicitly.
 - If no successor steps in, dormancy will be declared honestly per §3.2 path 3.
 
-Forking is encouraged when no successor materialises. The AGPL-3.0 protects users against dead-project surprise: the source remains forkable, the brand is forkable (paimos's brand framework lives entirely in [`docs/brand/BRAND.md`](brand/BRAND.md)), and the deployment runbooks survive.
+Forking is encouraged when no successor materialises. AGPL-3.0-only protects users against dead-project surprise: the source remains forkable, the brand is forkable (paimos's brand framework lives entirely in [`docs/brand/BRAND.md`](brand/BRAND.md)), and the deployment runbooks survive.
 
 A community fork should:
 
@@ -304,7 +304,7 @@ A 30-minute walkthrough run on **2026-04-26**, against scenario **§3.2 Long-ter
 | 3 | Family reaches a recovery contact. Recovery contact accesses password-manager via the two-of-three share (recovery contact + one other share-holder). | The two-of-three share survives the loss of one keyholder; the maintainer + both contacts losing access simultaneously is a separate, lower-likelihood failure mode (treat as accepted residual risk). |
 | 5 | Recovery contact verifies legitimacy via medical confirmation and posts a holding announcement at `github.com/markus-barta/paimos` discussions: "The maintainer is temporarily unavailable. New releases pause; existing operators continue to self-host; security disclosures route to <recovery contact alias> until further notice." | The announcement intentionally does **not** detail the medical situation — that's family privacy, not project transparency. |
 | 7 | Recovery contact rotates registry tokens, deploy keys, the `security@paimos.com` inbox forwarding rule. Existing tokens that the maintainer might have written down on a sticky note are now revoked. | This is paranoia-by-default per §3.2 contain step 3. Ten minutes of work. |
-| 14 | First inbound security disclosure since the unavailability. Recovery contact triages it but cannot ship a patch (no engineering coverage). Reply to reporter: "Acknowledged; the maintainer is unavailable until approximately <date>. If this is high-severity and time-sensitive, please consider responsible coordinated disclosure via the AGPL-3.0 fork pathway documented at [link]." | The reply is honest. Reporters can choose whether to wait or escalate. |
+| 14 | First inbound security disclosure since the unavailability. Recovery contact triages it but cannot ship a patch (no engineering coverage). Reply to reporter: "Acknowledged; the maintainer is unavailable until approximately <date>. If this is high-severity and time-sensitive, please consider responsible coordinated disclosure via the AGPL-3.0-only fork pathway documented at [link]." | The reply is honest. Reporters can choose whether to wait or escalate. |
 | 21 | Maintainer's `paimos.com` domain renewal email arrives. Recovery contact pays it from the share's billing card on file. | Auto-renewal would have caught this; the manual confirmation is belt-and-braces. |
 | 28 | One operator reaches out via GitHub Issues asking "is paimos still alive". Recovery contact replies linking the holding announcement and this document. | The operator is satisfied; they continue running their pinned deployment. |
 | 30 | End of the exercise window. Maintainer's expected return is week 8-10. | |
@@ -314,7 +314,7 @@ A 30-minute walkthrough run on **2026-04-26**, against scenario **§3.2 Long-ter
 1. **The `security@paimos.com` forwarding rule is configured at the registrar level, not in this document.** A recovery contact opening this document would not know how to reroute the inbox without poking around. **Action:** add a note to the maintainer's vault that names the registrar's "email forwarding" config page; do not name the registrar in this public doc.
 2. **No backup billing card on file at the domain registrar.** If the maintainer's primary card declines (compromised + frozen), the registrar's renewal fails. **Action:** add a backup card to the registrar account; tracked as a maintainer-personal task, not a PAIMOS ticket.
 3. **The recovery contact has no GitHub-org admin role today.** Establishing it post-incident requires a 2FA recovery flow, which slows day-3 actions to day-5+. **Action:** add the recovery contact to the GitHub org with admin scope, gated by their own 2FA; document this in the vault metadata, not here.
-4. **The tabletop assumed AGPL-3.0 fork rights are well-known to operators.** They are *legally* well-known; *operationally* well-known is a stretch. **Action:** add an "If we go dark, this is what you do" section to the public trust page so operators see the path before they need it.
+4. **The tabletop assumed AGPL-3.0-only fork rights are well-known to operators.** They are *legally* well-known; *operationally* well-known is a stretch. **Action:** add an "If we go dark, this is what you do" section to the public trust page so operators see the path before they need it.
 
 ### Outcome
 

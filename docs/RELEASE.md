@@ -6,14 +6,14 @@ artefacts live, and how an operator can verify them before deploying.
 ## What a tag publishes
 
 When CI runs against a `v*` tag, **two workflows** fire in parallel:
-[`ci.yml`](https://github.com/markus-barta/paimos/blob/main/.github/workflows/ci.yml)
+[`ci-v2.yml`](../.github/workflows/ci-v2.yml)
 produces the container image and supply-chain evidence,
-[`release.yml`](https://github.com/markus-barta/paimos/blob/main/.github/workflows/release.yml)
+[`release-v2.yml`](../.github/workflows/release-v2.yml)
 (PAI-99) produces the signed CLI binaries. Either can fail without
 blocking the other; both must succeed for a release to be considered
 fully published.
 
-### Container image (ci.yml)
+### Container image (`ci-v2.yml`)
 
 1. **Image** — `ghcr.io/markus-barta/paimos:<x.y.z>` (immutable per
    tag) plus `:<x>.<y>` and `:<x>` moving aliases. The same digest is
@@ -30,7 +30,7 @@ fully published.
    signing key is stored anywhere — the workflow's OIDC token is the
    only thing that can produce a signature for that digest.
 
-### CLI binaries (release.yml — PAI-99)
+### CLI binaries (`release-v2.yml` — PAI-99)
 
 The `paimos` CLI and the `paimos-mcp` MCP server are built for three
 platforms and attached to the GitHub Release as tarballs:

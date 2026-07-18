@@ -58,5 +58,5 @@ All green → commit → push → open PR.
 ## What you don't own
 
 - Release cadence (maintainer call)
-- License changes (requires project-wide consensus; AGPL-3 stays)
+- License changes (requires project-wide consensus; AGPL-3.0-only stays)
 - Infrastructure outside this repo (operator concern, not code concern)

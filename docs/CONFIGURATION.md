@@ -14,6 +14,16 @@ shown in parentheses. Unless noted, all vars are optional.
 | `COOKIE_SECURE` | *(unset)* | Set to `true` on HTTPS deployments to add `Secure` to session cookies |
 | `INSTANCE_LABEL` | *(empty)* | Shows a banner in the sidebar (e.g. `STAGING`) — useful on non-prod instances |
 
+## Secret encryption
+
+Paimos encrypts operator-entered provider secrets with domain-separated keys
+derived from one 32-byte root key. Production deployments should supply that
+root key from a secret manager rather than store it beside the database.
+
+| Var | Default | Notes |
+|---|---|---|
+| `PAIMOS_SECRET_KEY` | auto-generated as `$DATA_DIR/.secret-key` when first needed | Base64 encoding of exactly 32 bytes. The environment value takes precedence over the file and allows the active key to remain outside `$DATA_DIR` backups. Do not replace an existing key directly; use `paimos secrets rotate` so stored ciphertext is re-encrypted atomically. |
+
 ## Branding
 
 All are optional; defaults produce "PAIMOS" out of the box.
@@ -191,7 +201,7 @@ GDPR erase extends to the undo audit:
 - `mutation_log.session_id` is cleared
 - known display-name fields inside stored snapshots are scrubbed
 
-See [docs/UNDO_SPEC.md](/Users/markus/Code/paimos/paimos-app/docs/UNDO_SPEC.md) for the conflict-resolution contract and UX flow.
+See [`UNDO_SPEC.md`](UNDO_SPEC.md) for the conflict-resolution contract and UX flow.
 
 ## AI assist (PAI-146 / PAI-159 → PAI-183)
 
@@ -474,6 +484,9 @@ for installations that don't need file uploads.
 PORT=8888
 DATA_DIR=/app/data
 COOKIE_SECURE=true
+
+# Secret encryption — inject from a secret manager
+PAIMOS_SECRET_KEY=<base64-of-exactly-32-random-bytes>
 
 # Branding
 BRAND_PRODUCT_NAME=ACME PM

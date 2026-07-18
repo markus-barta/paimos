@@ -75,7 +75,9 @@ A trust boundary is any place where data crosses from a trusted context into a l
 
 - **Threat surface:** adversary with shell access to the PAIMOS host (lateral movement, container escape, malicious operator).
 - **Defences:**
-  - PAIMOS does not require root; the Dockerfile drops to a non-root user.
+  - PAIMOS does not require privileged syscalls. The published Dockerfile does
+    not yet declare a non-root `USER`, so operators that require this boundary
+    must set an explicit runtime user and provide writable `$DATA_DIR` storage.
   - Filesystem access is scoped to `$DATA_DIR`; the binary doesn't read or write outside it.
   - Operator secrets live in env vars or in field-level encrypted SQLite
     columns. User-entered provider secrets such as the OpenRouter API key go

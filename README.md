@@ -1,663 +1,363 @@
 <p align="center">
-  <img src="docs/brand/favicon.png" alt="PAIMOS" height="96">
+  <img src="docs/brand/favicon.png" alt="Paimos" height="96">
 </p>
 
-<h1 align="center">PAIMOS</h1>
+<h1 align="center">Paimos</h1>
 
 <p align="center">
-  <em>Your Professional &amp; Personal AI Project OS.</em>
-</p>
-
-<p align="center">
-  <code>phase 2 — platform</code> · <code>v4.8.0</code> · <code>AGPL-3.0</code>
+  <strong>One project picture for people and AI agents.</strong>
 </p>
 
 <p align="center">
-  <a href="https://paimos.com">paimos.com</a> ·
+  Paimos keeps project work, repository context, operating knowledge,
+  execution choices, and run evidence in one self-hosted system.
+</p>
+
+<p align="center">
+  <code>v4.8.0</code> · <code>AGPL-3.0-only</code> ·
+  <code>Go + Vue + SQLite</code>
+</p>
+
+<p align="center">
+  <a href="https://paimos.inspr.at">Product site</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="docs/AGENT_INTERFACE.md">Agent Guide</a> ·
+  <a href="docs/AGENT_INTERFACE.md">Agent interface</a> ·
   <a href="docs/CONFIGURATION.md">Configuration</a> ·
-  <a href="#highlights">Features</a> ·
+  <a href="docs/HARDENING.md">Operations</a> ·
+  <a href="SECURITY.md">Security</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="LICENSE">License (AGPL-3.0)</a>
+  <a href="LICENSE">License</a>
 </p>
 
 ---
 
 <p align="center">
-  <img src="docs/brand/screenshots/ppm-hero.png" alt="PAIMOS PPM — issue list with epic/ticket/task tree on the left, side-panel issue detail with AI-assisted description on the right" width="100%">
+  <img src="docs/brand/screenshots/ppm-hero.png" alt="Paimos issue list and issue detail workspace" width="100%">
 </p>
 
-## What is PAIMOS
+Paimos is a self-hosted project management and execution-context system for
+software teams working with AI agents. People use the web application. Agents
+use the CLI, MCP facade, or JSON API. Both work against the same project state,
+permissions, knowledge, and history.
 
-PAIMOS is a self-hosted project management system built for engineering
-teams that treat AI agents as first-class participants alongside humans —
-and for solo developers who want a clean PM tool without enterprise
-bloat. The same app serves both: the side-project board feels as good as
-the team board.
+> [!NOTE]
+> Paimos 4.8 is production-used and actively developed. Its current deployment
+> model is deliberately compact: one Go process and one SQLite database. It is
+> not a multi-node high-availability service. See
+> [Current maturity and limits](#current-maturity-and-limits) before a production
+> rollout.
 
-Single Go binary serving a Vue SPA on one port, backed by SQLite. Docker
-up, browser open, done.
+## Why Paimos exists
 
-### What's new in v4.8
+An issue tracker tells an agent what a ticket says. It usually does not tell the
+agent which repository matters, which operating rule applies, what earlier work
+established, what it may execute, or what evidence must come back.
 
-- **Production SSO.** Generic OIDC login is live-ready with auth-code +
-  PKCE, verified-email mapping, invite-only default provisioning, and
-  local PAIMOS authorization preserved. The maintainer's ppm deployment
-  now exercises this path against Zitadel.
-- **AI control plane stabilized.** AI actions and Implement-this now share
-  profile, effort, prompt preset, context pack, provider/runner, and
-  project-agent metadata. OpenRouter and OpenAI-compatible local model
-  endpoints can draft implementation notes without local shell or deploy
-  authority; Claude/Codex runners remain the trusted repo-editing path.
-- **Agent implementation paths are explicit.** Claude Code and Codex are
-  first-class local runner actions with capability-aware UI labels,
-  action/run provenance, and project-agent context handoff.
-- **Knowledge-plane polish.** Project open-ticket counts exclude
-  knowledge entries, prompt-ready knowledge can feed AI actions/runs, and
-  knowledge updates preserve existing metadata unless callers explicitly
-  replace it.
-- **Release and public-site housekeeping.** Docs, trust claims, and the
-  public website have been aligned with the current SSO and AI surfaces.
+Paimos keeps those facts connected:
 
-> The [phase-1 → phase-2 brand transition](docs/brand/BRAND.md#phasing-plan)
-> story (v2.0 milestone — workflow orchestration through `POST /api/ai/action`
-> + a public API surface) is now mature; details on the
-> [About page](https://paimos.com/about.html).
-
-## Why PAIMOS
-
-- **Agent-native PM.** Issues can be assigned to humans *or* agents;
-  tracked the same way in the same hierarchy. The `AI` in the name is
-  literal, not a marketing wrapper around an LLM chatbot.
-- **FOSS, AGPL-3.0.** Fork it, host it, modify it. Network-copyleft means
-  you have to pay that back to your users, not to us.
-- **Fully rebrandable.** Product name, company, email-from, TOTP issuer,
-  API-key prefix, database filename, MinIO bucket — all env-var driven.
-  Every visible string is yours to override. See `docs/CONFIGURATION.md`.
-- **Single Go binary + SQLite.** No external database, no Redis, no
-  message queue. Attachments and SMTP are optional add-ons that degrade
-  gracefully when absent.
-- **Keyboard-first UX.** Built for engineers, not middle managers.
-
-## Highlights
-
-- **In-app AI assist — thirteen actions.** optimize · translate ·
-  spec-out · suggest-enhancement (six sub-actions) · find parent ·
-  generate sub-tasks · estimate effort · detect duplicates · UI
-  generation · tone check · customer-style and executive-style report
-  summaries. Every action carries a server-resolved system prompt
-  that admins can edit live in **Settings → AI prompts**. The current
-  control-plane work adds execution profiles, effort, PPM knowledge prompt
-  presets, context packs, and safe provenance metadata across AI actions
-  and Implement-this runs. Hosted OpenRouter and OpenAI-compatible local
-  models can draft; Claude/Codex local runners can edit/test when the
-  operator grants that capability. Per-user daily token cap with
-  admin-override header. Per-call cost recorded in micro-USD. Audit lines
-  are metadata-only — prompts, response bodies, API keys, and local
-  environment values are never logged. See
-  [`docs/CONFIGURATION.md` § AI assist](docs/CONFIGURATION.md#ai-assist-pai-146--pai-159--pai-183).
-- **Customer reports with AI-assisted copy (v3.5).** Two AI styles per
-  issue write into the same `report_summary` field — warm Apple-style
-  release-note copy for end-user audiences, technical TL;DRs for
-  executive readers. Projektbericht PDF renders the chosen text source;
-  the customer portal serves the report under a short URL with QR-code
-  acceptance, batch-confirms the included issues, and stores the signed
-  artifact. Bulk generator handles 100+ rows with 3 parallel workers,
-  retry-with-backoff, ETA, throughput, resume-after-close, and a
-  pre-run cost estimate.
-- **Project Context for code-aware agents.** A structured surface above
-  tickets: linked `repos`, the unified `knowledge` plane (memories,
-  runbooks, guidelines, external systems, related projects), issue→file
-  `anchors`, canonical `agents/{name}.json` artifacts, a typed entity
-  `graph`, and a mixed-context `retrieve` API. Agents stop grepping six
-  issues to figure out which repo to clone and where the work actually
-  lives. Project knowledge can also provide scoped AI prompt presets, and
-  selected agents are now carried into run creation and provenance. See
-  [`AGENT_INTEGRATION.md` §1a](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)
-  and the route group in
-  [`api-minimal.md`](docs/api-minimal.md#agent-context).
-- **Agent-native toolchain.** Official [`paimos` CLI](docs/AGENT_INTERFACE.md) +
-  [`paimos-mcp`](docs/AGENT_INTERFACE.md#6-mcp-integration) facade for
-  Claude Desktop and friends. File-first multi-line inputs, `--dry-run`,
-  `--json`, idempotent transitions, declarative YAML `apply`, and a
-  harness-adapter registry/conformance suite — no more
-  shell-quoted-JSON foot-gun.
-- **Self-describing API.** `GET /api/schema` is the single source of
-  truth for enums, status transitions, relation types, and field
-  shapes. Strong-ETagged, versioned, cached client-side.
-- **Keys or ids, pick either.** Every `/issues/{id}/*` endpoint
-  accepts `PAI-83` or `462` — same request, same result.
-- Hierarchical issues: **epic → ticket → task**, with parent-child
-  relations and seven relation types (`groups`, `sprint`,
-  `depends_on`, `impacts`, `follows_from`, `blocks`, `related`)
-- **Sprints, accruals, cost units, releases** as first-class concepts
-- **Bulk operations** — atomic create-many (`POST /projects/{key}/issues/batch`)
-  and update-many (`PATCH /issues`) with same-batch cross-refs,
-  100-item cap, transactional rollback
-- **Full-text search** with partial issue-key matching (`PAIMOS-15`
-  finds `PAIMOS-150`, `PAIMOS-151`, etc.)
-- **TOTP 2FA + API keys** (sha256-hashed, `paimos_` prefix) + session
-  cookies
-- **Magic-link password reset** with 60-minute token TTL
-- **Attachments**: drag-drop upload, inline progress UI, image lightbox,
-  markdown references
-- **Jira integration**: project discovery, field mapping, relation
-  mapping, async import jobs
-- **Mite integration** (DE/AT time-tracking): note-field user mapping,
-  resume date, cleanup
-- **CSV import/export**: per-project and cross-project; preflight
-  validation before commit
-- **Custom views**: saved filter + column sets, per-user ordering, pin
-  to sidebar
-- **Timer-panel enhancements (v3.7.4–v3.7.6)**: a today-total row in the
-  sidebar timer footer summing daily entries via a new
-  `GET /api/time-entries/today-summary` endpoint (PAI-495); day-scrubbing
-  prev/today/next nav to review past days while running timers stay
-  locked to today (PAI-499); wrap-free centred footer layout
-  (PAI-500, PAI-501) and compact `DD.MM.` date format (PAI-502)
-- **Customer-portal side-panel enhancements (v3.7.5)**: a pin button that
-  anchors the detail panel, plus prev/next issue navigation through the
-  filtered list without leaving the panel (PAI-496, PAI-497)
-- **External-user portal** with read-only projects + accept/reject
-  workflow and acceptance reports — Projektbericht snapshots stored
-  with QR/short-URL acceptance pages, batch-accept on included issues,
-  signed-artifact upload
-- **PDF Projektbericht** with configurable columns, German report
-  copy generated per-issue (technical or customer-facing), and a
-  visible `[keine Kundenfassung]` gap marker for missing summaries
-- **Opt-in session audit** — tag every mutation with an
-  `X-PAIMOS-Session-Id`; replay what an agent did via
-  `GET /api/sessions/:id/activity`. Off by default; one env var
-  to enable.
-
-A [complete feature catalog](#complete-feature-list) lives at the bottom
-of this README.
-
-## Quick start
-
-```bash
-git clone https://github.com/markus-barta/paimos.git
-cd paimos
-docker build -t paimos:local .
-docker run -p 8888:8888 -v paimos-data:/app/data paimos:local
+```text
+project work
+  + linked repositories
+  + maintained knowledge
+  + issue-to-file anchors
+  + people and project agents
+  + bounded execution choices
+  + action and run evidence
+  = one inspectable project history
 ```
 
-Open <http://localhost:8888> — default admin login: `admin` / `admin`
-(change immediately after first login).
+This is useful without AI as a focused project system. With agents, the same
+model becomes the context and accountability layer around their work.
 
-### Docker Compose
+## What ships in 4.8
 
-```bash
-git clone https://github.com/markus-barta/paimos.git
-cd paimos
-ADMIN_PASSWORD='<your-choice>' docker compose up --build
-```
+| Area                | Current capability                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Project work        | Hierarchical issues, relations, sprints, releases, priorities, tags, saved views, bulk changes, time tracking, budgets, comments, attachments, and full-text search.                                         |
+| Project context     | Linked repositories, typed knowledge, canonical project-agent artifacts, issue-to-file anchors, entity graph and blast-radius reads, and mixed-context retrieval.                                            |
+| Agent interfaces    | A typed `paimos` CLI, `paimos-mcp`, REST, curated OpenAPI, self-describing schema, JSON output, file-first multiline input, dry runs, idempotent transitions, and declarative bulk apply.                    |
+| Assisted work       | Thirteen in-app AI actions with operator-managed prompts, usage limits, cost records, execution profiles, context packs, and metadata-only audit records.                                                    |
+| Implementation runs | Explicit Claude Code and Codex local-runner actions, plus OpenRouter and OpenAI-compatible local-model draft providers. Draft providers cannot claim repository mutation, tests, shell, or deploy authority. |
+| Collaboration       | Internal roles and project grants, an external customer portal, acceptance workflows, customer-facing summaries, and JSON/PDF project reports.                                                               |
+| Integrations        | Generic OIDC, Jira, Mite, CSV import/export, HubSpot, and an HMAC-signed HTTP CRM sidecar contract. Optional integrations do not become core runtime dependencies.                                           |
+| Operations          | Docker deployment, tracked startup migrations, SQLite WAL, optional S3-compatible attachments and SMTP, health/schema endpoints, configurable branding, retention controls, and backup/restore runbooks.     |
+| Supply chain        | Keylessly signed container images, CycloneDX backend and frontend SBOM attestations, checksums, and build provenance in the release workflow.                                                                |
 
-Open <http://localhost:8888> and log in with `admin` / your
-`ADMIN_PASSWORD`.
+The [claim and evidence matrix](docs/claim-matrix.md) connects public claims to
+shipped code and documented verification.
 
-### Local dev
+### What changed in 4.8
 
-Requires Go 1.25+ and Node.js 22+.
+- Generic OIDC login now covers authorization code with PKCE, verified-email
+  matching, invite-only provisioning by default, and local Paimos authorization.
+  Zitadel is the validated reference provider.
+- AI actions and implementation runs share explicit provider, profile, effort,
+  prompt, context-pack, project-agent, and runner metadata.
+- Claude Code and Codex are distinct local execution choices. OpenRouter and
+  OpenAI-compatible local endpoints remain draft-only model paths.
+- Knowledge entries can provide scoped prompt context while preserving existing
+  metadata unless a caller explicitly replaces it.
 
-```bash
-# backend (terminal 1)
-cd backend && DATA_DIR=../data STATIC_DIR=../frontend/dist go run .
+For release-by-release detail, read the [changelog](docs/CHANGELOG.md).
 
-# frontend (terminal 2)
-cd frontend && npm install && npm run dev
-```
+## Human and agent work share one model
 
-Frontend dev server: <http://localhost:5173>; API: <http://localhost:8888>;
-Vite proxies `/api/*` to the Go backend.
+### Web application
 
-With `devenv`:
+The Vue interface covers everyday planning and delivery work: issue hierarchy,
+side-panel editing, search, filters, custom views, sprints, time, reports,
+administration, and the customer portal. It is keyboard-oriented and backed by
+the same JSON routes used by first-party automation.
 
-```bash
-devenv shell -- bash -c "cd backend && DATA_DIR=../data STATIC_DIR=../frontend/dist go run ."
-devenv shell -- bash -c "cd frontend && npm run dev"
-```
+### CLI, MCP, and API
 
-For agent-driven UI work that needs an authenticated session locally,
-see [`docs/DEV_LOGIN.md`](docs/DEV_LOGIN.md) — `just dev-up` builds the
-backend with the dev-login build tag, seeds fixture users + projects,
-and prints the `curl` recipe for grabbing a session cookie. The
-dev-login route is build-tag-gated and **does not exist in
-production binaries** (CI re-asserts this on every push).
-
-For normal login-form QA across roles, run
-`scripts/dev-debug-accounts.sh` once before `just dev-up`. It creates
-local `debug-*` fixture accounts with long random passwords stored in a
-gitignored AGE-encrypted env file.
-
-## Agent integration
-
-PAIMOS is built for humans **and** AI agents. The recommended way to
-drive it as an agent is the **`paimos` CLI** — it handles auth,
-multi-line markdown inputs, key resolution, error shapes, and shell
-safety so you don't have to.
-
-→ **[Agent Interface Guide](docs/AGENT_INTERFACE.md)** (this is the one
-to read first.)  
-→ [REST integration patterns](docs/AGENT_INTEGRATION.md) (HTTP-only agents)  
-→ [REST reference](docs/api-minimal.md)
-
-**Install** (see [docs/INSTALL.md](docs/INSTALL.md) for signed macOS,
-Linux tarball, checksum verification, and Nix paths):
+The official CLI handles issue-key resolution, authentication, multiline
+Markdown, JSON responses, safe status transitions, attachments, time tracking,
+knowledge, sessions, and bulk workflows.
 
 ```bash
-# macOS — signed + notarized universal binary
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
-  | tar xz -C /usr/local/bin paimos
-
-# or build from source (Go 1.25+)
-go install github.com/markus-barta/paimos/backend/cmd/paimos@latest
-go install github.com/markus-barta/paimos/backend/cmd/paimos-mcp@latest
-
-# Interactive login — writes ~/.paimos/config.yaml (0600)
-paimos auth login
-
-# Read a ticket by key or numeric id
 paimos issue get PAI-83
 paimos issue list --project PAI --status backlog --limit 20
-
-# Create an issue with multi-line markdown — no shell quoting
-paimos issue create --project PAI --type ticket \
-  --title "Refactor auth middleware" \
-  --description-file /tmp/desc.md \
-  --ac-file /tmp/ac.md
-
-# Idempotent status transitions — safe to re-run
+paimos search "session expiry" --project PAI
 paimos issue ensure-status PAI-83 done
-
-# Close with a structured note in one atomic-ish command
-paimos issue update PAI-83 --status done \
-  --close-note-file /tmp/close.md
-
-# Search, tag, track time, and attach artefacts from the CLI
-paimos search "flaky session" --project PAI --limit 5
-paimos issue tag add PAI-83 --tag backend
-paimos time start PAI-83 --note "Investigating session expiry"
-paimos time stop
-paimos attach PAI-83 /tmp/screenshot.png
-
-# Scaffold an epic + N children + relations in one shot
-paimos apply --from-file plan.yaml
-
-# Preflight check — safe in CI; exit 0/1/2 (ok/warn/fail)
-paimos doctor
+paimos apply --from-file plan.yaml --dry-run
 ```
 
-### MCP (Claude Desktop)
+Use the [Agent Interface Guide](docs/AGENT_INTERFACE.md) for the CLI and MCP
+surface, [Agent Integration](docs/AGENT_INTEGRATION.md) for workflow contracts,
+and [the REST reference](docs/api-minimal.md) when direct HTTP is appropriate.
 
-```json
-{
-  "mcpServers": {
-    "paimos": {
-      "command": "/Users/you/go/bin/paimos-mcp",
-      "env": { "PAIMOS_INSTANCE": "default" }
-    }
-  }
-}
+Two discovery endpoints keep clients from hard-coding local assumptions:
+
+- `GET /api/openapi.json` describes the stable public scriptable contract.
+- `GET /api/schema` describes enums, transitions, conventions, scopes, and
+  resource shapes.
+
+### Execution stays local and explicit
+
+Paimos records an implementation request on the server, but it does not open a
+remote shell into a developer workstation.
+
+```text
+issue action
+    -> server-side run record
+    -> developer starts `paimos run-agent watch`
+    -> repo-scoped local runner claims one job
+    -> Claude Code or Codex edits and tests locally
+    -> status and value-free provenance return to Paimos
 ```
 
-Exposes `paimos_schema`, `paimos_issue_get`, `_list`, `_create`,
-`_update`, `paimos_relation_add`, `paimos_project_list`, and
-`paimos_project_create`. Bulk ops are deliberately CLI-only — MCP
-context grows fast.
+The watcher is operator-started, repo-scoped, single-job, and interactive by
+default. Deployment is disabled unless the operator enables the runner, supplies
+an explicit deploy command, and the run names a deploy target. Hosted and local
+model draft providers produce notes without entering this execution path.
 
-### Creating a New Project
-
-Project create is admin-gated. Three equivalent paths:
-
-```bash
-# 1) Web UI: Admin → Projects → "+ New project".
-# 2) CLI (admin's default api-key or session):
-paimos project create --name "My Project" --key MYP
-
-# 3) MCP (Claude Desktop): the agent calls paimos_project_create
-#    name="My Project" key=MYP — no human-in-the-loop required.
-```
-
-For agent workflows that should not carry full admin power, issue an
-api-key narrowed to `projects:write` from **Settings → API Keys** (the
-scope picker appears for admins only) and use that key as the
-`Authorization: Bearer` header. The key can create projects and
-nothing else — useful for service-account-style automation.
-
-See [`docs/AGENT_INTERFACE.md`](docs/AGENT_INTERFACE.md) for the full
-scope catalog (also exposed via `GET /api/schema` → `scopes`).
-
-### Still just HTTP
-
-```bash
-# Everything the CLI does is available as REST.
-curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: my-agent/1.0" \
-  https://paimos.example.com/api/issues/PAI-83
-```
-
-Keys (`PAI-83`) and numeric ids are interchangeable on every
-`/issues/{id}/*` endpoint. Full details in
-[`docs/api-minimal.md`](docs/api-minimal.md).
+See [Implement-this providers](docs/IMPLEMENT_THIS_PROVIDERS.md) and the
+[threat model](docs/THREAT_MODEL.md#48--remote-triggered-execution-pai-605) for
+the exact boundary.
 
 ## Architecture
 
 ```text
-Browser (Vue 3 SPA)
-  ↕ JSON
-Go server :8888 (chi router)
-  ├── SQLite (data/paimos.db, WAL mode)
-  ├── MinIO / S3 (optional — attachments)
-  └── SMTP (optional — password reset emails)
+Browser / CLI / MCP / REST client
+               |
+               v
+        Go service on :8888
+        |       |        |
+        |       |        +-- optional OIDC, SMTP, and model providers
+        |       +----------- optional S3-compatible attachment storage
+        +------------------- SQLite in WAL mode
+                              ($DATA_DIR is the backup boundary)
 ```
 
-- Single process. The Go server serves the API and the built SPA from
-  `/app/static`.
-- Schema migrations live in `backend/db/db.go` and run automatically on
-  startup. Additive-only.
-- MinIO and SMTP are optional. If unset, attachments return 503 and the
-  SPA hides drop zones; reset emails are logged to stdout instead of sent.
+- One Go process serves the JSON API and the compiled Vue application.
+- SQLite is the system of record. Tracked forward migrations run at startup;
+  schema rollback requires restoring the matching database backup with the old
+  image.
+- There is no required external database, Redis, queue, analytics service, or
+  Paimos SaaS dependency.
+- S3-compatible storage is needed only for attachments. SMTP is needed only for
+  password-reset email. OIDC and model providers are operator choices.
+- Absent optional services disable their feature. Provider initialization
+  failures are reported without preventing the core project system from
+  starting.
+- Runtime fonts are bundled, and the application ships without analytics,
+  externally hosted runtime scripts, or product telemetry.
 
-## Configuration
+The complete developer view lives in the
+[Developer Guide](docs/DEVELOPER_GUIDE.md). Operator settings and set-once
+values live in [Configuration](docs/CONFIGURATION.md).
 
-Everything operator-configurable is in `docs/CONFIGURATION.md`:
+## Quick start
 
-- Core server vars (`PORT`, `DATA_DIR`, `STATIC_DIR`, `ADMIN_PASSWORD`,
-  `COOKIE_SECURE`, `INSTANCE_LABEL`)
-- All `BRAND_*` vars for identity (product name, company, website,
-  email from, TOTP issuer, API key prefix, DB filename, MinIO bucket,
-  page title, etc.)
-- SMTP + MinIO settings
-- Set-once caveats for `BRAND_API_KEY_PREFIX`, `BRAND_DB_FILENAME`,
-  `BRAND_MINIO_BUCKET`
+The following starts a local evaluation instance from source:
 
-## Security
+```bash
+git clone https://github.com/markus-barta/paimos.git
+cd paimos
 
-- Project create/update/delete requires admin role; create is also
-  reachable via api-key with the `projects:write` scope (PAI-379) for
-  agent-driven bootstrap
-- Session cookies: `HttpOnly`, `SameSite=Lax`, `Secure` when
-  `COOKIE_SECURE=true`
-- **Sliding 30-day sessions with a 90-day absolute lifetime cap;**
-  `X-Session-Expires-At` is exposed as a response header so the SPA
-  can warn before expiry
-- **Force-password-change on first login** — operators can flag any
-  user (and the seeded `admin` defaults to it); new password
-  invalidates all other sessions
-- **Per-user `permissions_epoch`** — role/membership/status changes
-  bump the counter and invalidate live sessions, surfaced via
-  `X-Permissions-Epoch`
-- **Attachments serve safely** — uploads of active content
-  (HTML/SVG/JS) are rejected; downloads are sent with
-  `Content-Disposition: attachment` and a hardened content-type
-- Rate-limited auth endpoints (login, forgot, reset, TOTP-verify)
-  shared under one window: 5 attempts per 10 minutes per IP+identity
-- API keys stored as sha256 hashes, never decryptable
-- Password reset tokens: 32-byte random, sha256-stored, single-use,
-  60-minute TTL; all active sessions invalidated on reset as defense in
-  depth
-- TOTP secrets per-user; admin can reset a user's 2FA
+docker build -t paimos:local .
+docker run --rm \
+  --name paimos \
+  -p 8888:8888 \
+  -e ADMIN_PASSWORD='replace-this-local-password' \
+  -v paimos-data:/app/data \
+  paimos:local
+```
 
-Report vulnerabilities privately — see [`SECURITY.md`](SECURITY.md).
+Open <http://localhost:8888> and sign in as `admin` with the password supplied
+above. A fresh database seeds the admin only when `ADMIN_PASSWORD` is present.
+Change that password immediately. The variable has no effect after the admin
+exists and should not remain in a production environment.
+
+> [!IMPORTANT]
+> This command is for local evaluation. Before exposing Paimos to a network,
+> put it behind HTTPS, enable secure cookies, move secrets out of shell history,
+> protect and back up `$DATA_DIR`, configure off-host backups, and review the
+> [Hardening Guide](docs/HARDENING.md).
+
+### Install the CLI
+
+Signed and notarized universal macOS builds, Linux archives, checksums, and
+source-build instructions are documented in [Installing the Paimos CLI](docs/INSTALL.md).
+
+```bash
+curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
+  | tar xz -C /usr/local/bin paimos
+
+paimos auth login
+paimos doctor
+```
+
+Authentication details are stored in a mode-`0600` configuration file; API keys
+use the operating-system keyring when available. Headless environments can use
+explicit environment configuration as documented in the install guide.
+
+## Local development
+
+Requirements:
+
+- Go 1.25+
+- Node.js 22+
+- npm
+
+Run the backend and frontend in separate terminals:
+
+```bash
+# terminal 1
+cd backend
+ADMIN_PASSWORD='local-development-only' \
+  DATA_DIR=../data \
+  STATIC_DIR=../frontend/dist \
+  go run .
+
+# terminal 2
+cd frontend
+npm ci
+npm run dev
+```
+
+The API listens on <http://localhost:8888>. Vite listens on
+<http://localhost:5173> and proxies `/api/*` to the backend.
+
+For authenticated UI development, use the build-tagged workflow in
+[Local development login](docs/DEV_LOGIN.md). That route is absent from
+production binaries and checked by CI.
+
+### Validation commands
+
+```bash
+cd backend && go test ./...
+cd frontend && npm test -- --run
+cd frontend && npm run typecheck && npm run build
+```
+
+## Trust and security
+
+Paimos documents its trust boundary instead of treating self-hosting as a
+security guarantee.
+
+| Boundary         | Current behavior                                                                                                                                               |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authentication   | Local password, TOTP, API keys, and one generic OIDC provider. OIDC uses authorization code with PKCE and requires a verified email.                           |
+| Authorization    | Canonical roles, project-level view/edit grants, scoped API keys, and explicit super-admin capabilities. Permission changes invalidate affected live sessions. |
+| Browser sessions | `HttpOnly`, `SameSite=Lax`, secure-cookie support, CSRF tokens, bounded sliding sessions, and shared rate limits on authentication endpoints.                  |
+| Files            | Active browser content is rejected on upload; stored content is re-sniffed and unsafe types are forced to download.                                            |
+| Audit            | Session-mutation audit is on by default. AI audit records contain metadata, not prompts, responses, API keys, or local environment values.                     |
+| Data rights      | Configurable retention plus administrative per-subject export and erase primitives. Historical project evidence is anonymized rather than silently deleted.    |
+| Secrets          | Operator-entered provider secrets use authenticated encryption at rest. Production operators should supply the master key separately from `$DATA_DIR`.         |
+| Releases         | CI runs tests and security scanners, publishes checksums and CycloneDX SBOMs, signs images with GitHub OIDC, and attaches provenance attestations.             |
+
+Read the maintained [Threat Model](docs/THREAT_MODEL.md),
+[Hardening Guide](docs/HARDENING.md), [Security Review](docs/SECURITY_REVIEW.md),
+and [Backup/Restore Guide](docs/BACKUP_RESTORE.md) before production use.
+
+Report vulnerabilities privately to `security@paimos.com`. The supported-version
+policy and disclosure process are in [SECURITY.md](SECURITY.md).
+
+## Current maturity and limits
+
+The boundaries below are part of the product description, not fine print:
+
+- Paimos is a compact single-node Go and SQLite system. It does not provide
+  multi-node high availability or automatic horizontal scaling.
+- No published performance envelope exists yet. Test representative issue,
+  attachment, user, and concurrency volumes before a production rollout.
+- Security fixes are provided for the latest release only.
+- The project has not completed an independent third-party security review.
+- The evidence base currently includes one active maintainer-operated production
+  deployment and one historical independent second-operator deployment. This is
+  meaningful operational use, not broad market validation.
+- One generic OIDC provider is supported. SAML is not. The current flow relies on
+  the provider's TLS-protected userinfo response rather than locally validating
+  the ID token through JWKS.
+- Audit history is held locally. A host administrator with direct SQLite write
+  access can alter it; remote append-only audit requires an external sink.
+- Paimos does not encrypt the entire SQLite database. Operators remain
+  responsible for encrypted storage, transport security, secret injection,
+  backups, and restore exercises.
+- The published container currently has no non-root `USER` declaration. Run it
+  with an explicit runtime user and correctly owned storage when your deployment
+  requires that boundary.
+- Local AI runners can edit a repository only after a developer starts and
+  authorizes the repo-scoped watcher. Paimos is not a general remote shell or an
+  autonomous deployment service.
+
+Production evidence and open gaps are maintained in
+[Reference Deployments](docs/REFERENCE_DEPLOYMENTS.md), the
+[Threat Model](docs/THREAT_MODEL.md), and the
+[Claim/Evidence Matrix](docs/claim-matrix.md).
+
+## Documentation map
+
+| Need                        | Start here                                                                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operate the web application | [Configuration](docs/CONFIGURATION.md), [Hardening](docs/HARDENING.md), [Deploy/Rollback](docs/DEPLOY.md), [Backup/Restore](docs/BACKUP_RESTORE.md)      |
+| Drive Paimos from an agent  | [Agent Interface](docs/AGENT_INTERFACE.md), [Agent Integration](docs/AGENT_INTEGRATION.md), [Implement-this Providers](docs/IMPLEMENT_THIS_PROVIDERS.md) |
+| Integrate over HTTP         | [Minimal REST reference](docs/api-minimal.md), `GET /api/openapi.json`, `GET /api/schema`                                                                |
+| Understand project context  | [Anchors](docs/ANCHORS.md), [Agent Integration](docs/AGENT_INTEGRATION.md#1a-reading-project-context-for-coding-agents)                                  |
+| Review security posture     | [Security Policy](SECURITY.md), [Threat Model](docs/THREAT_MODEL.md), [Security Review](docs/SECURITY_REVIEW.md)                                         |
+| Contribute code             | [Contributing](CONTRIBUTING.md), [Developer Guide](docs/DEVELOPER_GUIDE.md), [Agent Rules](+agents/rules/AGENTS.md)                                      |
+| Follow releases             | [Changelog](docs/CHANGELOG.md), [Install Guide](docs/INSTALL.md)                                                                                         |
 
 ## Contributing
 
-PRs welcome. PAIMOS uses the [Developer Certificate of
-Origin](DCO.md) — every commit must end with `Signed-off-by: Your Name
-<you@example.com>` (add automatically with `git commit -s`). Full
-guide: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Issues and focused pull requests are welcome. Discuss new surface area before
+building it, add regression coverage for bug fixes, and keep public API changes
+aligned with `backend/handlers/openapi.json`.
+
+Paimos uses the [Developer Certificate of Origin](DCO.md). Every commit must carry
+a sign-off created with `git commit -s`. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+for the complete workflow.
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE). Running PAIMOS as a networked service
-triggers AGPL §13: your users have the right to request the source code
-of the running version, including your modifications. Publishing a fork
-on GitHub and linking to it from the UI footer satisfies that
-obligation.
+Paimos is licensed under
+[GNU Affero General Public License v3.0 only](LICENSE), SPDX identifier
+`AGPL-3.0-only`.
 
----
-
-## Complete feature list
-
-<details>
-<summary>End-user features (click to expand)</summary>
-
-### Issues
-- Create / edit / delete issues with title, description, acceptance
-  criteria, notes
-- Issue types: `epic`, `cost_unit`, `release`, `sprint`, `ticket`,
-  `task`; each with configurable type color
-- Auto-incremented issue keys per project (e.g., `ACME-1`, `ACME-2`);
-  `/issues/{id}/*` endpoints accept either the key or the numeric id
-- Status workflow: `new`, `backlog`, `in-progress`, `qa`, `done`,
-  `delivered`, `accepted`, `invoiced`, `cancelled`
-- Priorities: `low`, `medium`, `high`
-- Hierarchical parent-child relationships (epic → ticket → task)
-- Seven relation types between issues: `groups`, `sprint`,
-  `depends_on`, `impacts`, `follows_from`, `blocks`, `related` —
-  directional types tag each side with `outgoing` / `incoming`
-  for correct inverse rendering
-- Bulk create/update with atomic rollback and 100-item cap
-- Clone issue with configurable field mapping
-- Complete-epic action: bulk-transitions all children
-- Soft-delete + Trash with restore and admin-only hard purge
-- Aggregation endpoint for rollup stats
-- Full audit history per issue (editor, timestamp, diff)
-- Cost/effort estimation: `estimate_hours`, `estimate_lp`, rate
-  conversion
-- Booked-hours rollup from child time entries
-- Budget tracking: `budget_hours` derived from estimates + rates
-- Time override field for manual budget adjustments
-- Markdown-capable fields (acceptance criteria, notes, comments)
-- Issue-key references in comments (`[#ACME-1](...)` pattern)
-
-### Attachments
-- Upload to issue (inline drag-drop + file picker)
-- Pending attachment workflow (upload before link; cancel before commit)
-- Batch-link pending attachments to issue
-- Auto-resize / re-encode of images on upload
-- Lightbox viewer with zoom / pan
-- Inline progress UI with cancel during upload
-- Graceful disable when MinIO not configured
-
-### Comments
-- Per-issue comments with markdown rendering
-- Pagination on comment list
-- Delete own comments (admins delete any)
-- Reference other issues via markdown links
-
-### Time tracking
-- Manual time entries with start/stop fields
-- Running timers (active session tracking per user)
-- Recent timers list for quick re-entry
-- Sidebar timer-footer daily total — live sum of the day's bookings
-  via `GET /api/time-entries/today-summary` (PAI-495)
-- Day-scrubbing prev/today/next nav in the timer footer to review
-  past days; running timers stay locked to today (PAI-499)
-- Per-user accrual totals across projects
-- Billing lifecycle: `accepted_at`, `invoiced_at`, `invoice_number`
-- Time rollup from child issues
-- Super-admin can edit / add time entries on behalf of other users
-  (audited in `mutation_log`)
-
-### Views, filters, sort
-- Custom saved views (filter + column + sort set)
-- Pin views to sidebar, reorder, rename, delete
-- Filter persistence per user per scope
-- Multi-select OR filtering per field
-- Sort by any indexed field (title, dates, priority, status, assignee,
-  booked, estimate, …)
-- Configurable page size, quick filter collapse/expand
-
-### Projects
-- Per-project logo, description, status
-- Project key auto-suggestion (e.g., "ACME PM 2026" → `APM26`)
-- Cost units and releases: distinct-valued free-text fields per project
-- Tags (shared across projects and issues)
-- Recent projects list per user (auto-updated on visit)
-
-### Sprints
-- Sprints across all projects, grouped by year
-- Bulk sprint creation (weekly / biweekly templates)
-- Sprint states: open, closed, archived
-- Move-incomplete-to-next on sprint close
-- Drag-drop member reordering within sprint
-
-### Search
-- Full-text search across issues, projects, users, tags
-- Partial issue-key match (type `ACME-15` to find `ACME-150`, `151`…)
-
-### Profile & auth
-- Update username, email, password
-- Upload / delete avatar
-- TOTP 2FA: setup QR, enable with code, disable with password, status
-  endpoint
-- Magic-link password reset (forgot → email → validate → reset)
-- Force-password-change on first login (seeded `admin` defaults on;
-  operators can flag any user)
-- Personal API keys: create / list / revoke (shown once on create)
-
-### Portal (external role)
-- Read-only view of accessible projects
-- Submit new request (creates issue in portal project)
-- Accept / reject issues with undo
-- Project summary (open / in-progress / testing / closed counts)
-- Acceptance report (timeline of decisions)
-- Pinned side-panel issue detail with prev/next navigation through the
-  filtered list, without leaving the panel (PAI-496, PAI-497)
-
-</details>
-
-<details>
-<summary>Admin features</summary>
-
-- User management: create, update, disable, delete, reset-TOTP
-- Per-user project access grants
-- Project CRUD + logo management
-- Sprint batch creation, sprint editing, move-incomplete
-- Tag CRUD + system tag rules (e.g., "At Risk" thresholds)
-- Integration config: Jira, Mite (URL / credentials / test)
-- Jira project list, async import job, field-mapping preview
-- Mite time-entry import with resume-date, preview, cleanup
-- CSV import: per-project + global, with preflight validation
-- CSV export: per-project download
-- Dev panel: test-report upload + render (for CI artifact viewing)
-- Accruals report (per-user time summary)
-- Projektbericht (German project / delivery report) — JSON + PDF;
-  `text_source=tech|report` selects the body source; portal acceptance
-  defaults to the customer-facing report summary
-- Issue archive / hard-delete
-- Time entries purge (preview + execute) per project / per user
-
-</details>
-
-<details>
-<summary>Operator / deployment features</summary>
-
-- Single-binary deploy (Go + embedded SPA via `/app/static`)
-- Optional MinIO for attachments (graceful disable)
-- Optional SMTP for password reset (dev mode = log to stdout)
-- SQLite with WAL + 5-second busy timeout + connection pool
-- Additive migrations run on startup
-- Health endpoint: `GET /api/health` → `{ "status": "ok", "service": "...", "version": "<VERSION>" }` (`version` is stamped from `VERSION` at build time; local non-Docker builds report `"dev"`)
-- Instance endpoint: `GET /api/instance` (label, hostname,
-  attachments-enabled flag)
-- Rate-limited auth endpoints (shared 5/10min window across login,
-  forgot, reset, TOTP-verify)
-- Per-instance branding overlay via `$DATA_DIR/branding.json` (+
-  `branding-*.json` variants)
-- `$INSTANCE_LABEL` env shows a banner (e.g., "STAGING") in the sidebar
-- All identity strings operator-configurable via `BRAND_*` env vars
-  (see `docs/CONFIGURATION.md`)
-
-</details>
-
-<details>
-<summary>API surface (route groups)</summary>
-
-- **Agent Context**: per-project `/api/projects/{id}/repos`
-  (CRUD), `/api/projects/{id}/knowledge` (unified knowledge plane),
-  `/api/projects/{id}/agents/{name}.json` (canonical agent artifact),
-  `/api/projects/{id}/anchors` (POST bulk-ingest of issue→file
-  locations), `/api/projects/{id}/graph` (typed entity graph
-  traversal), `/api/projects/{id}/retrieve` (mixed-context query),
-  plus per-issue `/api/issues/{id}/anchors`
-- **AI assist**: `POST /api/ai/action` (unified action dispatcher),
-  `GET /api/ai/actions` (catalogue), `GET /api/ai/models`
-  (server-cached vendor-diverse picks), `GET /api/ai/usage`
-  (per-user daily token totals), `GET /api/ai/bulk-cost-estimate`
-  (pre-run cost band for bulk flows), full CRUD on `/api/ai/prompts`
-  with `/{id}/dry-run` and `/{id}/reset`, `POST /api/ai/test`
-  (smoke test the configured provider/model). Audit lines are
-  metadata-only — prompts and response bodies are never logged
-- **Schema discovery**: `GET /api/schema` — versioned enums,
-  transitions, entity shapes, conventions. Public, strong-ETagged,
-  `Cache-Control: public, max-age=300`
-- **Live changes**: `GET /api/changes` — authenticated SSE feed of
-  mutation-log events with project access filtering and metadata-only
-  payloads
-- **Bulk**: `POST /api/projects/{key}/issues/batch` (atomic
-  create-many with same-batch `parent_ref:"#N"` cross-refs),
-  `PATCH /api/issues` (atomic update-many by ref),
-  `GET /api/issues?keys=PAI-1,PAI-2,…` (ordered pick list,
-  missing refs marked)
-- **Session audit (opt-in)**: `GET /api/sessions/{id}/activity` —
-  admin-only, keyset-paginated replay of mutations tagged by an
-  `X-PAIMOS-Session-Id` header. Controlled by
-  `PAIMOS_AUDIT_SESSIONS=true`
-- **Auth / session**: login, logout, me, password change, avatar
-  upload/delete, profile update
-- **2FA (TOTP)**: status, setup, enable, disable, verify (login step 2)
-- **Password reset**: forgot, validate, reset
-- **API keys**: list, create, revoke
-- **Projects**: list, get, create/update/delete (admin), logo
-  upload/delete (admin), suggest-key
-- **Issues**: list per project, create in project, tree, children,
-  get/update/delete single, archive (admin), cross-project list, recent,
-  clone, aggregation, history, complete-epic
-- **Issue relations**: list, create, delete (admin), members-by-relation
-- **Attachments**: list per issue, upload & link, fetch, delete (admin),
-  upload pending, batch link
-- **Comments**: list per issue, create, delete (admin)
-- **Time entries**: list per issue, create, update, delete, running
-  timers, recent timers
-- **Tags**: list, CRUD (admin), attach/detach to issues + projects
-- **System tags**: list rules, update rules (admin)
-- **Sprints**: list, years, by year, batch create (admin), update
-  (admin), move-incomplete (admin), reorder members
-- **Project metadata**: cost units, releases (per-project and
-  cross-project)
-- **Views**: list, CRUD, reorder (admin), pin/unpin
-- **Search**: full-text + key-based
-- **Users**: list, CRUD (admin), disable (admin), reset-TOTP (admin),
-  per-user project access (admin), recent-projects (self)
-- **Portal**: projects, issues, requests, accept/reject with undo,
-  summary, acceptance-report
-- **Integrations**: Jira (config, test, project list, import, jobs,
-  debug), Mite (config, test, import, jobs, resume-date, cleanup)
-- **CSV / bulk**: preflight + import per project / global, per-project
-  CSV export, time-entries purge (preview + execute)
-- **Reporting**: acceptance-log, acceptance-report, Projektbericht
-  (JSON + PDF; `text_source=tech|report` picks the body source),
-  `/projektberichte/{code}/pdf` snapshot-by-code endpoint for portal
-  acceptance links, accruals (admin)
-- **Branding / static**: GET branding, list brandings, serve
-  logos / avatars, instance, health, dev test-reports (admin)
-
-</details>
-
-## Contributor docs
-
-- `CONTRIBUTING.md` — dev setup, DCO sign-off, PR workflow
-- `SECURITY.md` — vulnerability reporting
-- `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1
-- `DCO.md` — Developer Certificate of Origin
-- `docs/AGENT_INTERFACE.md` — **driving PAIMOS as an agent** (CLI, MCP, patterns)
-- `docs/api-minimal.md` — REST reference
-- `docs/CHANGELOG.md` — version history
-- `docs/CONFIGURATION.md` — every env var, every branding knob
-- `docs/brand/BRAND.md` — brand guide (name, mark, voice)
-- `docs/DEVELOPER_GUIDE.md` — deeper implementation notes
-- `+pm/PRD.md` — product requirements framing (long-form only — tickets live in PAIMOS at <https://pm.barta.cm>, project PAI)
-- `+agents/rules/AGENTS.md` — agent collaboration rules
+If you modify Paimos and let users interact with that modified version over a
+network, AGPL section 13 requires offering those users the Corresponding Source
+of the running modified version. Read the project license and the
+[official GNU AGPL text](https://www.gnu.org/licenses/agpl-3.0.html) for the
+complete terms.

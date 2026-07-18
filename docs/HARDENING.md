@@ -42,7 +42,7 @@ The recommended PAIMOS production deployment shape:
                            │  HTTP   (loopback or private network)
                            ▼
             ┌─────────────────────────────┐
-            │  PAIMOS Go binary  :8888    │  ← single process, non-root
+            │  PAIMOS Go binary  :8888    │  ← single process; set runtime user
             │  COOKIE_SECURE=true         │  ← chi router + auth middleware
             │  PAIMOS_AUDIT_SESSIONS=true │  ← session-mutation audit on
             └──┬─────────┬────────┬───────┘

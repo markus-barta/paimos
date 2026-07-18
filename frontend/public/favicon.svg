@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- PAIMOS — AGPL-3.0-or-later. See LICENSE in the PAIMOS repo. -->
+<!-- PAIMOS — AGPL-3.0-only. See LICENSE in the PAIMOS repo. -->
 <!-- Identical geometry to mark.svg; only the viewBox differs (60×60 square, mark centered horizontally). -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-2.5 0 60 60" fill="currentColor">
   <title>PAIMOS</title>

@@ -5,7 +5,8 @@
     "description": "PAIMOS — Professional & Personal AI Project OS.\n\nThis is the **public, stable scriptable contract** for PAIMOS — the canonical resource surface used by the SPA, the paimos CLI, and custom integrations: auth, users, projects, issues, comments, time entries, attachments, documents, incidents, knowledge, and GDPR ops. It is intentionally a curated subset. Internal one-off admin tooling (CSV/Jira/mite imports, dev test reports, branding writes, SSO/TOTP management, AI operations, portal internals) is deliberately omitted and is NOT part of the stability contract — those endpoints exist but may change without notice. Authentication is either a session cookie (browser) or a `paimos_*` bearer API key (machine-to-machine). Coverage policy & contribution rule: PAI-294.",
     "version": "1.0.0",
     "license": {
-      "name": "AGPL-3.0-only"
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
     }
   },
   "servers": [

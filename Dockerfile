@@ -28,6 +28,7 @@ RUN npm run build \
   && find /src/dist -exec touch -d "@${SOURCE_DATE_EPOCH}" {} +
 
 FROM alpine:3.21
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 RUN apk add --no-cache ca-certificates
 COPY --from=go-build /paimos /usr/local/bin/paimos
 COPY --from=spa-build /src/dist /app/static

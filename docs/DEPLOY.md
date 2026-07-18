@@ -19,7 +19,7 @@ Two instances, both pulling from the same registry:
 
 Registry: `ghcr.io/markus-barta/paimos`. Images produced per-commit on `main`
 (`:latest`, `:sha-<short>`) and per semver tag (`:X.Y.Z`, `:X.Y`, `:X`).
-CI source of truth: `.github/workflows/ci.yml`.
+CI source of truth: [`.github/workflows/ci-v2.yml`](../.github/workflows/ci-v2.yml).
 
 ---
 

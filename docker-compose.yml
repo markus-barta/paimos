@@ -8,6 +8,8 @@ services:
     environment:
       - PORT=8888
       - INSTANCE_LABEL=${INSTANCE_LABEL:-}
+      # First-run only. Pass from the host for bootstrap; omit after rotation.
+      - ADMIN_PASSWORD
       # Set COOKIE_SECURE=true on live (HTTPS). Leave unset for staging/local (HTTP).
       # Set INSTANCE_LABEL=STAGING on staging to show a red banner in the sidebar.
     restart: unless-stopped
