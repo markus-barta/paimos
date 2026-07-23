@@ -32,16 +32,16 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25.12'
           # Keep CI, release, container and go.mod on one audited patch.
           # Bump deliberately when govulncheck flags the standard library.
           cache-dependency-path: backend/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -137,14 +137,14 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -166,7 +166,7 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # PAI-128: full history needed for gitleaks to scan past commits.
           # Without fetch-depth: 0 the secret-scan only sees the most
@@ -180,18 +180,18 @@ jobs:
       # The custom paimos-api-key rule in .gitleaks.toml is the targeted
       # defence named in INCIDENT_RESPONSE.md § 3.1 (compromised API key).
       - name: gitleaks (secret scanning)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25.12'
           # Keep CI, release, container and go.mod on one audited patch.
           # Bump deliberately when govulncheck flags the standard library.
           cache-dependency-path: backend/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -236,7 +236,7 @@ jobs:
     needs: [test, security-scan]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Bake the correct __APP_VERSION__ into the SPA so the sidebar footer
       # matches the image tag. vite.config.ts reads ../VERSION at build time;
@@ -251,16 +251,16 @@ jobs:
           printf '%s\n' "$v" > VERSION
           echo "baked VERSION=$v"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -277,7 +277,7 @@ jobs:
           echo "epoch=$ts" >> "$GITHUB_OUTPUT"
           echo "SOURCE_DATE_EPOCH=$ts"
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         id: build
         with:
           context: .
@@ -309,7 +309,7 @@ jobs:
             --output-format JSON --output-file ../frontend.sbom.json
       - name: Upload SBOMs to release artifacts
         if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom-${{ github.ref_name }}
           path: |

@@ -55,9 +55,9 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
@@ -90,7 +90,7 @@ jobs:
           done
 
       - name: Upload linux/${{ matrix.arch }} tarballs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-${{ matrix.arch }}-tarballs
           path: dist/*linux_${{ matrix.arch }}.tar.gz
@@ -111,9 +111,9 @@ jobs:
   darwin:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25.12'
           cache-dependency-path: backend/go.sum
@@ -180,7 +180,7 @@ jobs:
           echo "✓ all 5 Apple secrets present"
 
       - name: Import Apple certificate
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@v6
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -280,7 +280,7 @@ jobs:
           done
 
       - name: Upload darwin tarballs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: darwin-tarballs
           path: dist/*darwin_universal.tar.gz
@@ -294,7 +294,7 @@ jobs:
     needs: [linux, darwin]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -315,7 +315,7 @@ jobs:
           cat sha256sums.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*.tar.gz
