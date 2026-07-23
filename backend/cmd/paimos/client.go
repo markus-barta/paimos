@@ -24,7 +24,7 @@ import (
 
 // userAgent identifies this CLI to PAIMOS servers (and, more
 // importantly, to Cloudflare WAF — the default urllib/python User-Agent
-// gets blocked on pm.bytepoets.com, see paimos_api_gotchas.md).
+// gets blocked by WAF-fronted deployments, see paimos_api_gotchas.md).
 var userAgent = "paimos-cli/" + Version
 
 // agentAttrCap mirrors the server-side defensive cap from PAI-324

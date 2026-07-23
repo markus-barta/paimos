@@ -113,5 +113,5 @@ function issueRoute(issueId: number): string {
 .gm-title { max-width: 340px; }
 .gm-assignee { color: var(--text-muted); white-space: nowrap; }
 .gm-link { color: var(--text); text-decoration: none; }
-.gm-link:hover { color: var(--bp-blue); text-decoration: underline; }
+.gm-link:hover { color: var(--brand-blue); text-decoration: underline; }
 </style>

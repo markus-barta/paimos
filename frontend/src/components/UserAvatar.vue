@@ -82,7 +82,7 @@ function onMouseLeave() {
 .ua {
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   font-weight: 700; flex-shrink: 0; overflow: hidden;
   position: relative;
 }
@@ -122,11 +122,11 @@ function onMouseLeave() {
 .ua-tooltip-avatar {
   flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  background: var(--bp-blue-pale);
+  background: var(--brand-blue-pale);
 }
 .ua-tooltip-img { width: 100%; height: 100%; object-fit: cover; }
 .ua-tooltip-initials {
-  font-size: 13px; font-weight: 700; color: var(--bp-blue-dark);
+  font-size: 13px; font-weight: 700; color: var(--brand-blue-dark);
 }
 .ua-tooltip-info { display: flex; flex-direction: column; gap: .1rem; }
 .ua-tooltip-name     { font-size: 13px; font-weight: 600; color: var(--text); }

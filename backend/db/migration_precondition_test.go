@@ -75,7 +75,7 @@ func TestCheckNoDuplicateIssueNumbersIgnoresNullProjectMarkers(t *testing.T) {
 
 func TestCheckNoDuplicateIssueNumbersFailsWithOffendingRows(t *testing.T) {
 	conn := openIssuesPreconditionDB(t)
-	// The genuine PMO collision: project 7 had two issues both numbered #717.
+	// The genuine legacy-instance collision: project 7 had two issues both numbered #717.
 	seedIssue(t, conn, 3055, intptr(7), 717)
 	seedIssue(t, conn, 3056, intptr(7), 717)
 	seedIssue(t, conn, 9, nil, 0) // NULL marker present too — must be excluded

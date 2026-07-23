@@ -448,7 +448,7 @@ function download() {
   padding: .4rem .8rem; font-size: 13px; cursor: pointer; border-right: 1px solid var(--border);
 }
 .lb-export-seg-btn:last-child { border-right: 0; }
-.lb-export-seg-btn.active { background: var(--bp-blue); color: #fff; }
+.lb-export-seg-btn.active { background: var(--brand-blue); color: #fff; }
 .lb-export-monthrow { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
 .lb-export-daterange { display: inline-flex; align-items: center; gap: .35rem; }
 .lb-export-dash { color: var(--text-muted); }

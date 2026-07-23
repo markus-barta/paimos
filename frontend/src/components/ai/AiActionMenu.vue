@@ -543,14 +543,14 @@ export { iconFor }
   transition: background .12s, color .12s, border-color .12s;
 }
 .ai-menu-chip:hover:not(.ai-menu-chip--disabled) {
-  background: var(--bp-blue-pale, #dce9f4);
-  color: var(--bp-blue-dark, #1f4d75);
-  border-color: var(--bp-blue-light, #4a8fc2);
+  background: var(--brand-blue-pale, #dce9f4);
+  color: var(--brand-blue-dark, #1f4d75);
+  border-color: var(--brand-blue-light, #4a8fc2);
 }
 .ai-menu-chip--busy {
-  color: var(--bp-blue-dark, #1f4d75);
-  background: var(--bp-blue-pale, #dce9f4);
-  border-color: var(--bp-blue-light, #4a8fc2);
+  color: var(--brand-blue-dark, #1f4d75);
+  background: var(--brand-blue-pale, #dce9f4);
+  border-color: var(--brand-blue-light, #4a8fc2);
 }
 .ai-menu-chip--disabled { opacity: .55; }
 
@@ -609,8 +609,8 @@ export { iconFor }
   transition: background .1s, color .1s;
 }
 .ai-menu-item:hover, .ai-menu-item:focus {
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
   outline: none;
 }
 .ai-menu-item--disabled {
@@ -618,7 +618,7 @@ export { iconFor }
   opacity: .55;
 }
 .ai-menu-item--disabled:hover { background: transparent; color: var(--text); }
-.ai-menu-item--active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.ai-menu-item--active { background: var(--brand-blue-pale); color: var(--brand-blue-dark); }
 .ai-menu-item-main {
   min-width: 0;
   flex: 1;
@@ -664,8 +664,8 @@ export { iconFor }
   cursor: pointer;
 }
 .ai-submenu-item:hover, .ai-submenu-item:focus {
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
   outline: none;
 }
 

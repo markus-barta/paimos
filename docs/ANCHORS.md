@@ -2,7 +2,7 @@
 
 PAIMOS anchors are lightweight source comments that tie a code location
 to an issue key. They exist so repo-side tooling can generate a stable
-`.pmo/anchors.json` index and PMO can render issue-to-file deep links.
+`.paimos/anchors.json` index and PAIMOS can render issue-to-file deep links.
 
 ## Canonical syntax
 
@@ -15,11 +15,11 @@ Preferred v1 form:
 Supported alias:
 
 ```go
-// @pmo PAI-N "anchor ingest endpoint"
+// @paimos PAI-N "anchor ingest endpoint"
 ```
 
 The issue reference is an ordinary PAIMOS issue key like `PAI-68` or
-`PMO26-631`. The optional quoted label should name the canonical entry
+`ACME26-631`. The optional quoted label should name the canonical entry
 point, not restate the whole issue title.
 
 ## Language-specific comment forms
@@ -59,7 +59,7 @@ Markdown / HTML / Vue template:
 ## Multi-repo and monorepo guidance
 
 - Keep the source comment syntax minimal. Repo qualifiers belong in the
-  generated `.pmo/anchors.json`, not in the comment text.
+  generated `.paimos/anchors.json`, not in the comment text.
 - Root-level `AGENTS.md` is the default for a repo checkout.
 - Nested `AGENTS.md` files are reserved for future subproject-specific
   guidance in monorepos; until that support is added, do not assume
@@ -74,7 +74,7 @@ An anchor is stale when:
 - the surrounding entry point was deleted without updating the index
 
 Line drift inside the same file is tolerated as long as the anchor
-comment still exists. Regenerate `.pmo/anchors.json` after moving an
+comment still exists. Regenerate `.paimos/anchors.json` after moving an
 anchor so the committed index stays clean.
 
 ## Confidence tiers

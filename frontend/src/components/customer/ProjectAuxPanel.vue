@@ -146,7 +146,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 .aux-resize-handle:hover::after,
 .aux-panel--resizing .aux-resize-handle::after {
-  opacity: 1; background: var(--bp-blue);
+  opacity: 1; background: var(--brand-blue);
 }
 
 /* ── Header ────────────────────────────────────────────────────── */

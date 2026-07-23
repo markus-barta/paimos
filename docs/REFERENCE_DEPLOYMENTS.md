@@ -35,7 +35,7 @@ Five criteria. A deployment becomes a reference when **all five** hold.
 | 1 | **Active operator** — someone is responsible for the deployment, monitors it, and would notice if it broke | Without an active operator, the install isn't being validated; it's just running. |
 | 2 | **Multi-month uptime in production-like usage** — at least 90 days of real user activity, not test data | A 90-day window catches configuration drift, certificate renewals, log rotation, retention sweeps, and seasonal patterns that a one-week pilot misses. |
 | 3 | **Real users with real data** — not synthetic; the operator would care if the data were lost | Synthetic data hides bugs that only appear with realistic content (long descriptions, attached files, complex relations, etc.). |
-| 4 | **Survived at least one upgrade cycle** — operator has run `just deploy-{ppm,pmo} v<X.Y.Z>` from one minor version to the next | Upgrade is the highest-risk operation; surviving one is the strongest single signal that the runbook works. |
+| 4 | **Survived at least one upgrade cycle** — operator has run `just deploy-ppm v<X.Y.Z>` from one minor version to the next | Upgrade is the highest-risk operation; surviving one is the strongest single signal that the runbook works. |
 | 5 | **At least one backup / restore exercise** — real or drilled, captured in writing | Backups that have never been restored aren't backups; they're tarballs with hopeful filenames. |
 
 A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* reference, not a reference. The matrix in §3 below tracks each criterion per deployment.
@@ -44,7 +44,7 @@ A deployment that meets 4-of-5 (e.g., never upgraded yet) is a *candidate* refer
 
 ## 2 · Reference deployment register
 
-The register contains two validated deployment histories. As of 2026-06-30, ppm is the only active deploy target; pmo is historical and inactive after the BytePoets exit. The current ppm proof is the live `4.8.0` deployment verified on 2026-07-08.
+The register contains two validated deployment histories. As of 2026-06-30, ppm is the only active deploy target; the second-operator instance is historical and inactive since the operator exit in June 2026. The current ppm proof is the live `4.8.0` deployment verified on 2026-07-08.
 
 ### 2.1 · ppm · `pm.barta.cm`
 
@@ -62,20 +62,20 @@ The register contains two validated deployment histories. As of 2026-06-30, ppm 
 | Backup pattern | per-deploy via `scripts/deploy.sh`; `$BACKUP_ROOT` on the same host (acknowledged limitation tracked under [§3 Findings](#3--structured-findings) F-08) |
 | Audience | the maintainer + a small group; current production canary |
 
-**Role in the project:** ppm is the **active production deployment and release canary**. When pmo was active, the release flow continued from ppm to that independent second deployment. Current releases stop at ppm unless another active reference operator is added.
+**Role in the project:** ppm is the **active production deployment and release canary**. While the second-operator instance was active, the release flow continued from ppm to that independent second deployment. Current releases stop at ppm unless another active reference operator is added.
 
 **This is the maintainer's own instance**, which is both a strength (real engagement, every defect is felt) and a weakness (operator and maintainer are the same person, so the validation isn't independent).
 
-**2026-06-01 drift note:** ppm was briefly behind pmo because the deploy script still edited the old `/home/mba/docker` compose directory while the live csb1 stack was sourced from `/home/mba/Code/nixcfg/hosts/csb1/docker`. The deploy config and nixcfg compose pin now agree on `3.8.3`. The broader freshness guardrail is tracked by PAI-551.
+**2026-06-01 drift note:** ppm was briefly behind the second-operator instance because the deploy script still edited the old `/home/mba/docker` compose directory while the live csb1 stack was sourced from `/home/mba/Code/nixcfg/hosts/csb1/docker`. The deploy config and nixcfg compose pin now agree on `3.8.3`. The broader freshness guardrail is tracked by PAI-551.
 
 **2026-07-07 proxy note:** live ppm (`container=ppm`) is routed by Traefik from the `csb1_traefik` Docker network, with a router rule for `pm.barta.cm`, TLS resolver `default`, and backend port `8888`. Earlier reference text still said Caddy; Caddy remains present on the host for other sites, but not as the live ppm router.
 
-### 2.2 · pmo · `pm.bytepoets.com`
+### 2.2 · second-operator instance (retired June 2026)
 
 | Property | Value |
 |---|---|
-| Operator | bytepoets (Austrian software consultancy) |
-| Host | bytepoets-operated |
+| Operator | an independent Austrian software consultancy |
+| Host | operator-managed |
 | Storage | host bind-mount on encrypted FS |
 | Reverse proxy | Caddy (TLS via Let's Encrypt) |
 | Attachments | MinIO (separate bucket) |
@@ -84,9 +84,9 @@ The register contains two validated deployment histories. As of 2026-06-30, ppm 
 | Active period | v1.x through June 2026; historical/inactive now |
 | Last verified runtime | 2026-06-01: `3.8.2` (`/api/health`, schema `1.5.0`) |
 | Backup pattern | per-deploy + scheduled (operator-controlled cadence) |
-| Audience | historical bytepoets internal deployment; **operator was independent of maintainer** |
+| Audience | historical operator-internal deployment; **operator was independent of maintainer** |
 
-**Historical role in the project:** pmo was the **independence test**. Operator and maintainer were different people, so the deploy, restore, and upgrade runbooks had to be readable by someone who did not write them. Configuration remains documented in `scripts/deploy.pmo.conf` as historical operating evidence.
+**Historical role in the project:** the second instance was the **independence test**. Operator and maintainer were different people, so the deploy, restore, and upgrade runbooks had to be readable by someone who did not write them. Its deploy configuration was removed from the tree at decommissioning; this register entry is the historical evidence.
 
 This is the deployment that converted PAIMOS from "the maintainer's project" to "a project that can be run by a second party" — and which therefore validates the bus-factor framing in [`CONTINUITY.md`](CONTINUITY.md).
 
@@ -110,7 +110,7 @@ Findings logged in chronological order. Each finding has the **observation** (wh
 | **F-10** | 2026-04-26 | both | The release → verify → deploy → doc-sync gap surfaced repeatedly: README / docs / paimos-site / brand assets drift between code releases | Without an explicit reminder, the doc pass after release was easy to skip | `scripts/release-doc-sync.sh` + `just doc-sync` recipe + the five-command flow documented in DEPLOY.md | PAI-187 |
 | **F-11** | 2026-04-26 | both | Test report visibility in production was implicit — a deploy could ship a green-CI version with no actual test reports surfaced in the admin UI | The product confused "no reports" with "ready" | Test-report runtime visibility hardening: explicit `ready` / `partial` / `missing_reports` states surfaced; admin-side bundle ingest path | v2.0.1 / PAI-188 |
 | **F-12** | 2026-04-26 | both | The empty-AI-action-catalog F-01 fix was tested by hand but had no regression coverage — a future refactor could regress it silently | Bug-fix-without-test is debt | `ai_action_catalog_test.go` covers the catalogue assembly across registry / placement / admin override; CI regression layer covers it | v2.0.1 / PAI-189 wave-1 |
-| **F-13** | 2026-06-01 | ppm | ppm was behind pmo even though the release flow expects ppm to lead | Deploy config edited a deprecated compose path; live ppm compose came from nixcfg | `scripts/deploy.ppm.conf` now points at the nixcfg compose directory and the nixcfg ppm image pin is `3.8.3`; `scripts/check-knowledge-freshness.sh` catches stale runtime/version claims before release | PAI-551 |
+| **F-13** | 2026-06-01 | ppm | ppm was behind the second-operator instance even though the release flow expects ppm to lead | Deploy config edited a deprecated compose path; live ppm compose came from nixcfg | `scripts/deploy.ppm.conf` now points at the nixcfg compose directory and the nixcfg ppm image pin is `3.8.3`; `scripts/check-knowledge-freshness.sh` catches stale runtime/version claims before release | PAI-551 |
 | **F-14** | 2026-07-08 | ppm | The public SSO claim was shipped before the reference-deployment register reflected a real OIDC login | PAIMOS had app-side generic OIDC support, but the production Zitadel app/env bridge was not yet wired | PAI-680 shipped generic OIDC + PKCE, ppm was wired to `auth.inspr.at`, the browser round-trip succeeded, and INSPR-198 records the remaining declarative-import follow-up for the imperatively created Zitadel app | PAI-680 / INSPR-198 |
 
 ### What this list demonstrates
@@ -125,7 +125,7 @@ The F-01 → F-02 → F-12 chain is particularly illustrative: an in-production 
 
 Per workflow, has each reference deployment exercised it in a way that produced a finding worth keeping?
 
-| Workflow | ppm | pmo |
+| Workflow | ppm | second operator (retired) |
 |---|---|---|
 | Fresh install from scratch | ❌ (continuously upgraded) | ✓ (initial install verified) |
 | Image upgrade `just deploy-* <tag>` | ✓ (every release; ~30+ cycles) | ✓ (every release) |
@@ -156,7 +156,7 @@ Honest framing: the reference set is **two**. That's small but real. Expansion i
 
 Per §1 criteria, a candidate must:
 
-- Have a non-maintainer, non-bytepoets operator (independence)
+- Have an operator independent of the maintainer and of prior operators (independence)
 - Run for ≥ 90 days with real users
 - Survive at least one upgrade
 - Drill or experience at least one backup / restore
@@ -165,7 +165,7 @@ Per §1 criteria, a candidate must:
 The most useful third deployment would be one in **a different environment class** than the current two:
 
 - **Air-gapped / on-prem** (validates the no-egress posture in earnest)
-- **Larger team** (validates multi-user authz scaling; the current ppm + pmo are small-team)
+- **Larger team** (validates multi-user authz scaling; the historical deployments are small-team)
 - **Different OS / arch** (e.g., arm64 host) — validates cross-arch image builds
 - **OIDC-configured outside the maintainer's own instance** (validates the SSO path against a real IdP and a non-maintainer operator)
 - **Heavy-attachment workload** (validates MinIO at scale)
@@ -200,6 +200,6 @@ The findings table in §3 is **append-only**. Resolved findings stay in the tabl
 - **[`BACKUP_RESTORE.md`](BACKUP_RESTORE.md)** — the captured drill in § 5 is what backs the "drilled" entries in § 4 above.
 - **[`THREAT_MODEL.md`](THREAT_MODEL.md)** — the security invariants this register's findings are tested against.
 - **[`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md)** — the runbook tabletops (§ 4 there, § 7 in CONTINUITY) are what cover the red "incident response" rows in § 4 above pending real incidents.
-- **[`CONTINUITY.md`](CONTINUITY.md)** — pmo's independence (§ 2.2 above) is what validates CONTINUITY's bus-factor framing.
+- **[`CONTINUITY.md`](CONTINUITY.md)** — the second operator's independence (§ 2.2 above) is what validates CONTINUITY's bus-factor framing.
 - **[`2.0_AUDIT.md`](2.0_AUDIT.md)** — programme-scope decisions log; D-004 (CHANGELOG manual ownership) is F-03 in this register.
 - **[`paimos.com/trust.html`](https://paimos.com/trust.html)** — the public trust posture; § 02 references this register's reference deployments.

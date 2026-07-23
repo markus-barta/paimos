@@ -10,7 +10,7 @@ func TestBuildAnchorIndexSupportsCommentForms(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
 		"backend/handlers/context.go":        "// @paimos PAI-68 \"anchor ingest endpoint\"\nfunc x() {}\n",
-		"frontend/src/components/example.ts": "// @pmo PAI-65 \"scanner command\"\nexport const x = 1\n",
+		"frontend/src/components/example.ts": "// @paimos PAI-65 \"scanner command\"\nexport const x = 1\n",
 		"schema/example.sql":                 "-- @paimos PAI-79 \"blast radius fixture\"\nselect 1;\n",
 		"docs/example.md":                    "<!-- @paimos PAI-81 \"agent onboarding\" -->\n",
 		"config/example.yaml":                "# @paimos PAI-72 \"manifest mirror\"\nkey: value\n",

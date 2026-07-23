@@ -639,12 +639,12 @@ defineExpose({ openCreate })
   background: var(--bg); color: var(--text);
   outline: none; width: 100%;
 }
-.v2-select:focus { border-color: var(--bp-blue); }
+.v2-select:focus { border-color: var(--brand-blue); }
 
 /* Time unit toggle affordance */
 .time-unit-toggle { cursor: pointer; }
 .time-unit-toggle:hover .unit-toggle { filter: brightness(.9); }
-.unit-toggle { color: var(--bp-blue); text-decoration: underline; text-decoration-style: dotted; }
+.unit-toggle { color: var(--brand-blue); text-decoration: underline; text-decoration-style: dotted; }
 
 /* Epic color picker */
 .epic-color-picker { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -669,7 +669,7 @@ defineExpose({ openCreate })
   cursor: pointer; font-family: inherit;
   transition: border-color .1s, color .1s;
 }
-.sprint-add-btn:hover { border-color: var(--bp-blue); color: var(--bp-blue); }
+.sprint-add-btn:hover { border-color: var(--brand-blue); color: var(--brand-blue); }
 .sprint-add-dropdown {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 300;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;

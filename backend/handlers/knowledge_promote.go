@@ -40,7 +40,7 @@ package handlers
 //   - Slug stays identical. If a slug collision exists at the
 //     destination, the request 409s and nothing is mutated.
 //   - "to" must be different from the inferred source scope —
-//     promoting BON26 → BON26 is meaningless; the call returns 400
+//     promoting CON26 → CON26 is meaningless; the call returns 400
 //     so the UI can grey the current-scope option (per the ticket's
 //     "current scope greyed" UX note).
 //   - Promotion to instance scope requires admin (mirrors the

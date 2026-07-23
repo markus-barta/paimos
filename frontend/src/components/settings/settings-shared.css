@@ -26,7 +26,7 @@
 }
 .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
 .sortable-th:hover { color: var(--text); background: var(--border) !important; }
-.sortable-th.sort-active { color: var(--bp-blue-dark) !important; }
+.sortable-th.sort-active { color: var(--brand-blue-dark) !important; }
 .sort-ind { display: inline-block; margin-left: .25rem; font-size: 10px; opacity: .55; vertical-align: middle; }
 .sortable-th.sort-active .sort-ind { opacity: 1; }
 .settings-table tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }

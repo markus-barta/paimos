@@ -181,7 +181,7 @@ async function deleteAttachment(a: Attachment) {
   padding: .75rem; transition: border-color .15s, background .15s;
 }
 .attach-drop-zone--over {
-  border-color: var(--bp-blue); background: var(--bp-blue-pale);
+  border-color: var(--brand-blue); background: var(--brand-blue-pale);
 }
 .attach-drop-zone--disabled {
   border-style: solid; background: var(--bg);
@@ -217,7 +217,7 @@ async function deleteAttachment(a: Attachment) {
   padding: .25rem 0;
 }
 .attach-file-name {
-  font-size: 12px; color: var(--bp-blue); text-decoration: none;
+  font-size: 12px; color: var(--brand-blue); text-decoration: none;
   word-break: break-all;
 }
 .attach-file-name:hover { text-decoration: underline; }
@@ -234,7 +234,7 @@ async function deleteAttachment(a: Attachment) {
   overflow: hidden; margin: .5rem 0;
 }
 .attach-progress-bar {
-  height: 100%; background: var(--bp-blue); transition: width .15s;
+  height: 100%; background: var(--brand-blue); transition: width .15s;
 }
 .attach-upload-label {
   display: block; text-align: center; cursor: pointer;
@@ -242,6 +242,6 @@ async function deleteAttachment(a: Attachment) {
 }
 .attach-upload-input { display: none; }
 .attach-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
-.attach-add { font-size: 12px; color: var(--bp-blue); font-weight: 600; }
+.attach-add { font-size: 12px; color: var(--brand-blue); font-weight: 600; }
 .attach-add:hover { text-decoration: underline; }
 </style>

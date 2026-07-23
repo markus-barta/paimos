@@ -393,7 +393,7 @@ defineExpose({ reset })
   background: var(--bg); color: var(--text);
   outline: none; width: 100%;
 }
-.v2-select:focus { border-color: var(--bp-blue); }
+.v2-select:focus { border-color: var(--brand-blue); }
 .v2-input {
   border: 1px solid var(--border); border-radius: var(--radius);
   padding: .35rem .55rem; font-size: 13px; font-family: inherit;
@@ -409,7 +409,7 @@ defineExpose({ reset })
   cursor: pointer; transition: all .1s;
 }
 .bulk-sprint-mode input[type="radio"] { display: none; }
-.bulk-sprint-mode.active { background: var(--bp-blue); color: #fff; border-color: var(--bp-blue-dark); }
+.bulk-sprint-mode.active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue-dark); }
 .bulk-sprint-list {
   max-height: 200px; overflow-y: auto;
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -421,7 +421,7 @@ defineExpose({ reset })
   font-size: 12px; cursor: pointer;
 }
 .bulk-sprint-opt:hover { background: var(--bg); }
-.bulk-sprint-opt input[type="checkbox"] { accent-color: var(--bp-blue); }
+.bulk-sprint-opt input[type="checkbox"] { accent-color: var(--brand-blue); }
 .bulk-sprint-title { font-weight: 500; color: var(--text); }
 .bulk-sprint-date { font-size: 10px; color: var(--text-muted); margin-left: auto; }
 .bulk-sprint-summary { font-size: 11px; color: var(--text-muted); margin-top: .35rem; }
@@ -437,7 +437,7 @@ defineExpose({ reset })
 }
 .bulk-progress-fill {
   height: 100%;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   transition: width .2s ease-out;
 }
 </style>

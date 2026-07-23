@@ -339,7 +339,7 @@ tr:hover .row-act--hover,
 
 /* State 1: Running — green pulsing */
 .timer-badge--running {
-  background: var(--bp-green, #16a34a); color: #fff;
+  background: var(--brand-green, #16a34a); color: #fff;
   cursor: pointer;
   animation: badge-pulse 2s ease-in-out infinite;
 }
@@ -372,7 +372,7 @@ tr:hover .row-act--hover,
   opacity: .75;
 }
 .timer-badge--running.timer-badge--readonly:hover {
-  background: var(--bp-green, #16a34a);
+  background: var(--brand-green, #16a34a);
   color: #fff;
 }
 .timer-badge--booked.timer-badge--readonly:hover {
@@ -380,13 +380,13 @@ tr:hover .row-act--hover,
   color: color-mix(in srgb, #10b981 8%, #637383);
   border-color: color-mix(in srgb, #10b981 12%, var(--border));
 }
-.row-act--play:hover { color: var(--bp-green, #16a34a); }
+.row-act--play:hover { color: var(--brand-green, #16a34a); }
 .row-act--danger:hover { color: #dc2626; background: #fef2f2; }
-.row-act--implement:hover { color: var(--bp-blue, #2563eb); }
+.row-act--implement:hover { color: var(--brand-blue, #2563eb); }
 .row-act--implement:disabled { opacity: .5; cursor: not-allowed; }
 
 .row-run-action {
-  border: 1px solid color-mix(in srgb, var(--bp-blue, #2563eb) 18%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--brand-blue, #2563eb) 18%, var(--border));
   cursor: pointer;
   font: inherit;
   font-size: 11px;
@@ -398,11 +398,11 @@ tr:hover .row-act--hover,
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: color-mix(in srgb, var(--bp-blue, #2563eb) 5%, var(--bg-card));
-  color: var(--bp-blue, #2563eb);
+  background: color-mix(in srgb, var(--brand-blue, #2563eb) 5%, var(--bg-card));
+  color: var(--brand-blue, #2563eb);
 }
 .row-run-action:hover {
-  background: color-mix(in srgb, var(--bp-blue, #2563eb) 10%, var(--bg-card));
+  background: color-mix(in srgb, var(--brand-blue, #2563eb) 10%, var(--bg-card));
 }
 .row-run-action--open {
   color: var(--text);
@@ -410,7 +410,7 @@ tr:hover .row-act--hover,
   background: var(--bg-card);
 }
 .row-run-action--open:hover {
-  color: var(--bp-blue, #2563eb);
+  color: var(--brand-blue, #2563eb);
 }
 
 /* "Implement this" transient feedback */

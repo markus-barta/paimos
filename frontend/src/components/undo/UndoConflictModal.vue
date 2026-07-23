@@ -271,7 +271,7 @@ function apply() {
   background: rgba(255, 255, 255, 0.8);
 }
 .undo-choice:has(input:checked) {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   box-shadow: 0 0 0 3px rgba(46, 109, 164, 0.08);
 }
 .undo-choice input {

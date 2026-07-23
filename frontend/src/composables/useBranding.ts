@@ -123,11 +123,11 @@ function shadeHex(hex: string, pct: number): string {
 
 function applyToDOM(cfg: BrandingConfig) {
   const root = document.documentElement.style
-  root.setProperty('--bp-blue', cfg.colors.primary)
-  root.setProperty('--bp-blue-dark', cfg.colors.primaryDark)
-  root.setProperty('--bp-blue-light', cfg.colors.primaryLight)
-  root.setProperty('--bp-blue-pale', cfg.colors.primaryPale)
-  root.setProperty('--bp-green', cfg.colors.accent)
+  root.setProperty('--brand-blue', cfg.colors.primary)
+  root.setProperty('--brand-blue-dark', cfg.colors.primaryDark)
+  root.setProperty('--brand-blue-light', cfg.colors.primaryLight)
+  root.setProperty('--brand-blue-pale', cfg.colors.primaryPale)
+  root.setProperty('--brand-green', cfg.colors.accent)
   root.setProperty('--sidebar-text', cfg.colors.sidebarText)
   // Type colors and table-row colors are owned by their respective composables
   // (useTypeColors, useTableAppearance). useBranding only supplies the defaults

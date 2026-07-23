@@ -136,8 +136,8 @@ function signIn() {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--bp-blue-pale, #dce9f4);
-  color: var(--bp-blue-dark, #1f4d75);
+  background: var(--brand-blue-pale, #dce9f4);
+  color: var(--brand-blue-dark, #1f4d75);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -172,8 +172,8 @@ function signIn() {
   font-size: 14px;
   font-weight: 600;
   color: #fff;
-  background: var(--bp-blue, #2e6da4);
-  border: 1px solid var(--bp-blue-dark, #1f4d75);
+  background: var(--brand-blue, #2e6da4);
+  border: 1px solid var(--brand-blue-dark, #1f4d75);
   border-radius: 8px;
   cursor: pointer;
   transition:
@@ -183,7 +183,7 @@ function signIn() {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
 }
 .se-primary:hover {
-  background: var(--bp-blue-dark, #1f4d75);
+  background: var(--brand-blue-dark, #1f4d75);
 }
 .se-primary:active {
   transform: translateY(1px);

@@ -598,8 +598,8 @@ watch(
   transition: border-color .12s, box-shadow .12s;
 }
 .pku-search__input:focus {
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 18%, transparent);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-blue) 18%, transparent);
 }
 
 .pku-add {
@@ -641,7 +641,7 @@ watch(
   transition: background-color .1s;
 }
 .pku-add__item:hover {
-  background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 10%, transparent);
 }
 
 .pku-chips {
@@ -670,8 +670,8 @@ watch(
 }
 .pku-chip--active {
   color: var(--text);
-  background: color-mix(in srgb, var(--bp-blue) 12%, transparent);
-  border-color: color-mix(in srgb, var(--bp-blue) 35%, var(--border));
+  background: color-mix(in srgb, var(--brand-blue) 12%, transparent);
+  border-color: color-mix(in srgb, var(--brand-blue) 35%, var(--border));
   font-weight: 600;
 }
 .pku-chip__icon {
@@ -691,7 +691,7 @@ watch(
 }
 .pku-chip--active .pku-chip__count {
   color: var(--text);
-  background: color-mix(in srgb, var(--bp-blue) 18%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 18%, transparent);
 }
 
 .pku-toggles {
@@ -733,7 +733,7 @@ watch(
   background: var(--surface-2, var(--bg));
 }
 .pku-row:focus-visible {
-  background: color-mix(in srgb, var(--bp-blue) 8%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 8%, transparent);
 }
 .pku-row--archived {
   opacity: .55;
@@ -756,11 +756,11 @@ watch(
 }
 /* Light type-coding via subtle bg tint. Kept neutral overall — no
    loud accents. */
-.pku-badge[data-type='memory']           { background: color-mix(in srgb, var(--bp-blue) 8%, transparent); color: var(--bp-blue-dark); border-color: color-mix(in srgb, var(--bp-blue) 20%, var(--border)); }
+.pku-badge[data-type='memory']           { background: color-mix(in srgb, var(--brand-blue) 8%, transparent); color: var(--brand-blue-dark); border-color: color-mix(in srgb, var(--brand-blue) 20%, var(--border)); }
 .pku-badge[data-type='runbook']          { background: color-mix(in srgb, #f59e0b 12%, transparent);     color: #92400e;             border-color: color-mix(in srgb, #f59e0b 25%, var(--border)); }
 .pku-badge[data-type='external_system']  { background: color-mix(in srgb, #8b5cf6 10%, transparent);     color: #5b21b6;             border-color: color-mix(in srgb, #8b5cf6 22%, var(--border)); }
 .pku-badge[data-type='related_project']  { background: color-mix(in srgb, #06b6d4 12%, transparent);     color: #155e75;             border-color: color-mix(in srgb, #06b6d4 25%, var(--border)); }
-.pku-badge[data-type='guideline']        { background: color-mix(in srgb, var(--bp-green) 10%, transparent); color: #166534; border-color: color-mix(in srgb, var(--bp-green) 22%, var(--border)); }
+.pku-badge[data-type='guideline']        { background: color-mix(in srgb, var(--brand-green) 10%, transparent); color: #166534; border-color: color-mix(in srgb, var(--brand-green) 22%, var(--border)); }
 
 .pku-row__main {
   flex: 1;
@@ -797,8 +797,8 @@ watch(
   letter-spacing: .04em;
   padding: .1rem .4rem;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--bp-blue) 12%, transparent);
-  color: var(--bp-blue-dark);
+  background: color-mix(in srgb, var(--brand-blue) 12%, transparent);
+  color: var(--brand-blue-dark);
 }
 .pku-row__pill--review {
   background: color-mix(in srgb, #f59e0b 18%, transparent);
@@ -817,10 +817,10 @@ watch(
    open on this entry. Neutral blue-tint same as IssueList's selected
    row. */
 .pku-row--selected {
-  background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 10%, transparent);
 }
 .pku-row--selected:hover {
-  background: color-mix(in srgb, var(--bp-blue) 14%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 14%, transparent);
 }
 
 /* ── responsive ──────────────────────────────────────────── */

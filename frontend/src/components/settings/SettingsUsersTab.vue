@@ -698,7 +698,7 @@ loadUsers()
   white-space: nowrap; transition: background .12s ease, color .12s ease;
 }
 .user-status-filter__opt:hover:not(.is-active) { color: var(--text); }
-.user-status-filter__opt.is-active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.user-status-filter__opt.is-active { background: var(--brand-blue-pale); color: var(--brand-blue-dark); }
 .user-status-filter__count {
   font-size: 11px; font-weight: 700; opacity: .65; margin-left: .15rem;
 }
@@ -707,7 +707,7 @@ loadUsers()
 .role-label { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
 .role-admin    { color: #d97706; }
 .role-super_admin { color: #7c3aed; }
-.role-member   { color: var(--bp-blue); }
+.role-member   { color: var(--brand-blue); }
 .role-external { color: #dc2626; }
 .field-check { display: flex; align-items: flex-start; }
 .check-row {
@@ -717,7 +717,7 @@ loadUsers()
 }
 .check-row input[type="checkbox"] {
   width: auto; margin: 2px 0 0;
-  accent-color: var(--bp-blue);
+  accent-color: var(--brand-blue);
 }
 .check-hint { color: var(--text-muted); font-size: 12px; }
 .check-inline { margin-top: .5rem; font-size: 12px; }
@@ -741,7 +741,7 @@ loadUsers()
 .nick-input {
   width: 56px !important; padding: .2rem .35rem !important;
   font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
-  border: 1px solid var(--bp-blue); border-radius: 4px; outline: none;
+  border: 1px solid var(--brand-blue); border-radius: 4px; outline: none;
   background: #fff;
 }
 .badge-deleted { background: #f8d7da; color: #721c24; }
@@ -752,7 +752,7 @@ loadUsers()
 .project-access-key {
   font-size: 11px; font-weight: 700; letter-spacing: .03em;
   padding: .1rem .4rem; border-radius: 3px;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   margin-right: .5rem;
 }
 .project-access-name { font-weight: 500; font-size: 13px; }
@@ -793,8 +793,8 @@ loadUsers()
 }
 .memb-segmented__opt:hover:not(.is-active) { color: var(--text); }
 .memb-segmented__opt.is-active {
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
 }
 
 /* Add bar — one composed control with hairline-divided segments */
@@ -810,8 +810,8 @@ loadUsers()
   transition: border-color .12s ease, box-shadow .12s ease;
 }
 .memb-add:focus-within {
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px var(--brand-blue-pale);
 }
 .memb-add.is-disabled { opacity: .55; }
 
@@ -857,7 +857,7 @@ loadUsers()
    (no nested border, no rounded-corner mismatch). */
 .memb-add__btn {
   border: none;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -867,7 +867,7 @@ loadUsers()
   transition: background .12s ease;
   white-space: nowrap;
 }
-.memb-add__btn:hover:not(:disabled) { background: var(--bp-blue-dark); }
+.memb-add__btn:hover:not(:disabled) { background: var(--brand-blue-dark); }
 .memb-add__btn:disabled {
   background: var(--bg);
   color: var(--text-muted);

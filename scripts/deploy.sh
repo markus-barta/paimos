@@ -4,7 +4,7 @@
 # Usage:
 #   scripts/deploy.sh <instance> [tag|sha-abcdef0|current] [--preflight]
 #
-# Instance = ppm | pmo. An omitted target defaults to the latest release
+# Instance = ppm (any <name> with a scripts/deploy.<name>.conf works). An omitted target defaults to the latest release
 # tag only when HEAD is not ahead of that tag. If HEAD contains untagged
 # commits, the script refuses to guess; pass a release tag, sha-* image tag,
 # or "current" explicitly.
@@ -32,7 +32,7 @@ PREFLIGHT_ONLY=0
 
 usage() {
   cat >&2 <<'USAGE'
-usage: scripts/deploy.sh <ppm|pmo> [tag|sha-abcdef0|current] [--preflight]
+usage: scripts/deploy.sh <ppm> [tag|sha-abcdef0|current] [--preflight]
 
 Targets:
   v2.4.8 / 2.4.8    deploy a release image

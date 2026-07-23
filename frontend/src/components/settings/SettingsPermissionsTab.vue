@@ -91,6 +91,6 @@ function allowed(cap: Capability, level: string): boolean {
 .cap-label { font-weight: 600; font-size: 14px; }
 .cap-desc  { font-size: 12px; color: var(--text-muted); margin-top: .15rem; }
 .cap-key   { font-family: monospace; font-size: 11px; color: var(--text-muted); margin-top: .2rem; }
-.yes { color: var(--bp-green, #0a7a35); font-weight: 700; font-size: 16px; }
+.yes { color: var(--brand-green, #0a7a35); font-weight: 700; font-size: 16px; }
 .no  { color: var(--text-muted); font-size: 14px; }
 </style>

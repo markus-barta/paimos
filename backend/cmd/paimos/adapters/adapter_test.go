@@ -215,8 +215,8 @@ func TestCanonicalRev_StableAcrossWhitespace(t *testing.T) {
 }
 
 func TestBuildHeader_Format(t *testing.T) {
-	h := BuildHeader("BON26", "ops", "abc123def456", "claude-code")
-	want := "<!-- paimos: rendered from BON26/ops@abc123def456 harness=claude-code -->"
+	h := BuildHeader("CON26", "ops", "abc123def456", "claude-code")
+	want := "<!-- paimos: rendered from CON26/ops@abc123def456 harness=claude-code -->"
 	if h != want {
 		t.Fatalf("got %q want %q", h, want)
 	}

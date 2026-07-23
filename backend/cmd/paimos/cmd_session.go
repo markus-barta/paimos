@@ -55,7 +55,7 @@ CLI consumes (PAI-325).
 
 Typical usage from a slash-command activation hook:
 
-  eval $(paimos session start --project BON26 --agent ops)
+  eval $(paimos session start --project CON26 --agent ops)
 
 Subsequent ` + "`paimos`" + ` writes from that shell carry
 PAIMOS_AGENT_NAME / PAIMOS_SESSION_ID headers automatically.`,
@@ -119,7 +119,7 @@ type projectSummary struct {
 	Key string `json:"key"`
 }
 
-// resolveProjectRefToID accepts either a project key (e.g. BON26) or a
+// resolveProjectRefToID accepts either a project key (e.g. CON26) or a
 // numeric DB id and returns the numeric id. The key-only helper from
 // cmd_issue.go is kept untouched because its callers already enforce
 // "must be a key"; this one is the relaxed variant the session verbs
@@ -246,7 +246,7 @@ func sessionStartCmd() *cobra.Command {
 mints a fresh session UUID, and prints eval-friendly env-var assignments
 to stdout. The output is suitable for:
 
-  eval $(paimos session start --project BON26 --agent ops)
+  eval $(paimos session start --project CON26 --agent ops)
 
 After eval, subsequent paimos writes from that shell carry the
 PAIMOS_AGENT_NAME / PAIMOS_SESSION_ID headers automatically (PAI-325).

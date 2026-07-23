@@ -71,7 +71,7 @@ func TestPropose_StatusLandsProposed(t *testing.T) {
 			"body":   "Bot draft body.",
 			"status": "proposed",
 			"metadata": map[string]any{
-				"originating_tickets": []string{"BON26-492"},
+				"originating_tickets": []string{"CON26-492"},
 			},
 		},
 		map[string]string{

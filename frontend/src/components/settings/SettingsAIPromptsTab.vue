@@ -655,7 +655,7 @@ function clearDryRun() {
 .ap-hero-iconwrap {
   flex-shrink: 0; width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   border-radius: 11px;
 }
 .ap-hero-title {
@@ -694,7 +694,7 @@ function clearDryRun() {
 .ap-row-label { font-size: 13px; color: var(--text); letter-spacing: -.005em; }
 .ap-row-key { font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--text-muted); background: white; padding: .1rem .4rem; border-radius: 5px; border: 1px solid var(--border); }
 .ap-row-surface { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 999px; }
-.ap-row-surface--issue    { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.ap-row-surface--issue    { background: var(--brand-blue-pale); color: var(--brand-blue-dark); }
 .ap-row-surface--customer { background: #ede9fe; color: #5b21b6; }
 .ap-row-place {
   font-size: 9.5px; font-weight: 700;
@@ -761,7 +761,7 @@ function clearDryRun() {
   display: inline-flex; align-items: center; gap: .35rem;
   font-family: 'DM Sans', sans-serif;
 }
-.ape-card-title-icon { color: var(--bp-blue-dark); }
+.ape-card-title-icon { color: var(--brand-blue-dark); }
 .ape-card-hint {
   margin: 0;
   font-size: 12px; line-height: 1.55;
@@ -798,8 +798,8 @@ function clearDryRun() {
 }
 .ape-input:focus {
   outline: none;
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px var(--brand-blue-pale);
 }
 .ape-input--mono { font-family: 'DM Mono', 'JetBrains Mono', monospace; font-size: 12.5px; }
 .ape-input:disabled { background: var(--bg-card); color: var(--text-muted); cursor: not-allowed; }
@@ -830,10 +830,10 @@ function clearDryRun() {
   cursor: pointer;
   transition: border-color .14s, background .14s, transform .12s;
 }
-.ape-radio:hover { border-color: var(--bp-blue-light); transform: translateY(-1px); }
+.ape-radio:hover { border-color: var(--brand-blue-light); transform: translateY(-1px); }
 .ape-radio--active {
-  background: var(--bp-blue-pale);
-  border-color: var(--bp-blue);
+  background: var(--brand-blue-pale);
+  border-color: var(--brand-blue);
 }
 .ape-radio > input[type="radio"] {
   /* Visually hidden — the .ape-radio-mark is the visual control. */
@@ -848,8 +848,8 @@ function clearDryRun() {
   transition: border-color .14s, background .14s;
 }
 .ape-radio--active .ape-radio-mark {
-  border-color: var(--bp-blue);
-  background: var(--bp-blue);
+  border-color: var(--brand-blue);
+  background: var(--brand-blue);
 }
 .ape-radio--active .ape-radio-mark::after {
   content: '';
@@ -867,14 +867,14 @@ function clearDryRun() {
   color: var(--text);
   letter-spacing: -.005em;
 }
-.ape-radio--active .ape-radio-text > strong { color: var(--bp-blue-dark); }
+.ape-radio--active .ape-radio-text > strong { color: var(--brand-blue-dark); }
 .ape-radio-default {
   font-family: 'DM Mono', 'JetBrains Mono', monospace;
   font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 0;
 }
-.ape-radio--active .ape-radio-default { color: var(--bp-blue-dark); opacity: .8; }
+.ape-radio--active .ape-radio-default { color: var(--brand-blue-dark); opacity: .8; }
 
 /* ── Status: toggle-card ────────────────────────────────────────── */
 .ape-toggle-card {
@@ -914,7 +914,7 @@ function clearDryRun() {
   box-shadow: 0 1px 3px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.04);
   transition: transform .22s cubic-bezier(.4, 1.4, .6, 1);
 }
-.ape-switch input:checked + .ape-switch-track { background: var(--bp-blue); }
+.ape-switch input:checked + .ape-switch-track { background: var(--brand-blue); }
 .ape-switch input:checked + .ape-switch-track::before { transform: translateX(18px); }
 
 /* ── Prompt template ────────────────────────────────────────────── */
@@ -922,15 +922,15 @@ function clearDryRun() {
 .ape-var {
   font-family: 'DM Mono', 'JetBrains Mono', monospace;
   font-size: 10.75px;
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
   border: 1px solid transparent;
   border-radius: 6px;
   padding: .2rem .5rem;
   cursor: pointer;
   transition: background .12s, color .12s, transform .1s;
 }
-.ape-var:hover { background: var(--bp-blue); color: white; transform: translateY(-1px); }
+.ape-var:hover { background: var(--brand-blue); color: white; transform: translateY(-1px); }
 
 .ape-textarea {
   font-family: 'DM Mono', 'JetBrains Mono', monospace;
@@ -947,8 +947,8 @@ function clearDryRun() {
 }
 .ape-textarea:focus {
   outline: none;
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px var(--brand-blue-pale);
 }
 
 /* ── Dry-run console ────────────────────────────────────────────── */
@@ -1084,7 +1084,7 @@ function clearDryRun() {
   font-size: 9.5px; font-weight: 700;
   letter-spacing: .08em; text-transform: uppercase;
   padding: .1rem .42rem; border-radius: 999px;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
 }
 .ape-footer-tag--custom { background: #fce7f3; color: #9d174d; }
 .ape-footer-hint { font-style: italic; }
@@ -1117,17 +1117,17 @@ function clearDryRun() {
   border-color: var(--border);
   color: var(--text);
 }
-.ape-btn--ghost:hover:not(:disabled) { background: var(--bg); border-color: var(--bp-blue-light); }
+.ape-btn--ghost:hover:not(:disabled) { background: var(--bg); border-color: var(--brand-blue-light); }
 
 .ape-btn--primary {
-  background: var(--bp-blue);
-  border-color: var(--bp-blue);
+  background: var(--brand-blue);
+  border-color: var(--brand-blue);
   color: white;
   box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 4px 10px rgba(46, 109, 164, .18);
 }
 .ape-btn--primary:hover:not(:disabled) {
-  background: var(--bp-blue-dark, #1f4d75);
-  border-color: var(--bp-blue-dark, #1f4d75);
+  background: var(--brand-blue-dark, #1f4d75);
+  border-color: var(--brand-blue-dark, #1f4d75);
 }
 
 /* Spinner — namespaced so it doesn't collide with any global .spin. */

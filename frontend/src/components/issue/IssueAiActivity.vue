@@ -353,7 +353,7 @@ onMounted(() => {
   padding: 0.12rem 0.38rem;
   border-radius: 999px;
   background: rgba(46, 109, 164, 0.1);
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
 }
 .issue-ai__hint,
 .issue-ai__meta,
@@ -405,7 +405,7 @@ onMounted(() => {
 }
 .issue-ai__item--ai {
   border-color: rgba(46, 109, 164, 0.2);
-  background: color-mix(in srgb, var(--bp-blue, #2563eb) 4%, var(--bg));
+  background: color-mix(in srgb, var(--brand-blue, #2563eb) 4%, var(--bg));
 }
 .issue-ai__undo {
   border: 1px solid var(--border);

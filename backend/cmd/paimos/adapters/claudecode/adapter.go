@@ -22,7 +22,7 @@
 // Section layout (matches PAI-330 ticket):
 //
 //	You are operating as the **<agent.name> session** for <project.name>
-//	(PMO project **<project.key>**).
+//	(PAIMOS project **<project.key>**).
 //
 //	## Your lane
 //	<merged from agent.description + project.repos + project.environments>
@@ -196,7 +196,7 @@ func renderBody(art *canonicalArtifact) string {
 	// emit while iterating on the layout.
 	projectName := strOrFallback(art.Project.Name, art.Project.Key)
 	projectKey := strOrFallback(art.Project.Key, fmt.Sprintf("id=%d", art.Project.ID))
-	fmt.Fprintf(&b, "You are operating as the **%s session** for %s (PMO project **%s**).\n",
+	fmt.Fprintf(&b, "You are operating as the **%s session** for %s (PAIMOS project **%s**).\n",
 		art.Agent.Name, projectName, projectKey)
 
 	// ## Your lane — describes scope: agent description + repos + envs.

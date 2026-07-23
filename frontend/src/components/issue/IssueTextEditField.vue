@@ -253,9 +253,9 @@ textarea {
   justify-content: center;
   gap: 0.5rem;
   background: rgba(46, 109, 164, 0.08);
-  border: 2px dashed var(--bp-blue);
+  border: 2px dashed var(--brand-blue);
   border-radius: var(--radius);
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   font-size: 13px;
   font-weight: 600;
   pointer-events: none;
@@ -355,7 +355,7 @@ textarea {
   top: 0;
   bottom: 0;
   left: 0;
-  background: var(--bp-blue, #2e6da4);
+  background: var(--brand-blue, #2e6da4);
   border-radius: 999px;
   width: 0;
   transition: width 140ms linear;

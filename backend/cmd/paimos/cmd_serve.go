@@ -862,9 +862,9 @@ func (b *contextBroker) repoState() repoStateResponse {
 		}
 	}
 	state.AgentFiles = findAgentInstructionFiles(b.repoRoot)
-	anchors := filepath.Join(b.repoRoot, ".pmo", "anchors.json")
+	anchors := filepath.Join(b.repoRoot, ".paimos", "anchors.json")
 	if _, err := os.Stat(anchors); err == nil {
-		state.AnchorsIndex = ".pmo/anchors.json"
+		state.AnchorsIndex = ".paimos/anchors.json"
 		state.AnchorsPresent = true
 	}
 	return state

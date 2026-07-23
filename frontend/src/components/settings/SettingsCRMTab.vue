@@ -454,7 +454,7 @@ const hasProviders = computed(() => providers.value.length > 0)
   overflow: hidden;
   transition: box-shadow .18s ease, border-color .18s ease;
 }
-.crm-card--open { border-color: var(--bp-blue-light); box-shadow: var(--shadow); }
+.crm-card--open { border-color: var(--brand-blue-light); box-shadow: var(--shadow); }
 
 .crm-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -495,7 +495,7 @@ const hasProviders = computed(() => providers.value.length > 0)
   box-shadow: 0 1px 2px rgba(0,0,0,.2);
   transition: transform .18s;
 }
-.crm-toggle input:checked + .crm-toggle-track { background: var(--bp-blue); }
+.crm-toggle input:checked + .crm-toggle-track { background: var(--brand-blue); }
 .crm-toggle input:checked + .crm-toggle-track::before { transform: translateX(14px); }
 .crm-toggle input:disabled + .crm-toggle-track { opacity: .5; cursor: not-allowed; }
 
@@ -566,7 +566,7 @@ const hasProviders = computed(() => providers.value.length > 0)
   color: var(--text);
 }
 .crm-secret-eye:focus-visible {
-  outline: 2px solid var(--bp-blue);
+  outline: 2px solid var(--brand-blue);
   outline-offset: 1px;
 }
 

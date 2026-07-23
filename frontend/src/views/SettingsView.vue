@@ -42,7 +42,7 @@ const { tabs, activeTab, activeTabDef, activeTabProps, setTab } = useSettingsTab
   border-radius: var(--radius) var(--radius) 0 0;
 }
 .tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--bp-blue-dark); border-bottom-color: var(--bp-blue); font-weight: 600; }
+.tab-btn.active { color: var(--brand-blue-dark); border-bottom-color: var(--brand-blue); font-weight: 600; }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .tab-content { display: flex; flex-direction: column; gap: 0; }

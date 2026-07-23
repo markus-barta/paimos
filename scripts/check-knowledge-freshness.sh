@@ -52,7 +52,7 @@ check_no_matches "stale schema examples" 'version[=:][[:space:]]+1\.[12]\.0' doc
 check_no_matches "PAI-110 still described as open" 'PAI-110.*(open|still open)|still open.*PAI-110' docs "${cache_scope[@]}"
 
 if [[ "${PAIMOS_CHECK_LIVE:-0}" == "1" ]]; then
-  for url in https://pm.barta.cm https://pm.bytepoets.com; do
+  for url in https://pm.barta.cm; do
     live=$(curl -fsS "$url/api/health" | jq -r '.version')
     if [[ "$live" != "$version" ]]; then
       echo "knowledge freshness: $url health version $live != VERSION $version" >&2

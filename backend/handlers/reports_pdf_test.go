@@ -30,8 +30,8 @@ func TestLieferbericht_UngroupedUsesProjectKey(t *testing.T) {
 	ts := newTestServer(t)
 
 	resp := ts.post(t, "/api/projects", ts.adminCookie, map[string]string{
-		"name": "Bonelio",
-		"key":  "BON26",
+		"name": "Contoso",
+		"key":  "CON26",
 	})
 	assertStatus(t, resp, http.StatusCreated)
 	projectID := responseID(t, resp)
@@ -59,8 +59,8 @@ func TestLieferbericht_UngroupedUsesProjectKey(t *testing.T) {
 	if len(body.Groups) != 1 {
 		t.Fatalf("expected one group, got %d", len(body.Groups))
 	}
-	if body.Groups[0].EpicKey != "BON26" || body.Groups[0].EpicTitle != "BON26" {
-		t.Fatalf("ungrouped fallback = %q/%q, want BON26/BON26", body.Groups[0].EpicKey, body.Groups[0].EpicTitle)
+	if body.Groups[0].EpicKey != "CON26" || body.Groups[0].EpicTitle != "CON26" {
+		t.Fatalf("ungrouped fallback = %q/%q, want CON26/CON26", body.Groups[0].EpicKey, body.Groups[0].EpicTitle)
 	}
 }
 
@@ -241,7 +241,7 @@ func TestLieferberichtPDF_BasicRender(t *testing.T) {
 	}
 	req.Header.Set("Cookie", ts.adminCookie)
 	req.Header.Set("X-Forwarded-Proto", "https")
-	req.Header.Set("X-Forwarded-Host", "pm.bytepoets.com")
+	req.Header.Set("X-Forwarded-Host", "pm.example.com")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET pdf: %v", err)
@@ -308,7 +308,7 @@ func TestLieferberichtPDF_TextSourceParam(t *testing.T) {
 		}
 		req.Header.Set("Cookie", ts.adminCookie)
 		req.Header.Set("X-Forwarded-Proto", "https")
-		req.Header.Set("X-Forwarded-Host", "pm.bytepoets.com")
+		req.Header.Set("X-Forwarded-Host", "pm.example.com")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("GET pdf %s: %v", src, err)
@@ -352,7 +352,7 @@ func TestProjektberichtSnapshotAcceptanceFlow(t *testing.T) {
 	}
 	req.Header.Set("Cookie", ts.adminCookie)
 	req.Header.Set("X-Forwarded-Proto", "https")
-	req.Header.Set("X-Forwarded-Host", "pm.bytepoets.com")
+	req.Header.Set("X-Forwarded-Host", "pm.example.com")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET projektbericht pdf: %v", err)

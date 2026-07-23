@@ -169,7 +169,7 @@ you who you are without inspecting cookies.
 
 - ❌ **Production-deployed instances.** Won't work — the handler
   symbol isn't in the binary — but worth saying anyway. Setting
-  `PAIMOS_DEV_LOGIN_TOKEN` on a `pm.barta.cm` or `pm.bytepoets.com`
+  `PAIMOS_DEV_LOGIN_TOKEN` on a production `pm.barta.cm`
   shell is a no-op.
 - ❌ **Pre-prod / staging environments where real users exist.** The
   fixture users have empty password columns; if dev-login is ever

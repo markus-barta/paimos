@@ -119,7 +119,7 @@ jobs:
 
       - name: Anchor index — verify dogfood anchors
         working-directory: backend
-        run: go run ./cmd/paimos anchors verify --repo-root .. --index ../.pmo/anchors.json
+        run: go run ./cmd/paimos anchors verify --repo-root .. --index ../.paimos/anchors.json
 
       - name: Frontend — lint + typecheck + test
         working-directory: frontend

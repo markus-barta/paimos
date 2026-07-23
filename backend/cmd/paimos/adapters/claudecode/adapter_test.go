@@ -12,10 +12,10 @@ import (
 	"testing"
 )
 
-// fixtureBon26 is a representative BON26 / ops canonical artifact, the
+// fixtureContoso26 is a representative CON26 / ops canonical artifact, the
 // shape PAI-329 emits. Stays inline so the adapter test is self-contained.
-const fixtureBon26 = `{
-  "project": {"id": 6, "name": "Bonelio 2026", "key": "BON26"},
+const fixtureContoso26 = `{
+  "project": {"id": 6, "name": "Contoso 2026", "key": "CON26"},
   "agent": {
     "name": "ops",
     "description": "Infra, deploys, secrets, runtime.",
@@ -33,7 +33,7 @@ const fixtureBon26 = `{
     ]
   },
   "repos": [
-    {"label": "bonelio26-backend", "url": "https://github.com/example/bonelio26-backend", "default_branch": "main"}
+    {"label": "contoso26-backend", "url": "https://github.com/example/contoso26-backend", "default_branch": "main"}
   ],
   "environments": [
     {"name": "staging", "url": "https://stg.example.com", "host_alias": "ops-staging", "host_ip": "10.0.0.5"}
@@ -44,7 +44,7 @@ const fixtureBon26 = `{
 }`
 
 // fixtureFreshProject is a totally different project shape — used for
-// the "no Bonelio assumptions" acceptance test.
+// the "no Acme assumptions" acceptance test.
 const fixtureFreshProject = `{
   "project": {"id": 42, "name": "Acme Widgets", "key": "ACME"},
   "agent": {
@@ -97,12 +97,12 @@ func TestAdapter_RegistryFields(t *testing.T) {
 	}
 }
 
-// TestAdapter_RenderBon26 verifies the Bon26 canonical artifact
+// TestAdapter_RenderContoso26 verifies the Contoso26 canonical artifact
 // produces a recognisable Claude-Code skill (matches the look-and-feel
 // the ticket calls out).
-func TestAdapter_RenderBon26(t *testing.T) {
+func TestAdapter_RenderContoso26(t *testing.T) {
 	a := New()
-	res, err := a.Render([]byte(fixtureBon26))
+	res, err := a.Render([]byte(fixtureContoso26))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestAdapter_RenderBon26(t *testing.T) {
 	}
 
 	mustContain := []string{
-		"You are operating as the **ops session** for Bonelio 2026 (PMO project **BON26**)",
+		"You are operating as the **ops session** for Contoso 2026 (PAIMOS project **CON26**)",
 		"## Your lane",
 		"Infra, deploys, secrets, runtime.",
 		"## Bootstrap",
@@ -128,7 +128,7 @@ func TestAdapter_RenderBon26(t *testing.T) {
 		"backend-staging",
 		"## Free body",
 		"What ops owns",
-		"bonelio26-backend",
+		"contoso26-backend",
 		"staging",
 		"ops-staging",
 	}
@@ -143,17 +143,17 @@ func TestAdapter_RenderBon26(t *testing.T) {
 	}
 }
 
-// TestAdapter_NoBonelioAssumptions: render against a fresh project
-// with different agents → succeeds with no hardcoded "BON26"/"Bonelio"
+// TestAdapter_NoContosoAssumptions: render against a fresh project
+// with different agents → succeeds with no hardcoded "CON26"/"Contoso"
 // strings. AC requirement.
-func TestAdapter_NoBonelioAssumptions(t *testing.T) {
+func TestAdapter_NoContosoAssumptions(t *testing.T) {
 	a := New()
 	res, err := a.Render([]byte(fixtureFreshProject))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(res.Content, "BON26") || strings.Contains(res.Content, "Bonelio") {
-		t.Fatalf("output must not contain Bonelio-specific strings:\n%s", res.Content)
+	if strings.Contains(res.Content, "CON26") || strings.Contains(res.Content, "Contoso") {
+		t.Fatalf("output must not contain Contoso-specific strings:\n%s", res.Content)
 	}
 	if !strings.Contains(res.Content, "Acme Widgets") || !strings.Contains(res.Content, "ACME") {
 		t.Fatalf("output should reference fresh project values:\n%s", res.Content)

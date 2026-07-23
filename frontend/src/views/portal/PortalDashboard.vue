@@ -437,7 +437,7 @@ function reportItemCount(n: number): string {
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 .kpi-card--clickable:hover:not(:disabled) {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   box-shadow: var(--shadow-md);
 }
 .kpi-card--clickable:disabled {
@@ -445,8 +445,8 @@ function reportItemCount(n: number): string {
   opacity: .7;
 }
 .kpi-card--accent {
-  border-color: var(--bp-blue);
-  background: var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  background: var(--brand-blue-pale);
 }
 .kpi-value {
   font-size: 24px;
@@ -454,7 +454,7 @@ function reportItemCount(n: number): string {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.kpi-card--accent .kpi-value { color: var(--bp-blue-dark); }
+.kpi-card--accent .kpi-value { color: var(--brand-blue-dark); }
 .kpi-label {
   font-size: 11px;
   color: var(--text-muted);
@@ -525,14 +525,14 @@ function reportItemCount(n: number): string {
   cursor: pointer;
   color: inherit;
 }
-.awaiting-main:hover .awaiting-title { color: var(--bp-blue); }
+.awaiting-main:hover .awaiting-title { color: var(--brand-blue); }
 .awaiting-key {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .04em;
   font-family: monospace;
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
   padding: .15rem .4rem;
   border-radius: 3px;
   text-align: center;
@@ -578,7 +578,7 @@ function reportItemCount(n: number): string {
   gap: .25rem;
 }
 .btn-success {
-  background: var(--bp-green, #16a34a);
+  background: var(--brand-green, #16a34a);
   color: white;
   border: 1px solid transparent;
 }
@@ -618,7 +618,7 @@ function reportItemCount(n: number): string {
   transition: box-shadow .15s, border-color .15s, transform .15s;
 }
 .project-card:hover {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
@@ -639,8 +639,8 @@ function reportItemCount(n: number): string {
   letter-spacing: .03em;
   padding: .15rem .5rem;
   border-radius: 4px;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
   font-family: monospace;
 }
 .card-name {
@@ -719,8 +719,8 @@ function reportItemCount(n: number): string {
   font-family: monospace;
   font-size: 11px;
   font-weight: 700;
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
   padding: .15rem .4rem;
   border-radius: 3px;
   text-align: center;

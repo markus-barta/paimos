@@ -157,7 +157,7 @@ paimos --json issue list --project PAI --status backlog
 ```bash
 # Multiple PAIMOS instances
 paimos auth login --name ppm       --url https://pm.barta.cm
-paimos auth login --name bytepoets --url https://pm.bytepoets.com
+paimos auth login --name staging   --url https://pm.staging.example.com
 paimos --instance ppm issue list   # switch per-command
 
 # CI / containers (no OS keyring available)

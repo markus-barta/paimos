@@ -152,7 +152,7 @@ function openPillPicker() {
   font-size: 12px;
 }
 .tag-input:focus {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   box-shadow: 0 0 0 3px rgba(46,109,164,.12);
 }
 
@@ -175,9 +175,9 @@ function openPillPicker() {
 .tag-add-pill::before { content: '+'; font-weight: 700; }
 .tag-add-pill:hover,
 .tag-add-pill:focus-visible {
-  color: var(--bp-blue-dark);
-  border-color: var(--bp-blue);
-  background: color-mix(in srgb, var(--bp-blue) 7%, transparent);
+  color: var(--brand-blue-dark);
+  border-color: var(--brand-blue);
+  background: color-mix(in srgb, var(--brand-blue) 7%, transparent);
   outline: none;
 }
 

@@ -36,7 +36,7 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 ### Rules for LLMs reading this doc
 
-1. **In a chat client (Claude Desktop, Cursor)** — call the MCP tools. They show up as `paimos-ppm.*` / `paimos-pmo.*` namespaces; use the namespace that matches the instance the user wants.
+1. **In a chat client (Claude Desktop, Cursor)** — call the MCP tools. They show up as `paimos-<instance>.*` namespaces (e.g. `paimos-ppm.*`); use the namespace that matches the instance the user wants.
 2. **In a shell session (Claude Code, bash agent, CI)** — shell out to `paimos`. Same machine, same OS-keyring auth, lower token cost, and you can pipe `--json` output into `jq` for follow-up work.
 3. **Reach for `curl` only** when (a) the CLI lacks the verb, or (b) you're explicitly debugging HTTP-level behavior. If you find yourself reaching for `curl` more than rarely in normal work, file a CLI gap as a child of [PAI-373](https://pm.barta.cm/issues/PAI-373).
 4. **Never mix surfaces in a single task** — if you start with the CLI, finish with the CLI. Swapping mid-flow means duplicated auth setup, inconsistent error handling, and harder reproduction when something fails.
@@ -106,7 +106,7 @@ Multi-instance is supported:
 
 ```sh
 paimos auth login --name ppm       --url https://pm.barta.cm
-paimos auth login --name bytepoets --url https://pm.bytepoets.com
+paimos auth login --name staging   --url https://pm.staging.example.com
 ```
 
 Use `--instance <name>` on any command to switch, or rely on `default_instance`.
@@ -515,7 +515,7 @@ Mints a session UUID and emits env-var assignments that subsequent
 mutation log can answer "which agent did this in which session?":
 
 ```sh
-eval $(paimos session start --project BON26 --agent ops)
+eval $(paimos session start --project ACME26 --agent ops)
 # PAIMOS_AGENT_NAME / PAIMOS_SESSION_ID now exported
 paimos session show                    # echo the current values
 eval $(paimos session end)             # clear the env

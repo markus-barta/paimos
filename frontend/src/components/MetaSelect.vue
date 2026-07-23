@@ -255,7 +255,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
 }
 .meta-select-trigger:hover,
 .meta-select.open .meta-select-trigger {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   background: var(--bg);
 }
 .meta-select--disabled .meta-select-trigger,
@@ -300,7 +300,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   padding: .3rem .5rem; font-size: 12px; font-family: inherit; outline: none;
   background: var(--bg);
 }
-.ms-search:focus { border-color: var(--bp-blue); }
+.ms-search:focus { border-color: var(--brand-blue); }
 .ms-options-scroll { flex: 1 1 auto; min-height: 0; max-height: 240px; overflow-y: auto; }
 .ms-no-results { padding: .4rem .75rem; font-size: 11px; color: var(--text-muted); }
 
@@ -323,7 +323,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   transition: background .08s;
 }
 .ms-option:hover { background: var(--bg); }
-.ms-option.active { background: var(--bp-blue-pale); }
+.ms-option.active { background: var(--brand-blue-pale); }
 
 /* Dot indicator */
 .ms-dot {

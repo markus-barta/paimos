@@ -36,7 +36,7 @@ func fixtureBriefingInput(withAgent bool) briefingInput {
 			"description": "Operate the production rig.",
 			"body": "The ops agent owns the deploy path and the on-call rotation. Read the runbooks before touching prod.",
 			"bootstrap_steps": [
-				{"title":"Check on-call","command":"paimos session start --project BON26 --agent ops","rationale":"You inherit the rotation owner's queue."}
+				{"title":"Check on-call","command":"paimos session start --project CON26 --agent ops","rationale":"You inherit the rotation owner's queue."}
 			],
 			"non_negotiable_rules": [
 				{"title":"No prod pushes after 16:00","body":"Cut-off so any incident has daylight to triage.","memory_ref":"deploy_window"}
@@ -45,7 +45,7 @@ func fixtureBriefingInput(withAgent bool) briefingInput {
 	}`)
 
 	bundle := &bundlePayload{
-		Project: projectSummary{ID: 42, Key: "BON26"},
+		Project: projectSummary{ID: 42, Key: "CON26"},
 		Agent:   agentRaw,
 		Memory: []knowledgeEntry{
 			{Slug: "imac_rule", Title: "Use imac for prod", Body: "Always SSH to imac, not laptop.",
@@ -78,13 +78,13 @@ func fixtureBriefingInput(withAgent bool) briefingInput {
 	}
 	in := briefingInput{
 		project: projectDetail{
-			ID: 42, Key: "BON26", Name: "Bonelio",
-			Description: "Bonelio is the customer-facing accruals app. The team ships fast on a Vue3+Go stack.",
+			ID: 42, Key: "CON26", Name: "Contoso",
+			Description: "Contoso is the customer-facing accruals app. The team ships fast on a Vue3+Go stack.",
 		},
 		bundle: bundle,
 		recent: []recentIssue{
-			{IssueKey: "BON26-100", Title: "Refresh deploy creds", Status: "done", UpdatedAt: "2026-05-07T18:00:00Z"},
-			{IssueKey: "BON26-99", Title: "Fix flaky test", Status: "delivered", UpdatedAt: "2026-05-06T11:00:00Z"},
+			{IssueKey: "CON26-100", Title: "Refresh deploy creds", Status: "done", UpdatedAt: "2026-05-07T18:00:00Z"},
+			{IssueKey: "CON26-99", Title: "Fix flaky test", Status: "delivered", UpdatedAt: "2026-05-06T11:00:00Z"},
 		},
 		readingListSize: 10,
 	}
@@ -106,10 +106,10 @@ func TestRenderBriefing_ProjectLevelMarkdown(t *testing.T) {
 		t.Fatalf("renderBriefing: %v", err)
 	}
 	wantSubstrings := []string{
-		"<!-- paimos: onboarded BON26@abc123def456 at ",
-		"# Welcome to Bonelio",
+		"<!-- paimos: onboarded CON26@abc123def456 at ",
+		"# Welcome to Contoso",
 		"## What this project is",
-		"Bonelio is the customer-facing accruals app",
+		"Contoso is the customer-facing accruals app",
 		"Related projects:",
 		"## Key external systems",
 		"Sentry",
@@ -117,11 +117,11 @@ func TestRenderBriefing_ProjectLevelMarkdown(t *testing.T) {
 		"## How we work",
 		"Every commit references a PAI ticket",
 		"## Recent context",
-		"BON26-100",
+		"CON26-100",
 		"## Known runbooks",
 		"Deploy to prod",
 		"## Where to look",
-		".paimos/cache/BON26/",
+		".paimos/cache/CON26/",
 		"## Reading list",
 		"Use imac for prod",
 		"_(confidence: high)_",
@@ -153,7 +153,7 @@ func TestRenderBriefing_AgentLevelMarkdown(t *testing.T) {
 		"### Excerpt",
 		"### Bootstrap steps",
 		"Check on-call",
-		"paimos session start --project BON26 --agent ops",
+		"paimos session start --project CON26 --agent ops",
 		"### Non-negotiable rules",
 		"No prod pushes after 16:00",
 		"_(memory: `deploy_window`)_",
@@ -178,14 +178,14 @@ func TestRenderBriefing_HTMLFormat(t *testing.T) {
 	wantSubstrings := []string{
 		"<!DOCTYPE html>",
 		"<style>",
-		"<!-- paimos: onboarded BON26@htmlrev1234 [agent=ops]",
-		"<h1>Welcome to Bonelio</h1>",
+		"<!-- paimos: onboarded CON26@htmlrev1234 [agent=ops]",
+		"<h1>Welcome to Contoso</h1>",
 		"<h2>What this project is</h2>",
 		"<h2>Key external systems</h2>",
 		`<a href="https://sentry.example">`,
 		"<h2>How we work</h2>",
 		"<h2>Recent context</h2>",
-		"BON26-100",
+		"CON26-100",
 		"<h2>If you're playing the ops role</h2>",
 		"<h3>Bootstrap steps</h3>",
 		"<h3>Non-negotiable rules</h3>",
@@ -271,12 +271,12 @@ func TestParseOnboardHeader(t *testing.T) {
 	}{
 		{
 			name:    "project-only",
-			body:    "<!-- paimos: onboarded BON26@abc123def456 at 2026-05-08T13:00:00Z -->\n\n# Welcome",
+			body:    "<!-- paimos: onboarded CON26@abc123def456 at 2026-05-08T13:00:00Z -->\n\n# Welcome",
 			wantRev: "abc123def456", wantOK: true,
 		},
 		{
 			name:      "with-agent",
-			body:      "<!-- paimos: onboarded BON26@deadbeef1234 [agent=ops] at 2026-05-08T13:00:00Z -->\n\n# Welcome",
+			body:      "<!-- paimos: onboarded CON26@deadbeef1234 [agent=ops] at 2026-05-08T13:00:00Z -->\n\n# Welcome",
 			wantRev:   "deadbeef1234",
 			wantAgent: "ops", wantOK: true,
 		},
@@ -287,7 +287,7 @@ func TestParseOnboardHeader(t *testing.T) {
 		},
 		{
 			name:   "malformed-no-rev",
-			body:   "<!-- paimos: onboarded BON26 at 2026 -->",
+			body:   "<!-- paimos: onboarded CON26 at 2026 -->",
 			wantOK: false,
 		},
 		{
@@ -320,7 +320,7 @@ func TestParseOnboardHeader(t *testing.T) {
 func TestRunOnboardCheck_Identical(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "briefing.md")
-	body := "<!-- paimos: onboarded BON26@samerev1234 at 2026-05-08T13:00:00Z -->\n\n# Welcome\n"
+	body := "<!-- paimos: onboarded CON26@samerev1234 at 2026-05-08T13:00:00Z -->\n\n# Welcome\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestRunOnboardCheck_Identical(t *testing.T) {
 func TestRunOnboardCheck_Drift(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "briefing.md")
-	body := "<!-- paimos: onboarded BON26@oldrev123 at 2026-05-08T13:00:00Z -->\n\n# Welcome\n"
+	body := "<!-- paimos: onboarded CON26@oldrev123 at 2026-05-08T13:00:00Z -->\n\n# Welcome\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -475,14 +475,14 @@ func startOnboardAPI(t *testing.T) *httptest.Server {
 		path := r.URL.Path
 		switch {
 		case r.Method == http.MethodGet && path == "/api/projects":
-			_, _ = w.Write([]byte(`[{"id":42,"key":"BON26","name":"Bonelio"}]`))
+			_, _ = w.Write([]byte(`[{"id":42,"key":"CON26","name":"Contoso"}]`))
 		case r.Method == http.MethodGet && path == "/api/projects/42":
-			_, _ = w.Write([]byte(`{"id":42,"key":"BON26","name":"Bonelio","description":"Bonelio is the customer-facing accruals app."}`))
+			_, _ = w.Write([]byte(`{"id":42,"key":"CON26","name":"Contoso","description":"Contoso is the customer-facing accruals app."}`))
 		case r.Method == http.MethodGet && path == "/api/projects/42/agents":
 			_, _ = w.Write([]byte(`[{"name":"ops"}]`))
 		case r.Method == http.MethodGet && path == "/api/projects/42/agents/ops.json":
 			_, _ = w.Write([]byte(`{
-				"project": {"id":42,"key":"BON26","name":"Bonelio"},
+				"project": {"id":42,"key":"CON26","name":"Contoso"},
 				"agent": {
 					"name": "ops",
 					"description": "Operate the production rig.",
@@ -519,8 +519,8 @@ func startOnboardAPI(t *testing.T) *httptest.Server {
 			}
 		case r.Method == http.MethodGet && path == "/api/projects/42/issues":
 			_, _ = w.Write([]byte(`[
-				{"issue_key":"BON26-100","title":"Refresh deploy creds","status":"done","updated_at":"2026-05-07T18:00:00Z"},
-				{"issue_key":"BON26-99","title":"Fix flaky test","status":"delivered","updated_at":"2026-05-06T11:00:00Z"}
+				{"issue_key":"CON26-100","title":"Refresh deploy creds","status":"done","updated_at":"2026-05-07T18:00:00Z"},
+				{"issue_key":"CON26-99","title":"Fix flaky test","status":"delivered","updated_at":"2026-05-06T11:00:00Z"}
 			]`))
 		case r.Method == http.MethodGet && path == "/api/auth/me":
 			_, _ = w.Write([]byte(`{"user":{"id":7,"username":"mba"}}`))
@@ -544,21 +544,21 @@ func TestOnboard_ProjectLevel_E2E(t *testing.T) {
 	t.Setenv(envAPIKey, "test_key")
 	useTempCWD(t)
 
-	out, _, err := executeCLIForTest(t, "onboard", "--project", "BON26")
+	out, _, err := executeCLIForTest(t, "onboard", "--project", "CON26")
 	if err != nil {
 		t.Fatalf("executeCLIForTest: %v", err)
 	}
 	wantSubstrings := []string{
-		"<!-- paimos: onboarded BON26@",
-		"# Welcome to Bonelio",
+		"<!-- paimos: onboarded CON26@",
+		"# Welcome to Contoso",
 		"## What this project is",
-		"Bonelio is the customer-facing accruals app",
+		"Contoso is the customer-facing accruals app",
 		"## Key external systems",
 		"https://sentry.example",
 		"## How we work",
 		"Every commit references PAI",
 		"## Recent context",
-		"BON26-100",
+		"CON26-100",
 		"## Where to look",
 	}
 	for _, want := range wantSubstrings {
@@ -580,7 +580,7 @@ func TestOnboard_AgentLevel_E2E(t *testing.T) {
 	t.Setenv(envAPIKey, "test_key")
 	useTempCWD(t)
 
-	out, _, err := executeCLIForTest(t, "onboard", "--project", "BON26", "--agent", "ops")
+	out, _, err := executeCLIForTest(t, "onboard", "--project", "CON26", "--agent", "ops")
 	if err != nil {
 		t.Fatalf("executeCLIForTest: %v", err)
 	}
@@ -610,7 +610,7 @@ func TestOnboard_HTMLFormat_E2E(t *testing.T) {
 	out := filepath.Join(tmp, "brief.html")
 
 	stdout, _, err := executeCLIForTest(t,
-		"onboard", "--project", "BON26", "--format", "html", "--out", out)
+		"onboard", "--project", "CON26", "--format", "html", "--out", out)
 	if err != nil {
 		t.Fatalf("executeCLIForTest: %v", err)
 	}
@@ -624,8 +624,8 @@ func TestOnboard_HTMLFormat_E2E(t *testing.T) {
 	wantSubstrings := []string{
 		"<!DOCTYPE html>",
 		"<style>",
-		"<!-- paimos: onboarded BON26@",
-		"<h1>Welcome to Bonelio</h1>",
+		"<!-- paimos: onboarded CON26@",
+		"<h1>Welcome to Contoso</h1>",
 	}
 	for _, want := range wantSubstrings {
 		if !strings.Contains(string(body), want) {
@@ -646,13 +646,13 @@ func TestOnboard_CheckMode_E2E(t *testing.T) {
 
 	// Render.
 	if _, _, err := executeCLIForTest(t,
-		"onboard", "--project", "BON26", "--out", briefPath); err != nil {
+		"onboard", "--project", "CON26", "--out", briefPath); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 
 	// Identical: exit 0.
 	if _, _, err := executeCLIForTest(t,
-		"onboard", "--project", "BON26", "--out", briefPath, "--check"); err != nil {
+		"onboard", "--project", "CON26", "--out", briefPath, "--check"); err != nil {
 		t.Errorf("identical check: expected nil err, got %v", err)
 	}
 
@@ -661,13 +661,13 @@ func TestOnboard_CheckMode_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	mutated := strings.Replace(string(body), "<!-- paimos: onboarded BON26@",
-		"<!-- paimos: onboarded BON26@deadrev00000 oldat=", 1)
+	mutated := strings.Replace(string(body), "<!-- paimos: onboarded CON26@",
+		"<!-- paimos: onboarded CON26@deadrev00000 oldat=", 1)
 	if err := os.WriteFile(briefPath, []byte(mutated), 0o644); err != nil {
 		t.Fatalf("rewrite: %v", err)
 	}
 	_, _, err = executeCLIForTest(t,
-		"onboard", "--project", "BON26", "--out", briefPath, "--check")
+		"onboard", "--project", "CON26", "--out", briefPath, "--check")
 	ce, ok := err.(*checkExitCode)
 	if !ok {
 		t.Fatalf("drift: err type=%T (%v)", err, err)
@@ -681,7 +681,7 @@ func TestOnboard_CheckMode_E2E(t *testing.T) {
 		t.Fatalf("strip header: %v", err)
 	}
 	_, _, err = executeCLIForTest(t,
-		"onboard", "--project", "BON26", "--out", briefPath, "--check")
+		"onboard", "--project", "CON26", "--out", briefPath, "--check")
 	ce, ok = err.(*checkExitCode)
 	if !ok {
 		t.Fatalf("header-missing: err type=%T (%v)", err, err)
@@ -698,7 +698,7 @@ func TestOnboard_InvalidFormat(t *testing.T) {
 	t.Setenv(envAPIKey, "test_key")
 	useTempCWD(t)
 
-	_, _, err := executeCLIForTest(t, "onboard", "--project", "BON26", "--format", "pdf")
+	_, _, err := executeCLIForTest(t, "onboard", "--project", "CON26", "--format", "pdf")
 	if err == nil {
 		t.Fatal("expected usage error for --format pdf")
 	}

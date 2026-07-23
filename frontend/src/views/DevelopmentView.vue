@@ -200,9 +200,9 @@ const missingReports = computed(() =>
   text-align: left; transition: background .1s;
 }
 .report-header:hover { background: var(--bg); }
-.report-row--open .report-header { background: var(--bp-blue-pale); }
+.report-row--open .report-header { background: var(--brand-blue-pale); }
 
-.report-version { font-weight: 700; color: var(--bp-blue-dark); font-family: 'DM Mono', monospace; font-size: 12px; }
+.report-version { font-weight: 700; color: var(--brand-blue-dark); font-family: 'DM Mono', monospace; font-size: 12px; }
 .report-date    { color: var(--text-muted); font-size: 12px; }
 .report-size    { color: var(--text-muted); font-size: 11px; margin-left: auto; }
 .report-chevron { color: var(--text-muted); flex-shrink: 0; }

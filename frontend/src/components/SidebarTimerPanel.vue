@@ -345,6 +345,6 @@ const canGoNext = computed(() => !isToday.value)
   box-shadow: 0 8px 32px rgba(0,0,0,.2);
 }
 .timer-dialog-msg { font-size: 14px; margin: 0 0 1rem; line-height: 1.5; }
-.timer-dialog-elapsed { color: var(--bp-green, #16a34a); font-weight: 600; }
+.timer-dialog-elapsed { color: var(--brand-green, #16a34a); font-weight: 600; }
 .timer-dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; }
 </style>

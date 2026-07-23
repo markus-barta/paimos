@@ -62,13 +62,13 @@ const {
   font-size: 12px; color: #8fa7be;
   overflow: hidden;
 }
-.sprint-target:hover { background: color-mix(in srgb, var(--bp-blue) 12%, transparent); color: var(--sidebar-text, #c8d5e2); }
-.sprint-target--active { background: color-mix(in srgb, var(--bp-blue) 18%, transparent); color: #fff; border-color: color-mix(in srgb, var(--bp-blue) 35%, transparent); }
+.sprint-target:hover { background: color-mix(in srgb, var(--brand-blue) 12%, transparent); color: var(--sidebar-text, #c8d5e2); }
+.sprint-target--active { background: color-mix(in srgb, var(--brand-blue) 18%, transparent); color: #fff; border-color: color-mix(in srgb, var(--brand-blue) 35%, transparent); }
 .sprint-target--collapsed { justify-content: center; padding-left: 0; padding-right: 0; gap: 0; }
 .sprint-target--current { color: var(--sidebar-text, #c8d5e2); }
 .sprint-target--dragover {
-  background: color-mix(in srgb, var(--bp-blue) 22%, transparent);
-  border-color: color-mix(in srgb, var(--bp-blue) 50%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 22%, transparent);
+  border-color: color-mix(in srgb, var(--brand-blue) 50%, transparent);
   color: #fff;
 }
 .sprint-target--assigning { background: rgba(5,150,105,.18); border-color: rgba(5,150,105,.4); }

@@ -79,9 +79,9 @@ const logoUrl = computed(() => provider.value?.logo_url ?? '')
   font-family: 'DM Sans', system-ui, sans-serif;
 }
 .provider-badge:hover {
-  border-color: var(--bp-blue);
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
 }
 .provider-badge--compact {
   width: 22px; height: 22px; padding: 0;

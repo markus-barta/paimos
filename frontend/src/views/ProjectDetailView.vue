@@ -1694,7 +1694,7 @@ watch(
   font-size: 12px;
   font-weight: 600;
   font-family: monospace;
-  color: var(--bp-blue);
+  color: var(--brand-blue);
 }
 .ph-last-link:hover {
   text-decoration: underline;
@@ -1934,7 +1934,7 @@ textarea {
   text-decoration: none;
 }
 .group-link:hover {
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   text-decoration: underline;
 }
 
@@ -2013,9 +2013,9 @@ textarea {
   background: var(--bg);
 }
 .pd-customer-pill:hover {
-  border-color: var(--bp-blue);
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
 }
 
 .pd-inherit-hint {
@@ -2023,7 +2023,7 @@ textarea {
   align-items: center;
   gap: 0.25rem;
   font-size: 11px;
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   margin-top: 0.15rem;
 }
 

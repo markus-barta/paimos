@@ -925,7 +925,7 @@ init()
 .profile-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .profile-avatar-placeholder {
   width: 72px; height: 72px; border-radius: 50%;
-  background: var(--bp-blue); color: #fff;
+  background: var(--brand-blue); color: #fff;
   display: flex; align-items: center; justify-content: center;
   font-size: 22px; font-weight: 700;
 }
@@ -1001,8 +1001,8 @@ init()
   margin-right: -.5rem;
   padding-left: .5rem;
   padding-right: .5rem;
-  background: color-mix(in srgb, var(--bp-blue) 7%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bp-blue) 24%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 7%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-blue) 24%, transparent);
 }
 .pref-toggle-row--embedded {
   padding: 0;
@@ -1041,7 +1041,7 @@ init()
   cursor: pointer; transition: background .2s; padding: 0;
   margin-top: .1rem;
 }
-.toggle-btn--on { background: var(--bp-blue); }
+.toggle-btn--on { background: var(--brand-blue); }
 .toggle-thumb {
   position: absolute; top: 3px; left: 3px;
   width: 14px; height: 14px; border-radius: 50%;
@@ -1068,8 +1068,8 @@ init()
   font-size: 12px;
 }
 .shortcut-record-btn--active {
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 18%, transparent);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-blue) 18%, transparent);
 }
 .shortcut-record-display {
   font-family: inherit;
@@ -1098,7 +1098,7 @@ init()
   transition: color .2s;
 }
 .autosave-status[data-status="error"] {
-  color: var(--bp-red, #c4302b);
+  color: var(--brand-red, #c4302b);
 }
 .autosave-dot {
   display: inline-block;
@@ -1109,14 +1109,14 @@ init()
   flex: 0 0 auto;
 }
 .autosave-dot--saving {
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   animation: autosave-pulse 1s ease-in-out infinite;
 }
 .autosave-dot--saved {
   background: #22c55e;
 }
 .autosave-dot--error {
-  background: var(--bp-red, #c4302b);
+  background: var(--brand-red, #c4302b);
 }
 @keyframes autosave-pulse {
   0%, 100% { opacity: 1; }

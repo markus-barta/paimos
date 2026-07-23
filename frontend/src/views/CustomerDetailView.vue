@@ -895,8 +895,8 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
   position: relative;
   width: 56px; height: 56px;
   flex-shrink: 0;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue);
   border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
   font-family: 'DM Sans', system-ui, sans-serif;
@@ -908,7 +908,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 }
 .cd-corner-mark {
   position: absolute; top: 0; left: 0;
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   pointer-events: none;
 }
 .cd-monogram-text { position: relative; z-index: 1; }
@@ -933,7 +933,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
   font-weight: 500;
   transition: color .15s;
 }
-.cd-provider-link:hover { color: var(--bp-blue-dark); }
+.cd-provider-link:hover { color: var(--brand-blue-dark); }
 .cd-provider-link--static { cursor: default; }
 .cd-provider-link--static:hover { color: var(--text-muted); }
 .cd-provider-logo {
@@ -1085,11 +1085,11 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-empty-text { font-size: 13px; margin: 0; max-width: 32ch; line-height: 1.45; }
 .cd-empty-cta {
   font-size: 13px; font-weight: 500;
-  color: var(--bp-blue); text-decoration: none;
+  color: var(--brand-blue); text-decoration: none;
   background: none; border: none; padding: 0; cursor: pointer;
   font-family: inherit;
 }
-.cd-empty-cta:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.cd-empty-cta:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 
 /* ── Contacts list ──────────────────────────────────────────────── */
 .cd-contact-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .65rem; }
@@ -1104,7 +1104,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-contact-avatar {
   width: 36px; height: 36px;
   border-radius: 50%;
-  background: var(--bp-blue-pale); color: var(--bp-blue);
+  background: var(--brand-blue-pale); color: var(--brand-blue);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 600;
   font-family: 'DM Sans', system-ui, sans-serif;
@@ -1119,10 +1119,10 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
   display: inline-flex; align-items: center; gap: .2rem;
   font-size: 10px; font-weight: 600;
   padding: .1rem .4rem; border-radius: 999px;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   letter-spacing: .03em; text-transform: uppercase;
 }
-.cd-contact-primary-badge :deep(svg) { color: var(--bp-blue); }
+.cd-contact-primary-badge :deep(svg) { color: var(--brand-blue); }
 .cd-contact-role {
   font-size: 11.5px; color: var(--text-muted);
   font-style: italic;
@@ -1134,7 +1134,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 }
 .cd-contact-line :deep(svg) { color: var(--text-muted); flex-shrink: 0; }
 .cd-contact-line a { color: var(--text-muted); text-decoration: none; }
-.cd-contact-line a:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.cd-contact-line a:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 .cd-contact-actions {
   display: flex; gap: .15rem; align-items: center;
   opacity: 0; transition: opacity .15s;
@@ -1157,7 +1157,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
   transition: border-color .15s, background .15s, box-shadow .15s;
 }
 .cd-project-row:hover {
-  border-color: var(--bp-blue-light);
+  border-color: var(--brand-blue-light);
   background: #f4f7ff;
   box-shadow: var(--shadow-md);
 }
@@ -1167,7 +1167,7 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-project-key {
   font-size: 10px; font-weight: 700; letter-spacing: .07em;
   font-family: 'DM Mono', monospace;
-  background: var(--bp-blue); color: #fff;
+  background: var(--brand-blue); color: #fff;
   padding: .15rem .45rem; border-radius: 4px;
   flex-shrink: 0;
 }
@@ -1208,8 +1208,8 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-info-list dt :deep(svg) { color: var(--text-muted); }
 .cd-info-list dd { margin: 0; color: var(--text); word-break: break-word; }
 .cd-info-empty { font-size: 13px; color: var(--text-muted); margin: 0; font-style: italic; }
-.cd-info-link { color: var(--bp-blue); text-decoration: none; }
-.cd-info-link:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.cd-info-link { color: var(--brand-blue); text-decoration: none; }
+.cd-info-link:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 .cd-info-description {
   font-size: 13px; line-height: 1.55; color: var(--text-muted);
   white-space: pre-wrap; margin: .5rem 0 0;
@@ -1226,10 +1226,10 @@ function effectiveRate(p: Project, kind: 'hourly' | 'lp'): { value: number | nul
 .cd-sync-card-link {
   display: inline-flex; align-items: center; gap: .35rem;
   font-size: 12.5px;
-  color: var(--bp-blue); text-decoration: none;
+  color: var(--brand-blue); text-decoration: none;
   margin-top: .1rem;
 }
-.cd-sync-card-link:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.cd-sync-card-link:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 
 /* ── Mobile (<768): hero collapses ──────────────────────────────── */
 @media (max-width: 767px) {

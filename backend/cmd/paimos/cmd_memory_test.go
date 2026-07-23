@@ -52,7 +52,7 @@ func startProposeFakeAPI(t *testing.T, cap *proposeCapture) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
-			_, _ = w.Write([]byte(`[{"id":42,"key":"BON26"}]`))
+			_, _ = w.Write([]byte(`[{"id":42,"key":"CON26"}]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "memory":
 			body, _ := io.ReadAll(r.Body)
 			var parsed map[string]any
@@ -98,11 +98,11 @@ func TestMemoryPropose_PayloadShape(t *testing.T) {
 
 	_, _, err := executeCLIForTest(t,
 		"memory", "propose",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--type", "feedback",
 		"--title", "Thread dump lock signature match",
 		"--body", "Bot draft body.",
-		"--originating-ticket", "BON26-492",
+		"--originating-ticket", "CON26-492",
 		"--suggested-name", "feedback_thread_dump_lock",
 	)
 	if err != nil {
@@ -126,8 +126,8 @@ func TestMemoryPropose_PayloadShape(t *testing.T) {
 	// Metadata.originating_tickets[] holds the value.
 	meta, _ := post.Body["metadata"].(map[string]any)
 	tickets, _ := meta["originating_tickets"].([]any)
-	if len(tickets) != 1 || tickets[0] != "BON26-492" {
-		t.Errorf("originating_tickets = %v, want [BON26-492]", tickets)
+	if len(tickets) != 1 || tickets[0] != "CON26-492" {
+		t.Errorf("originating_tickets = %v, want [CON26-492]", tickets)
 	}
 	// Metadata.type carries the taxonomy.
 	if got, _ := meta["type"].(string); got != "feedback" {
@@ -153,7 +153,7 @@ func TestMemoryPropose_AutoSlugFromTitle(t *testing.T) {
 
 	_, _, err := executeCLIForTest(t,
 		"memory", "propose",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--title", "Deploy needs manual restart of Y",
 	)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestMemoryPropose_RequiresProjectAndTitle(t *testing.T) {
 		t.Fatalf("missing flags: got %T %v, want *usageError", err, err)
 	}
 
-	_, _, err = executeCLIForTest(t, "memory", "propose", "--project", "BON26")
+	_, _, err = executeCLIForTest(t, "memory", "propose", "--project", "CON26")
 	if err == nil {
 		t.Fatal("expected usage error for missing --title")
 	}

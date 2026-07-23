@@ -90,7 +90,7 @@ defineProps<{
 }
 .billing-label { color: var(--text-muted); }
 .billing-value { font-weight: 500; font-variant-numeric: tabular-nums; }
-.billing-value--eur { color: var(--bp-blue-dark); font-weight: 600; }
+.billing-value--eur { color: var(--brand-blue-dark); font-weight: 600; }
 .billing-value--margin { font-weight: 600; }
 .margin-pos { color: #166534; }
 .margin-neg { color: #991b1b; }
@@ -98,6 +98,6 @@ defineProps<{
   margin: .5rem 0 0; font-size: 11px; color: var(--text-muted); font-style: italic;
 }
 .meta-label--toggle { cursor: pointer; }
-.meta-label--toggle:hover .unit-toggle { color: var(--bp-blue); }
-.unit-toggle { color: var(--bp-blue); text-decoration: underline; text-decoration-style: dotted; }
+.meta-label--toggle:hover .unit-toggle { color: var(--brand-blue); }
+.unit-toggle { color: var(--brand-blue); text-decoration: underline; text-decoration-style: dotted; }
 </style>

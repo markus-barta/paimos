@@ -53,7 +53,7 @@ The information below has to be findable from this document, this repo, or the m
 | Site code | `https://github.com/markus-barta/paimos-site` |
 | Release images | `ghcr.io/markus-barta/paimos:<tag>` |
 | Reference deployment | `pm.barta.cm` (ppm), runs the maintainer's primary instance |
-| Secondary reference deployment | `pm.bytepoets.com` (pmo) |
+| Secondary reference deployment | retired second-operator instance — decommissioned June 2026 (see [REFERENCE_DEPLOYMENTS.md](REFERENCE_DEPLOYMENTS.md) §2.2) |
 | Public website | `paimos.com` (Caddy server on `cs1.barta.cm`, rsync deploys per [paimos-site/README.md](https://github.com/markus-barta/paimos-site/blob/main/README.md)) |
 | Disclosure inbox | `security@paimos.com` |
 | Security advisories | `https://github.com/markus-barta/paimos/security/advisories` |
@@ -67,7 +67,7 @@ Cross-references — every routine operation has a runbook in the repo. Do not r
 |---|---|
 | Cut a release | [`DEPLOY.md` § The five commands](DEPLOY.md#the-five-commands) — `just release patch\|minor\|major` |
 | Verify a release before deploy | [`DEPLOY.md` § `just verify-release <tag>`](DEPLOY.md#just-verify-release-tag) — `just verify-release v<x.y.z>` |
-| Deploy a tag to ppm / pmo | `just deploy-ppm <tag>` / `just deploy-pmo <tag>` |
+| Deploy a tag to ppm | `just deploy-ppm <tag>` |
 | Doc-sync follow-up after release | `just doc-sync` |
 | Restore a deployment from backup | [`DEPLOY.md` § Rollback](DEPLOY.md#rollback-if-a-deploy-goes-sideways) |
 | Verify a release artefact (signature + SBOM) | [`RELEASE.md` § How to verify](RELEASE.md#how-to-verify-a-release) |

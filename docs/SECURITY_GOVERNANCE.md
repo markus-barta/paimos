@@ -122,7 +122,7 @@ The two-scenario rotation is documented in `BACKUP_RESTORE.md` §5 ("re-run on a
 release cut → claim-matrix gate (scripts/check-claims.sh) refuses release if any
               `aspirational` row lacks a tracked ticket
             → image published with cosign signature + SBOM attestation
-            → ppm deployed first (canary); pmo deployed second (independence test)
+            → ppm deployed first (canary); second-operator instance deployed second (independence test, retired June 2026)
             → just doc-sync files the README/docs/site/brand sync follow-up ticket
             → CHANGELOG entry written manually (no auto-stub leak per 2.0_AUDIT D-004)
 ```
@@ -184,7 +184,7 @@ The next 18 months. Cadences from §1 collapsed into a single ordered timeline.
 
 **Reading the calendar:** 2026-10-26 is the dense day — most 6-month items converge there because that's six months after this trust-doc set was assembled (April 2026). Future iterations may want to stagger items so a single missed day doesn't skip multiple controls; for v1, alignment is fine because the maintainer can do a single dedicated review-day every six months.
 
-The provider-credential-rotation rows belong to **per-deployment operators**, not the maintainer — they appear here because the maintainer's operations log includes ppm's rotation cadence, but a different operator's pmo cadence is owned by them.
+The provider-credential-rotation rows belong to **per-deployment operators**, not the maintainer — they appear here because the maintainer's operations log includes ppm's rotation cadence, but a second operator's cadence is owned by them.
 
 ---
 
@@ -195,7 +195,7 @@ Every recurring control in §1 has an owner column. Today, almost all of them re
 What this document commits to:
 
 - **The role is documented, not the name.** "The maintainer" is a role; future maintainers inherit it. A successor reading this document doesn't need to know who the previous maintainer was.
-- **Per-deployment controls are explicitly the operator's**, not the maintainer's. Provider credential rotation for ppm is the maintainer's operations work because the maintainer runs ppm; provider credential rotation for pmo is bytepoets's. The principle: **whoever runs the deployment owns its operational controls.**
+- **Per-deployment controls are explicitly the operator's**, not the maintainer's. Provider credential rotation for ppm is the maintainer's operations work because the maintainer runs ppm; provider credential rotation for any second-operator instance is that operator's. The principle: **whoever runs the deployment owns its operational controls.**
 - **Privately-named recovery contacts are out of scope here.** [`CONTINUITY.md`](CONTINUITY.md) §2.3 documents that recovery contacts exist (in the maintainer's password-manager vault metadata) without naming them in public; the same applies for governance — successor names live there, not here.
 
 If/when the project grows past a single maintainer, this document's ownership column gains rows like "release manager" / "security lead" / "release-doc-sync owner". For v1: one role, multiple hats.
@@ -212,11 +212,11 @@ The trust-doc set was assembled in this six-month window (PAI-125 / 132 / 133 / 
 
 - **Trust-doc set complete:** 7 docs (THREAT_MODEL / HARDENING / SECURITY_REVIEW / BACKUP_RESTORE / INCIDENT_RESPONSE / CONTINUITY / REFERENCE_DEPLOYMENTS) + this governance doc.
 - **Drills captured:** DR drill (synthetic 500-issue SQLite, 0.432 s wall-time, integrity_check ok, 5 gaps identified for next iteration) — see [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) §5; incident-response tabletop on §3.1 (compromised API key) — see [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) §4; continuity tabletop on §3.2 (long-term unavailability) — see [`CONTINUITY.md`](CONTINUITY.md) §7.
-- **Reference deployments:** 2 (ppm + pmo) — see [`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md) §2.
+- **Reference deployments:** 2 (ppm + a retired second-operator instance) — see [`REFERENCE_DEPLOYMENTS.md`](REFERENCE_DEPLOYMENTS.md) §2.
 - **Open Sev 0/1:** 0.
 - **gosec findings:** residual set baselined in `.gosec-baseline.txt`; triage tracked in [`PAI-223`](https://pm.barta.cm/projects/6/issues/PAI-223). *(Update 2026-06-11: triage complete — baseline is now empty.)*
 - **govulncheck findings:** now blocking in CI; keep the CI Go toolchain patched.
-- **Active reference deployments:** 2 (ppm + pmo).
+- **Active reference deployments:** 1 (ppm).
 - **CHANGELOG quality:** v2.0.2 + v2.0.3 entries had to be filled in retroactively (see [`2.0_AUDIT.md`](2.0_AUDIT.md) D-004); subsequent entries (v2.0.0, v2.0.1, v2.0.4) were hand-written cleanly.
 
 **Open governance gaps named at initial entry:**

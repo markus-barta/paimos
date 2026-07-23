@@ -391,8 +391,8 @@ const imageUrl = computed(() =>
 }
 .lb-copy-btn {
   margin-top: .3rem;
-  background: var(--bp-blue, #2e6da4);
-  border: 1px solid var(--bp-blue, #2e6da4);
+  background: var(--brand-blue, #2e6da4);
+  border: 1px solid var(--brand-blue, #2e6da4);
   color: #fff;
   padding: .45rem .7rem;
   border-radius: 4px;

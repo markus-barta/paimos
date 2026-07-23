@@ -1315,8 +1315,8 @@ onUnmounted(() => {
   color: var(--text);
 }
 .arp-pill--running {
-  background: color-mix(in srgb, var(--bp-blue) 20%, transparent);
-  color: var(--bp-blue);
+  background: color-mix(in srgb, var(--brand-blue) 20%, transparent);
+  color: var(--brand-blue);
 }
 .arp-pill--tests_passed {
   background: color-mix(in srgb, #1aa179 24%, transparent);
@@ -1426,12 +1426,12 @@ onUnmounted(() => {
   background: #2ecc71;
 }
 .arp-stage--active {
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   font-weight: 700;
 }
 .arp-stage--active .arp-stage-dot {
-  background: var(--bp-blue);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 16%, transparent);
+  background: var(--brand-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-blue) 16%, transparent);
 }
 .arp-stage--failed {
   color: #c0392b;

@@ -145,17 +145,17 @@ function rowCanEdit(issue: Issue): boolean {
 .tree-row-task   { background: #fafcfa; }
 .tree-row.clickable { cursor: pointer; }
 .tree-row.clickable:hover { background: #f0f2f4; }
-.tree-row.row-selected.clickable:hover { background: var(--bp-blue-pale); }
+.tree-row.row-selected.clickable:hover { background: var(--brand-blue-pale); }
 .tree-indent { width: 20px; flex-shrink: 0; }
 .tree-toggle { background: none; border: none; cursor: pointer; padding: 2px; color: var(--text-muted); border-radius: 3px; display: flex; align-items: center; flex-shrink: 0; transition: color .1s, background .1s; }
 .tree-toggle:hover { color: var(--text); background: rgba(0,0,0,.05); }
 .tree-toggle-spacer { width: 16px; flex-shrink: 0; }
-.tree-check { width: 15px; height: 15px; padding: 0; border: revert; border-radius: revert; background: revert; margin: 0; cursor: pointer; flex-shrink: 0; accent-color: var(--bp-blue); }
+.tree-check { width: 15px; height: 15px; padding: 0; border: revert; border-radius: revert; background: revert; margin: 0; cursor: pointer; flex-shrink: 0; accent-color: var(--brand-blue); }
 .tree-assignee { font-size: 11px; color: var(--text-muted); white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
 .tree-actions { margin-left: auto; display: flex; gap: .2rem; flex-shrink: 0; }
 
-.row-selected { background: var(--bp-blue-pale) !important; }
-.row-active-panel { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); box-shadow: inset 3px 0 0 var(--bp-blue); }
+.row-selected { background: var(--brand-blue-pale) !important; }
+.row-active-panel { background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card)); box-shadow: inset 3px 0 0 var(--brand-blue); }
 
 .issue-key-copy { font-size: 11px; font-weight: 700; letter-spacing: .04em; font-family: monospace; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; cursor: pointer; position: relative; display: inline-flex; align-items: center; gap: 3px; }
 .issue-key-copy:hover { color: var(--text); }
@@ -164,7 +164,7 @@ function rowCanEdit(issue: Issue): boolean {
 
 .type-label-text { font-size: 12px; }
 .issue-link { font-weight: 500; color: var(--text); }
-.clickable:hover .issue-link { color: var(--bp-blue); }
+.clickable:hover .issue-link { color: var(--brand-blue); }
 
 .meta-pill { font-size: 11px; padding: .1rem .45rem; border-radius: 20px; background: #e0eeff; color: #1e4a8a; }
 .release-pill { background: #ede9fe; color: #5b21b6; }

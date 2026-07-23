@@ -517,7 +517,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
 .coop-pill {
   display: inline-flex; align-items: center;
   padding: .25rem .65rem;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   border-radius: 999px; font-size: 12px; font-weight: 600;
   align-self: flex-start;
 }
@@ -590,7 +590,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
 }
 .coop-toggle-label input[type=checkbox] {
   width: 16px; height: 16px;
-  accent-color: var(--bp-blue);
+  accent-color: var(--brand-blue);
   cursor: pointer;
 }
 .coop-form-toggles { display: flex; flex-direction: column; gap: .5rem; justify-content: center; }

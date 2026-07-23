@@ -250,7 +250,7 @@ onMounted(() => {
   border: 1px solid var(--border);
 }
 .pot-callout-title { font-weight: 600; flex: 1; }
-.pot-key, .pot-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 11.5px; color: var(--bp-blue); }
+.pot-key, .pot-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 11.5px; color: var(--brand-blue); }
 .pot-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pot-meta { font-size: 11px; color: var(--text-muted); }
 .pot-pill { background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0 .5rem; font-size: 10px; color: var(--text-muted); line-height: 1.55; }

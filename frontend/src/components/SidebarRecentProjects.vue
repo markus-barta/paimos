@@ -48,8 +48,8 @@ const { recentProjects } = useRecentProjects()
   cursor: pointer; transition: background .12s, color .12s;
   font-size: 12px; color: #8fa7be; overflow: hidden;
 }
-.recent-project-item:hover { background: color-mix(in srgb, var(--bp-blue) 12%, transparent); color: var(--sidebar-text, #c8d5e2); }
-.recent-project-item--active { background: color-mix(in srgb, var(--bp-blue) 18%, transparent); color: #fff; }
+.recent-project-item:hover { background: color-mix(in srgb, var(--brand-blue) 12%, transparent); color: var(--sidebar-text, #c8d5e2); }
+.recent-project-item--active { background: color-mix(in srgb, var(--brand-blue) 18%, transparent); color: #fff; }
 .recent-project-item--collapsed { justify-content: center; padding-left: 0; padding-right: 0; gap: 0; }
 .rp-name {
   flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;

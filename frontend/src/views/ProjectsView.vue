@@ -665,7 +665,7 @@ onMounted(() => {
   color: var(--text-muted); cursor: pointer;
   transition: background .12s, color .12s;
 }
-.seg-btn.active { background: var(--bp-blue); color: #fff; }
+.seg-btn.active { background: var(--brand-blue); color: #fff; }
 .seg-btn:not(.active):hover { background: var(--bg); }
 
 .empty-state {
@@ -704,7 +704,7 @@ onMounted(() => {
 }
 .project-key-badge {
   font-size: 11px; font-weight: 700; letter-spacing: .07em; font-family: monospace;
-  background: var(--bp-blue); color: #fff;
+  background: var(--brand-blue); color: #fff;
   padding: .2rem .55rem; border-radius: 5px;
   flex-shrink: 0;
 }
@@ -718,7 +718,7 @@ onMounted(() => {
 .project-card-tags   { display: flex; flex-wrap: wrap; gap: .3rem; }
 .project-progress { display: flex; align-items: center; gap: .5rem; }
 .progress-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--bp-blue); border-radius: 2px; transition: width .3s ease; }
+.progress-fill { height: 100%; background: var(--brand-blue); border-radius: 2px; transition: width .3s ease; }
 .progress-label { font-size: 10px; color: var(--text-muted); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .project-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: .1rem; }
 .project-issues  { font-size: 12px; color: var(--text-muted); }
@@ -994,7 +994,7 @@ textarea { resize: vertical; min-height: 80px; }
   transition: color .15s, background .15s;
 }
 .project-card-customer:hover {
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
 }
 </style>

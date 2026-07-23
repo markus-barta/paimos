@@ -195,12 +195,12 @@ const invalidMessage = computed(() => {
   display: block; width: 100%; text-align: center; font-size: 12px;
   color: var(--text-muted); margin-top: 1rem; text-decoration: none;
 }
-.login-btn-back:hover { color: var(--bp-blue); }
+.login-btn-back:hover { color: var(--brand-blue); }
 .login-forgot-link {
   align-self: center; font-size: 12px; color: var(--text-muted);
   text-decoration: none; margin-top: .1rem;
 }
-.login-forgot-link:hover { color: var(--bp-blue); text-decoration: underline; }
+.login-forgot-link:hover { color: var(--brand-blue); text-decoration: underline; }
 
 .loading-box { display: flex; flex-direction: column; align-items: center; gap: .75rem; padding: 2rem 0; }
 .submitted-box { text-align: center; padding: .5rem 0; }

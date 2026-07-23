@@ -1243,7 +1243,7 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   shrinks. After the dry-run grace period customer portals will list
   fewer items per project than before. Per the 2026-05-20 CEO call,
   customer comms are silent — no real customers are in production yet
-  on the bytepoets-side instance.
+  on the second-operator instance.
 
 ## [3.5.3] — 2026-05-20
 
@@ -1539,7 +1539,7 @@ issues contained emoji or other non-BMP runes (PAI-398).
 - **PAI-398** — `Lieferbericht → Download PDF` no longer 500s on
   emoji-bearing content. `github.com/go-pdf/fpdf`'s character-width
   table has 65 536 entries; supplementary-plane codepoints (e.g.
-  🚨 U+1F6A8, 🕒 U+1F552 found in real BON26 descriptions) caused
+  🚨 U+1F6A8, 🕒 U+1F552 found in real legacy project descriptions) caused
   `SplitText` / `MultiCell` to panic with `index out of range`, which
   `chi.Recoverer` surfaced as 500. `backend/handlers/reports_pdf.go`
   now strips runes > 0xFFFF inside `smartTruncate` (the single
@@ -1776,8 +1776,8 @@ Signed macOS CLI release workflow (PAI-99), per-user search-scope shortcut (PAI-
 
 ### Notes
 
-- Both PAIMOS instances (ppm + PMO) were running PAI-368 / 369 / 370 via per-commit sha images before the cut. PAI-371's auth.go twin fix means re-deploying to the v3.2.4 image is required for the search-scope shortcut to actually persist end-to-end.
-- The macOS release workflow is signed under "Developer ID Application: Markus Barta (P66J39QV6V)" (personal Apple Developer account) — chosen so paimos's signing-cert revocation blast radius is isolated from any future bytepoets-distributed binaries.
+- Both PAIMOS instances (ppm + the then-second-operator instance) were running PAI-368 / 369 / 370 via per-commit sha images before the cut. PAI-371's auth.go twin fix means re-deploying to the v3.2.4 image is required for the search-scope shortcut to actually persist end-to-end.
+- The macOS release workflow is signed under "Developer ID Application: Markus Barta (P66J39QV6V)" (personal Apple Developer account) — chosen so paimos's signing-cert revocation blast radius is isolated from any future externally-distributed binaries.
 
 ## [3.2.3] — 2026-05-10
 
@@ -1865,11 +1865,11 @@ Footer-bar IA collapse (PAI-359). Six tabs in one continuous full-width row. Bre
 
 ## [3.0.1] — 2026-05-09
 
-CI-only fix on top of v3.0.0. v3.0.0's tag never produced a Docker image because the dogfood-anchor verifier (`paimos anchors verify`) flagged `PAI-72` as an orphaned anchor pointing at the now-deleted `backend/cmd/paimos/cmd_manifest.go:39`. PAI-72 was the manifest mirror command; the file was removed in PAI-358 along with the rest of the legacy manifest surface, but its entry in `.pmo/anchors.json` survived the deletion. v3.0.1 carries the same code as v3.0.0 plus the index update.
+CI-only fix on top of v3.0.0. v3.0.0's tag never produced a Docker image because the dogfood-anchor verifier (`paimos anchors verify`) flagged `PAI-72` as an orphaned anchor pointing at the now-deleted `backend/cmd/paimos/cmd_manifest.go:39`. PAI-72 was the manifest mirror command; the file was removed in PAI-358 along with the rest of the legacy manifest surface, but its entry in `.paimos/anchors.json` survived the deletion. v3.0.1 carries the same code as v3.0.0 plus the index update.
 
 ### Changed
 
-- Removed PAI-72's entry from `.pmo/anchors.json`. The manifest mirror CLI verb (`paimos manifest pull`) was deleted in PAI-358; the anchor is permanently dangling.
+- Removed PAI-72's entry from `.paimos/anchors.json`. The manifest mirror CLI verb (`paimos manifest pull`) was deleted in PAI-358; the anchor is permanently dangling.
 
 ## [3.0.0] — 2026-05-09
 
@@ -1885,7 +1885,7 @@ Major-version bump for the **breaking** removal of the legacy project_manifests 
 
 ### Changed
 
-- **PAI-356/-358 polish** — Project footer bar now shows the same Issues count as the IssueList header (SSOT against the loaded list, not a separate `open_issues` aggregate). Bar spans the full project-page width by escaping the `.main-content` padding (no more white gutters at the edges). Active-tab styling moved from accent-color text + green/blue badges to a neutral `color-mix(--bp-blue 12%)` tint that matches the sidebar's `nav-item.active` family — no fresh accents, just the existing chrome highlight.
+- **PAI-356/-358 polish** — Project footer bar now shows the same Issues count as the IssueList header (SSOT against the loaded list, not a separate `open_issues` aggregate). Bar spans the full project-page width by escaping the `.main-content` padding (no more white gutters at the edges). Active-tab styling moved from accent-color text + green/blue badges to a neutral `color-mix(--brand-blue 12%)` tint that matches the sidebar's `nav-item.active` family — no fresh accents, just the existing chrome highlight.
 
 ### Migration notes
 
@@ -1994,7 +1994,7 @@ Nine schema migrations run on first startup. All additive; existing data rolls f
 Filed but not in v2.8.0:
 
 - [PAI-333](https://pm.barta.cm/projects/6/issues/PAI-333) — extract claude-code adapter to its own repo
-- [PAI-344](https://pm.barta.cm/projects/6/issues/PAI-344) — BON26 migration script (gated by UI QA)
+- [PAI-344](https://pm.barta.cm/projects/6/issues/PAI-344) — legacy-project migration script (gated by UI QA)
 - [PAI-350](https://pm.barta.cm/projects/6/issues/PAI-350) — knowledge graph view (UI discovery)
 - [PAI-351](https://pm.barta.cm/projects/6/issues/PAI-351) — memory dependency graph (UI discovery)
 
@@ -2175,7 +2175,7 @@ Auth + session reliability release. Sessions stop dying mid-task once a day; adm
 
 ### Added
 
-- [PAI-272](https://pm.barta.cm/projects/6/issues/PAI-272) — **CustomerDetailView redesign.** Identity slab on the left of the hero (monogram tile with `--bp-blue` corner-mark accent + name + industry chip + provider link) and a stat / sync rail on the right (€/h + €/LP cards over a ghost Sync row + ⋯ overflow menu collapsing Edit / Delete). Asymmetric body grid splits primary content (Contacts → Projects → Documents) from a sticky About / Notes / Sync provenance side rail (8/4 ≥1024px, 7/5 768–1023px, single-column <768px). Empty states share a dashed-box vocabulary with centered Lucide icon + one-line copy + CTA link. The ⋯ menu teleports to `<body>` to escape the existing `overflow:hidden` clipping pattern (mirrors PAI-246/265). `dev_viewer` correctly hides Sync, Edit/Delete, the "New project" CTA, and the contact-row hover pencil.
+- [PAI-272](https://pm.barta.cm/projects/6/issues/PAI-272) — **CustomerDetailView redesign.** Identity slab on the left of the hero (monogram tile with `--brand-blue` corner-mark accent + name + industry chip + provider link) and a stat / sync rail on the right (€/h + €/LP cards over a ghost Sync row + ⋯ overflow menu collapsing Edit / Delete). Asymmetric body grid splits primary content (Contacts → Projects → Documents) from a sticky About / Notes / Sync provenance side rail (8/4 ≥1024px, 7/5 768–1023px, single-column <768px). Empty states share a dashed-box vocabulary with centered Lucide icon + one-line copy + CTA link. The ⋯ menu teleports to `<body>` to escape the existing `overflow:hidden` clipping pattern (mirrors PAI-246/265). `dev_viewer` correctly hides Sync, Edit/Delete, the "New project" CTA, and the contact-row hover pencil.
 - [PAI-273](https://pm.barta.cm/projects/6/issues/PAI-273) — **Contact (Ansprechpartner) entity + customer metadata expansion.** New `contacts` table holds many contacts per customer (one `is_primary` at a time, enforced in transactional code); CRUD endpoints — `GET|POST /customers/:id/contacts`, `GET|PUT|DELETE /contacts/:id`, atomic `POST /contacts/:id/promote-primary`. `customers` extends with `website` / `domain` / `vat_id` / `employee_count` / `annual_revenue_cents` / `description` / `phone` / billing_address quartet / visit_address pair — all nullable, no destructive migration. M87 backfills a primary contact for every customer with non-empty legacy `contact_name` / `contact_email`. Read-compat: `GET /customers/:id` continues to expose `contact_name` / `contact_email`, populated from the primary contact when present. Write-compat: `PUT /customers/:id` carrying legacy fields routes the writes back into the primary contact (creating one when missing) — v1 callers keep working unmodified for one release.
 - [PAI-273](https://pm.barta.cm/projects/6/issues/PAI-273) — **HubSpot extended sync.** Companies fetch now requests the full property set (`domain, website, numberofemployees, annualrevenue, description, phone, address, address2, city, state, zip, country`) and maps onto the new customer columns during Import + Sync. Associated contacts are pulled via `/crm/v3/objects/companies/{id}/associations/contacts` followed by `/crm/v3/objects/contacts/batch/read` (paginated in 100-id chunks) and upserted into the `contacts` table keyed on `(external_provider, external_id)` — re-syncs are idempotent. The contacts call soft-fails: a slow or rate-limited contacts endpoint never fails the whole company fetch. The first associated contact takes the primary slot only when the customer has no primary on the PAIMOS side (admins set primaries; we only fill the slot when empty).
 - **CustomerDetailView wires the slots PAI-272 left open.** The Contacts card renders a real multi-contact list with the primary-contact pill badge, Ansprechpartner-Funktion (role) label per row, hover-revealed promote-primary (★) / edit / delete actions, and an Add-contact modal. The About card surfaces the new metadata as icon-led data-driven rows (`link` website, `phone`, `hash` VAT, `users` employees, `trending-up` revenue) — each row hides when empty, so sparsely-populated customers stay clean and additive fields don't re-flow the layout. Description renders as a paragraph below the row list with a separator.
@@ -2249,7 +2249,7 @@ Auth + session reliability release. Sessions stop dying mid-task once a day; adm
 
 ### Added
 
-- [PAI-260](https://pm.barta.cm/projects/6/issues/PAI-260) — `paimos issue tag add` / `paimos issue tag rm` subcommands. Closes a long-standing gap where `bon26/PMO.md` documented these as the canonical lane-management recipe but the CLI never shipped them, forcing agents to fall back to a racy read-modify-write of `tag_ids` over raw `PUT /api/issues/{id}`. The new verbs sit parallel to `issue relation add/rm`, accept either `--tag <key>` (resolved against `/api/tags`) or `--tag-id <int>` (mutually exclusive), and are idempotent server-side via `INSERT OR IGNORE` / no-op `DELETE`. `--json` mode mirrors `issue update`. `<ref>` accepts both an issue key and a numeric DB id. Unknown tag-key / tag-id surfaces a 404 here rather than a silent no-op against the upstream endpoint. PMO.md needs no edit — its existing recipe (`paimos issue tag-add 2445 --tag dev`) keeps working with the new spelling once `tag-add` is rewritten as `tag add` in client repos that adopt the new verb.
+- [PAI-260](https://pm.barta.cm/projects/6/issues/PAI-260) — `paimos issue tag add` / `paimos issue tag rm` subcommands. Closes a long-standing gap where a client repo's operator runbook documented these as the canonical lane-management recipe but the CLI never shipped them, forcing agents to fall back to a racy read-modify-write of `tag_ids` over raw `PUT /api/issues/{id}`. The new verbs sit parallel to `issue relation add/rm`, accept either `--tag <key>` (resolved against `/api/tags`) or `--tag-id <int>` (mutually exclusive), and are idempotent server-side via `INSERT OR IGNORE` / no-op `DELETE`. `--json` mode mirrors `issue update`. `<ref>` accepts both an issue key and a numeric DB id. Unknown tag-key / tag-id surfaces a 404 here rather than a silent no-op against the upstream endpoint. That runbook needed no edit — its existing recipe (`paimos issue tag-add 2445 --tag dev`) keeps working with the new spelling once `tag-add` is rewritten as `tag add` in client repos that adopt the new verb.
 
 ## [2.1.21] — 2026-04-28
 
@@ -3649,7 +3649,7 @@ paimos completion bash > /etc/bash_completion.d/paimos   # or ~/.bash_completion
 
 - **API: accept issue keys everywhere** — PAI-86 (PAI-85 epic, A). Every
   `/api/issues/{id}/*` route now accepts either the numeric id or an
-  issue key like `PAI-83` / `PMO26-639`. Keys resolve server-side via
+  issue key like `PAI-83` / `ACME26-639`. Keys resolve server-side via
   `(project.key, issue.issue_number)`; numeric ids keep working
   unchanged. Malformed refs return 400, key-shapes with no match 404.
   Soft-deleted issues still resolve so `restore` / `purge` can target
@@ -3750,7 +3750,7 @@ paimos completion bash > /etc/bash_completion.d/paimos   # or ~/.bash_completion
 
 ### Added
 
-- **Soft-delete (Trash) for issues** — PMO26-639. `DELETE /api/issues/{id}`
+- **Soft-delete (Trash) for issues** — ACME26-639. `DELETE /api/issues/{id}`
   now moves the issue to a Trash instead of hard-deleting. Child tasks
   cascade into the Trash too; `issue_relations` (groups / sprint /
   depends_on / impacts) stay intact so a later Restore re-attaches them

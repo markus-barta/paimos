@@ -789,7 +789,7 @@ function finishAndClose() {
 }
 .bgs-recent-item code { font-size: 11px; background: rgba(0, 0, 0, .04); padding: 0 .25em; border-radius: 3px; }
 .bgs-recent-preview { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-.bgs-recent-item--ok :first-child { color: var(--bp-green, #16a34a); }
+.bgs-recent-item--ok :first-child { color: var(--brand-green, #16a34a); }
 .bgs-recent-item--fail :first-child { color: #c0392b; }
 .bgs-recent-item--fail .bgs-recent-preview { color: #c0392b; }
 </style>

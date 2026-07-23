@@ -232,8 +232,8 @@ onMounted(load)
   max-width: 220px;
   padding: .15rem .45rem;
   border-radius: 4px;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
   font-size: 11px;
   font-weight: 700;
   text-transform: capitalize;

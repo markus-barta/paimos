@@ -45,7 +45,7 @@ The AI layer should read like an editorial compile strip:
 
 ## Color
 
-- active/info: existing `--bp-blue*`
+- active/info: existing `--brand-blue*`
 - muted chrome: `--text-muted`
 - failure: current app red family only
 

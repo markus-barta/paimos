@@ -27,7 +27,7 @@ sbom:
 
 # Check source docs and pulled ppm knowledge cache for stale high-risk
 # project facts (removed manifest API, version examples, shipped security
-# gaps). Set PAIMOS_CHECK_LIVE=1 to compare ppm/pmo health endpoints too.
+# gaps). Set PAIMOS_CHECK_LIVE=1 to compare the ppm health endpoint too.
 knowledge-freshness:
     @./scripts/check-knowledge-freshness.sh
 
@@ -59,18 +59,6 @@ deploy-ppm-preflight target="current":
 # Deploy local HEAD's CI image to ppm.
 deploy-ppm-current:
     @./scripts/deploy.sh ppm current
-
-# Deploy to pmo: release tag, sha-* image tag, or current HEAD.
-deploy-pmo target="":
-    @./scripts/deploy.sh pmo {{target}}
-
-# Preflight pmo deploy target without stopping/restarting the service.
-deploy-pmo-preflight target="current":
-    @./scripts/deploy.sh pmo {{target}} --preflight
-
-# Deploy local HEAD's CI image to pmo.
-deploy-pmo-current:
-    @./scripts/deploy.sh pmo current
 
 # File a "doc/site sync follow-up" ticket in PAIMOS for a tag (default
 # = latest). Run after `just release` so README, docs/, paimos-site,

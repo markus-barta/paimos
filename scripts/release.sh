@@ -224,5 +224,5 @@ echo
 echo "Next:"
 echo "  just verify-release $NEW_TAG"
 echo "  just deploy-ppm $NEW_TAG"
-echo "  just deploy-pmo $NEW_TAG"
+echo "  just deploy-ppm $NEW_TAG"
 echo "  just doc-sync       # file the README / docs / paimos-site sync ticket"

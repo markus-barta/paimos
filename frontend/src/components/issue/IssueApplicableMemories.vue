@@ -363,18 +363,18 @@ const canEdit = computed(() => {
 .am-form-hits { position: absolute; top: 100%; left: 0; right: 0; z-index: 500; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.12); max-height: 240px; overflow-y: auto; margin-top: 2px; }
 .am-form-hit { display: flex; align-items: center; gap: .4rem; padding: .4rem .6rem; cursor: pointer; font-size: 12px; transition: background .1s; }
 .am-form-hit:hover { background: var(--surface-2); }
-.am-form-hit-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: var(--bp-blue); white-space: nowrap; flex-shrink: 0; }
+.am-form-hit-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: var(--brand-blue); white-space: nowrap; flex-shrink: 0; }
 .am-form-hit-title { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .am-form-error { font-size: 12px; color: #c0392b; flex-basis: 100%; }
 
 .am-list { display: flex; flex-direction: column; gap: .35rem; }
 .am-row { display: flex; align-items: flex-start; gap: .45rem; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .am-row-main { flex: 1; display: flex; flex-direction: column; gap: .15rem; min-width: 0; text-decoration: none; color: inherit; cursor: pointer; }
-.am-row-main:hover .am-row-title { color: var(--bp-blue); }
+.am-row-main:hover .am-row-title { color: var(--brand-blue); }
 .am-row-head { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
 .am-slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12px; color: var(--text); }
 .am-pill { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: 0 .5rem; font-size: 10px; color: var(--text-muted); line-height: 1.55; }
-.am-pill--score { background: var(--bp-blue-pale, var(--surface-2)); color: var(--bp-blue-dark, var(--bp-blue)); border-color: var(--bp-blue); font-weight: 700; }
+.am-pill--score { background: var(--brand-blue-pale, var(--surface-2)); color: var(--brand-blue-dark, var(--brand-blue)); border-color: var(--brand-blue); font-weight: 700; }
 .am-pill--match { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
 .am-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .am-row-preview { font-size: 12px; color: var(--text-muted); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

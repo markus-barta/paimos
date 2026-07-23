@@ -414,7 +414,7 @@ export { catLabel, globalIndex }
 .ar-conf--high   { background: #ecfdf5; color: #166534; }
 .ar-conf--med    { background: #fef3c7; color: #92400e; }
 .ar-conf--low    { background: #e2e8f0; color: #475569; }
-.ar-target { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.ar-target { background: var(--brand-blue-pale); color: var(--brand-blue-dark); }
 .ar-cat-title { margin: .65rem 0 .25rem; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .ar-card { border: 1px solid var(--border); border-radius: 10px; padding: .75rem .9rem; background: var(--bg-card); display: flex; flex-direction: column; gap: .35rem; }
 .ar-card-headrow { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; }
@@ -424,7 +424,7 @@ export { catLabel, globalIndex }
 .ar-actions { display: flex; justify-content: flex-end; gap: .5rem; padding-top: .25rem; flex-wrap: wrap; }
 .ar-estimate { display: flex; flex-direction: column; gap: .65rem; padding: .85rem 1rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; }
 .ar-estimate-row { display: flex; gap: 1.5rem; }
-.ar-estimate-num { font-family: 'DM Mono', monospace; font-size: 22px; color: var(--bp-blue-dark); }
+.ar-estimate-num { font-family: 'DM Mono', monospace; font-size: 22px; color: var(--brand-blue-dark); }
 .ar-markdown {
   font-family: 'DM Mono', monospace;
   font-size: 12px;

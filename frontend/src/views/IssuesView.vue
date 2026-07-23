@@ -260,20 +260,20 @@ function onDeleted() {
 
 .empty-filter-banner {
   margin-top: .75rem; padding: .65rem 1rem;
-  background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card));
-  border: 1px solid color-mix(in srgb, var(--bp-blue) 25%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 25%, transparent);
   border-radius: 8px; font-size: 13px; color: var(--text);
 }
 .banner-load-btn {
   background: none; border: none; padding: 0; cursor: pointer;
-  font-size: 13px; color: var(--bp-blue); font-weight: 600; font-family: inherit;
+  font-size: 13px; color: var(--brand-blue); font-weight: 600; font-family: inherit;
 }
 .banner-load-btn:hover { text-decoration: underline; }
 .banner-load-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .load-all-link {
   background: none; border: none; padding: 0; cursor: pointer;
-  font: inherit; font-size: 13px; color: var(--bp-blue); font-weight: 500;
+  font: inherit; font-size: 13px; color: var(--brand-blue); font-weight: 500;
   white-space: nowrap; flex-shrink: 0;
 }
 .load-all-link:hover { text-decoration: underline; }

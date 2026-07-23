@@ -444,7 +444,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .new-issue-btn:hover {
-  background: color-mix(in srgb, var(--bp-blue) 32%, transparent); color: #fff; border-color: color-mix(in srgb, var(--bp-blue) 55%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 32%, transparent); color: #fff; border-color: color-mix(in srgb, var(--brand-blue) 55%, transparent);
 }
 .new-issue-btn--collapsed {
   justify-content: center;
@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
 }
 .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
 .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
-.nav-item.active { background: color-mix(in srgb, var(--bp-blue) 30%, transparent); color: #fff; }
+.nav-item.active { background: color-mix(in srgb, var(--brand-blue) 30%, transparent); color: #fff; }
 
 /* Centre icons when collapsed — gap:0 kills the residual space from the zero-width .sl span */
 /* :deep() needed because nav-items also exist in sub-components */

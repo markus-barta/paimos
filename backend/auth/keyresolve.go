@@ -28,7 +28,7 @@ import (
 	"github.com/markus-barta/paimos/backend/db"
 )
 
-// issueKeyPattern matches strings shaped like "PAI-83" or "PMO26-639":
+// issueKeyPattern matches strings shaped like "PAI-83" or "ACME26-639":
 // one uppercase letter, up to 15 more uppercase alphanumerics, dash, digits.
 // Soft-bound so obviously-not-keys ("a", "x-1") fail fast without a DB hit.
 var issueKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,15}-\d+$`)

@@ -296,7 +296,7 @@ func TestKnowledgeScope_PromoteToInstanceRequiresAdmin(t *testing.T) {
 
 func TestKnowledgeScope_PromotedUserMemoryVisibleAcrossProjects(t *testing.T) {
 	// The ticket's smoke test in plain text:
-	//   "a memory promoted from BON26 → user level appears in a
+	//   "a memory promoted from CON26 → user level appears in a
 	//    different project's session bundle for the same user."
 	//
 	// We can't drive the CLI bundle resolver from a Go unit test
@@ -307,7 +307,7 @@ func TestKnowledgeScope_PromotedUserMemoryVisibleAcrossProjects(t *testing.T) {
 	// by reading the user-scope endpoint from a request that is
 	// otherwise scoped to a different project than the source.
 	ts := newTestServer(t)
-	bonID := createTestProject(t, ts, "BON26 stand-in", "BONS")
+	bonID := createTestProject(t, ts, "CON26 stand-in", "BONS")
 	otherID := createTestProject(t, ts, "Different project", "DIFF")
 
 	// Seed a project memory in BON.

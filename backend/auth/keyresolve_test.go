@@ -32,7 +32,7 @@ import (
 
 // insertProjectWithKey bypasses the "KEY" suffix convention used by
 // insertProject so we can seed projects whose keys match real PAIMOS
-// instances (e.g. "PAI", "PMO26").
+// instances (e.g. "PAI", "ACME26").
 func insertProjectWithKey(t *testing.T, name, key string) int64 {
 	t.Helper()
 	res, err := db.DB.Exec(`INSERT INTO projects(name, key) VALUES(?, ?)`, name, key)
@@ -69,7 +69,7 @@ func TestIsIssueKey(t *testing.T) {
 	}{
 		{"PAI-1", true},
 		{"PAI-83", true},
-		{"PMO26-639", true},
+		{"ACME26-639", true},
 		{"A-1", true},
 		{"", false},
 		{"PAI", false},
@@ -94,11 +94,11 @@ func TestResolveIssueRef(t *testing.T) {
 	setupAccessTestDB(t)
 
 	paiProj := insertProjectWithKey(t, "PAI", "PAI")
-	pmoProj := insertProjectWithKey(t, "PMO", "PMO26")
+	acmeProj := insertProjectWithKey(t, "ACME", "ACME26")
 
 	pai1 := insertIssue(t, paiProj, 1, "")
 	pai83 := insertIssue(t, paiProj, 83, "")
-	pmo639 := insertIssue(t, pmoProj, 639, "")
+	acme639 := insertIssue(t, acmeProj, 639, "")
 	paiDeleted := insertIssue(t, paiProj, 99, "soft-delete")
 
 	cases := []struct {
@@ -109,7 +109,7 @@ func TestResolveIssueRef(t *testing.T) {
 		{strconv.FormatInt(pai1, 10), pai1, true}, // numeric passes through
 		{"PAI-1", pai1, true},                     // key resolves
 		{"PAI-83", pai83, true},
-		{"PMO26-639", pmo639, true},  // multi-digit project key
+		{"ACME26-639", acme639, true},  // multi-digit project key
 		{"PAI-99", paiDeleted, true}, // soft-deleted resolves (handler enforces visibility)
 		{"PAI-9999", 0, false},       // not-found key
 		{"ZZZ-1", 0, false},          // project doesn't exist

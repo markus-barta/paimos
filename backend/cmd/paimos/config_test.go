@@ -177,7 +177,7 @@ func TestPickInstance(t *testing.T) {
 			cfg: Config{
 				DefaultInstance: "ppm",
 				Instances: map[string]InstanceConfig{
-					"ppm": {URL: "a"}, "bytepoets": {URL: "b"},
+					"ppm": {URL: "a"}, "acme": {URL: "b"},
 				},
 			},
 			wantInstance: "ppm",
@@ -187,11 +187,11 @@ func TestPickInstance(t *testing.T) {
 			cfg: Config{
 				DefaultInstance: "ppm",
 				Instances: map[string]InstanceConfig{
-					"ppm": {URL: "a"}, "bytepoets": {URL: "b"},
+					"ppm": {URL: "a"}, "acme": {URL: "b"},
 				},
 			},
-			flag:         "bytepoets",
-			wantInstance: "bytepoets",
+			flag:         "acme",
+			wantInstance: "acme",
 		},
 		{
 			name: "--instance unknown → error",

@@ -104,7 +104,7 @@ const iconName = computed(() => (failed.value ? 'alert-circle' : phase.value ===
   padding: .12rem .35rem;
   border-radius: 999px;
   background: rgba(46, 109, 164, .1);
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
 }
 .aux-act-sweep {
   height: 2px;

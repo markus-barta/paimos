@@ -55,7 +55,7 @@ onMounted(load)
     <LoadingText v-if="loading" class="anchors-card anchors-empty" label="Loading anchors…" />
     <div v-else-if="error" class="anchors-card anchors-error">{{ error }}</div>
     <div v-else-if="!anchors.length" class="anchors-card anchors-empty">
-      No anchors yet. They appear here after a repo uploads its `.pmo/anchors.json`.
+      No anchors yet. They appear here after a repo uploads its `.paimos/anchors.json`.
     </div>
 
     <div v-else class="anchors-groups">
@@ -113,7 +113,7 @@ onMounted(load)
 .repo-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; }
 .repo-label { font-size: 14px; font-weight: 700; color: var(--text); }
 .repo-url { font-size: 12px; color: var(--text-muted); text-decoration: none; word-break: break-all; }
-.repo-url:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.repo-url:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 .repo-count { font-size: 12px; color: var(--text-muted); }
 .anchor-list { display: flex; flex-direction: column; gap: .55rem; }
 .anchor-row {
@@ -130,7 +130,7 @@ onMounted(load)
 .anchor-main { min-width: 0; flex: 1; }
 .anchor-path-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .anchor-path { color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; word-break: break-all; }
-.anchor-path:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.anchor-path:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 .anchor-confidence, .anchor-state {
   font-size: 10px;
   font-weight: 700;

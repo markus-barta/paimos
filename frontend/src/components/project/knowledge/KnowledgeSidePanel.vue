@@ -266,7 +266,7 @@ function onBackdropClick() {
 .sp-resize-handle:hover::after,
 .side-panel--resizing .sp-resize-handle::after {
   opacity: 1;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
 }
 .sp-content {
   width: 100%;
@@ -311,9 +311,9 @@ function onBackdropClick() {
   color: var(--text);
 }
 .sp-pin--active {
-  color: var(--bp-blue);
-  border-color: var(--bp-blue);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue);
+  border-color: var(--brand-blue);
+  background: var(--brand-blue-pale);
 }
 .sp-crumb {
   display: inline-flex;

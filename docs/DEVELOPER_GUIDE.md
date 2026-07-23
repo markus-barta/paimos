@@ -15,10 +15,10 @@ AI profile, effort, prompt, context, agent, runner, and provenance workflow
 to the current Vue and Go surfaces.
 
 **Project-context tooling**:
-- [`ANCHORS.md`](ANCHORS.md) defines `@paimos` / `@pmo` source anchors.
-- `go run ./backend/cmd/paimos anchors scan --repo-root . --output .pmo/anchors.json`
+- [`ANCHORS.md`](ANCHORS.md) defines `@paimos` source anchors.
+- `go run ./backend/cmd/paimos anchors scan --repo-root . --output .paimos/anchors.json`
   generates the deterministic anchor index.
-- `go run ./backend/cmd/paimos anchors verify --repo-root . --index .pmo/anchors.json`
+- `go run ./backend/cmd/paimos anchors verify --repo-root . --index .paimos/anchors.json`
   is the local/CI stale-anchor guard.
 - `scripts/upload-anchors.sh <project-key-or-id> <repo-id>` is the
   default CI-ready upload wrapper for the committed index.
@@ -82,7 +82,7 @@ docs/
   DEVELOPER_GUIDE.md   this file
   AI_CONTROL_PLANE_UX.md
                        PAI-646/648 UX map for AI actions, agents, and runs
-  DEPLOY.md            live-deploy + backup/rollback runbook (PMO, ppm)
+  DEPLOY.md            live-deploy + backup/rollback runbook (ppm)
   DATA_MODEL.md        current schema (tables, relations, enums)
   archive/
     DATA_MODEL.md      legacy v0.3.5 snapshot — archival only

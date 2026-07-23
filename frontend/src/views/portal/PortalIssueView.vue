@@ -192,7 +192,7 @@ async function undoAccept() {
   display: inline-block;
   margin-bottom: .75rem;
 }
-.back-link:hover { color: var(--bp-blue); }
+.back-link:hover { color: var(--brand-blue); }
 
 .issue-header { margin-bottom: 1rem; }
 .header-top {
@@ -208,8 +208,8 @@ async function undoAccept() {
   letter-spacing: .03em;
   padding: .15rem .5rem;
   border-radius: 4px;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
 }
 .type-badge {
   font-size: 11px;

@@ -247,7 +247,7 @@ async function flipVisibility(comment: Comment) {
 .comments-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.25rem; }
 .comment { display: flex; gap: .75rem; align-items: flex-start; }
 .comment-avatar-ua { flex-shrink: 0; width: 24px !important; height: 24px !important; }
-.comment-avatar-self { background: var(--bp-blue) !important; color: #fff !important; }
+.comment-avatar-self { background: var(--brand-blue) !important; color: #fff !important; }
 .comment-body-wrap { flex: 1; min-width: 0; }
 .comment-meta { display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem; }
 .comment-author { font-size: 13px; font-weight: 600; color: var(--text); }
@@ -272,7 +272,7 @@ async function flipVisibility(comment: Comment) {
 .comment-text--md :deep(code) { font-family:'DM Mono',monospace; font-size:11px; background:var(--bg); padding:.1rem .25rem; border-radius:3px; }
 .comment-text--md :deep(pre) { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:.5rem .75rem; overflow-x:auto; margin:.4rem 0; }
 .comment-text--md :deep(pre code) { background:none; padding:0; }
-.comment-text--md :deep(a) { color:var(--bp-blue); text-decoration:underline; }
+.comment-text--md :deep(a) { color:var(--brand-blue); text-decoration:underline; }
 .textarea--mono { font-family: 'DM Mono', 'Menlo', monospace !important; font-size: 13px; }
 
 .comment-form { display: flex; gap: .75rem; align-items: flex-start; }
@@ -280,7 +280,7 @@ async function flipVisibility(comment: Comment) {
 .comment-textarea { font-size: 13px; resize: vertical; min-height: 60px; }
 /* PAI-475: clear visual cue when authoring a customer-visible comment. */
 .comment-textarea--external {
-  border-color: var(--bp-blue, #2563eb);
+  border-color: var(--brand-blue, #2563eb);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 .comment-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; }
@@ -313,15 +313,15 @@ async function flipVisibility(comment: Comment) {
 }
 .comment-vis-pill--external.comment-vis-pill--active {
   background: rgba(37, 99, 235, 0.08);
-  border-color: var(--bp-blue, #2563eb);
-  color: var(--bp-blue, #2563eb);
+  border-color: var(--brand-blue, #2563eb);
+  color: var(--brand-blue, #2563eb);
 }
 .comment-vis-hint {
   font-size: 11px;
   color: var(--text-muted);
 }
 .comment-vis-hint--warn {
-  color: var(--bp-blue, #2563eb);
+  color: var(--brand-blue, #2563eb);
   font-weight: 500;
 }
 
@@ -339,14 +339,14 @@ async function flipVisibility(comment: Comment) {
 }
 .comment-vis-badge--external {
   background: rgba(37, 99, 235, 0.08);
-  border-color: var(--bp-blue, #2563eb);
-  color: var(--bp-blue, #2563eb);
+  border-color: var(--brand-blue, #2563eb);
+  color: var(--brand-blue, #2563eb);
 }
 .comment-vis-badge:not(:disabled) { cursor: pointer; }
 .comment-vis-badge:not(:disabled):hover { filter: brightness(0.95); }
 .comment--external .comment-body-wrap {
   /* subtle left rail picks out customer-visible items in the thread */
-  border-left: 2px solid var(--bp-blue, #2563eb);
+  border-left: 2px solid var(--brand-blue, #2563eb);
   padding-left: .55rem;
   margin-left: -.55rem;
 }

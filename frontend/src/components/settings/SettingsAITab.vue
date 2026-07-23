@@ -883,7 +883,7 @@ function relTime(iso: string): string {
      noise and clash with the rest of the admin surface. */
   background:
     radial-gradient(circle at 1px 1px, rgba(46, 109, 164, .14) 1px, transparent 1.4px),
-    linear-gradient(135deg, var(--bp-blue-pale) 0%, transparent 70%),
+    linear-gradient(135deg, var(--brand-blue-pale) 0%, transparent 70%),
     var(--bg-card);
   background-size: 14px 14px, 100% 100%, 100% 100%;
   box-shadow: 0 1px 2px rgba(0,0,0,.03);
@@ -896,7 +896,7 @@ function relTime(iso: string): string {
   background: white;
   border: 1px solid var(--border);
   border-radius: 12px;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   filter: drop-shadow(0 4px 10px rgba(46, 109, 164, .14));
 }
 .ai-hero-iconwrap :deep(svg) { animation: ai-sparkle-pulse 3.6s ease-in-out infinite; }
@@ -935,7 +935,7 @@ function relTime(iso: string): string {
   color: var(--text-muted);
   display: flex; flex-direction: column; gap: .25rem;
 }
-.ai-hero-caps li::marker { color: var(--bp-blue, #4a7); }
+.ai-hero-caps li::marker { color: var(--brand-blue, #4a7); }
 .ai-hero-safety {
   margin: .35rem 0 0;
   font-size: 12px;
@@ -990,8 +990,8 @@ function relTime(iso: string): string {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px;
   border-radius: 7px;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
 }
 .ai-card-title {
   margin: 0;
@@ -1010,11 +1010,11 @@ function relTime(iso: string): string {
 }
 .ai-help--top { margin-top: -.25rem; }
 .ai-help a {
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   text-decoration: none;
   border-bottom: 1px dotted currentColor;
 }
-.ai-help a:hover { color: var(--bp-blue); border-bottom-style: solid; }
+.ai-help a:hover { color: var(--brand-blue); border-bottom-style: solid; }
 .ai-help code {
   font-family: 'DM Mono', monospace;
   font-size: 11px;
@@ -1057,7 +1057,7 @@ function relTime(iso: string): string {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0 .35rem;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
 }
 
 /* Switch — bigger sibling of .crm-toggle so the primary control reads
@@ -1086,7 +1086,7 @@ function relTime(iso: string): string {
   box-shadow: 0 1px 3px rgba(0,0,0,.22), 0 0 0 .5px rgba(0,0,0,.04);
   transition: transform .22s cubic-bezier(.4, 1.4, .6, 1);
 }
-.ai-switch input:checked + .ai-switch-track { background: var(--bp-blue); }
+.ai-switch input:checked + .ai-switch-track { background: var(--brand-blue); }
 .ai-switch input:checked + .ai-switch-track::before { transform: translateX(18px); }
 .ai-switch input:disabled + .ai-switch-track { opacity: .45; cursor: not-allowed; }
 
@@ -1112,13 +1112,13 @@ function relTime(iso: string): string {
   transition: border-color .15s, background .15s, transform .12s;
 }
 .ai-provider:hover:not(:disabled) {
-  border-color: var(--bp-blue-light);
+  border-color: var(--brand-blue-light);
   transform: translateY(-1px);
 }
 .ai-provider--active {
-  border-color: var(--bp-blue) !important;
-  background: var(--bp-blue-pale) !important;
-  color: var(--bp-blue-dark);
+  border-color: var(--brand-blue) !important;
+  background: var(--brand-blue-pale) !important;
+  color: var(--brand-blue-dark);
   font-weight: 600;
 }
 .ai-provider--disabled {
@@ -1142,7 +1142,7 @@ function relTime(iso: string): string {
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px;
   border-radius: 50%;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   color: white;
 }
 
@@ -1161,8 +1161,8 @@ function relTime(iso: string): string {
 }
 .ai-input:focus {
   outline: none;
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px var(--brand-blue-pale);
 }
 .ai-input-mono {
   font-family: 'DM Mono', monospace;
@@ -1239,13 +1239,13 @@ function relTime(iso: string): string {
   transition: border-color .15s, background .15s, transform .12s, box-shadow .15s;
 }
 .ai-preset:hover {
-  border-color: var(--bp-blue-light);
+  border-color: var(--brand-blue-light);
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(46, 109, 164, .07);
 }
 .ai-preset--active {
-  border-color: var(--bp-blue) !important;
-  background: var(--bp-blue-pale) !important;
+  border-color: var(--brand-blue) !important;
+  background: var(--brand-blue-pale) !important;
   box-shadow: 0 4px 12px rgba(46, 109, 164, .14) !important;
 }
 .ai-preset-row {
@@ -1258,11 +1258,11 @@ function relTime(iso: string): string {
   color: var(--text);
   letter-spacing: -.005em;
 }
-.ai-preset--active .ai-preset-name { color: var(--bp-blue-dark); }
+.ai-preset--active .ai-preset-name { color: var(--brand-blue-dark); }
 .ai-preset-checkdot {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   color: white;
   border-radius: 50%;
   flex-shrink: 0;
@@ -1322,8 +1322,8 @@ function relTime(iso: string): string {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px;
   border-radius: 6px;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
 }
 .ai-cat-label {
   font-size: 12.5px;
@@ -1460,8 +1460,8 @@ function relTime(iso: string): string {
 }
 .ai-textarea:focus {
   outline: none;
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px var(--brand-blue-pale);
 }
 
 /* ── BANNERS ──────────────────────────────────────────────────── */
@@ -1625,8 +1625,8 @@ function relTime(iso: string): string {
   border: 1px solid var(--border);
   color: var(--text);
 }
-.ai-usage-pill strong { color: var(--bp-blue-dark); font-weight: 700; }
-.ai-usage-pill--day { background: var(--bp-blue-pale); border-color: transparent; color: var(--bp-blue-dark); }
+.ai-usage-pill strong { color: var(--brand-blue-dark); font-weight: 700; }
+.ai-usage-pill--day { background: var(--brand-blue-pale); border-color: transparent; color: var(--brand-blue-dark); }
 .ai-usage-table {
   width: 100%;
   border-collapse: collapse;

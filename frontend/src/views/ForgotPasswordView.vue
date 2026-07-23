@@ -138,14 +138,14 @@ async function submit() {
   align-self: center; font-size: 12px; color: var(--text-muted);
   text-decoration: none; margin-top: .1rem;
 }
-.login-forgot-link:hover { color: var(--bp-blue); text-decoration: underline; }
+.login-forgot-link:hover { color: var(--brand-blue); text-decoration: underline; }
 
 .submitted-box { text-align: center; padding: .5rem 0; }
 .submitted-icon { color: #2ecc71; margin-bottom: .75rem; }
 .submitted-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: .5rem; }
 .submitted-sub   { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 1rem; }
 .submitted-hint  { font-size: 12px; color: var(--text-muted); }
-.submitted-hint a { color: var(--bp-blue); text-decoration: none; }
+.submitted-hint a { color: var(--brand-blue); text-decoration: none; }
 .submitted-hint a:hover { text-decoration: underline; }
 
 .login-footer {

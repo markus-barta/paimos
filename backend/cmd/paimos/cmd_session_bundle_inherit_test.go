@@ -220,9 +220,9 @@ func TestMakeInheritWarning(t *testing.T) {
 // instance pulls return a fresh client at the upstream URL; bad URLs
 // surface as errors so the resolver can degrade gracefully.
 func TestUpstreamClientFor(t *testing.T) {
-	c := &Client{baseURL: "https://pm.bytepoets.com", http: http.DefaultClient}
+	c := &Client{baseURL: "https://pm.example.com", http: http.DefaultClient}
 
-	same, err := upstreamClientFor(c, "https://pm.bytepoets.com")
+	same, err := upstreamClientFor(c, "https://pm.example.com")
 	if err != nil {
 		t.Fatalf("same-instance err: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestUpstreamClientFor(t *testing.T) {
 	}
 
 	// Trailing slash normalisation.
-	same2, _ := upstreamClientFor(c, "https://pm.bytepoets.com/")
+	same2, _ := upstreamClientFor(c, "https://pm.example.com/")
 	if same2 != c {
 		t.Errorf("trailing slash should still match same-instance")
 	}
@@ -267,18 +267,18 @@ func startBundleAPIWithRelated(t *testing.T, hits *bundleHits, upstreamURL, upst
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
-			_, _ = w.Write([]byte(`[{"id":42,"key":"BON26"}]`))
+			_, _ = w.Write([]byte(`[{"id":42,"key":"CON26"}]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/agents":
 			_, _ = w.Write([]byte(`[{"name":"ops"}]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/agents/ops.json":
 			_, _ = w.Write([]byte(`{
-				"project": {"id":42,"key":"BON26","name":"Bonelio"},
+				"project": {"id":42,"key":"CON26","name":"Acme"},
 				"agent": {"name": "ops", "metadata": {}},
 				"repos": [], "environments": [], "deploy_recipes": []
 			}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "memory":
 			_, _ = w.Write([]byte(`[
-				{"id":1,"project_id":42,"type":"memory","slug":"own_rule","title":"Own rule","body":"BON26 own","status":"backlog","metadata":{},"created_at":"","updated_at":""}
+				{"id":1,"project_id":42,"type":"memory","slug":"own_rule","title":"Own rule","body":"CON26 own","status":"backlog","metadata":{},"created_at":"","updated_at":""}
 			]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/knowledge" && r.URL.Query().Get("type") == "runbook":
 			_, _ = w.Write([]byte(`[]`))
@@ -337,7 +337,7 @@ func startUpstreamAPI(t *testing.T, projectKey string) *httptest.Server {
 }
 
 // TestSessionStart_BundleFull_InheritsFromUpstream — the smoke case
-// from PAI-348's acceptance list: BON26 → related_projects → PAI;
+// from PAI-348's acceptance list: CON26 → related_projects → PAI;
 // PAI's "use_paimos_cli" memory + runbook + guideline land in the
 // bundle with inherited annotation. inherit=false drops.
 func TestSessionStart_BundleFull_InheritsFromUpstream(t *testing.T) {
@@ -351,7 +351,7 @@ func TestSessionStart_BundleFull_InheritsFromUpstream(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "json",
@@ -435,7 +435,7 @@ func TestSessionStart_BundleFull_CrossInstanceFailureDegradesGracefully(t *testi
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "json",
@@ -524,7 +524,7 @@ func TestSessionStart_BundleFull_DeclarationOrder(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/projects":
-			_, _ = w.Write([]byte(`[{"id":42,"key":"BON26"}]`))
+			_, _ = w.Write([]byte(`[{"id":42,"key":"CON26"}]`))
 		case "/api/projects/42/agents":
 			_, _ = w.Write([]byte(`[{"name":"ops"}]`))
 		case "/api/projects/42/agents/ops.json":
@@ -553,7 +553,7 @@ func TestSessionStart_BundleFull_DeclarationOrder(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "json",

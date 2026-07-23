@@ -180,9 +180,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   border: 1px solid var(--border); border-radius: var(--radius);
   cursor: pointer; transition: border-color .12s, background .12s;
 }
-.icm-option:hover { border-color: var(--bp-blue); background: var(--bg); }
-.icm-option.selected { border-color: var(--bp-blue); background: var(--bp-blue-pale); }
-.icm-option input[type="radio"] { margin-top: 2px; accent-color: var(--bp-blue); }
+.icm-option:hover { border-color: var(--brand-blue); background: var(--bg); }
+.icm-option.selected { border-color: var(--brand-blue); background: var(--brand-blue-pale); }
+.icm-option input[type="radio"] { margin-top: 2px; accent-color: var(--brand-blue); }
 .icm-option-body { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
 .icm-option-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .icm-option-desc  { font-size: 12px; color: var(--text-muted); line-height: 1.45; }

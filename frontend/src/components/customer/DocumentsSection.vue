@@ -283,7 +283,7 @@ function fmtDate(s: string | null | undefined): string {
   transition: border-color .15s, box-shadow .15s;
 }
 .docs-section--drag {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   box-shadow: 0 0 0 4px rgba(46,109,164,.10);
 }
 .docs-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
@@ -313,11 +313,11 @@ function fmtDate(s: string | null | undefined): string {
 .docs-empty-text { margin: 0; max-width: 36ch; line-height: 1.45; }
 .docs-empty-cta {
   font-size: 13px; font-weight: 500;
-  color: var(--bp-blue); text-decoration: none;
+  color: var(--brand-blue); text-decoration: none;
   background: none; border: none; padding: 0; cursor: pointer;
   font-family: inherit;
 }
-.docs-empty-cta:hover:not(:disabled) { color: var(--bp-blue-dark); text-decoration: underline; }
+.docs-empty-cta:hover:not(:disabled) { color: var(--brand-blue-dark); text-decoration: underline; }
 .docs-empty-cta:disabled { color: var(--text-muted); cursor: not-allowed; }
 
 .docs-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
@@ -332,7 +332,7 @@ function fmtDate(s: string | null | undefined): string {
   background: #fafbfc;
   transition: border-color .15s, background .15s;
 }
-.docs-row:hover { border-color: var(--bp-blue-light); background: #fff; }
+.docs-row:hover { border-color: var(--brand-blue-light); background: #fff; }
 
 .docs-thumb {
   width: 92px; height: 64px;
@@ -350,7 +350,7 @@ function fmtDate(s: string | null | undefined): string {
   font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.docs-name:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.docs-name:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 .docs-label { font-size: 12px; color: var(--text-muted); margin: 0; }
 .docs-meta-row {
   display: flex; gap: .65rem; flex-wrap: wrap; align-items: center;
@@ -379,7 +379,7 @@ function fmtDate(s: string | null | undefined): string {
   color: var(--text-muted); cursor: pointer; text-decoration: none;
   transition: background .15s, color .15s;
 }
-.docs-icon-btn:hover { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.docs-icon-btn:hover { background: var(--brand-blue-pale); color: var(--brand-blue-dark); }
 .docs-icon-btn--danger:hover { background: #fef2f2; color: #b91c1c; }
 
 .docs-drop-overlay {
@@ -387,7 +387,7 @@ function fmtDate(s: string | null | undefined): string {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem;
   background: rgba(46,109,164,.06);
   border-radius: 10px;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   font-weight: 600;
   pointer-events: none;
   backdrop-filter: blur(2px);

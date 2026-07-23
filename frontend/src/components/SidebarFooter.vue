@@ -86,7 +86,7 @@ function isActive(path: string) {
 }
 .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
 .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
-.nav-item.active { background: color-mix(in srgb, var(--bp-blue) 30%, transparent); color: #fff; }
+.nav-item.active { background: color-mix(in srgb, var(--brand-blue) 30%, transparent); color: #fff; }
 .dev-badge {
   margin-left: auto; background: #ef4444; color: #fff;
   font-size: 10px; font-weight: 700; border-radius: 99px;
@@ -109,7 +109,7 @@ function isActive(path: string) {
 .user-profile-link:hover { background: rgba(255,255,255,.06); }
 .user-profile-link:hover .user-avatar { box-shadow: 0 0 0 2px rgba(255,255,255,.2); }
 .user-avatar {
-  width: 26px; height: 26px; background: var(--bp-blue); color: #fff;
+  width: 26px; height: 26px; background: var(--brand-blue); color: #fff;
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700; flex-shrink: 0; overflow: hidden;
   box-shadow: 0 0 0 1px rgba(0,0,0,.35);

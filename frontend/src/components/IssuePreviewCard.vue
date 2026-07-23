@@ -70,13 +70,13 @@ const PRIORITY_LABEL: Record<string, string> = { high: 'High', medium: 'Medium',
 .pc-key {
   font-size: 11px; font-weight: 700; letter-spacing: .03em;
   padding: .1rem .4rem; border-radius: 4px;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
 }
 .pc-type {
   font-size: 10px; font-weight: 600; text-transform: capitalize;
 }
 .pc-type--epic   { color: var(--type-epic, #5e35b1); }
-.pc-type--ticket { color: var(--type-ticket, var(--bp-blue-dark)); }
+.pc-type--ticket { color: var(--type-ticket, var(--brand-blue-dark)); }
 .pc-type--task   { color: var(--type-task, #2e7d32); }
 .pc-status {
   display: inline-flex; align-items: center; gap: .25rem;

@@ -10,12 +10,11 @@ derived from or pinned to it.
 > guide covers TLS / auth / files / audit / secrets / backups against
 > the [`THREAT_MODEL.md`](THREAT_MODEL.md) invariants.
 
-Two instances, both pulling from the same registry:
+One production instance pulls from the registry:
 
 | Instance | Host                  | Auth                | Storage           |
 | -------- | --------------------- | ------------------- | ----------------- |
 | **ppm**  | `pm.barta.cm` (csb1)  | SSH key (`csb1`)    | named volume      |
-| **pmo**  | `pm.bytepoets.com`    | SSH password (env)  | bind mount        |
 
 Registry: `ghcr.io/markus-barta/paimos`. Images produced per-commit on `main`
 (`:latest`, `:sha-<short>`) and per semver tag (`:X.Y.Z`, `:X.Y`, `:X`).
@@ -23,13 +22,12 @@ CI source of truth: [`.github/workflows/ci-v2.yml`](../.github/workflows/ci-v2.y
 
 ---
 
-## The five commands
+## The four commands
 
 ```
 just release [patch|minor|major|x.y.z]   # cut a release (VERSION + README + CHANGELOG + tag + push)
 just verify-release <tag>                # verify signature + SBOM attestations + provenance before deploy
 just deploy-ppm <target>                 # deploy a release tag or sha-* image to ppm
-just deploy-pmo <target>                 # deploy a release tag or sha-* image to pmo
 just doc-sync [tag]                      # file a "doc/site sync follow-up" ticket in PAIMOS
 ```
 
@@ -110,7 +108,7 @@ This applies to release tags. Untagged `sha-*` canaries are CI images, not
 fully published releases, so they do not have the same release-evidence
 surface.
 
-## `just deploy-{ppm,pmo}`
+## `just deploy-ppm`
 
 Deploy targets are explicit by default:
 
@@ -168,10 +166,8 @@ Each instance has a small conf file in `scripts/`:
 
 - `scripts/deploy.ppm.conf` — 10 lines: ssh target, compose dir, service,
   volume name, DB filename, backup root, instance URL.
-- `scripts/deploy.pmo.conf` — same shape, plus password-auth pointers into
-  `~/Secrets/PMO/`.
 
-If you spin up a third instance, copy one of these and change the values.
+If you spin up a second instance, copy this file and change the values.
 
 Deploy preflight uses SSH plus the public health endpoint; it does not
 require a PAIMOS API key for that instance. For a richer read-only operator
@@ -179,7 +175,7 @@ smoke, configure a matching `paimos` CLI instance and run:
 
 ```
 paimos --instance ppm doctor
-paimos --instance pmo doctor
+paimos --instance ppm doctor
 ```
 
 If an operator only has SSH deploy access for an instance, `doctor` may be
@@ -223,7 +219,7 @@ staring at a schema it doesn't understand. Always restore the DB too.
 ## What this deliberately leaves out
 
 - **Staging environment.** There isn't one. ppm acts as a soft canary
-  because you use it yourself before PMO sees a tag.
+  because you use it yourself before any second operator sees a tag.
 - **MinIO attachment snapshots.** A version bump doesn't touch stored
   attachments, so the backup is DB + data dir only. If you need bucket
   snapshots, `docker exec minio mc mirror …` handles it separately.

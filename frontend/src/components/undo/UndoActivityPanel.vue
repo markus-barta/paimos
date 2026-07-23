@@ -310,7 +310,7 @@ onUnmounted(() => {
 .undo-panel__resize:hover::after,
 .undo-panel--resizing .undo-panel__resize::after {
   opacity: 1;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
 }
 
 /* Header — matches ProjectAuxPanel proportions. */
@@ -417,7 +417,7 @@ onUnmounted(() => {
   min-width: 1.25rem;
   padding: 0.05rem 0.4rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bp-blue) 8%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 8%, transparent);
   text-align: center;
 }
 .undo-section__empty {
@@ -442,7 +442,7 @@ onUnmounted(() => {
 }
 .undo-row:not(:disabled):hover {
   background: var(--bg);
-  border-color: color-mix(in srgb, var(--bp-blue) 28%, var(--border));
+  border-color: color-mix(in srgb, var(--brand-blue) 28%, var(--border));
 }
 .undo-row:not(:disabled):active {
   transform: translateY(1px);
@@ -451,10 +451,10 @@ onUnmounted(() => {
   cursor: default;
 }
 .undo-row--undo {
-  border-left: 3px solid color-mix(in srgb, var(--bp-blue) 55%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--brand-blue) 55%, transparent);
 }
 .undo-row--redo {
-  border-left: 3px solid color-mix(in srgb, var(--bp-green) 55%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--brand-green) 55%, transparent);
 }
 .undo-row--history {
   opacity: 0.78;
@@ -508,7 +508,7 @@ onUnmounted(() => {
 .undo-row__chip {
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bp-blue) 10%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 10%, transparent);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }

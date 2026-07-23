@@ -311,7 +311,7 @@ const emit = defineEmits<{
   margin-bottom: .85rem;
 }
 .fp-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); }
-.fp-clear { background: none; border: none; font-size: 12px; color: var(--bp-blue); cursor: pointer; padding: 0; font-family: inherit; }
+.fp-clear { background: none; border: none; font-size: 12px; color: var(--brand-blue); cursor: pointer; padding: 0; font-family: inherit; }
 .fp-clear:hover { text-decoration: underline; }
 
 .fp-body { display: flex; gap: 0; align-items: flex-start; }
@@ -328,7 +328,7 @@ const emit = defineEmits<{
   padding: .15rem 0; user-select: none;
 }
 .fp-option input[type="checkbox"],
-.fp-option input[type="radio"] { width: 14px; height: 14px; flex-shrink: 0; accent-color: var(--bp-blue); cursor: pointer; margin: 0; }
+.fp-option input[type="radio"] { width: 14px; height: 14px; flex-shrink: 0; accent-color: var(--brand-blue); cursor: pointer; margin: 0; }
 .fp-option--pinned { font-weight: 600; }
 .fp-option--neg { opacity: .9; }
 .fp-cb--neg { accent-color: #ef4444; }
@@ -342,7 +342,7 @@ const emit = defineEmits<{
 .fp-dot--outline { background: transparent !important; border: 2px solid; }
 .fp-icon { display: inline-flex; align-items: center; flex-shrink: 0; }
 .fp-icon :deep(svg) { display: block; }
-.fp-proj-key { font-size: 11px; font-weight: 700; font-family: monospace; color: var(--bp-blue); }
+.fp-proj-key { font-size: 11px; font-weight: 700; font-family: monospace; color: var(--brand-blue); }
 .fp-proj-name { color: var(--text-muted); font-size: 11px; margin-left: .15rem; }
 
 .fp-tabs { display: flex; gap: .25rem; flex-wrap: wrap; }
@@ -352,11 +352,11 @@ const emit = defineEmits<{
   padding: .25rem .65rem; font-size: 12px; font-weight: 600; cursor: pointer;
   color: var(--text-muted); font-family: inherit; transition: all .1s;
 }
-.fp-tab:hover { border-color: var(--bp-blue); color: var(--bp-blue-dark); }
-.fp-tab.active { background: var(--bp-blue-pale); color: var(--bp-blue-dark); border-color: var(--bp-blue); }
+.fp-tab:hover { border-color: var(--brand-blue); color: var(--brand-blue-dark); }
+.fp-tab.active { background: var(--brand-blue-pale); color: var(--brand-blue-dark); border-color: var(--brand-blue); }
 .fp-tab-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bp-blue); color: #fff; border-radius: 20px;
+  background: var(--brand-blue); color: #fff; border-radius: 20px;
   font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; padding: 0 3px;
 }
 
@@ -366,7 +366,7 @@ const emit = defineEmits<{
   padding: .3rem .65rem; font-size: 13px; font-family: inherit;
   background: var(--bg); color: var(--text); outline: none;
 }
-.fp-search:focus { border-color: var(--bp-blue); }
+.fp-search:focus { border-color: var(--brand-blue); }
 .fp-select,
 .fp-date-input {
   border: 1px solid var(--border); border-radius: 6px;
@@ -374,14 +374,14 @@ const emit = defineEmits<{
   background: var(--bg); color: var(--text); outline: none;
 }
 .fp-select:focus,
-.fp-date-input:focus { border-color: var(--bp-blue); }
+.fp-date-input:focus { border-color: var(--brand-blue); }
 .fp-date-group { min-width: 180px; }
 .fp-date-row { display: flex; align-items: center; gap: .35rem; }
 .fp-date-input { width: 7.8rem; min-width: 0; }
 .fp-date-sep { font-size: 11px; color: var(--text-muted); }
 .fp-date-clear {
   align-self: flex-start; background: none; border: none; padding: 0;
-  color: var(--bp-blue); font-size: 11px; font-family: inherit; cursor: pointer;
+  color: var(--brand-blue); font-size: 11px; font-family: inherit; cursor: pointer;
 }
 .fp-date-clear:hover { text-decoration: underline; }
 .fp-picker-list {

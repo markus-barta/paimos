@@ -22,7 +22,7 @@ type Project struct {
 	Description  string `json:"description"`
 	Status       string `json:"status"`
 	ProductOwner *int64 `json:"product_owner"`
-	// CustomerLabel is the freeform legacy customer label (PMO26 era).
+	// CustomerLabel is the freeform legacy customer label (legacy-instance era).
 	// Kept for backward compat; new code should use CustomerID (FK).
 	CustomerLabel string `json:"customer_label"`
 	// CustomerID is the FK to customers.id (PAI-54). Nullable: existing

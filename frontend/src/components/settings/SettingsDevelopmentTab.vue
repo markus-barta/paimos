@@ -256,7 +256,7 @@ loadDev()
 .dev-upload-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .dev-upload-help { margin-top: .5rem; }
 .dev-show-more { margin-top: .5rem; text-align: center; }
-.row-active { background: var(--bp-blue-pale); }
+.row-active { background: var(--brand-blue-pale); }
 .dev-empty-row { text-align: center; padding: 1.25rem; }
 .dev-master-detail {
   display: grid; grid-template-columns: 300px 1fr; gap: .75rem;

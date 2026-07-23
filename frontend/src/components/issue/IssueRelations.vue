@@ -239,7 +239,7 @@ function splitByDirection(rels: IssueRelation[]) {
   cursor: pointer; font-size: 12px; transition: background .1s;
 }
 .rel-suggestion:hover { background: var(--surface-2); }
-.rel-sug-key { font-family: monospace; font-weight: 700; color: var(--bp-blue); white-space: nowrap; flex-shrink: 0; }
+.rel-sug-key { font-family: monospace; font-weight: 700; color: var(--brand-blue); white-space: nowrap; flex-shrink: 0; }
 .rel-sug-title { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rel-error { font-size: 12px; color: #c0392b; flex-basis: 100%; }
 .rel-group { margin-bottom: .6rem; }
@@ -254,7 +254,7 @@ function splitByDirection(rels: IssueRelation[]) {
   border-radius: 6px; padding: .2rem .5rem; font-size: 12px;
 }
 .rel-chip-key {
-  font-family: monospace; font-weight: 700; color: var(--bp-blue);
+  font-family: monospace; font-weight: 700; color: var(--brand-blue);
   text-decoration: none;
 }
 .rel-chip-key:hover { text-decoration: underline; }

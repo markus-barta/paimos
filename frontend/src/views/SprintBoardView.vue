@@ -880,7 +880,7 @@ function sprintLabel(s: Sprint): string {
   margin-bottom: -2px; transition: color .15s, border-color .15s;
 }
 .sb-tab:hover { color: var(--text); }
-.sb-tab.active { color: var(--bp-blue); border-bottom-color: var(--bp-blue); font-weight: 600; }
+.sb-tab.active { color: var(--brand-blue); border-bottom-color: var(--brand-blue); font-weight: 600; }
 .sb-tab-spacer { flex: 1; }
 .sb-tree-btn {
   background: none; border: none; cursor: pointer; padding: .3rem .4rem;
@@ -941,7 +941,7 @@ function sprintLabel(s: Sprint): string {
 .sb-foot-completed td { background: #f0fdf4 !important; }
 .sb-bd-row { cursor: pointer; transition: background .1s; }
 .sb-bd-row:hover { background: #f0f2f4; }
-.sb-bd-active-panel { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); }
+.sb-bd-active-panel { background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card)); }
 .sb-bd-key { font-family: monospace; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
 .sb-bd-title { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-bd-completed { }
@@ -962,7 +962,7 @@ function sprintLabel(s: Sprint): string {
   transition: border-color .1s, color .1s;
 }
 .sb-nav-btn:disabled { opacity: .3; cursor: not-allowed; }
-.sb-nav-btn:not(:disabled):hover { border-color: var(--bp-blue); color: var(--bp-blue); }
+.sb-nav-btn:not(:disabled):hover { border-color: var(--brand-blue); color: var(--brand-blue); }
 .sb-sprint-info { display: flex; align-items: center; gap: .6rem; flex: 1; }
 .sb-sprint-name { font-size: 15px; font-weight: 700; color: var(--text); }
 .sb-sprint-state {
@@ -1026,7 +1026,7 @@ function sprintLabel(s: Sprint): string {
 .sb-expand-btn:hover { background: var(--border); color: var(--text); }
 .sb-issue-key {
   font-size: 11px; font-weight: 700; font-family: monospace;
-  color: var(--bp-blue); white-space: nowrap; flex-shrink: 0; text-decoration: none;
+  color: var(--brand-blue); white-space: nowrap; flex-shrink: 0; text-decoration: none;
 }
 .sb-issue-key:hover { text-decoration: underline; }
 .sb-ticket-title { font-size: 13px; font-weight: 500; color: var(--text); flex: 1; }
@@ -1041,13 +1041,13 @@ function sprintLabel(s: Sprint): string {
 
 .sb-avatar {
   width: 24px; height: 24px; border-radius: 50%;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   font-size: 10px; font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0; position: relative;
 }
 .sb-avatar--clickable { cursor: pointer; transition: box-shadow .1s; }
-.sb-avatar--clickable:hover { box-shadow: 0 0 0 2px var(--bp-blue); }
+.sb-avatar--clickable:hover { box-shadow: 0 0 0 2px var(--brand-blue); }
 .sb-avatar--empty { background: var(--border); color: var(--text-muted); border: 1px dashed var(--text-muted); }
 .sb-task-count { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
 
@@ -1071,10 +1071,10 @@ function sprintLabel(s: Sprint): string {
   text-align: left; transition: background .1s;
 }
 .sb-assignee-opt:hover { background: #f0f2f4; }
-.sb-assignee-opt--active { font-weight: 700; color: var(--bp-blue); }
+.sb-assignee-opt--active { font-weight: 700; color: var(--brand-blue); }
 .sb-assignee-opt-initials {
   width: 20px; height: 20px; border-radius: 50%;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   font-size: 9px; font-weight: 700; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
 }
@@ -1102,7 +1102,7 @@ function sprintLabel(s: Sprint): string {
   padding: .65rem .85rem; min-height: 80px;
   transition: background .15s;
 }
-.sb-col--dragover { background: var(--bp-blue-pale); }
+.sb-col--dragover { background: var(--brand-blue-pale); }
 
 .sb-col-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1131,25 +1131,25 @@ function sprintLabel(s: Sprint): string {
 }
 .sb-card:hover { box-shadow: var(--shadow-md); }
 .sb-card--dragging { opacity: .4; }
-.sb-card--drop-target { border-top: 2px solid var(--bp-blue); margin-top: -2px; }
+.sb-card--drop-target { border-top: 2px solid var(--brand-blue); margin-top: -2px; }
 .sb-card { cursor: grab; }
 .sb-card:active { cursor: grabbing; }
 .sb-card-top { display: flex; align-items: center; justify-content: space-between; gap: .3rem; }
 .sb-card-key {
   font-size: 10px; font-weight: 700; font-family: monospace;
-  color: var(--bp-blue); flex-shrink: 0; text-decoration: none; white-space: nowrap;
+  color: var(--brand-blue); flex-shrink: 0; text-decoration: none; white-space: nowrap;
 }
 .sb-card-key:hover { text-decoration: underline; }
 .sb-card-title { font-size: 12px; color: var(--text); line-height: 1.4; }
 .sb-card-avatar {
   width: 20px; height: 20px; border-radius: 50%;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
   font-size: 9px; font-weight: 700; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
   position: relative;
 }
 .sb-card-avatar--clickable { cursor: pointer; transition: box-shadow .1s; }
-.sb-card-avatar--clickable:hover { box-shadow: 0 0 0 2px var(--bp-blue); }
+.sb-card-avatar--clickable:hover { box-shadow: 0 0 0 2px var(--brand-blue); }
 .sb-card-avatar--empty { background: var(--border); color: var(--text-muted); border: 1px dashed var(--text-muted); }
 
 /* Status badge — clickable dropdown */
@@ -1173,6 +1173,6 @@ function sprintLabel(s: Sprint): string {
   text-align: left; transition: background .1s; white-space: nowrap;
 }
 .sb-status-opt:hover { background: #f0f2f4; }
-.sb-status-opt--active { font-weight: 700; color: var(--bp-blue); }
+.sb-status-opt--active { font-weight: 700; color: var(--brand-blue); }
 .sb-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 </style>

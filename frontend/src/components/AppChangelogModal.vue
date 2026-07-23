@@ -284,11 +284,11 @@ watch(
 }
 .cl-row:hover { background: rgba(46, 109, 164, .06); }
 .cl-row--active {
-  background: var(--bp-blue-pale);
-  border-left-color: var(--bp-blue);
+  background: var(--brand-blue-pale);
+  border-left-color: var(--brand-blue);
 }
 .cl-row--active .cl-row-ver {
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
 }
 
 .cl-row-dot {
@@ -304,7 +304,7 @@ watch(
 .cl-row--patch  .cl-row-dot,
 .cl-row-dot.cl-row--patch  { background: #16a34a; }
 .cl-row--minor  .cl-row-dot,
-.cl-row-dot.cl-row--minor  { background: var(--bp-blue); }
+.cl-row-dot.cl-row--minor  { background: var(--brand-blue); }
 .cl-row--major  .cl-row-dot,
 .cl-row-dot.cl-row--major  { background: #f59e0b; }
 
@@ -322,7 +322,7 @@ watch(
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.cl-row--active .cl-row-date { color: var(--bp-blue-dark); opacity: .75; }
+.cl-row--active .cl-row-date { color: var(--brand-blue-dark); opacity: .75; }
 
 .cl-rail-hint {
   flex-shrink: 0;
@@ -432,8 +432,8 @@ watch(
   background: none; border: none; padding: 0;
   font-size: 12px;
 }
-.cl-body :deep(a) { color: var(--bp-blue); text-decoration: underline; text-underline-offset: 2px; }
-.cl-body :deep(a:hover) { color: var(--bp-blue-dark); }
+.cl-body :deep(a) { color: var(--brand-blue); text-decoration: underline; text-underline-offset: 2px; }
+.cl-body :deep(a:hover) { color: var(--brand-blue-dark); }
 .cl-body :deep(hr) { display: none; }
 
 /* ── Cross-version transition ──────────────────────────────────── */

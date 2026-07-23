@@ -126,7 +126,7 @@ func (s *Server) tools() []Tool {
 	return []Tool{
 		{
 			Name:        "paimos_retrieve",
-			Description: "Retrieve mixed project context hits for one PMO project.",
+			Description: "Retrieve mixed project context hits for one PAIMOS project.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

@@ -751,8 +751,8 @@ onUnmounted(stopColumnResize)
 }
 .inline-read-value:hover,
 .inline-read-value:focus-visible {
-  background: color-mix(in srgb, var(--bp-blue) 8%, transparent);
-  border-color: color-mix(in srgb, var(--bp-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--brand-blue) 22%, transparent);
   outline: none;
 }
 .inline-read-label {
@@ -762,7 +762,7 @@ onUnmounted(stopColumnResize)
 }
 .inline-edit-ghost {
   flex-shrink: 0;
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   opacity: 0;
   transition: opacity .12s;
 }
@@ -771,8 +771,8 @@ onUnmounted(stopColumnResize)
   opacity: .58;
 }
 .clickable-cell { cursor: cell; border-radius: 3px; padding: .1rem .25rem; position: relative; }
-.clickable-cell:hover { background: color-mix(in srgb, var(--bp-blue) 8%, transparent); outline: 1px solid color-mix(in srgb, var(--bp-blue) 25%, transparent); outline-offset: -1px; }
-.clickable-cell::before { content: '✎'; position: absolute; left: -14px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--bp-blue); opacity: 0; transition: opacity .15s; pointer-events: none; }
+.clickable-cell:hover { background: color-mix(in srgb, var(--brand-blue) 8%, transparent); outline: 1px solid color-mix(in srgb, var(--brand-blue) 25%, transparent); outline-offset: -1px; }
+.clickable-cell::before { content: '✎'; position: absolute; left: -14px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--brand-blue); opacity: 0; transition: opacity .15s; pointer-events: none; }
 .clickable-cell:hover::before { opacity: .6; }
 
 .sel-th, .sel-td {
@@ -787,17 +787,17 @@ onUnmounted(stopColumnResize)
   z-index: 12;
 }
 .issue-table thead .sel-th { background: var(--bg); z-index: 13; }
-.issue-table tbody tr.row-active-panel .sel-td { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); }
-.issue-table tbody tr.row-selected .sel-td { background: var(--bp-blue-pale); }
+.issue-table tbody tr.row-active-panel .sel-td { background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card)); }
+.issue-table tbody tr.row-selected .sel-td { background: var(--brand-blue-pale); }
 .issue-table tbody tr:hover .sel-td { background: #f0f2f4; }
-.issue-table tbody tr.row-selected:hover .sel-td { background: var(--bp-blue-pale); }
-.sel-cb { width: 15px; height: 15px; padding: 0; border: revert; border-radius: revert; background: revert; cursor: pointer; accent-color: var(--bp-blue); }
-.row-selected { background: var(--bp-blue-pale) !important; }
-.row-active-panel { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); box-shadow: inset 3px 0 0 var(--bp-blue); }
+.issue-table tbody tr.row-selected:hover .sel-td { background: var(--brand-blue-pale); }
+.sel-cb { width: 15px; height: 15px; padding: 0; border: revert; border-radius: revert; background: revert; cursor: pointer; accent-color: var(--brand-blue); }
+.row-selected { background: var(--brand-blue-pale) !important; }
+.row-active-panel { background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card)); box-shadow: inset 3px 0 0 var(--brand-blue); }
 
 .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
 .sortable-th:hover { color: var(--text); background: var(--border) !important; }
-.sortable-th.sort-active { color: var(--bp-blue-dark) !important; }
+.sortable-th.sort-active { color: var(--brand-blue-dark) !important; }
 .sort-ind { display: inline-block; margin-left: .25rem; font-size: 10px; opacity: .55; vertical-align: middle; }
 .sortable-th.sort-active .sort-ind { opacity: 1; }
 .resizable-th { position: sticky; overflow: visible; }
@@ -820,7 +820,7 @@ onUnmounted(stopColumnResize)
   bottom: .35rem;
   width: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bp-blue) 55%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 55%, transparent);
 }
 :global(body.is-column-resizing) {
   cursor: col-resize;
@@ -831,16 +831,16 @@ onUnmounted(stopColumnResize)
 .issue-table--selection-mode .col-key { left: 36px; }
 .issue-table thead .col-key { background: var(--bg); z-index: 12; }
 .issue-table tbody .col-key { background: var(--bg-card); }
-.issue-table tbody tr.row-active-panel .col-key { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); }
-.issue-table tbody tr.row-selected .col-key { background: var(--bp-blue-pale); }
+.issue-table tbody tr.row-active-panel .col-key { background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card)); }
+.issue-table tbody tr.row-selected .col-key { background: var(--brand-blue-pale); }
 .issue-table tbody tr:hover .col-key { background: #f0f2f4; }
-.issue-table tbody tr.row-selected:hover .col-key { background: var(--bp-blue-pale); }
+.issue-table tbody tr.row-selected:hover .col-key { background: var(--brand-blue-pale); }
 .key-cell { white-space: nowrap; }
 .issue-title-cell { min-width: 220px; }
 
 :deep(.search-highlight) { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; font-style: normal; }
 .issue-link { font-weight: 500; color: var(--text); }
-.clickable:hover .issue-link { color: var(--bp-blue); }
+.clickable:hover .issue-link { color: var(--brand-blue); }
 
 /* Inline edit inputs — title (row) and estimate cells (tabular) */
 .title-inline-input {
@@ -849,7 +849,7 @@ onUnmounted(stopColumnResize)
   font-size: 13px;
   font-weight: 500;
   padding: .2rem .4rem;
-  border: 1px solid var(--bp-blue);
+  border: 1px solid var(--brand-blue);
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text);
@@ -860,7 +860,7 @@ onUnmounted(stopColumnResize)
   font: inherit;
   font-size: 12px;
   padding: .2rem .35rem;
-  border: 1px solid var(--bp-blue);
+  border: 1px solid var(--brand-blue);
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text);
@@ -874,14 +874,14 @@ onUnmounted(stopColumnResize)
   font: inherit;
   font-size: 12px;
   padding: .2rem .35rem;
-  border: 1px solid var(--bp-blue);
+  border: 1px solid var(--brand-blue);
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text);
   outline: none;
 }
 .meta-cell { color: var(--text-muted); white-space: nowrap; font-size: 12px; }
-.booked-cell { color: var(--bp-green, #16a34a); font-weight: 600; }
+.booked-cell { color: var(--brand-green, #16a34a); font-weight: 600; }
 .report-summary-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; color: var(--text); }
 .col-ai-status,
 .ai-status-cell {
@@ -926,16 +926,16 @@ onUnmounted(stopColumnResize)
 .col-actions { position: sticky; right: 0; text-align: center; white-space: nowrap; padding-left: 1rem; padding-right: 1rem; }
 .issue-table thead .col-actions { z-index: 12; background: var(--bg); }
 .issue-table tbody .col-actions { z-index: 11; background: var(--bg-card); }
-.issue-table tbody tr.row-active-panel .col-actions { background: color-mix(in srgb, var(--bp-blue) 8%, var(--bg-card)); }
-.issue-table tbody tr.row-selected .col-actions { background: var(--bp-blue-pale); }
+.issue-table tbody tr.row-active-panel .col-actions { background: color-mix(in srgb, var(--brand-blue) 8%, var(--bg-card)); }
+.issue-table tbody tr.row-selected .col-actions { background: var(--brand-blue-pale); }
 .issue-table tbody tr:hover .col-actions { background: #f0f2f4; }
-.issue-table tbody tr.row-selected:hover .col-actions { background: var(--bp-blue-pale); }
+.issue-table tbody tr.row-selected:hover .col-actions { background: var(--brand-blue-pale); }
 
 .th-toggle { cursor: pointer; }
-.unit-toggle { color: var(--bp-blue); font-weight: 600; text-decoration: underline; text-decoration-style: dotted; }
+.unit-toggle { color: var(--brand-blue); font-weight: 600; text-decoration: underline; text-decoration-style: dotted; }
 
 
-.row-expanded > td:first-child { border-left: 2px solid var(--bp-blue); }
+.row-expanded > td:first-child { border-left: 2px solid var(--brand-blue); }
 .expand-panel-row { background: var(--surface-2); }
 .expand-panel-cell { padding: 0 !important; border-bottom: 1px solid var(--border); }
 .expand-empty { font-size: 12px; color: var(--text-muted); padding: .5rem 1rem; font-style: italic; }

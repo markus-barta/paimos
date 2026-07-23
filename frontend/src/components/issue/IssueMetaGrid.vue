@@ -253,11 +253,11 @@ function issueRoute(issueId: number): string {
 .meta-value { font-size: 13px; color: var(--text); }
 .meta-value--computed { color: var(--text-muted); font-style: italic; }
 .meta-label--toggle { cursor: pointer; }
-.meta-label--toggle:hover .unit-toggle { color: var(--bp-blue); }
-.unit-toggle { color: var(--bp-blue); text-decoration: underline; text-decoration-style: dotted; }
+.meta-label--toggle:hover .unit-toggle { color: var(--brand-blue); }
+.unit-toggle { color: var(--brand-blue); text-decoration: underline; text-decoration-style: dotted; }
 .meta-tags  { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .1rem; }
-.meta-link  { font-size: 13px; color: var(--bp-blue); }
-.meta-link:hover { color: var(--bp-blue-dark); }
+.meta-link  { font-size: 13px; color: var(--brand-blue); }
+.meta-link:hover { color: var(--brand-blue-dark); }
 
 .v2-state-badge {
   display: inline-block;
@@ -282,5 +282,5 @@ function issueRoute(issueId: number): string {
   cursor: pointer; font-family: inherit;
   transition: border-color .1s, color .1s;
 }
-.sprint-add-btn:hover { border-color: var(--bp-blue); color: var(--bp-blue); }
+.sprint-add-btn:hover { border-color: var(--brand-blue); color: var(--brand-blue); }
 </style>

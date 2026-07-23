@@ -469,22 +469,22 @@ async function deleteTimeEntry(entry: TimeEntry) {
 
 <style scoped>
 .te-bar {
-  border: 1px solid color-mix(in srgb, var(--bp-green, #16a34a) 15%, var(--border));
-  border-left: 3px solid var(--bp-green, #16a34a);
+  border: 1px solid color-mix(in srgb, var(--brand-green, #16a34a) 15%, var(--border));
+  border-left: 3px solid var(--brand-green, #16a34a);
   border-radius: 8px; margin: 1.25rem 1.5rem 1rem; overflow: hidden;
-  background: color-mix(in srgb, var(--bp-green, #16a34a) 4%, var(--bg-card));
+  background: color-mix(in srgb, var(--brand-green, #16a34a) 4%, var(--bg-card));
 }
 .te-bar-collapsed {
   display: flex; align-items: center; justify-content: space-between;
   padding: .5rem 1rem; cursor: pointer; min-height: 32px;
   transition: background .12s;
 }
-.te-bar-collapsed:hover { background: color-mix(in srgb, var(--bp-green, #16a34a) 6%, var(--bg-card)); }
+.te-bar-collapsed:hover { background: color-mix(in srgb, var(--brand-green, #16a34a) 6%, var(--bg-card)); }
 .te-bar-users { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .te-bar-user { display: inline-flex; align-items: center; gap: .25rem; font-size: 11px; }
 .te-bar-avatar {
   width: 18px; height: 18px; border-radius: 50%;
-  background: var(--bp-blue-pale); color: var(--bp-blue);
+  background: var(--brand-blue-pale); color: var(--brand-blue);
   font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center;
 }
 .te-bar-hours { font-weight: 600; color: var(--text); }
@@ -493,7 +493,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .te-bar-right { display: flex; align-items: center; gap: .5rem; }
 .te-bar-chevron { color: var(--text-muted); flex-shrink: 0; }
 .te-bar-content {
-  padding: .75rem 1rem 1rem; border-top: 1px solid color-mix(in srgb, var(--bp-green, #16a34a) 15%, var(--border));
+  padding: .75rem 1rem 1rem; border-top: 1px solid color-mix(in srgb, var(--brand-green, #16a34a) 15%, var(--border));
 }
 .te-expand-enter-active, .te-expand-leave-active { transition: max-height .25s ease, opacity .2s; overflow: hidden; }
 .te-expand-enter-from, .te-expand-leave-to { max-height: 0; opacity: 0; }
@@ -509,10 +509,10 @@ async function deleteTimeEntry(entry: TimeEntry) {
   padding: .25rem .5rem; border-radius: 4px; font-family: inherit;
   line-height: 1; transition: color .1s, background .1s;
 }
-.te-ghost-btn:hover { color: var(--bp-green, #16a34a); background: color-mix(in srgb, var(--bp-green) 8%, transparent); }
+.te-ghost-btn:hover { color: var(--brand-green, #16a34a); background: color-mix(in srgb, var(--brand-green) 8%, transparent); }
 
 .te-total {
-  font-size: 12px; font-weight: 700; background: var(--bp-green, #16a34a);
+  font-size: 12px; font-weight: 700; background: var(--brand-green, #16a34a);
   color: #fff; border-radius: 10px; padding: .05rem .5rem;
 }
 .te-total--running {
@@ -554,7 +554,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .te-acting-badge strong {
   font-weight: 700;
 }
-.te-save-btn { background: var(--bp-green, #16a34a); color: #fff; border-color: #15803d; }
+.te-save-btn { background: var(--brand-green, #16a34a); color: #fff; border-color: #15803d; }
 .te-save-btn:hover { background: #15803d; }
 
 .te-table {
@@ -571,22 +571,22 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .te-user { font-weight: 600; }
 .te-date { color: var(--text-muted); white-space: nowrap; }
 .te-date--editable { cursor: pointer; }
-.te-date--editable:hover { color: var(--bp-blue); }
+.te-date--editable:hover { color: var(--brand-blue); }
 .te-date-input {
   font-size: 12px; border: 1px solid var(--border); border-radius: 3px;
   padding: .1rem .3rem; outline: none; font-family: inherit;
   background: var(--bg-card); color: var(--text);
 }
 .te-date-input--inline {
-  width: 130px; border-color: var(--bp-blue);
+  width: 130px; border-color: var(--brand-blue);
 }
 .te-hours { font-weight: 700; white-space: nowrap; cursor: pointer; position: relative; }
-.te-hours:hover { color: var(--bp-blue); }
+.te-hours:hover { color: var(--brand-blue); }
 .te-comment { color: var(--text-muted); max-width: 240px; cursor: pointer; }
 .te-comment-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-.te-comment-text:hover { color: var(--bp-blue); }
+.te-comment-text:hover { color: var(--brand-blue); }
 .te-comment-input {
-  width: 100%; font-size: 12px; border: 1px solid var(--bp-blue);
+  width: 100%; font-size: 12px; border: 1px solid var(--brand-blue);
   border-radius: 3px; padding: .1rem .3rem; outline: none; font-family: inherit;
   background: var(--bg-card);
 }
@@ -594,7 +594,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .te-overridden td.te-date { opacity: .4; }
 .te-struck { text-decoration: line-through; }
 .te-duration-input {
-  width: 60px; font-size: 12px; font-weight: 700; border: 1px solid var(--bp-blue);
+  width: 60px; font-size: 12px; font-weight: 700; border: 1px solid var(--brand-blue);
   border-radius: 3px; padding: .1rem .3rem; outline: none; font-family: inherit;
   background: var(--bg-card);
 }
@@ -603,18 +603,18 @@ async function deleteTimeEntry(entry: TimeEntry) {
   color: var(--text-muted); border-radius: 2px; display: inline-flex; vertical-align: middle;
 }
 .te-clear-override:hover { color: var(--danger); background: var(--bg); }
-.te-live { color: var(--bp-green, #16a34a); font-weight: 700; }
+.te-live { color: var(--brand-green, #16a34a); font-weight: 700; }
 .te-row-running {
-  background: color-mix(in srgb, var(--bp-green, #16a34a) 6%, var(--bg-card));
-  box-shadow: inset 3px 0 0 var(--bp-green, #16a34a);
+  background: color-mix(in srgb, var(--brand-green, #16a34a) 6%, var(--bg-card));
+  box-shadow: inset 3px 0 0 var(--brand-green, #16a34a);
 }
 .te-row-stop {
   background: none; border: none; cursor: pointer; padding: 2px 6px;
-  color: var(--bp-green, #16a34a); border-radius: 4px; display: inline-flex;
+  color: var(--brand-green, #16a34a); border-radius: 4px; display: inline-flex;
   align-items: center; gap: .25rem; font-size: 11px; font-weight: 600; font-family: inherit;
   transition: background .1s;
 }
-.te-row-stop:hover { background: color-mix(in srgb, var(--bp-green) 15%, transparent); }
+.te-row-stop:hover { background: color-mix(in srgb, var(--brand-green) 15%, transparent); }
 .te-row-act { opacity: 0; transition: opacity .12s; }
 tr:hover .te-row-act { opacity: 1; }
 .btn-icon-del {

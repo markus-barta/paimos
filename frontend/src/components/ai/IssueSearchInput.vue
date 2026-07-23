@@ -224,28 +224,28 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
   gap: .55rem;
   padding: .4rem .55rem .4rem .65rem;
   min-height: 40px;
-  background: var(--bp-blue-pale);
-  border: 1.5px solid var(--bp-blue-light);
+  background: var(--brand-blue-pale);
+  border: 1.5px solid var(--brand-blue-light);
   border-radius: 9px;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   animation: iss-chip-in .18s cubic-bezier(.2, .8, .2, 1);
 }
 @keyframes iss-chip-in {
   from { transform: scale(.98); opacity: 0; }
   to   { transform: scale(1);   opacity: 1; }
 }
-.iss-chip-type { display: inline-flex; align-items: center; line-height: 0; flex-shrink: 0; color: var(--bp-blue-dark); }
+.iss-chip-type { display: inline-flex; align-items: center; line-height: 0; flex-shrink: 0; color: var(--brand-blue-dark); }
 .iss-chip-type :deep(svg) { width: 14px; height: 14px; }
 .iss-chip-key {
   font-family: 'DM Mono', 'JetBrains Mono', monospace;
   font-size: 11.5px;
   font-weight: 700;
   background: white;
-  border: 1px solid var(--bp-blue-light);
+  border: 1px solid var(--brand-blue-light);
   border-radius: 5px;
   padding: .12rem .42rem;
   flex-shrink: 0;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
 }
 .iss-chip-title {
   flex: 1; min-width: 0;
@@ -255,7 +255,7 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
 }
 .iss-chip-x {
   background: none; border: none;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   cursor: pointer;
   padding: 4px;
   border-radius: 5px;
@@ -276,8 +276,8 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
   transition: border-color .14s, box-shadow .14s, border-radius .14s;
 }
 .iss-search:focus-within {
-  border-color: var(--bp-blue);
-  box-shadow: 0 0 0 3px var(--bp-blue-pale);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px var(--brand-blue-pale);
 }
 /* When the popover is open, flatten the bottom corners so the
    shell + popover read as one connected surface. */
@@ -311,7 +311,7 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
   top: calc(100% - 1.5px);   /* overlap parent border so corners merge */
   left: 0; right: 0;
   background: white;
-  border: 1.5px solid var(--bp-blue);
+  border: 1.5px solid var(--brand-blue);
   border-top: 1.5px solid var(--border);
   border-bottom-left-radius: 9px;
   border-bottom-right-radius: 9px;
@@ -347,20 +347,20 @@ onBeforeUnmount(()   => document.removeEventListener('mousedown', onDocClick))
   color: var(--text);
 }
 .iss-result:hover, .iss-result--active {
-  background: var(--bp-blue-pale);
+  background: var(--brand-blue-pale);
 }
 .iss-result-type {
   display: inline-flex; align-items: center; line-height: 0;
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.iss-result--active .iss-result-type { color: var(--bp-blue-dark); }
+.iss-result--active .iss-result-type { color: var(--brand-blue-dark); }
 .iss-result-type :deep(svg) { width: 14px; height: 14px; }
 .iss-result-key {
   font-family: 'DM Mono', 'JetBrains Mono', monospace;
   font-size: 11.5px;
   font-weight: 700;
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   background: white;
   border: 1px solid var(--border);
   border-radius: 5px;

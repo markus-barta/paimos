@@ -125,11 +125,11 @@ onBeforeUnmount(() => {
 }
 
 :root {
-  --bp-blue: #2e6da4;
-  --bp-green: #16a34a;
-  --bp-blue-dark: #1f4d75;
-  --bp-blue-light: #4a8fc2;
-  --bp-blue-pale: #dce9f4;
+  --brand-blue: #2e6da4;
+  --brand-green: #16a34a;
+  --brand-blue-dark: #1f4d75;
+  --brand-blue-light: #4a8fc2;
+  --brand-blue-pale: #dce9f4;
   --bg: #f2f5f8;
   --bg-card: #ffffff;
   --text: #1a2636;
@@ -159,11 +159,11 @@ onBeforeUnmount(() => {
 }
 
 a {
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   text-decoration: none;
 }
 a:hover {
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
 }
 
 button {
@@ -199,7 +199,7 @@ textarea {
 input:where(:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"])):focus,
 select:focus,
 textarea:focus {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   box-shadow: 0 0 0 3px rgba(46, 109, 164, 0.15);
 }
 
@@ -234,12 +234,12 @@ textarea:focus {
     opacity 0.15s;
 }
 .btn-primary {
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   color: #fff;
-  border-color: var(--bp-blue-dark);
+  border-color: var(--brand-blue-dark);
 }
 .btn-primary:hover {
-  background: var(--bp-blue-dark);
+  background: var(--brand-blue-dark);
 }
 .btn-ghost {
   background: transparent;
@@ -371,7 +371,7 @@ textarea:focus {
   color: var(--type-epic, #5e35b1);
 }
 .issue-type--ticket {
-  color: var(--type-ticket, var(--bp-blue-dark));
+  color: var(--type-ticket, var(--brand-blue-dark));
 }
 .issue-type--task {
   color: var(--type-task, #2e7d32);
@@ -390,7 +390,7 @@ textarea:focus {
   flex-shrink: 0;
 }
 .ah-back:hover {
-  color: var(--bp-blue);
+  color: var(--brand-blue);
 }
 .ah-sep {
   color: var(--border);
@@ -415,8 +415,8 @@ textarea:focus {
 .ah-key-badge {
   display: inline-flex;
   align-items: center;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -465,7 +465,7 @@ textarea:focus {
   font-weight: 600;
 }
 .ah-meta-link:hover {
-  color: var(--bp-blue-dark);
+  color: var(--brand-blue-dark);
   text-decoration: underline;
 }
 
@@ -590,7 +590,7 @@ textarea:focus {
   margin: 0.5rem 0;
 }
 .md-rendered a {
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   text-decoration: underline;
 }
 .md-rendered img {

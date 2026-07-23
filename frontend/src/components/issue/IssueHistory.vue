@@ -246,7 +246,7 @@ function hasAttribution(entry: HistoryEntry | null): boolean {
   display: flex; align-items: center; justify-content: center;
   transition: background .1s, border-color .1s;
 }
-.hist-arrow:hover:not(:disabled) { background: var(--bg); border-color: var(--bp-blue); color: var(--bp-blue); }
+.hist-arrow:hover:not(:disabled) { background: var(--bg); border-color: var(--brand-blue); color: var(--brand-blue); }
 .hist-arrow:disabled { opacity: .35; cursor: default; }
 .history-pos { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
 /* PAI-382: always-visible keyboard navigation hint. */

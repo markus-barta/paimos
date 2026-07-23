@@ -140,7 +140,7 @@ X-Paimos-Agent-Name and X-Paimos-Session-Id headers (PAI-324) are
 forwarded automatically — operators see who drafted what.
 
 Required:
-  --project <key|id>   destination project (key like BON26 or numeric id)
+  --project <key|id>   destination project (key like CON26 or numeric id)
   --title "<text>"     human-readable title
 
 Recommended:

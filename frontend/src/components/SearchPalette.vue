@@ -402,10 +402,10 @@ watch(activeIndex, () => {
 .sp-item--active,
 .sp-more:hover,
 .sp-more--active {
-  background: color-mix(in srgb, var(--bp-blue) 9%, var(--bg-card));
+  background: color-mix(in srgb, var(--brand-blue) 9%, var(--bg-card));
 }
 .sp-item--active {
-  box-shadow: inset 3px 0 0 var(--bp-blue);
+  box-shadow: inset 3px 0 0 var(--brand-blue);
 }
 .sp-item--direct {
   flex-direction: column;
@@ -428,7 +428,7 @@ watch(activeIndex, () => {
   font-family: monospace;
   font-size: 12px;
   font-weight: 700;
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -462,7 +462,7 @@ watch(activeIndex, () => {
   border-top: 1px solid var(--border);
 }
 .sp-more--active {
-  box-shadow: inset 3px 0 0 var(--bp-blue);
+  box-shadow: inset 3px 0 0 var(--brand-blue);
 }
 .sp-more-text {
   font-size: 11px;

@@ -29,13 +29,13 @@ import (
 func TestLieferberichtPDF_NonBMPRunesDoNotPanic(t *testing.T) {
 	lp := 1.0
 	report := &lbReport{
-		ProjectKey:  "BON26",
-		ProjectName: "Bonelio",
+		ProjectKey:  "CON26",
+		ProjectName: "Acme",
 		Groups: []lbGroup{{
-			EpicKey:   "BON26-1",
+			EpicKey:   "CON26-1",
 			EpicTitle: "Epic with rocket \U0001F680",
 			Issues: []lbIssue{{
-				IssueKey:    "BON26-2",
+				IssueKey:    "CON26-2",
 				Type:        "ticket",
 				Title:       "Rotating light \U0001F6A8 and clock \U0001F552 in title",
 				Description: "Description with \U0001F6A8 \U0001F552 \U0001F389 \U0001F4A1 emojis interleaved with regular text.",
@@ -458,16 +458,10 @@ func TestProjectReportContractorParty_FromBranding(t *testing.T) {
 		t.Errorf("company fallback lines = %v", got)
 	}
 
-	// Empty branding → brand default; must be non-empty and never the former
-	// hardcoded identity.
+	// Empty branding → brand default; must be exactly one non-empty line.
 	writeBranding(`{}`)
 	party = projectReportContractorParty()
 	if len(party.Lines) != 1 || strings.TrimSpace(party.Lines[0]) == "" {
 		t.Errorf("default fallback lines = %v, want one non-empty line", party.Lines)
-	}
-	for _, l := range party.Lines {
-		if strings.Contains(strings.ToUpper(l), "BYTEPOETS") {
-			t.Errorf("contractor line %q leaks retired hardcoded identity", l)
-		}
 	}
 }

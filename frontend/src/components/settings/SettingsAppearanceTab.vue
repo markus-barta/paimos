@@ -347,7 +347,7 @@ loadBrandings()
 }
 .mode-btn:hover { color: var(--text); }
 .mode-btn.active {
-  background: var(--bp-blue);
+  background: var(--brand-blue);
   color: #fff;
 }
 .appearance-controls { display: flex; flex-direction: column; gap: 1rem; min-width: 220px; }
@@ -360,7 +360,7 @@ loadBrandings()
 .branding-select { width: auto; min-width: 200px; font-size: 13px; padding: .4rem .6rem; }
 .display-preview { display: flex; gap: 1rem; align-items: center; margin-left: auto; padding-left: 1.5rem; border-left: 1px solid var(--border); }
 .toggle-label { display: flex; align-items: flex-start; gap: .65rem; cursor: pointer; user-select: none; }
-.toggle-label input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; accent-color: var(--bp-blue); cursor: pointer; }
+.toggle-label input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; accent-color: var(--brand-blue); cursor: pointer; }
 .toggle-label input:disabled { cursor: not-allowed; opacity: .5; }
 .toggle-text { display: flex; flex-direction: column; gap: .1rem; }
 .toggle-title { font-size: 13px; font-weight: 600; color: var(--text); }

@@ -86,7 +86,7 @@ defineEmits<{
     border-color 0.12s;
 }
 .history-btn:hover {
-  color: var(--bp-blue);
-  border-color: var(--bp-blue);
+  color: var(--brand-blue);
+  border-color: var(--brand-blue);
 }
 </style>

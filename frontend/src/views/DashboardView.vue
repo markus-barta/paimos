@@ -175,7 +175,7 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
   border-bottom: 1px solid var(--border);
 }
 .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
-.card-link   { font-size: 12px; color: var(--bp-blue); }
+.card-link   { font-size: 12px; color: var(--brand-blue); }
 .empty       { padding: 1.25rem; font-size: 13px; color: var(--text-muted); }
 
 /* ── Projects ─────────────────────────────────────────────────────────────── */
@@ -191,7 +191,7 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
   display: flex; align-items: center; gap: .75rem; min-width: 0;
   text-decoration: none; color: inherit; flex: 1;
 }
-.project-row-link:hover .project-name { color: var(--bp-blue); }
+.project-row-link:hover .project-name { color: var(--brand-blue); }
 .project-thumb { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .project-logo { width: 36px; height: 36px; object-fit: contain; border-radius: 5px; }
 .project-key-box {
@@ -207,7 +207,7 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
 .project-activity { font-size: 10px; color: var(--text-muted); opacity: .7; }
 .dash-progress { display: flex; align-items: center; gap: .4rem; }
 .dash-progress-bar { width: 48px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
-.dash-progress-fill { height: 100%; background: var(--bp-blue); border-radius: 2px; }
+.dash-progress-fill { height: 100%; background: var(--brand-blue); border-radius: 2px; }
 .dash-progress-label { font-size: 10px; color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ── Issues ───────────────────────────────────────────────────────────────── */
@@ -226,7 +226,7 @@ function priorityLabel(p: string) { return PRIORITY_LABEL[p] ?? p }
 .issue-list li:last-child .issue-row { border-bottom: none; }
 .issue-key {
   font-size: 10px; font-weight: 700; letter-spacing: .04em;
-  color: var(--bp-blue-dark); background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark); background: var(--brand-blue-pale);
   padding: .1rem .4rem; border-radius: 3px;
   white-space: nowrap; text-align: center;
   font-variant-numeric: tabular-nums;

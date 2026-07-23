@@ -833,12 +833,12 @@ watch(
 }
 .ke-body-mode .btn:hover:not(.active),
 .ke-status-toggle .btn:hover:not(.active) {
-  background: color-mix(in srgb, var(--bp-blue) 6%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 6%, transparent);
 }
 .ke-body-mode .btn.active,
 .ke-status-toggle .btn.active {
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue-dark);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue-dark);
   font-weight: 600;
 }
 
@@ -914,7 +914,7 @@ watch(
   background: var(--surface-2, var(--bg-card)); border: 1px solid var(--border);
   border-radius: 6px; padding: .2rem .5rem; font-size: 12px;
 }
-.ke-ticket-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: var(--bp-blue); text-decoration: none; }
+.ke-ticket-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: var(--brand-blue); text-decoration: none; }
 .ke-ticket-key:hover { text-decoration: underline; }
 .ke-ticket-title { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ke-ticket-del { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1; padding: 0 .15rem; border-radius: 3px; }

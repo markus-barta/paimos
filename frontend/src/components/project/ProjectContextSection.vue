@@ -150,7 +150,7 @@ onMounted(load)
 .repo-main { min-width: 0; }
 .repo-name { font-size: 13px; font-weight: 700; color: var(--text); }
 .repo-url { display: inline-block; margin-top: .15rem; font-size: 12px; color: var(--text-muted); word-break: break-all; text-decoration: none; }
-.repo-url:hover { color: var(--bp-blue-dark); text-decoration: underline; }
+.repo-url:hover { color: var(--brand-blue-dark); text-decoration: underline; }
 .repo-meta { margin-top: .25rem; font-size: 12px; color: var(--text-muted); }
 .repo-form { display: grid; grid-template-columns: 1fr 1.4fr .7fr auto; gap: .55rem; }
 .repo-form input {

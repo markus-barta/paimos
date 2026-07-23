@@ -112,7 +112,7 @@ async function logout() {
 .portal-nav-link {
   font-size: 14px;
   font-weight: 600;
-  color: var(--bp-blue);
+  color: var(--brand-blue);
 }
 .portal-header-center { display: flex; justify-content: center; flex: 1; }
 .portal-search-wrap {
@@ -129,7 +129,7 @@ async function logout() {
   transition: border-color .15s, background .15s;
   -webkit-appearance: none;
 }
-.portal-search-wrap.focused .portal-search-input { border-color: var(--bp-blue); background: var(--bg-card); }
+.portal-search-wrap.focused .portal-search-input { border-color: var(--brand-blue); background: var(--bg-card); }
 .portal-search-input::-webkit-search-cancel-button { display: none; }
 .portal-search-clear {
   position: absolute; right: 8px; background: none; border: none;

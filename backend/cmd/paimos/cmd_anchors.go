@@ -36,7 +36,7 @@ type anchorRecord struct {
 	Symbol     any    `json:"symbol"`
 }
 
-var anchorPattern = regexp.MustCompile(`^\s*(?://|#|--|<!--)\s*@(?:pmo|paimos)\s+([A-Z][A-Z0-9]{0,15}-\d+)(?:\s+"([^"]+)")?\s*(?:-->)?\s*$`)
+var anchorPattern = regexp.MustCompile(`^\s*(?://|#|--|<!--)\s*@paimos\s+([A-Z][A-Z0-9]{0,15}-\d+)(?:\s+"([^"]+)")?\s*(?:-->)?\s*$`)
 
 func anchorsCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -54,7 +54,7 @@ func anchorsScanCmd() *cobra.Command {
 	var repoRoot, outputPath, repoName, schemaVersion string
 	c := &cobra.Command{
 		Use:   "scan",
-		Short: "Scan a repository for @paimos / @pmo anchors",
+		Short: "Scan a repository for @paimos anchors",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRootFrom(repoRoot)
 			if err != nil {
@@ -85,7 +85,7 @@ func anchorsScanCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&repoRoot, "repo-root", "", "repository root (defaults to git top-level or cwd)")
-	c.Flags().StringVar(&outputPath, "output", ".pmo/anchors.json", "output path for the anchor index")
+	c.Flags().StringVar(&outputPath, "output", ".paimos/anchors.json", "output path for the anchor index")
 	c.Flags().StringVar(&repoName, "repo", "", "override repo identifier in the index")
 	c.Flags().StringVar(&schemaVersion, "schema-version", "1", "anchor index schema version")
 	return c
@@ -131,7 +131,7 @@ func anchorsVerifyCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&repoRoot, "repo-root", "", "repository root (defaults to git top-level or cwd)")
-	c.Flags().StringVar(&indexPath, "index", ".pmo/anchors.json", "path to the committed anchor index")
+	c.Flags().StringVar(&indexPath, "index", ".paimos/anchors.json", "path to the committed anchor index")
 	c.Flags().StringVar(&repoName, "repo", "", "override repo identifier in the generated scan")
 	c.Flags().StringVar(&schemaVersion, "schema-version", "1", "anchor index schema version")
 	return c
@@ -202,7 +202,7 @@ func anchorsUploadCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&repoRoot, "repo-root", "", "repository root (defaults to git top-level or cwd)")
-	c.Flags().StringVar(&indexPath, "index", ".pmo/anchors.json", "path to the anchor index")
+	c.Flags().StringVar(&indexPath, "index", ".paimos/anchors.json", "path to the anchor index")
 	c.Flags().StringVar(&projectRef, "project", "", "project key or numeric id")
 	c.Flags().Int64Var(&repoID, "repo-id", 0, "linked project repo id (auto-detected from git remote when omitted)")
 	return c
@@ -348,7 +348,7 @@ func compareAnchorIndexes(expected, current *anchorIndex) anchorVerifyReport {
 			continue
 		}
 		if oldRec.Line != newRec.Line {
-			report.Warnings = append(report.Warnings, fmt.Sprintf("%s: line drift %s %d -> %d (regenerate .pmo/anchors.json)", k.issue, oldRec.File, oldRec.Line, newRec.Line))
+			report.Warnings = append(report.Warnings, fmt.Sprintf("%s: line drift %s %d -> %d (regenerate .paimos/anchors.json)", k.issue, oldRec.File, oldRec.Line, newRec.Line))
 		}
 	}
 	for k, rec := range currentMap {

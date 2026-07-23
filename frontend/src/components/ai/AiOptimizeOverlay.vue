@@ -361,7 +361,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
 }
 .ai-overlay-field-chip {
-  background: var(--bp-blue-pale, #dce9f4); color: var(--bp-blue-dark, #1f4d75);
+  background: var(--brand-blue-pale, #dce9f4); color: var(--brand-blue-dark, #1f4d75);
   padding: .1rem .55rem; border-radius: 999px;
   font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   font-family: 'DM Sans', sans-serif;
@@ -492,7 +492,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   display: inline-flex;
   align-items: center;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--bp-blue, #2b6cb0) 22%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--brand-blue, #2b6cb0) 22%, var(--border));
   border-radius: 999px;
   background: #fff;
 }
@@ -507,17 +507,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   cursor: pointer;
 }
 .ai-hunk-choice + .ai-hunk-choice {
-  border-left: 1px solid color-mix(in srgb, var(--bp-blue, #2b6cb0) 14%, var(--border));
+  border-left: 1px solid color-mix(in srgb, var(--brand-blue, #2b6cb0) 14%, var(--border));
 }
 .ai-hunk-choice:hover,
 .ai-hunk-choice:focus-visible {
-  background: color-mix(in srgb, var(--bp-blue, #2b6cb0) 7%, #fff);
-  color: var(--bp-blue-dark, #1f4d75);
+  background: color-mix(in srgb, var(--brand-blue, #2b6cb0) 7%, #fff);
+  color: var(--brand-blue-dark, #1f4d75);
   outline: none;
 }
 .ai-hunk-choice--active {
-  background: color-mix(in srgb, var(--bp-blue, #2b6cb0) 14%, #fff);
-  color: var(--bp-blue-dark, #1f4d75);
+  background: color-mix(in srgb, var(--brand-blue, #2b6cb0) 14%, #fff);
+  color: var(--brand-blue-dark, #1f4d75);
 }
 .ai-hunks-keyboard {
   margin: .45rem 0 0;

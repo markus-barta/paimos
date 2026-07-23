@@ -106,8 +106,8 @@ async function submit() {
 .provider-pill {
   display: inline-flex; align-items: center; gap: .5rem;
   padding: .35rem .7rem;
-  background: var(--bp-blue-pale); color: var(--bp-blue-dark);
-  border: 1px solid var(--bp-blue-light); border-radius: 999px;
+  background: var(--brand-blue-pale); color: var(--brand-blue-dark);
+  border: 1px solid var(--brand-blue-light); border-radius: 999px;
   font-size: 12px; font-weight: 600;
   align-self: flex-start;
 }

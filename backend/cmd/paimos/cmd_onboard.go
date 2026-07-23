@@ -930,8 +930,8 @@ func runOnboardCheck(path, currentRev string, format onboardFormat) error {
 //
 // Header forms accepted:
 //
-//	<!-- paimos: onboarded BON26@<rev> at <ts> -->
-//	<!-- paimos: onboarded BON26@<rev> [agent=ops] at <ts> -->
+//	<!-- paimos: onboarded CON26@<rev> at <ts> -->
+//	<!-- paimos: onboarded CON26@<rev> [agent=ops] at <ts> -->
 //
 // The HTML format embeds the same header verbatim so this parser is
 // shared between both formats.
@@ -945,7 +945,7 @@ func parseOnboardHeader(body string) (rev, agent string, ok bool) {
 		return "", "", false
 	}
 	inner := strings.TrimSpace(body[len(onboardHeaderPrefix):end])
-	// `inner` is e.g. "BON26@abc123 [agent=ops] at 2026-..." — pluck
+	// `inner` is e.g. "CON26@abc123 [agent=ops] at 2026-..." — pluck
 	// the rev (after '@', before next space) and the agent (between
 	// "[agent=" and "]").
 	at := strings.Index(inner, "@")

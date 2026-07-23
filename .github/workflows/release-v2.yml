@@ -25,7 +25,7 @@ name: release
 #   - darwin universal builds on macos-latest (native arm64 + amd64
 #     cross via Xcode clang's multi-arch driver: `CC="clang -arch x86_64"`)
 #
-# Required repo secrets (mirror from bp-esc — see scripts/release/):
+# Required repo secrets (see scripts/release/):
 #   APPLE_CERTIFICATE             base64 of the .p12
 #   APPLE_CERTIFICATE_PASSWORD    .p12 password
 #   APPLE_ID                      Apple Developer login email
@@ -174,7 +174,7 @@ jobs:
           done
           if [ ${#missing[@]} -gt 0 ]; then
             echo "❌ missing required Apple secrets: ${missing[*]}"
-            echo "   Mirror them from bp-esc — see scripts/release/README.md"
+            echo "   Provision them — see scripts/release/README.md"
             exit 1
           fi
           echo "✓ all 5 Apple secrets present"

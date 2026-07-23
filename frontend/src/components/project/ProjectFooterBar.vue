@@ -165,7 +165,7 @@ function select(t: ProjectPrimaryTab) {
 }
 
 .pfb__tab:focus-visible {
-  outline: 2px solid var(--bp-blue);
+  outline: 2px solid var(--brand-blue);
   outline-offset: -2px;
 }
 
@@ -174,7 +174,7 @@ function select(t: ProjectPrimaryTab) {
   font-weight: 600;
   /* Soft tint matching the sidebar's nav-item.active. Same family of
      highlights as the rest of the chrome; no fresh accent color. */
-  background: color-mix(in srgb, var(--bp-blue) 12%, transparent);
+  background: color-mix(in srgb, var(--brand-blue) 12%, transparent);
 }
 
 .pfb__icon {

@@ -660,7 +660,7 @@ func resolveIssueRefToID(client *Client, ref string) (int64, error) {
 
 // ── PAI-260: paimos issue tag add / tag rm ──────────────────────────
 //
-// `bon26/PMO.md` documented these subcommands as the canonical recipe
+// An operator runbook documented these subcommands as the canonical recipe
 // for lane management before they actually existed; agents fell back
 // to raw `PUT /api/issues/{id}` with the full `tag_ids` array (which
 // is racy under concurrent edits) until this landed.
@@ -697,8 +697,8 @@ global /api/tags catalog.
 Idempotent: re-running with an already-attached tag is a no-op.
 
 Examples:
-  paimos issue tag add BON26-2445 --tag dev
-  paimos issue tag add 2445       --tag-id 99 --instance pmo`,
+  paimos issue tag add CON26-2445 --tag dev
+  paimos issue tag add 2445       --tag-id 99 --instance prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runIssueTagMutate(args[0], tagKey, tagID, true)
@@ -724,8 +724,8 @@ func issueTagRmCmd() *cobra.Command {
 Idempotent: re-running on an already-detached tag is a no-op.
 
 Examples:
-  paimos issue tag rm BON26-2445 --tag dev
-  paimos issue tag rm 2445       --tag-id 99 --instance pmo`,
+  paimos issue tag rm CON26-2445 --tag dev
+  paimos issue tag rm 2445       --tag-id 99 --instance prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runIssueTagMutate(args[0], tagKey, tagID, false)

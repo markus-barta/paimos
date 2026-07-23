@@ -74,8 +74,8 @@ function set(v: boolean) {
   user-select: none;
 }
 .md-btn + .md-btn { border-left: 1px solid var(--border); }
-.md-btn.active { background: var(--bp-blue); color: #fff; }
-.md-btn:hover:not(.active) { background: var(--bp-blue-pale); color: var(--bp-blue-dark); }
+.md-btn.active { background: var(--brand-blue); color: #fff; }
+.md-btn:hover:not(.active) { background: var(--brand-blue-pale); color: var(--brand-blue-dark); }
 
 /* ── Subtle (hairline segmented) variant ─────────────────────────────────── */
 .md-subtle {

@@ -17,7 +17,7 @@ If you're rolling out the v2 model on a fresh instance, jump to
 Before PAI-458, the customer portal returned every non-deleted issue in
 projects the customer had access to. That surfaced internal-only types
 (`Memory`, `Guideline`, `Runbook`, `External_system`, `Related_project`)
-along with cross-project notes ("BON26 is the pattern source for
+along with cross-project notes ("CON26 is the pattern source for
 ASC26…") and operational warnings ("ASC26-Zenta repo — HANDS OFF").
 Visibility was implicit and inverted by default — opt-out via type
 filtering. We needed the opposite: opt-in by an explicit signal.
@@ -154,9 +154,8 @@ This is the exact sequence to flip a fresh instance.
 
 Deploy the release containing PAI-458. Set
 `PAIMOS_PORTAL_VISIBILITY_DRY_RUN=true` in the runtime env (it's
-already wired via `~/Secrets/ppm/.env` on `pm.barta.cm` and
-`~/Secrets/PMO/.env` on `pm.bytepoets.com`; just append the line if
-not already set).
+already wired via `~/Secrets/ppm/.env` on `pm.barta.cm`; just
+append the line if not already set).
 
 Migration M109 creates the tag, M110 backfills every terminal-status
 issue (delivered / done / accepted / invoiced) idempotently. Both
@@ -218,10 +217,10 @@ match what the customer sees in their portal.
 
 ### Step 4 — customer comms
 
-Per the 2026-05-20 CEO call (Markus, bytepoets): **silent rollout** on
-the bytepoets-side instance. No real customers are in production on
-`pm.bytepoets.com` yet; the cutover happens before anyone notices a
-diff. The ppm/personal instance is internal-only and needs no comms.
+Historical note (2026-05-20 rollout decision): **silent rollout** on
+the then-second-operator instance — no real customers were in
+production there, so the cutover happened before anyone noticed a
+diff. That instance was decommissioned in June 2026. The ppm/personal instance is internal-only and needs no comms.
 
 If real customers land later, the comms script is:
 

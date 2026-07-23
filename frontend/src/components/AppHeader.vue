@@ -551,13 +551,13 @@ defineExpose({
 }
 .ah-search-wrap.active .ah-search-input,
 .ah-search-wrap.focused .ah-search-input {
-  border-color: var(--bp-blue);
+  border-color: var(--brand-blue);
   background: var(--bg-card);
 }
 /* PAI-362: scope pill moved outside the input, so the only right-edge
    resident is the clear button — keep the standard 28px right pad. */
 .ah-search-wrap.focused .ah-search-input {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue) 15%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-blue) 15%, transparent);
 }
 .ah-search-input::-webkit-search-cancel-button {
   display: none;
@@ -576,10 +576,10 @@ defineExpose({
   min-width: 0;
   flex: 0 0 auto;
   padding: 0 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--bp-blue) 18%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 18%, var(--border));
   border-radius: 20px;
-  background: color-mix(in srgb, var(--bp-blue) 7%, var(--bg-card));
-  color: color-mix(in srgb, var(--bp-blue-dark) 82%, var(--text));
+  background: color-mix(in srgb, var(--brand-blue) 7%, var(--bg-card));
+  color: color-mix(in srgb, var(--brand-blue-dark) 82%, var(--text));
   font-family: inherit;
   font-size: 12px;
   font-weight: 650;
@@ -592,9 +592,9 @@ defineExpose({
 }
 .ah-search-scope:hover,
 .ah-search-scope:focus-visible {
-  background: color-mix(in srgb, var(--bp-blue) 12%, var(--bg-card));
-  border-color: color-mix(in srgb, var(--bp-blue) 32%, var(--border));
-  color: var(--bp-blue-dark);
+  background: color-mix(in srgb, var(--brand-blue) 12%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--brand-blue) 32%, var(--border));
+  color: var(--brand-blue-dark);
   outline: none;
 }
 .ah-search-scope-label {
@@ -786,16 +786,16 @@ defineExpose({
 /* Undo button now matches the ghost-button neighbours (Edit, import,
    export). Active state keeps a soft tint without a colored pill. */
 .ah-undo-button.ah-undo-button--active {
-  background: color-mix(in srgb, var(--bp-blue) 8%, transparent);
-  color: var(--bp-blue-dark);
-  border-color: color-mix(in srgb, var(--bp-blue) 25%, var(--border));
+  background: color-mix(in srgb, var(--brand-blue) 8%, transparent);
+  color: var(--brand-blue-dark);
+  border-color: color-mix(in srgb, var(--brand-blue) 25%, var(--border));
 }
 .ah-undo-button .ah-undo-count {
   min-width: 1rem;
   padding: 0 0.28rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bp-blue) 14%, transparent);
-  color: var(--bp-blue-dark);
+  background: color-mix(in srgb, var(--brand-blue) 14%, transparent);
+  color: var(--brand-blue-dark);
   font-size: 10px;
   font-weight: 600;
   text-align: center;

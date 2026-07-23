@@ -182,7 +182,7 @@ function backToLogin() {
       <!-- Step 2: OTP code -->
       <div v-else class="login-form">
         <div class="totp-info">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--bp-blue); margin: 0 auto 0.75rem; display:block">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--brand-blue); margin: 0 auto 0.75rem; display:block">
             <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>
           </svg>
           <p class="totp-label">Two-factor authentication</p>
@@ -297,7 +297,7 @@ function backToLogin() {
   text-decoration: none;
   margin-top: .1rem;
 }
-.login-forgot-link:hover { color: var(--bp-blue); text-decoration: underline; }
+.login-forgot-link:hover { color: var(--brand-blue); text-decoration: underline; }
 
 .totp-info { text-align: center; margin-bottom: .5rem; }
 .totp-label { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: .3rem; }

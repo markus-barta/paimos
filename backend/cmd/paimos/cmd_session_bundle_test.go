@@ -337,12 +337,12 @@ func startBundleAPI(t *testing.T, hits *bundleHits) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects":
-			_, _ = w.Write([]byte(`[{"id":42,"key":"BON26"}]`))
+			_, _ = w.Write([]byte(`[{"id":42,"key":"CON26"}]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/agents":
 			_, _ = w.Write([]byte(`[{"name":"ops"},{"name":"qa"}]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/projects/42/agents/ops.json":
 			_, _ = w.Write([]byte(`{
-				"project": {"id":42,"key":"BON26","name":"Bonelio"},
+				"project": {"id":42,"key":"CON26","name":"Contoso"},
 				"agent": {
 					"name": "ops",
 					"description": "Operate the prod rig.",
@@ -431,7 +431,7 @@ func TestSessionStart_BundleFull_FilesFormat(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "files",
@@ -446,7 +446,7 @@ func TestSessionStart_BundleFull_FilesFormat(t *testing.T) {
 		t.Errorf("expected rev in output, got %q", out)
 	}
 
-	cacheDir := filepath.Join(tmp, ".paimos", "cache", "BON26")
+	cacheDir := filepath.Join(tmp, ".paimos", "cache", "CON26")
 	mustExist(t, filepath.Join(cacheDir, "manifest.json"))
 	mustExist(t, filepath.Join(cacheDir, "agent.json"))
 	// Memory: prod-host passes (project scope, no env clash); staging-only
@@ -486,8 +486,8 @@ func TestSessionStart_BundleFull_FilesFormat(t *testing.T) {
 	if err := json.Unmarshal(manifestBs, &manifest); err != nil {
 		t.Fatalf("decode manifest: %v", err)
 	}
-	if manifest.Project != "BON26" {
-		t.Errorf("manifest.Project = %q, want BON26", manifest.Project)
+	if manifest.Project != "CON26" {
+		t.Errorf("manifest.Project = %q, want CON26", manifest.Project)
 	}
 	if manifest.Agent != "ops" {
 		t.Errorf("manifest.Agent = %q, want ops", manifest.Agent)
@@ -515,7 +515,7 @@ func TestSessionStart_BundleFull_JSONFormat(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "json",
@@ -555,7 +555,7 @@ func TestSessionStart_BundleFull_EnvFormat(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 	)
@@ -568,7 +568,7 @@ func TestSessionStart_BundleFull_EnvFormat(t *testing.T) {
 	if !strings.Contains(out, "export PAIMOS_SESSION_ID=") {
 		t.Errorf("missing PAIMOS_SESSION_ID export: %q", out)
 	}
-	wantDir := filepath.Join(tmp, ".paimos", "cache", "BON26")
+	wantDir := filepath.Join(tmp, ".paimos", "cache", "CON26")
 	if !strings.Contains(out, "export PAIMOS_KNOWLEDGE_DIR="+wantDir) {
 		t.Errorf("missing PAIMOS_KNOWLEDGE_DIR export pointing at %q in %q", wantDir, out)
 	}
@@ -588,7 +588,7 @@ func TestSessionStart_BundleMinimal_BackwardsCompat(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "minimal",
 	)
@@ -609,7 +609,7 @@ func TestSessionStart_BundleMinimal_BackwardsCompat(t *testing.T) {
 		t.Errorf("minimal mode must NOT set PAIMOS_KNOWLEDGE_DIR: %q", out)
 	}
 	// Cache must not exist.
-	cacheDir := filepath.Join(tmp, ".paimos", "cache", "BON26")
+	cacheDir := filepath.Join(tmp, ".paimos", "cache", "CON26")
 	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
 		t.Errorf("cache dir created in minimal mode: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestSessionStart_NoBundle_BackwardsCompat(t *testing.T) {
 
 	out, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 	)
 	if err != nil {
@@ -640,7 +640,7 @@ func TestSessionStart_NoBundle_BackwardsCompat(t *testing.T) {
 	if strings.Contains(out, "PAIMOS_KNOWLEDGE_DIR") {
 		t.Errorf("no-bundle mode must NOT set PAIMOS_KNOWLEDGE_DIR: %q", out)
 	}
-	cacheDir := filepath.Join(tmp, ".paimos", "cache", "BON26")
+	cacheDir := filepath.Join(tmp, ".paimos", "cache", "CON26")
 	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
 		t.Errorf("cache dir created in no-bundle mode: %v", err)
 	}
@@ -658,7 +658,7 @@ func TestSessionStart_BundleFull_CacheShortCircuit(t *testing.T) {
 
 	if _, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "files",
@@ -677,7 +677,7 @@ func TestSessionStart_BundleFull_CacheShortCircuit(t *testing.T) {
 	// Second run: no --refresh. Should NOT re-hit /memory.
 	if _, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--format", "files",
@@ -694,7 +694,7 @@ func TestSessionStart_BundleFull_CacheShortCircuit(t *testing.T) {
 	// Third run: --refresh forces re-fetch.
 	if _, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "full",
 		"--refresh",
@@ -720,7 +720,7 @@ func TestSessionStart_BundleFull_FilesRequiresFullBundle(t *testing.T) {
 
 	_, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--format", "files",
 	)
@@ -747,7 +747,7 @@ func TestSessionStart_BundleFull_InvalidBundle(t *testing.T) {
 
 	_, _, err := executeCLIForTest(t,
 		"session", "start",
-		"--project", "BON26",
+		"--project", "CON26",
 		"--agent", "ops",
 		"--bundle", "yaml",
 	)

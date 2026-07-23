@@ -1,6 +1,6 @@
 # Agent Retrieval Examples
 
-Canonical read-only queries agents can run against the PMO context
+Canonical read-only queries agents can run against the PAIMOS context
 layer. These examples are also mirrored into generated `AGENTS.md`
 files.
 
@@ -33,7 +33,7 @@ without changing the public response shape.
 ## Local broker for coding agents
 
 For repository-aware agents, prefer the local broker when the agent needs
-both PMO context and local files:
+both PAIMOS context and local files:
 
 ```bash
 paimos serve --project "$PROJECT_KEY" --repo-root . --addr 127.0.0.1:8765

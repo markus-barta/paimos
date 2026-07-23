@@ -198,8 +198,8 @@ function openUrlForJob(job: AttachmentJob): string | null {
 }
 .att-count {
   margin-left: auto;
-  background: var(--bp-blue-pale, #e0eeff);
-  color: var(--bp-blue, #2e6da4);
+  background: var(--brand-blue-pale, #e0eeff);
+  color: var(--brand-blue, #2e6da4);
   padding: 0 .4rem;
   border-radius: 999px;
   font-size: 10px;
@@ -239,7 +239,7 @@ function openUrlForJob(job: AttachmentJob): string | null {
   from { opacity: 0; transform: translateY(-3px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.att-item--pending { border-color: color-mix(in srgb, var(--bp-blue, #2e6da4) 30%, var(--border)); }
+.att-item--pending { border-color: color-mix(in srgb, var(--brand-blue, #2e6da4) 30%, var(--border)); }
 .att-item--done    { border-color: rgba(30,132,73,.3); }
 .att-item--failed {
   background: #fdeeec;
@@ -271,7 +271,7 @@ button.att-thumb--link {
   font-family: inherit;
 }
 .att-thumb--link { cursor: pointer; transition: border-color .12s; }
-.att-thumb--link:hover { border-color: var(--bp-blue, #2e6da4); }
+.att-thumb--link:hover { border-color: var(--brand-blue, #2e6da4); }
 
 .att-body {
   flex: 1;
@@ -309,7 +309,7 @@ button.att-thumb--link {
 .att-bar-fill {
   position: absolute;
   inset: 0;
-  background: var(--bp-blue, #2e6da4);
+  background: var(--brand-blue, #2e6da4);
   width: 0;
   transition: width 140ms linear;
 }
@@ -359,8 +359,8 @@ button.att-thumb--link {
 }
 .att-drop:hover,
 .att-drop--over {
-  border-color: var(--bp-blue, #2e6da4);
+  border-color: var(--brand-blue, #2e6da4);
   background: rgba(46,109,164,.05);
-  color: var(--bp-blue, #2e6da4);
+  color: var(--brand-blue, #2e6da4);
 }
 </style>

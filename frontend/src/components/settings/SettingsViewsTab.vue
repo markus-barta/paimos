@@ -147,7 +147,7 @@ loadDefaultViews()
 <style src="./settings-shared.css"></style>
 <style scoped>
 .drag-handle { color: var(--text-muted); cursor: grab; }
-.row-dragging { opacity: .5; background: var(--bp-blue-pale); }
+.row-dragging { opacity: .5; background: var(--brand-blue-pale); }
 .row-muted td { opacity: .65; }
 .row-muted:hover td { opacity: .85; }
 </style>

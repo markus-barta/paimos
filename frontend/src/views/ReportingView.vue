@@ -46,9 +46,9 @@ const reports = [
   transition: border-color .12s, box-shadow .12s;
 }
 .report-card:hover {
-  border-color: var(--bp-blue); box-shadow: 0 0 0 2px var(--bp-blue-pale);
+  border-color: var(--brand-blue); box-shadow: 0 0 0 2px var(--brand-blue-pale);
 }
-.report-card-icon { color: var(--bp-blue); }
+.report-card-icon { color: var(--brand-blue); }
 .report-card-title { font-size: 15px; font-weight: 700; margin: 0; }
 .report-card-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin: 0; }
 </style>

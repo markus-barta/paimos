@@ -326,8 +326,8 @@ const showArLp          = computed(() => showEstimateLp.value)
 }
 .form-error { font-size: 13px; color: #c0392b; background: #fde8e8; padding: .5rem .75rem; border-radius: var(--radius); }
 .meta-label--toggle { cursor: pointer; }
-.meta-label--toggle:hover .unit-toggle { color: var(--bp-blue); }
-.unit-toggle { color: var(--bp-blue); text-decoration: underline; text-decoration-style: dotted; }
+.meta-label--toggle:hover .unit-toggle { color: var(--brand-blue); }
+.unit-toggle { color: var(--brand-blue); text-decoration: underline; text-decoration-style: dotted; }
 
 .v2-select {
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -335,7 +335,7 @@ const showArLp          = computed(() => showEstimateLp.value)
   background: var(--bg); color: var(--text);
   outline: none; width: 100%;
 }
-.v2-select:focus { border-color: var(--bp-blue); }
+.v2-select:focus { border-color: var(--brand-blue); }
 
 .epic-color-picker { display: flex; flex-wrap: wrap; gap: .35rem; }
 .epic-color-swatch {
@@ -357,5 +357,5 @@ const showArLp          = computed(() => showEstimateLp.value)
   cursor: pointer; font-family: inherit;
   transition: border-color .1s, color .1s;
 }
-.sprint-add-btn:hover { border-color: var(--bp-blue); color: var(--bp-blue); }
+.sprint-add-btn:hover { border-color: var(--brand-blue); color: var(--brand-blue); }
 </style>

@@ -1530,7 +1530,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
 .sp-resize-handle:hover::after,
 .side-panel--resizing .sp-resize-handle::after {
   opacity: 1;
-  background: var(--bp-blue);
+  background: var(--brand-blue);
 }
 .sp-content {
   width: 100%;
@@ -1574,15 +1574,15 @@ async function deleteTimeEntry(entry: TimeEntry) {
   color: var(--text);
 }
 .sp-pin--active {
-  color: var(--bp-blue);
-  border-color: var(--bp-blue);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue);
+  border-color: var(--brand-blue);
+  background: var(--brand-blue-pale);
 }
 .sp-key {
   font-size: 13px;
   font-weight: 700;
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
   display: inline-flex;
@@ -1795,7 +1795,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
   cursor: pointer;
 }
 .unit-toggle {
-  color: var(--bp-blue);
+  color: var(--brand-blue);
   font-weight: 600;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -1850,8 +1850,8 @@ async function deleteTimeEntry(entry: TimeEntry) {
   font-family: inherit;
 }
 .sp-sprint-add:hover {
-  border-color: var(--bp-blue);
-  color: var(--bp-blue);
+  border-color: var(--brand-blue);
+  color: var(--brand-blue);
 }
 .sp-sprint-dropdown {
   position: absolute;
@@ -1946,11 +1946,11 @@ async function deleteTimeEntry(entry: TimeEntry) {
     background 0.1s;
 }
 .sp-te-action:hover {
-  color: var(--bp-green, #16a34a);
-  background: color-mix(in srgb, var(--bp-green) 8%, transparent);
+  color: var(--brand-green, #16a34a);
+  background: color-mix(in srgb, var(--brand-green) 8%, transparent);
 }
 .sp-te-action--stop {
-  color: var(--bp-green, #16a34a);
+  color: var(--brand-green, #16a34a);
 }
 .sp-timer-badge {
   font-size: 10px;
@@ -1975,8 +1975,8 @@ async function deleteTimeEntry(entry: TimeEntry) {
   font-weight: 600;
   padding: 0.1rem 0.4rem;
   border-radius: 8px;
-  background: var(--bp-blue-pale);
-  color: var(--bp-blue);
+  background: var(--brand-blue-pale);
+  color: var(--brand-blue);
 }
 .sp-time-entries {
   display: flex;
@@ -2008,7 +2008,7 @@ async function deleteTimeEntry(entry: TimeEntry) {
   align-items: center;
 }
 .sp-te-running-icon {
-  color: var(--bp-green, #16a34a);
+  color: var(--brand-green, #16a34a);
 }
 .sp-te-comment {
   color: var(--text-muted);

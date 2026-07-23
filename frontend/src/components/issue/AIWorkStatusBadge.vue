@@ -106,8 +106,8 @@ const title = computed(() => {
 }
 .ai-work-badge--queued,
 .ai-work-badge--running {
-  color: var(--bp-blue, #2563eb);
-  background: color-mix(in srgb, var(--bp-blue, #2563eb) 16%, transparent);
+  color: var(--brand-blue, #2563eb);
+  background: color-mix(in srgb, var(--brand-blue, #2563eb) 16%, transparent);
 }
 .ai-work-badge--drafted {
   color: #6d28d9;

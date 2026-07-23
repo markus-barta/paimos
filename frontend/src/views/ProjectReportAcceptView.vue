@@ -132,8 +132,8 @@ onMounted(load)
   gap: .35rem;
   font-size: 12px;
   font-weight: 700;
-  color: var(--bp-blue-dark);
-  background: var(--bp-blue-pale);
+  color: var(--brand-blue-dark);
+  background: var(--brand-blue-pale);
   border-radius: 999px;
   padding: .35rem .6rem;
   white-space: nowrap;

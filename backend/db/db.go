@@ -3379,7 +3379,7 @@ func migrate(db *sql.DB) error {
 		// M70: projects ↔ customers FK + documents + provider_configs.
 		// SQLite can't ALTER an existing column to add a FK on a populated
 		// table, and the existing `customer_id` is a freeform TEXT label
-		// (PMO26 legacy). Rename it to `customer_label` and add a clean
+		// (legacy-instance era). Rename it to `customer_label` and add a clean
 		// `customer_id INTEGER` FK so the rate-cascading + assignment logic
 		// (PAI-54) works against the new customers table.
 		{70, []string{
@@ -3534,7 +3534,7 @@ func migrate(db *sql.DB) error {
 		}},
 
 		// M75: PAI-29 foundations — project repos, code anchors, and the
-		// PMO-hosted project manifest. The manifest is intentionally stored
+		// legacy-instance-hosted project manifest. The manifest is intentionally stored
 		// as a validated JSON blob in v1 so the API contract can stabilize
 		// before we explode it into many specialised tables.
 		{75, []string{

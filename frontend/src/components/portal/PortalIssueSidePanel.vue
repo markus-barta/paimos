@@ -433,7 +433,7 @@ function fmtDate(iso: string): string {
 }
 
 .psp__key {
-  color: var(--bp-blue, #2563eb);
+  color: var(--brand-blue, #2563eb);
   font-family: 'DM Mono', 'Menlo', monospace;
   font-weight: 600;
 }
@@ -570,7 +570,7 @@ function fmtDate(iso: string): string {
   overflow-x: auto;
 }
 .psp__md :deep(a) {
-  color: var(--bp-blue, #2563eb);
+  color: var(--brand-blue, #2563eb);
   text-decoration: underline;
 }
 
@@ -649,9 +649,9 @@ function fmtDate(iso: string): string {
 }
 
 .psp__btn--accept {
-  background: var(--bp-blue, #2563eb);
+  background: var(--brand-blue, #2563eb);
   color: #fff;
-  border-color: var(--bp-blue, #2563eb);
+  border-color: var(--brand-blue, #2563eb);
 }
 .psp__btn--accept:hover:not(:disabled) {
   filter: brightness(0.95);

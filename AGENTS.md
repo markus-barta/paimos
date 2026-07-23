@@ -29,13 +29,13 @@ Start here when opening this repo cold.
 
 ## Repo-side tooling
 
-- `paimos anchors scan --output .pmo/anchors.json`
-- `paimos anchors verify --index .pmo/anchors.json`
+- `paimos anchors scan --output .paimos/anchors.json`
+- `paimos anchors verify --index .paimos/anchors.json`
 - `paimos onboard --project PAI [--agent <name>]` — single-shot project briefing (PAI-340)
 - `paimos skill render <agent>` — render an agent artifact through a harness adapter (PAI-329 / PAI-332)
 - `paimos run-agent watch --project PAI --repo-root .` — local "Implement this" runner; spawns Claude Code on a UI-triggered run, report-back only (PAI-608)
 
 ## Notes
 
-- The committed `.pmo/anchors.json` is dogfood for the anchor tooling.
+- The committed `.paimos/anchors.json` is dogfood for the anchor tooling.
 - Skill files rendered by `paimos skill render` carry a paimos-managed header so `paimos sync check` can detect drift; the legacy `paimos manifest pull` flow was removed in PAI-358 (replaced by the knowledge plane).
