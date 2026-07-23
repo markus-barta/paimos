@@ -14,7 +14,7 @@ One production instance pulls from the registry:
 
 | Instance | Host                  | Auth                | Storage           |
 | -------- | --------------------- | ------------------- | ----------------- |
-| **ppm**  | `pm.barta.cm` (csb1)  | SSH key (`csb1`)    | named volume      |
+| **ppm**  | `pm.barta.cm` (csb1)  | SSH key (`mba@100.64.0.4:2222`, Tailscale IP) | named volume |
 
 Registry: `ghcr.io/markus-barta/paimos`. Images produced per-commit on `main`
 (`:latest`, `:sha-<short>`) and per semver tag (`:X.Y.Z`, `:X.Y`, `:X`).
@@ -164,10 +164,20 @@ $COMPOSE_DIR/
 
 Each instance has a small conf file in `scripts/`:
 
-- `scripts/deploy.ppm.conf` — 10 lines: ssh target, compose dir, service,
+- `scripts/deploy.ppm.conf` — ssh target, compose dir, service,
   volume name, DB filename, backup root, instance URL.
 
 If you spin up a second instance, copy this file and change the values.
+
+**SSH target — use Tailscale IPs, not MagicDNS names.** MagicDNS is **off**
+on this tailnet (permanently — it caused API/automation resolution failures),
+so `*.ts.barta.cm` names do **not** resolve. Point `SSH_TARGET` at the host's
+stable Tailscale IP as `user@ip` and set `SSH_PORT` for the ssh port (a raw
+`user@ip` can't inherit a port from `~/.ssh/config`). `ppm` uses
+`SSH_TARGET=mba@100.64.0.4` + `SSH_PORT=2222`. Tailscale IPs (100.64.0.0/10,
+CGNAT) are non-routable outside the tailnet, so committing them is not a
+secret leak. Running the deploy still requires Tailscale to be up on the
+machine you deploy from.
 
 Deploy preflight uses SSH plus the public health endpoint; it does not
 require a PAIMOS API key for that instance. For a richer read-only operator

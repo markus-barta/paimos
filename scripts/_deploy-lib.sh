@@ -3,6 +3,9 @@
 #
 # Expects the per-instance conf to have exported:
 #   SSH_TARGET            host (ssh-config alias or user@ip)
+#   SSH_PORT              (optional) ssh port; set when SSH_TARGET is a
+#                         raw user@ip that can't inherit a port from
+#                         ~/.ssh/config (e.g. Tailscale IP, MagicDNS off)
 #   SSH_AUTH              "key" | "password"
 #   SSH_USER              (password auth only) remote username
 #   SSH_PASS_FILE         (password auth only) path to an env file that
@@ -60,7 +63,7 @@ deploy::ssh() {
   local remote="printf %s '$encoded' | base64 -d | bash"
   case "${SSH_AUTH:-}" in
     key)
-      ssh -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" "$remote"
+      ssh -o BatchMode=yes -o ConnectTimeout=15 ${SSH_PORT:+-p "$SSH_PORT"} "$SSH_TARGET" "$remote"
       ;;
     password)
       if [[ -z "${SSH_PASS_FILE:-}" || -z "${SSH_USER:-}" || -z "${SSH_PASS_VAR:-}" ]]; then
