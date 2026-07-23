@@ -33,6 +33,7 @@ import (
 	"github.com/boombuler/barcode/qr"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pdf/fpdf"
+	"github.com/markus-barta/paimos/backend/brand"
 	"github.com/markus-barta/paimos/backend/models"
 )
 
@@ -964,18 +965,30 @@ func projectReportCustomerParty(report *lbReport) projectReportParty {
 	return party
 }
 
+// projectReportContractorParty builds the "Auftragnehmer" box from the
+// operator-configured `contractor` lines in branding.json (PAI-686). Reports
+// carry no baked-in legal identity: when the block is unconfigured, only the
+// branding company/product name is printed and the operator is expected to
+// fill in Settings → Visual → Workspace Branding.
 func projectReportContractorParty() projectReportParty {
-	return projectReportParty{
-		Title: "Auftragnehmer",
-		Lines: []string{
-			"BYTEPOETS GmbH",
-			"Gadollaplatz 1, 8010 Graz, Austria",
-			"UID: ATU65885358, FN: 349730i",
-			"FB Gericht: Landesgericht für ZRS Graz",
-			"Geschäftsführer: Ing. Markus Barta",
-			"office@bytepoets.com, +43 664 606 97 100",
-		},
+	party := projectReportParty{Title: "Auftragnehmer"}
+	var parsed struct {
+		Company    string   `json:"company"`
+		Name       string   `json:"name"`
+		Contractor []string `json:"contractor"`
 	}
+	if data, err := os.ReadFile(filepath.Join(brandingDir(), "branding.json")); err == nil {
+		_ = json.Unmarshal(data, &parsed)
+	}
+	for _, line := range parsed.Contractor {
+		if line = strings.TrimSpace(line); line != "" {
+			party.Lines = append(party.Lines, line)
+		}
+	}
+	if len(party.Lines) == 0 {
+		party.Lines = []string{firstNonEmpty(parsed.Company, parsed.Name, brand.Default.CompanyName, brand.Default.ProductName)}
+	}
+	return party
 }
 
 func projectReportCustomerAddressLines(c *models.Customer) []string {

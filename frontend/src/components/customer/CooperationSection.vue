@@ -425,7 +425,7 @@ const { html: notesHtml } = useMarkdown(notesSrc, mdEnabled)
             <textarea v-model="draft.report_customer_responsibilities" rows="3" />
           </div>
           <div class="coop-form-field coop-form-fullwidth">
-            <label>BYTEPOETS responsibilities</label>
+            <label>Contractor responsibilities</label>
             <textarea v-model="draft.report_contractor_responsibilities" rows="3" />
           </div>
         </div>

@@ -564,9 +564,21 @@ edit under the brand you want to change.
     "loginBg": "#1a2d42",
     "loginPattern": "#243650"
   },
-  "pageTitle": "PAIMOS"
+  "pageTitle": "PAIMOS",
+  "contractor": [
+    "Acme GmbH",
+    "Musterweg 1, 8010 Graz, Austria",
+    "UID: ATU00000000, FN: 000000x",
+    "office@acme.example"
+  ]
 }
 ```
+
+`contractor` (PAI-686) is the legal-identity block printed as the
+"Auftragnehmer" party on report PDFs, one line per array entry (max 10).
+When unset, reports fall back to the branding `company`/`name` (then the
+`BRAND_*` defaults) — there is no baked-in operator identity. Note that
+`GET /api/branding` is public, so keep this to imprint-grade data.
 
 ### Asset endpoints
 

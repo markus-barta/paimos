@@ -371,3 +371,42 @@ func mustMakePNG(t *testing.T, w, h int) []byte {
 	}
 	return buf.Bytes()
 }
+
+// ── contractor block (PAI-686) ─────────────────────────────────────
+
+func Test_PutBranding_ContractorRoundTrip(t *testing.T) {
+	ts := newTestServer(t)
+	resp := ts.put(t, "/api/branding", ts.adminCookie, map[string]any{
+		"name":       "Acme PM",
+		"contractor": []string{"Acme GmbH", "Musterweg 1, 8010 Graz"},
+	})
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = ts.get(t, "/api/branding", "")
+	assertStatus(t, resp, http.StatusOK)
+	var got struct {
+		Contractor []string `json:"contractor"`
+	}
+	decode(t, resp, &got)
+	if len(got.Contractor) != 2 || got.Contractor[0] != "Acme GmbH" {
+		t.Errorf("contractor = %v, want the two submitted lines", got.Contractor)
+	}
+}
+
+func Test_PutBranding_ContractorRejectsControlChars(t *testing.T) {
+	ts := newTestServer(t)
+	resp := ts.put(t, "/api/branding", ts.adminCookie, map[string]any{
+		"contractor": []string{"line1\nline2"},
+	})
+	assertStatus(t, resp, http.StatusBadRequest)
+}
+
+func Test_PutBranding_ContractorRejectsTooManyLines(t *testing.T) {
+	ts := newTestServer(t)
+	lines := make([]string, 11)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	resp := ts.put(t, "/api/branding", ts.adminCookie, map[string]any{"contractor": lines})
+	assertStatus(t, resp, http.StatusBadRequest)
+}

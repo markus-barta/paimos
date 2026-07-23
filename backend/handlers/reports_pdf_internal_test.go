@@ -428,3 +428,46 @@ func TestProjektberichtCustomerAddressLines_CountryOnly(t *testing.T) {
 		t.Fatalf("country-only fallback = %v, want %v", lines, want)
 	}
 }
+
+// PAI-686: the contractor ("Auftragnehmer") box must come from the
+// operator-configured branding.json — never from a baked-in legal identity.
+func TestProjectReportContractorParty_FromBranding(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DATA_DIR", dir)
+	writeBranding := func(doc string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "branding.json"), []byte(doc), 0o644); err != nil {
+			t.Fatalf("write branding.json: %v", err)
+		}
+	}
+
+	// Configured contractor lines are used verbatim (trimmed, empties dropped).
+	writeBranding(`{"company":"Acme GmbH","contractor":["Acme GmbH","  Musterweg 1, 8010 Graz  ","","UID: ATU00000000"]}`)
+	party := projectReportContractorParty()
+	if party.Title != "Auftragnehmer" {
+		t.Errorf("title = %q, want Auftragnehmer", party.Title)
+	}
+	want := []string{"Acme GmbH", "Musterweg 1, 8010 Graz", "UID: ATU00000000"}
+	if !reflect.DeepEqual(party.Lines, want) {
+		t.Errorf("lines = %v, want %v", party.Lines, want)
+	}
+
+	// No contractor block → company name only.
+	writeBranding(`{"company":"Acme GmbH"}`)
+	if got := projectReportContractorParty().Lines; !reflect.DeepEqual(got, []string{"Acme GmbH"}) {
+		t.Errorf("company fallback lines = %v", got)
+	}
+
+	// Empty branding → brand default; must be non-empty and never the former
+	// hardcoded identity.
+	writeBranding(`{}`)
+	party = projectReportContractorParty()
+	if len(party.Lines) != 1 || strings.TrimSpace(party.Lines[0]) == "" {
+		t.Errorf("default fallback lines = %v, want one non-empty line", party.Lines)
+	}
+	for _, l := range party.Lines {
+		if strings.Contains(strings.ToUpper(l), "BYTEPOETS") {
+			t.Errorf("contractor line %q leaks retired hardcoded identity", l)
+		}
+	}
+}

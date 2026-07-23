@@ -9,7 +9,7 @@
  See <https://www.gnu.org/licenses/> for license details.
 -->
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, type DeepReadonly } from 'vue'
 import { api, errMsg } from '@/api/client'
 import { useBranding, type BrandingConfig } from '@/composables/useBranding'
 
@@ -50,20 +50,31 @@ const uploading = ref<'logo' | 'favicon' | null>(null)
 const logoInput = ref<HTMLInputElement | null>(null)
 const faviconInput = ref<HTMLInputElement | null>(null)
 
-function clone(b: BrandingConfig): BrandingConfig {
+// Accepts the readonly shared branding ref (DeepReadonly) and returns a
+// mutable working copy for the form.
+function clone(b: BrandingConfig | DeepReadonly<BrandingConfig>): BrandingConfig {
   return JSON.parse(JSON.stringify(b)) as BrandingConfig
 }
+
+// Contractor block is edited as a plain multi-line string and only parsed
+// into the `contractor` array on Save — binding a computed split/join to the
+// textarea would rewrite the model mid-keystroke and eat blank lines.
+const contractorText = ref('')
 
 // Keep form in sync with branding on first mount (and after refresh). We
 // don't watch branding for deep changes on purpose: the form is the user's
 // working copy, and the refresh() call happens *because* we just saved.
-onMounted(() => { Object.assign(form, clone(branding.value)) })
+onMounted(() => {
+  Object.assign(form, clone(branding.value))
+  contractorText.value = (form.contractor ?? []).join('\n')
+})
 
 async function onSave() {
   saving.value = true
   saveError.value = ''
   saveOK.value = false
   try {
+    form.contractor = contractorText.value.split('\n').map(s => s.trim()).filter(Boolean)
     await api.put('/branding', form)
     await refresh() // re-fetch + re-apply CSS vars, document title, favicon
     saveOK.value = true
@@ -79,6 +90,7 @@ async function onSave() {
 function onReset() {
   if (!confirm('Reset all fields to the active branding? Unsaved changes will be lost.')) return
   Object.assign(form, clone(branding.value))
+  contractorText.value = (form.contractor ?? []).join('\n')
 }
 
 async function onUpload(kind: 'logo' | 'favicon', ev: Event) {
@@ -145,6 +157,18 @@ const faviconPreviewURL = computed(() =>
       <label class="field">
         <span class="label-hint">Browser tab title</span>
         <input type="text" v-model="form.pageTitle" placeholder="PAIMOS" />
+      </label>
+      <label class="field field-full">
+        <span class="label-hint">Report contractor (Auftragnehmer)</span>
+        <textarea
+          v-model="contractorText"
+          rows="6"
+          placeholder="Acme GmbH&#10;Musterweg 1, 8010 Graz, Austria&#10;UID: ATU00000000, FN: 000000x&#10;office@acme.example"
+        />
+        <span class="field-note">
+          Legal-identity block printed on report PDFs, one line per row. Empty = company name only.
+          Served publicly via <code class="icode">/api/branding</code> — imprint-grade data only.
+        </span>
       </label>
     </div>
   </div>
@@ -250,6 +274,9 @@ const faviconPreviewURL = computed(() =>
 }
 .field { display: flex; flex-direction: column; gap: .3rem; }
 .field input { padding: .4rem .55rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text); font-size: 13px; }
+.field-full { grid-column: 1 / -1; }
+.field textarea { padding: .4rem .55rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text); font-size: 13px; font-family: inherit; resize: vertical; }
+.field-note { font-size: 11px; color: var(--text-muted); }
 .label-hint { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 
 .asset-card { display: flex; flex-direction: column; gap: 1rem; }

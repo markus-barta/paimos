@@ -66,6 +66,8 @@ export interface BrandingConfig {
     accrualsAccent?: string
   }
   pageTitle: string
+  /** Legal-identity lines printed as the "Auftragnehmer" box on report PDFs (PAI-686). */
+  contractor?: string[]
 }
 
 const LS_KEY = LS_BRANDING_FILE
@@ -96,6 +98,7 @@ const defaults: BrandingConfig = {
     accrualsAccent: '#006497',
   },
   pageTitle: 'PAIMOS',
+  contractor: [],
 }
 
 const branding = ref<BrandingConfig>({ ...defaults })

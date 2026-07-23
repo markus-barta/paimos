@@ -176,6 +176,10 @@ type brandingPayload struct {
 	Favicon   string            `json:"favicon"`
 	Colors    map[string]string `json:"colors"`
 	PageTitle string            `json:"pageTitle"`
+	// Contractor is the operator's legal-identity block printed as the
+	// "Auftragnehmer" party on report PDFs, one line per entry (PAI-686).
+	// Served publicly via GET /api/branding — imprint-grade data only.
+	Contractor []string `json:"contractor,omitempty"`
 }
 
 var hexColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -200,6 +204,14 @@ func validateBrandingPayload(p *brandingPayload) string {
 	for _, v := range []string{p.Logo, p.Favicon} {
 		if strings.ContainsAny(v, "\r\n\x00") {
 			return "logo/favicon: invalid characters"
+		}
+	}
+	if len(p.Contractor) > 10 {
+		return "contractor: at most 10 lines"
+	}
+	for _, line := range p.Contractor {
+		if strings.ContainsAny(line, "\r\n\x00") {
+			return "contractor: one line per array entry, no control characters"
 		}
 	}
 	return ""
