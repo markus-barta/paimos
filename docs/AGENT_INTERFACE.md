@@ -43,7 +43,7 @@ PAIMOS offers three agent-facing surfaces, in descending order of ergonomic payo
 
 ### Caveat — current CLI coverage gaps
 
-The CLI today covers issue-CRUD, free-text search, batch issue create via `apply`, time entries, attachments, relations (add only), tag management + assignment, anchors, sync, skills, sessions, project-context, and the unified knowledge plane (`paimos knowledge list|get|create|update|delete|promote` + `paimos knowledge memory bump-refs|stale|proposed-stale`, PAI-394). **It does NOT yet cover** sprints, issue forensics (history/activity), comment delete, or the full issue lifecycle (clone/archive/restore/purge). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
+The CLI today covers issue-CRUD, cross-project issue move (`issue move`), free-text search, batch issue create via `apply`, time entries, attachments, relations (add only), tag management + assignment, anchors, sync, skills, sessions, project-context, and the unified knowledge plane (`paimos knowledge list|get|create|update|delete|promote` + `paimos knowledge memory bump-refs|stale|proposed-stale`, PAI-394). **It does NOT yet cover** sprints, issue forensics (history/activity), comment delete, or the full issue lifecycle (clone/archive/restore/purge). For those, fall back to REST — full list and tracking under [PAI-373](https://pm.barta.cm/issues/PAI-373) and section 8 below.
 
 > **Extending PAIMOS with a CRM sync provider** (HubSpot, Pipedrive, …)?
 > See [`CRM_PROVIDERS.md`](CRM_PROVIDERS.md) for the in-process Go
@@ -251,6 +251,27 @@ paimos issue update PAI-83 --status done --close-note-file /tmp/close.md --dry-r
 paimos --json issue list --project PAI --status backlog --limit 5 \
   | jq '.issues[] | {key: .issue_key, title}'
 ```
+
+### Move issues between projects
+
+`paimos issue move <ref>… --to <key|id>` re-homes one or more issues to
+another project without close-and-recreate, preserving comments, time
+entries, history, tags, and cross-project dependencies. The issue keeps its
+id but is re-keyed to the target project's prefix + next number (e.g.
+`PAI-690 → OPS-12`); its former key is aliased so existing references still
+resolve. Project-scoped structural links (parent, sprint, cost unit, release,
+group) that would become cross-project are detached and reported — re-link
+them in the target project afterward.
+
+```sh
+paimos issue move PAI-690 --to OPS            # single
+paimos issue move NIX-12 NIX-15 NIX-19 --to OPS   # bulk reorg campaign
+paimos issue update PAI-690 --project OPS     # equivalent single-issue form
+```
+
+`--project` on `issue update` cannot be combined with other field edits —
+move first, then update. Requires edit access on **both** the source and
+target project. Use `--dry-run` to preview the payload.
 
 ### Search issues
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const latestSchemaVersion = 132
+const latestSchemaVersion = 133
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -187,6 +187,7 @@ func TestSchemaContainsCurrentProjectContextAndAIRelationsTables(t *testing.T) {
 		"role_permissions",
 		"super_admin_audit",
 		"project_issue_counters",
+		"issue_key_aliases",
 	} {
 		if !tableExists(t, db, table) {
 			t.Fatalf("expected table %s to exist", table)

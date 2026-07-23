@@ -639,6 +639,11 @@ func mountAPI(r chi.Router) {
 		r.With(auth.RequireIssueAccess).Get("/issues/{id}", handlers.GetIssue)
 		r.With(auth.RequireIssueEdit).Put("/issues/{id}", handlers.UpdateIssue)
 		r.With(auth.RequireIssueEdit).Patch("/issues/{id}", handlers.UpdateIssue)
+		// PAI-690 — move an issue to another project (re-key + old-key alias).
+		// RequireIssueEdit gates the source project; the handler additionally
+		// verifies edit access on the target. Bulk move authorizes per-issue.
+		r.With(auth.RequireIssueEdit).Post("/issues/{id}/move", handlers.MoveIssue)
+		r.Post("/issues/move", handlers.MoveIssuesBulk)
 		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}", handlers.DeleteIssue)
 		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Post("/issues/{id}/restore", handlers.RestoreIssue)
 		r.With(auth.RequireAdmin, auth.RequireIssueAccess).Delete("/issues/{id}/purge", handlers.PurgeIssue)

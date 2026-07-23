@@ -109,21 +109,59 @@ func TestResolveIssueRef(t *testing.T) {
 		{strconv.FormatInt(pai1, 10), pai1, true}, // numeric passes through
 		{"PAI-1", pai1, true},                     // key resolves
 		{"PAI-83", pai83, true},
-		{"ACME26-639", acme639, true},  // multi-digit project key
-		{"PAI-99", paiDeleted, true}, // soft-deleted resolves (handler enforces visibility)
-		{"PAI-9999", 0, false},       // not-found key
-		{"ZZZ-1", 0, false},          // project doesn't exist
-		{"pai-83", 0, false},         // lowercase rejected
-		{"foo", 0, false},            // garbage
-		{"", 0, false},               // empty
-		{"0", 0, false},              // zero is not valid
-		{"-1", 0, false},             // negative parses but rejected
+		{"ACME26-639", acme639, true}, // multi-digit project key
+		{"PAI-99", paiDeleted, true},  // soft-deleted resolves (handler enforces visibility)
+		{"PAI-9999", 0, false},        // not-found key
+		{"ZZZ-1", 0, false},           // project doesn't exist
+		{"pai-83", 0, false},          // lowercase rejected
+		{"foo", 0, false},             // garbage
+		{"", 0, false},                // empty
+		{"0", 0, false},               // zero is not valid
+		{"-1", 0, false},              // negative parses but rejected
 	}
 	for _, tc := range cases {
 		got, ok := auth.ResolveIssueRef(tc.in)
 		if ok != tc.ok || got != tc.want {
 			t.Errorf("ResolveIssueRef(%q) = (%d, %v), want (%d, %v)",
 				tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// TestResolveIssueRef_AliasFallback covers PAI-690: after an issue is moved to
+// another project (re-keyed), its former key still resolves via the
+// issue_key_aliases fallback — but a live key always wins over an alias.
+func TestResolveIssueRef_AliasFallback(t *testing.T) {
+	setupAccessTestDB(t)
+
+	paiProj := insertProjectWithKey(t, "PAI", "PAI")
+	opsProj := insertProjectWithKey(t, "OPS", "OPS")
+
+	// Simulate the post-move state: the issue now lives in OPS as OPS-12,
+	// and PAI-690 is recorded as its former key.
+	moved := insertIssue(t, opsProj, 12, "")
+	if _, err := db.DB.Exec(
+		`INSERT INTO issue_key_aliases(project_key, issue_number, issue_id) VALUES('PAI', 690, ?)`,
+		moved); err != nil {
+		t.Fatalf("seed alias: %v", err)
+	}
+	// A live PAI-1 that must never be shadowed by the alias table.
+	live := insertIssue(t, paiProj, 1, "")
+
+	cases := []struct {
+		in   string
+		want int64
+		ok   bool
+	}{
+		{"OPS-12", moved, true},  // live key
+		{"PAI-690", moved, true}, // former key -> alias fallback
+		{"PAI-1", live, true},    // live wins
+		{"PAI-691", 0, false},    // neither live nor aliased
+	}
+	for _, tc := range cases {
+		got, ok := auth.ResolveIssueRef(tc.in)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("ResolveIssueRef(%q) = (%d, %v), want (%d, %v)", tc.in, got, ok, tc.want, tc.ok)
 		}
 	}
 }

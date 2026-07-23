@@ -5458,6 +5458,26 @@ func migrate(db *sql.DB) error {
 			`ALTER TABLE projects ADD COLUMN ai_defaults_json TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE projects ADD COLUMN ai_policy_json TEXT NOT NULL DEFAULT ''`,
 		}},
+		// M133 / PAI-690: issue-key aliases for cross-project moves. When an
+		// issue is re-homed to another project it takes the target project's
+		// prefix + next number, so its former key ("PAI-690") would otherwise
+		// 404. An alias row (former project_key, former issue_number) -> issue_id
+		// lets ResolveIssueRef fall back to the pre-move key. Former numbers are
+		// never reused (project_issue_counters is monotonic), so an alias can
+		// never shadow a future live issue in the source project; the live-key
+		// lookup is always tried first, so an alias only ever catches a key that
+		// no longer resolves directly.
+		{133, []string{
+			`CREATE TABLE IF NOT EXISTS issue_key_aliases (
+				id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				project_key  TEXT    NOT NULL,
+				issue_number INTEGER NOT NULL,
+				issue_id     INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+				created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+				UNIQUE(project_key, issue_number)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_issue_key_aliases_issue ON issue_key_aliases(issue_id)`,
+		}},
 	}
 
 	for _, m := range migrations {

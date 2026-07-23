@@ -1722,6 +1722,95 @@
         }
       }
     },
+    "/api/issues/move": {
+      "post": {
+        "tags": [
+          "issues"
+        ],
+        "summary": "Move issues to another project (bulk)",
+        "description": "Reassign several issues to a target project in one call. Each issue is re-keyed to the target project's prefix and its former key is aliased so old references still resolve. Cross-project structural links (parent, sprint, cost unit, release, group) are detached. Returns a per-issue result; a per-issue failure does not block the rest.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "issue_ids",
+                  "project_id"
+                ],
+                "properties": {
+                  "issue_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "project_id": {
+                    "type": "integer",
+                    "description": "target project id"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-issue move results"
+          }
+        }
+      }
+    },
+    "/api/issues/{id}/move": {
+      "post": {
+        "tags": [
+          "issues"
+        ],
+        "summary": "Move issue to another project",
+        "description": "Reassign one issue to a target project. The issue keeps its id and all history/comments/time entries; it is re-keyed to the target project's prefix + next number, and its former key is aliased so old references still resolve. Requires edit access on both the source and target project.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "project_id"
+                ],
+                "properties": {
+                  "project_id": {
+                    "type": "integer",
+                    "description": "target project id"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Move result (old_key, new_key, detached edges)"
+          },
+          "400": {
+            "description": "Already in target project or missing project_id"
+          },
+          "403": {
+            "description": "No edit access to the target project"
+          }
+        }
+      }
+    },
     "/api/issues/{id}/comments": {
       "get": {
         "tags": [

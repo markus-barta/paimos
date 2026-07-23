@@ -399,6 +399,20 @@ func UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		return 0
 	}
+	// PAI-690: a project reassignment is a move, not a field update — it
+	// re-keys the issue, aliases the old key, and detaches cross-project
+	// edges. Reject a differing project_id here (rather than silently dropping
+	// it) and point at the dedicated endpoint. An equal value is a harmless
+	// no-op and passes through.
+	if present("project_id") == 1 {
+		var pid *int64
+		if err := json.Unmarshal(keyMap["project_id"], &pid); err == nil && pid != nil {
+			if existing.ProjectID == nil || *pid != *existing.ProjectID {
+				jsonError(w, "changing project_id is not supported on update; use POST /api/issues/{id}/move", http.StatusBadRequest)
+				return
+			}
+		}
+	}
 	parentPresent := present("parent_id")
 	assigneePresent := present("assignee_id")
 	totalBudgetPresent := present("total_budget")

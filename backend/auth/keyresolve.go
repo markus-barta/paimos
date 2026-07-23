@@ -63,9 +63,18 @@ func ResolveIssueRef(s string) (int64, bool) {
 		JOIN projects p ON p.id = i.project_id
 		WHERE p.key = ? AND i.issue_number = ?
 	`, projectKey, issueNum).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if err == nil {
+		return id, true
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, false
 	}
+	// PAI-690: fall back to a moved issue's former key. A live key always wins
+	// (queried first, above); an alias only catches a key that no longer
+	// resolves directly because the issue was re-homed to another project.
+	err = db.DB.QueryRow(`
+		SELECT issue_id FROM issue_key_aliases WHERE project_key = ? AND issue_number = ?
+	`, projectKey, issueNum).Scan(&id)
 	if err != nil {
 		return 0, false
 	}

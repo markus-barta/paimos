@@ -250,6 +250,7 @@ func issueUpdateCmd() *cobra.Command {
 		notesFile     string
 		closeNote     string
 		closeNoteFile string
+		projectMove   string
 		dryRun        bool
 		// PAI-343 — opt-in lesson-capture flags. When --draft-memory
 		// is set on a terminal-status transition, the CLI will create
@@ -294,6 +295,20 @@ Use --dry-run to print the payload without sending.`,
 			client, err := instanceClient()
 			if err != nil {
 				return err
+			}
+			// PAI-690 — a project reassignment is a move, not a field write:
+			// it re-keys the issue and detaches cross-project links. Route it
+			// to the dedicated move flow, and refuse to combine it with other
+			// field edits so the two concerns stay separable and reviewable.
+			if projectMove != "" {
+				if title != "" || typ != "" || status != "" || priority != "" ||
+					parent != "" || assignee != "" || costUnit != "" || release != "" ||
+					desc != "" || descFile != "" || ac != "" || acFile != "" ||
+					notes != "" || notesFile != "" || closeNote != "" || closeNoteFile != "" ||
+					draftMemory {
+					return &usageError{msg: "--project moves the issue and can't be combined with other update flags; move first, then update"}
+				}
+				return runIssueMove(client, []string{args[0]}, projectMove, dryRun)
 			}
 			description, descSet, err := readMultilineInput(desc, descFile, "description")
 			if err != nil {
@@ -476,6 +491,7 @@ Use --dry-run to print the payload without sending.`,
 	c.Flags().StringVar(&notesFile, "notes-file", "", "path to new notes (or -)")
 	c.Flags().StringVar(&closeNote, "close-note", "", "single-line close-note (requires --status terminal)")
 	c.Flags().StringVar(&closeNoteFile, "close-note-file", "", "path to close-note file (requires --status terminal)")
+	c.Flags().StringVar(&projectMove, "project", "", "move the issue to this project (key or id); re-keys + aliases the old key")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "print the payload without sending")
 	// PAI-343 — lesson-capture flags. All optional unless --draft-memory
 	// is passed, in which case --memory-rule is required (the rule is

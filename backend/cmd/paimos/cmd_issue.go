@@ -27,6 +27,7 @@ func issueCmd() *cobra.Command {
 	c.AddCommand(issueChildrenCmd())
 	c.AddCommand(issueCreateCmd())
 	c.AddCommand(issueUpdateCmd())
+	c.AddCommand(issueMoveCmd())
 	c.AddCommand(issueEnsureStatusCmd())
 	c.AddCommand(issueCommentCmd())
 	c.AddCommand(issueBatchUpdateCmd())

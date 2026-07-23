@@ -7,6 +7,23 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Move an issue to another project (PAI-690).** `paimos issue move <ref>…
+  --to <key|id>` (and `paimos issue update <ref> --project <key|id>` for a
+  single issue) re-homes issues between projects without close-and-recreate,
+  preserving comments, time entries, history, tags, and cross-project
+  dependencies. The issue keeps its id but is re-keyed to the target
+  project's prefix + next number (e.g. `PAI-690 → OPS-12`); its former key is
+  recorded in a new `issue_key_aliases` table (migration 133) so existing
+  references still resolve. Project-scoped structural links (parent, sprint,
+  cost unit, release, group) that would become cross-project are detached and
+  reported. New endpoints `POST /api/issues/{id}/move` and bulk
+  `POST /api/issues/move`; both require edit access on the source **and**
+  target project. A differing `project_id` on `PUT/PATCH /api/issues/{id}` is
+  now rejected with a pointer to the move endpoint rather than silently
+  ignored.
+
 ### Changed
 
 - **BREAKING: repo anchor directory `.pmo/` is now `.paimos/` (PAI-687).**
