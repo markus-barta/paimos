@@ -7,6 +7,8 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [5.0.0] — 2026-07-23
+
 ### Added
 
 - **Move an issue to another project (PAI-690).** `paimos issue move <ref>…
