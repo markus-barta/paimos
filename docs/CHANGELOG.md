@@ -5,6 +5,28 @@ All notable changes to PAIMOS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: repo anchor directory `.pmo/` is now `.paimos/` (PAI-687).**
+  `paimos anchors scan|verify|upload` default paths moved from
+  `.pmo/anchors.json` to `.paimos/anchors.json` with **no legacy fallback** —
+  rename the directory in consuming repos. The legacy `@pmo` anchor comment
+  syntax is no longer recognized; use `@paimos`.
+- **Report contractor identity is operator-configurable (PAI-686).**
+  Projektbericht PDFs build the "Auftragnehmer" block from a new `contractor`
+  string-array in `branding.json` (Settings → Visual → Workspace Branding,
+  max 10 lines; served publicly via `GET /api/branding`, so imprint-grade
+  data only). When unset, reports fall back to the branding company/product
+  name — the previously hardcoded contractor block is gone.
+- **Brand-neutral internals (PAI-687).** Frontend CSS custom properties
+  `--bp-*` renamed to `--brand-*`; the retired second-operator deploy surface
+  removed (`deploy-pmo` recipes, `deploy.pmo.conf`, secrets-mirror workflow);
+  agent session preambles and MCP tool descriptions now read "PAIMOS
+  project"; docs reference the second-operator instance neutrally
+  (decommissioned June 2026).
+
 ## [4.8.0] — 2026-07-08
 
 ### Changed
