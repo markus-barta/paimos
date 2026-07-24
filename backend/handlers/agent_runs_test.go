@@ -17,9 +17,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/sse"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/sse"
 )
 
 // TestAgentRunsLifecycle exercises PAI-606: create a queued run via the

@@ -15,8 +15,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-465: POST /api/issues/batch/tags

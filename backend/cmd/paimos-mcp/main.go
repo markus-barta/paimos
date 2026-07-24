@@ -29,7 +29,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos-mcp/mcpclient"
+	"github.com/inspr-at/paimos/backend/cmd/paimos-mcp/mcpclient"
 )
 
 // Version is stamped by goreleaser/-ldflags; "dev" for local builds.

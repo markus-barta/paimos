@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // Money-path regression suite (PAI-582) — external package half.

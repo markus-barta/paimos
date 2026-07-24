@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 // Reuse the existing test server. The router was extended in

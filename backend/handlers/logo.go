@@ -27,7 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // POST /api/projects/:id/logo — upload project logo (multipart/form-data, field "logo").

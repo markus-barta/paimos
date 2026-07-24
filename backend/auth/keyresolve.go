@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // issueKeyPattern matches strings shaped like "PAI-83" or "ACME26-639":

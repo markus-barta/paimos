@@ -14,7 +14,7 @@
         "input_format": "json",
         "output_format": "markdown"
       },
-      "homepage": "https://github.com/markus-barta/paimos-adapter-claude-code",
+      "homepage": "https://github.com/inspr-at/paimos-adapter-claude-code",
       "source": "external",
       "maintainer": "paimos",
       "conformance": {

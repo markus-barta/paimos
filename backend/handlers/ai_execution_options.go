@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/models"
-	"github.com/markus-barta/paimos/backend/sse"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/sse"
 )
 
 type aiExecutionOptionsResponse struct {

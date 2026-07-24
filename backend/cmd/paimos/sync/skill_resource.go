@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters"
 )
 
 // SkillResource implements Resource for harness-rendered skill files.

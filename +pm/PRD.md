@@ -334,5 +334,5 @@ These are important gaps surfaced by the current code/doc audit.
 
 - Deep implementation guide: `docs/DEVELOPER_GUIDE.md`
 - Deployment target: Docker on staging/live host, port 8888
-- Repository: `github.com/markus-barta/paimos`
+- Repository: `github.com/inspr-at/paimos`
 - Backlog / task tracking: PAIMOS live instance — `https://paimos.com/projects/2` (SSOT)

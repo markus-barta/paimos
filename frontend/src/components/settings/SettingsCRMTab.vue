@@ -260,7 +260,7 @@ const hasProviders = computed(() => providers.value.length > 0)
         <p>
           Add a Go provider under <code>backend/handlers/crm/</code> and
           blank-import it from <code>main.go</code>. See
-          <a href="https://github.com/markus-barta/paimos/blob/main/docs/CRM_PROVIDERS.md" target="_blank" rel="noopener">
+          <a href="https://github.com/inspr-at/paimos/blob/main/docs/CRM_PROVIDERS.md" target="_blank" rel="noopener">
             developer docs
           </a> for a worked example.
         </p>

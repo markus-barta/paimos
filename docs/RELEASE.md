@@ -15,7 +15,7 @@ fully published.
 
 ### Container image (`ci-v2.yml`)
 
-1. **Image** — `ghcr.io/markus-barta/paimos:<x.y.z>` (immutable per
+1. **Image** — `ghcr.io/inspr-at/paimos:<x.y.z>` (immutable per
    tag) plus `:<x>.<y>` and `:<x>` moving aliases. The same digest is
    also tagged `sha-<short>` for SHA-pinned deploys.
 2. **CycloneDX SBOMs** (PAI-121) — uploaded as a release artifact
@@ -80,15 +80,15 @@ for inspection.
 
 Verify the signature (replace `<x.y.z>` with the tag you're pulling):
 
-    cosign verify ghcr.io/markus-barta/paimos:<x.y.z> \
-      --certificate-identity-regexp '^https://github.com/markus-barta/paimos/.+' \
+    cosign verify ghcr.io/inspr-at/paimos:<x.y.z> \
+      --certificate-identity-regexp '^https://github.com/inspr-at/paimos/.+' \
       --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 
 Pull the SBOM attestation:
 
     cosign download attestation \
       --predicate-type 'https://cyclonedx.org/bom' \
-      ghcr.io/markus-barta/paimos:<x.y.z> | \
+      ghcr.io/inspr-at/paimos:<x.y.z> | \
       jq -r '.payload | @base64d | fromjson | .predicate'
 
 The decoded predicate is the same CycloneDX JSON that lives next to
@@ -109,7 +109,7 @@ Barta (P66J39QV6V)` followed by Apple's intermediate and root CAs.
 
 Verify the SHA-256 against the published sums file:
 
-    curl -fLO https://github.com/markus-barta/paimos/releases/download/v<x.y.z>/sha256sums.txt
+    curl -fLO https://github.com/inspr-at/paimos/releases/download/v<x.y.z>/sha256sums.txt
     shasum -a 256 -c sha256sums.txt --ignore-missing
 
 ## Generating SBOMs locally

@@ -31,7 +31,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 var paramSegment = regexp.MustCompile(`\{[^}]*\}`)

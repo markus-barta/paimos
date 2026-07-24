@@ -22,9 +22,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/contracts"
-	"github.com/markus-barta/paimos/backend/handlers/knowledge"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/contracts"
+	"github.com/inspr-at/paimos/backend/handlers/knowledge"
 )
 
 // SchemaVersion is the authoritative version of the API schema payload.

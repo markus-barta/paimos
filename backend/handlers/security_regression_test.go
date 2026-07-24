@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 func TestRegression_Auth_001_NoCreds(t *testing.T) {

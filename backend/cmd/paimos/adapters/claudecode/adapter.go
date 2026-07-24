@@ -54,7 +54,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters"
 )
 
 // Name is the registry key matched by `--harness claude-code`.

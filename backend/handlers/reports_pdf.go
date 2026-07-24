@@ -33,8 +33,8 @@ import (
 	"github.com/boombuler/barcode/qr"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pdf/fpdf"
-	"github.com/markus-barta/paimos/backend/brand"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/brand"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 //go:embed assets/logo.png

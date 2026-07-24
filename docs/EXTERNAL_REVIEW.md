@@ -185,4 +185,4 @@ Next review: **2026-10-26** (per [`SECURITY_GOVERNANCE.md`](SECURITY_GOVERNANCE.
 - **[`SECURITY.md`](../SECURITY.md)** — disclosure policy; the inbound path for findings even when no formal review is in flight.
 - **[`paimos.com/trust.html`](https://paimos.com/trust.html)** §05 limits — the public statement aligned with §1 here.
 - **[`brand/BRAND.md`](brand/BRAND.md)** — phasing plan; Phase 3 transition is one of the §3 triggers.
-- **[`PAI-139`](https://github.com/markus-barta/paimos/issues/139)** — this ticket; the framework lands; the engagement awaits the right window.
+- **[`PAI-139`](https://github.com/inspr-at/paimos/issues/139)** — this ticket; the framework lands; the engagement awaits the right window.

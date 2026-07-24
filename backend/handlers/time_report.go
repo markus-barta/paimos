@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-579: booked-hours report for a project over an explicit from/to window,

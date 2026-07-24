@@ -32,7 +32,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/handlers/crm"
+	"github.com/inspr-at/paimos/backend/handlers/crm"
 )
 
 // Register on package import. main.go does a blank import of this

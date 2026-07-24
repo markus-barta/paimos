@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func seedTagUndoIssue(t *testing.T, title string) int64 {

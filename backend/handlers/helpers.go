@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/auth"
 )
 
 func jsonOK(w http.ResponseWriter, v any) {

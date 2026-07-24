@@ -143,7 +143,7 @@ func (p *openRouterProvider) Optimize(ctx context.Context, req OptimizeRequest) 
 	// HTTP-Referer + X-Title are OpenRouter conventions for app
 	// attribution. They're optional but help operators identify which
 	// app a key is being used by in their OpenRouter dashboard.
-	httpReq.Header.Set("HTTP-Referer", "https://github.com/markus-barta/paimos")
+	httpReq.Header.Set("HTTP-Referer", "https://github.com/inspr-at/paimos")
 	httpReq.Header.Set("X-Title", "PAIMOS")
 
 	resp, err := p.httpClient.Do(httpReq)

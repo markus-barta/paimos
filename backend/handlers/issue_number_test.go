@@ -15,7 +15,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func TestCreateIssueConcurrentAllocatesUniqueNumbers(t *testing.T) {

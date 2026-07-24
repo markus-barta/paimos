@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // jiraConfig is stored as JSON in integrations.config

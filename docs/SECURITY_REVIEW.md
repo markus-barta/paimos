@@ -18,14 +18,14 @@ This document is the **agreed posture** for PAIMOS's secure-SDLC pipeline:
 It is **not**:
 
 - A claim that PAIMOS is bug-free at the SAST or vulnerability layer. The gosec baseline was triaged to zero under PAI-223 (2026-06-11); suppressed findings carry inline `#nosec` justifications, and any new finding fails CI (see §3).
-- A pen-test report. External review is tracked under [`PAI-139`](https://github.com/markus-barta/paimos/issues/139).
+- A pen-test report. External review is tracked under [`PAI-139`](https://github.com/inspr-at/paimos/issues/139).
 - A SOC-2 control mapping. PAIMOS doesn't claim certification.
 
 ---
 
 ## 1 · The four scanners
 
-PAIMOS's CI runs four security scanners against every push and PR. Each tool has a distinct role; together they cover the SAST / dependency-vulnerability / secret-scanning / supply-chain matrix the AC of [`PAI-128`](https://github.com/markus-barta/paimos/issues/128) named.
+PAIMOS's CI runs four security scanners against every push and PR. Each tool has a distinct role; together they cover the SAST / dependency-vulnerability / secret-scanning / supply-chain matrix the AC of [`PAI-128`](https://github.com/inspr-at/paimos/issues/128) named.
 
 | Scanner | Role | Configured in | Status | Threshold |
 |---|---|---|---|---|

@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // CreateUser must accept the same profile fields as UpdateUser so the

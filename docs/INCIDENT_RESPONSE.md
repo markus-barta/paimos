@@ -216,7 +216,7 @@ A tabletop is a 30-90 minute walkthrough of a hypothetical incident. The goal is
 
 ### Scenario
 
-> An open-source contributor pushes a PR that includes a `paimos_…` admin API key in a `.env.example` file by mistake. The PR is opened against the public `markus-barta/paimos` repo. The key belongs to the maintainer's primary admin account on the `pm.barta.cm` (ppm) instance. GitHub secret-scanning fires within 30 seconds.
+> An open-source contributor pushes a PR that includes a `paimos_…` admin API key in a `.env.example` file by mistake. The PR is opened against the public `inspr-at/paimos` repo. The key belongs to the maintainer's primary admin account on the `pm.barta.cm` (ppm) instance. GitHub secret-scanning fires within 30 seconds.
 
 ### Walkthrough — first hour
 

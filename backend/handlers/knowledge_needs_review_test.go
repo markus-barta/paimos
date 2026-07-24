@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-351 slice 2 — the write-path detection: a memory entry's BODY change

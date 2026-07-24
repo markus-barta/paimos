@@ -15,7 +15,7 @@
 
 package handlers
 
-import "github.com/markus-barta/paimos/backend/models"
+import "github.com/inspr-at/paimos/backend/models"
 
 // userSelectCols is the full column list for the users table (bare names, for
 // direct "SELECT ... FROM users" queries). Role reads are canonicalized through

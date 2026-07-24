@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // GraphHandler is GET /api/projects/{id}/knowledge/graph (PAI-350).

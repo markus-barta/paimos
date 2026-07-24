@@ -37,8 +37,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 // resetProposeLimiter is the bridge into the package-private

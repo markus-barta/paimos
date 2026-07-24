@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 func agentArtifactJSONURL(projectID int64, name string) string {

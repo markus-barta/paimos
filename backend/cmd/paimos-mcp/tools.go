@@ -15,7 +15,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 // Tool is the MCP-facing shape for one tool declaration: name, human

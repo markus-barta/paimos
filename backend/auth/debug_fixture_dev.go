@@ -12,7 +12,7 @@ package auth
 import (
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // SuppressSecurityNags is true only for local debug fixture accounts in

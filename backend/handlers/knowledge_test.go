@@ -37,7 +37,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 type knowledgeEntry struct {

@@ -41,7 +41,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/sync"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/sync"
 	"github.com/spf13/cobra"
 )
 

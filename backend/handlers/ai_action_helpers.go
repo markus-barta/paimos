@@ -33,8 +33,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/ai"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 var errAIActionJSONParse = errors.New("ai_action: failed to parse model JSON")

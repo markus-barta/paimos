@@ -16,7 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-467: admin-only Customer Portal Visibility report.

@@ -41,7 +41,7 @@ package auth
 import (
 	"log"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // BumpPermissionsEpoch increments the user's epoch counter. Failures

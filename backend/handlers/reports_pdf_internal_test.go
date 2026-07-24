@@ -19,7 +19,7 @@ import (
 
 	"github.com/go-pdf/fpdf"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // Regression: fpdf's character-width table has 65536 entries, so any rune outside

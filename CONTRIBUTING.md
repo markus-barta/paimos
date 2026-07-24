@@ -26,7 +26,7 @@ openly, and happy to take pull requests from anyone.
 ### First run
 
 ```bash
-git clone https://github.com/markus-barta/paimos.git
+git clone https://github.com/inspr-at/paimos.git
 cd paimos
 
 # with devenv

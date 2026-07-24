@@ -45,7 +45,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // mustChangeAllowedPaths are the API paths that remain reachable

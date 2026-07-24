@@ -195,7 +195,7 @@ deploy::run() {
     set -e
     cd $COMPOSE_DIR
     cp docker-compose.yml docker-compose.yml.bak.$stamp
-    sed -i 's|image: ghcr.io/markus-barta/paimos:[^ ]*|image: $image|' docker-compose.yml
+    sed -i 's|image: ghcr.io/inspr-at/paimos:[^ ]*|image: $image|' docker-compose.yml
     diff docker-compose.yml.bak.$stamp docker-compose.yml || true
     docker compose pull $SERVICE
     docker compose up -d $SERVICE
@@ -293,6 +293,6 @@ deploy::print_rollback() {
       echo "  docker run --rm -v $VOLUME_NAME:/dst -v $backup:/src:ro alpine sh -c 'cd /dst && rm -rf ./* && tar -xzf /src/data.tar.gz'"
       ;;
   esac
-  echo "  sed -i 's|image: ghcr.io/markus-barta/paimos:[^ ]*|image: $pre_image|' docker-compose.yml"
+  echo "  sed -i 's|image: ghcr.io/inspr-at/paimos:[^ ]*|image: $pre_image|' docker-compose.yml"
   echo "  docker compose up -d $SERVICE"
 }

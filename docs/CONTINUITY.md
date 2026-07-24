@@ -26,8 +26,8 @@ The single best fact about a solo-maintained FOSS project is that **most of the 
 
 | Artefact | Where it lives | Survives loss of maintainer? |
 |---|---|---|
-| Source code | GitHub `markus-barta/paimos` + `markus-barta/paimos-site` (and every clone, fork, and CI runner cache) | ✓ AGPL-3.0-only; cannot be retracted. |
-| Release artefacts | `ghcr.io/markus-barta/paimos:<x.y.z>` (immutable per tag) + GitHub Releases page (SBOMs, signatures) | ✓ Immutable on registry; survives indefinitely unless the registry itself goes dark. See §3.6. |
+| Source code | GitHub `inspr-at/paimos` + `inspr-at/paimos-site` (and every clone, fork, and CI runner cache) | ✓ AGPL-3.0-only; cannot be retracted. |
+| Release artefacts | `ghcr.io/inspr-at/paimos:<x.y.z>` (immutable per tag) + GitHub Releases page (SBOMs, signatures) | ✓ Immutable on registry; survives indefinitely unless the registry itself goes dark. See §3.6. |
 | User data | Each operator's own `$DATA_DIR/paimos.db` + their MinIO/S3 bucket if attachments | ✓ Always — self-hosted; the maintainer never had a copy. |
 | Documentation | In the same repo as the code, including this document. | ✓ Travels with the code. |
 | Disclosure history | GitHub Security Advisories (per release tag) + CHANGELOG entries with `SEC-YYYY-NN` identifiers | ✓ Public, durable. |
@@ -49,14 +49,14 @@ The information below has to be findable from this document, this repo, or the m
 
 | Asset | Canonical location |
 |---|---|
-| App code | `https://github.com/markus-barta/paimos` |
-| Site code | `https://github.com/markus-barta/paimos-site` |
-| Release images | `ghcr.io/markus-barta/paimos:<tag>` |
+| App code | `https://github.com/inspr-at/paimos` |
+| Site code | `https://github.com/inspr-at/paimos-site` |
+| Release images | `ghcr.io/inspr-at/paimos:<tag>` |
 | Reference deployment | `pm.barta.cm` (ppm), runs the maintainer's primary instance |
 | Secondary reference deployment | retired second-operator instance — decommissioned June 2026 (see [REFERENCE_DEPLOYMENTS.md](REFERENCE_DEPLOYMENTS.md) §2.2) |
-| Public website | `paimos.com` (Caddy server on `cs1.barta.cm`, rsync deploys per [paimos-site/README.md](https://github.com/markus-barta/paimos-site/blob/main/README.md)) |
+| Public website | `paimos.com` (Caddy server on `cs1.barta.cm`, rsync deploys per [paimos-site/README.md](https://github.com/inspr-at/paimos-site/blob/main/README.md)) |
 | Disclosure inbox | `security@paimos.com` |
-| Security advisories | `https://github.com/markus-barta/paimos/security/advisories` |
+| Security advisories | `https://github.com/inspr-at/paimos/security/advisories` |
 | GitHub Org access list | `https://github.com/orgs/markus-barta/people` (admin-only view) |
 
 ### 2.2 · How to do each critical operation
@@ -265,7 +265,7 @@ Operators can do a lot for themselves. The reference deployment going dark does 
 - **Backup discipline:** existing `DEPLOY.md` describes the backup-on-deploy flow. Keep at least one off-site backup.
 - **Image pinning:** pin the running deployment to a specific `<x.y.z>` digest, not `:latest`. Survives a registry pull.
 - **Source mirroring:** maintain a private mirror of the GitHub repo if you depend on PAIMOS for production. `git clone --mirror` weekly works.
-- **Watch for advisories:** subscribe to `https://github.com/markus-barta/paimos/security/advisories` (RSS feed available). Don't rely on email from the maintainer.
+- **Watch for advisories:** subscribe to `https://github.com/inspr-at/paimos/security/advisories` (RSS feed available). Don't rely on email from the maintainer.
 - **If you discover a security issue and the maintainer is unreachable:** post a coordinated-disclosure ticket via GitHub's "Report a vulnerability" surface (built into Security Advisories). It does not require email.
 
 **For prospective operators evaluating PAIMOS during an extended absence:**
@@ -302,7 +302,7 @@ A 30-minute walkthrough run on **2026-04-26**, against scenario **§3.2 Long-ter
 |---|---|---|
 | 0 | Accident. Maintainer unavailable. | |
 | 3 | Family reaches a recovery contact. Recovery contact accesses password-manager via the two-of-three share (recovery contact + one other share-holder). | The two-of-three share survives the loss of one keyholder; the maintainer + both contacts losing access simultaneously is a separate, lower-likelihood failure mode (treat as accepted residual risk). |
-| 5 | Recovery contact verifies legitimacy via medical confirmation and posts a holding announcement at `github.com/markus-barta/paimos` discussions: "The maintainer is temporarily unavailable. New releases pause; existing operators continue to self-host; security disclosures route to <recovery contact alias> until further notice." | The announcement intentionally does **not** detail the medical situation — that's family privacy, not project transparency. |
+| 5 | Recovery contact verifies legitimacy via medical confirmation and posts a holding announcement at `github.com/inspr-at/paimos` discussions: "The maintainer is temporarily unavailable. New releases pause; existing operators continue to self-host; security disclosures route to <recovery contact alias> until further notice." | The announcement intentionally does **not** detail the medical situation — that's family privacy, not project transparency. |
 | 7 | Recovery contact rotates registry tokens, deploy keys, the `security@paimos.com` inbox forwarding rule. Existing tokens that the maintainer might have written down on a sticky note are now revoked. | This is paranoia-by-default per §3.2 contain step 3. Ten minutes of work. |
 | 14 | First inbound security disclosure since the unavailability. Recovery contact triages it but cannot ship a patch (no engineering coverage). Reply to reporter: "Acknowledged; the maintainer is unavailable until approximately <date>. If this is high-severity and time-sensitive, please consider responsible coordinated disclosure via the AGPL-3.0-only fork pathway documented at [link]." | The reply is honest. Reporters can choose whether to wait or escalate. |
 | 21 | Maintainer's `paimos.com` domain renewal email arrives. Recovery contact pays it from the share's billing card on file. | Auto-renewal would have caught this; the manual confirmation is belt-and-braces. |

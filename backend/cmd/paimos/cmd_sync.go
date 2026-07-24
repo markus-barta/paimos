@@ -46,8 +46,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters"
-	"github.com/markus-barta/paimos/backend/cmd/paimos/sync"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/sync"
 )
 
 // httpSyncClient adapts *Client to sync.SyncClient. Splitting the

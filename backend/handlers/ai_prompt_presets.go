@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 const (

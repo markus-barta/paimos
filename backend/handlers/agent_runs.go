@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/markus-barta/paimos/backend/ai"
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/sse"
+	"github.com/inspr-at/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/sse"
 )
 
 // AgentRun is the lifecycle record for one "Implement this" run.

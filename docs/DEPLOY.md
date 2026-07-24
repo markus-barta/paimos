@@ -16,7 +16,7 @@ One production instance pulls from the registry:
 | -------- | --------------------- | ------------------- | ----------------- |
 | **ppm**  | `pm.barta.cm` (csb1)  | SSH key (`mba@100.64.0.4:2222`, Tailscale IP) | named volume |
 
-Registry: `ghcr.io/markus-barta/paimos`. Images produced per-commit on `main`
+Registry: `ghcr.io/inspr-at/paimos`. Images produced per-commit on `main`
 (`:latest`, `:sha-<short>`) and per semver tag (`:X.Y.Z`, `:X.Y`, `:X`).
 CI source of truth: [`.github/workflows/ci-v2.yml`](../.github/workflows/ci-v2.yml).
 

@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // ResolveAPIKey looks up a raw API key (full "paimos_..." string), verifies it

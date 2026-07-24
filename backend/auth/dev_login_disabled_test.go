@@ -18,7 +18,7 @@ package auth_test
 import (
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/auth"
 )
 
 func TestDevLoginEnabled_ReturnsFalseOnProdBuild(t *testing.T) {

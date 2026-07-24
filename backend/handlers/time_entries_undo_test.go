@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func seedTimeEntryUndoIssue(t *testing.T, title string) int64 {

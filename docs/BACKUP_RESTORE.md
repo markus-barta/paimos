@@ -41,7 +41,7 @@ The numbers above are **observed**, not aspirational — see §5 for the drill t
 | What | Where it lives | Why excluded |
 |---|---|---|
 | **MinIO/S3 attachments** | The configured object store | Separate concern, separate backup. Operators using attachments must back up the bucket independently — the bucket survives a PAIMOS DB restore unchanged, but a corrupted bucket is its own recovery exercise. |
-| **Container image** | `ghcr.io/markus-barta/paimos:<tag>` | Immutable on the registry; pull on demand. Verified via cosign signatures (see [`RELEASE.md`](RELEASE.md)). |
+| **Container image** | `ghcr.io/inspr-at/paimos:<tag>` | Immutable on the registry; pull on demand. Verified via cosign signatures (see [`RELEASE.md`](RELEASE.md)). |
 | **Env-var secrets** (`OIDC_CLIENT_SECRET`, `MINIO_SECRET_KEY`, `SMTP_PASS`) | Operator's secret manager | Backup of the secret manager is an operator concern; PAIMOS does not see those secrets after process startup. |
 | **Reverse-proxy config** (Caddyfile / nginx.conf / etc.) | Operator's deployment-config repo | Operator-controlled; back it up alongside your IaC. |
 | **`docker-compose.yml` itself** | Operator's deployment-config repo | The deploy script does archive a copy as `docker-compose.yml.pre` next to the data tarball, for forensic parity, but the canonical version is in your deployment-config repo. |

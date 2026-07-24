@@ -24,7 +24,7 @@ package auth
 import (
 	"net/http"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 const (

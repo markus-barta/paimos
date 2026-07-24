@@ -43,8 +43,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/ai"
-	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/auth"
 )
 
 // aiTestRequest is the form values the admin clicked Test Connection

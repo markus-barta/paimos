@@ -197,7 +197,7 @@ and PAIMOS adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Claude Code adapter extracted (PAI-333).** `claude-code` now has its own
   public reference repository and independent `v1.0.0` release:
-  `https://github.com/markus-barta/paimos-adapter-claude-code`. The PAIMOS
+  `https://github.com/inspr-at/paimos-adapter-claude-code`. The PAIMOS
   registry points at that external source while the bundled fallback remains in
   place, so existing `paimos skill render --harness claude-code` workflows keep
   working.
@@ -3622,7 +3622,7 @@ paimos completion bash > /etc/bash_completion.d/paimos   # or ~/.bash_completion
 
 ### Note: CLI is bundled in the backend Go module (monorepo layout).
   Shared types with the server prevent schema drift. Distribution
-  via `go install github.com/markus-barta/paimos/backend/cmd/paimos@latest`
+  via `go install github.com/inspr-at/paimos/backend/cmd/paimos@latest`
   or a release binary — not via the PAIMOS Docker image.
 
 ## [1.2.8] — 2026-04-21

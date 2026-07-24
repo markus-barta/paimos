@@ -5,7 +5,7 @@ Helpers used by the [release-v2.yml](../../.github/workflows/release-v2.yml) wor
 
 ## Apple Developer secrets
 
-`release-v2.yml` expects these five repo secrets in `markus-barta/paimos`
+`release-v2.yml` expects these five repo secrets in `inspr-at/paimos`
 (they live only in the encrypted GitHub secret store — never in the tree):
 
 - `APPLE_CERTIFICATE`            — base64 of the .p12
@@ -19,9 +19,9 @@ its own instructions). If they ever need re-provisioning or rotation, set them
 directly from the personal Apple Developer credential source:
 
 ```bash
-gh secret set APPLE_CERTIFICATE -R markus-barta/paimos < cert.p12.b64
+gh secret set APPLE_CERTIFICATE -R inspr-at/paimos < cert.p12.b64
 # … repeat for the other four
-gh secret list -R markus-barta/paimos   # confirm the 5 names
+gh secret list -R inspr-at/paimos   # confirm the 5 names
 ```
 
 PAI-688 tracks documenting the canonical personal source of truth for these

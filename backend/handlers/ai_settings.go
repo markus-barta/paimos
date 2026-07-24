@@ -45,8 +45,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/secretvault"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/secretvault"
 )
 
 // aiSecretDomain is the HKDF info string the secretvault package uses

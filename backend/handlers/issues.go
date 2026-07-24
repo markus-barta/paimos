@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // issueSelect is the standard SELECT + JOIN used for single-row queries (getIssueByID).

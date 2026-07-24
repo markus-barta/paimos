@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 // PAI-343 — coverage for the lesson-capture trigger detection

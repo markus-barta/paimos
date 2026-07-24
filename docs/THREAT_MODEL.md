@@ -12,7 +12,7 @@ This document is the **maintained mental model** of what must always remain true
 
 It is **not**:
 
-- A penetration-test report. PAIMOS hasn't had a formal external pen-test yet — that's tracked under [`PAI-139`](https://github.com/markus-barta/paimos/issues/139) and named explicitly in `paimos.com/trust.html` § limits.
+- A penetration-test report. PAIMOS hasn't had a formal external pen-test yet — that's tracked under [`PAI-139`](https://github.com/inspr-at/paimos/issues/139) and named explicitly in `paimos.com/trust.html` § limits.
 - A compliance attestation. PAIMOS aims for NIS2 / GDPR alignment (per `claim-matrix.md`) but does not claim audited certification.
 - An exhaustive enumeration of every conceivable attack. The threats below are the ones the project deliberately defends against; less-likely / out-of-scope threats are named in §5.
 
@@ -67,7 +67,7 @@ A trust boundary is any place where data crosses from a trusted context into a l
 - **Defences:**
   - HTTPS at the reverse proxy (operator-controlled; PAIMOS sets `Secure` cookie flag when `COOKIE_SECURE=true`).
   - Session cookies `HttpOnly`, `SameSite=Lax`. JavaScript cannot read them.
-  - CSRF via per-session token (M72 `csrf_token` column) + `Origin`/`Referer` validation + `X-CSRF-Token` header on every cookie-authed mutation. API-key clients bypass CSRF (Bearer auth is not CSRF-vulnerable). The `csrf_token` cookie is non-HttpOnly (SPA reads it from JS) but `Secure`+`SameSite=Strict` and shares the session cookie's lifetime — including the 90-day absolute cap — so a browser restart cannot strand the user with a missing token (PAI-370). If the cookie is absent on an authenticated request, the middleware re-issues it from the existing DB token without rotating, so already-broken sessions heal without forcing a re-login. [`auth/csrf.go`](https://github.com/markus-barta/paimos/blob/main/backend/auth/csrf.go), middleware in `auth/middleware.go`.
+  - CSRF via per-session token (M72 `csrf_token` column) + `Origin`/`Referer` validation + `X-CSRF-Token` header on every cookie-authed mutation. API-key clients bypass CSRF (Bearer auth is not CSRF-vulnerable). The `csrf_token` cookie is non-HttpOnly (SPA reads it from JS) but `Secure`+`SameSite=Strict` and shares the session cookie's lifetime — including the 90-day absolute cap — so a browser restart cannot strand the user with a missing token (PAI-370). If the cookie is absent on an authenticated request, the middleware re-issues it from the existing DB token without rotating, so already-broken sessions heal without forcing a re-login. [`auth/csrf.go`](https://github.com/inspr-at/paimos/blob/main/backend/auth/csrf.go), middleware in `auth/middleware.go`.
   - Rate-limited login / forgot / reset / TOTP-verify (5 attempts / 10 min / IP+identity).
   - Global security headers: `nosniff`, `X-Frame-Options=SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`, conditional HSTS, CSP-Report-Only with self-only (PAI-114).
 

@@ -23,8 +23,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/handlers"
-	"github.com/markus-barta/paimos/backend/handlers/knowledge"
+	"github.com/inspr-at/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers/knowledge"
 )
 
 // TestSchemaPayloadHash is the "nobody edits the schema without bumping

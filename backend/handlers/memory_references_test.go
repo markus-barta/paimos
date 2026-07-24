@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-347 — coverage for the reference-count tracking endpoint and the

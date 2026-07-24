@@ -193,7 +193,7 @@ values live in [Configuration](docs/CONFIGURATION.md).
 The following starts a local evaluation instance from source:
 
 ```bash
-git clone https://github.com/markus-barta/paimos.git
+git clone https://github.com/inspr-at/paimos.git
 cd paimos
 
 docker build -t paimos:local .
@@ -222,7 +222,7 @@ Signed and notarized universal macOS builds, Linux archives, checksums, and
 source-build instructions are documented in [Installing the Paimos CLI](docs/INSTALL.md).
 
 ```bash
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos
 
 paimos auth login

@@ -78,7 +78,7 @@ package pipedrive
 
 import (
     "context"
-    "github.com/markus-barta/paimos/backend/handlers/crm"
+    "github.com/inspr-at/paimos/backend/handlers/crm"
 )
 
 func init() { crm.Register(&Provider{}) }
@@ -153,8 +153,8 @@ fires before routes are registered:
 ```go
 import (
     // CRM provider plugins. One blank import per compiled-in provider.
-    _ "github.com/markus-barta/paimos/backend/handlers/crm/hubspot"
-    _ "github.com/markus-barta/paimos/backend/handlers/crm/pipedrive"
+    _ "github.com/inspr-at/paimos/backend/handlers/crm/hubspot"
+    _ "github.com/inspr-at/paimos/backend/handlers/crm/pipedrive"
 )
 ```
 

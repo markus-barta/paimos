@@ -27,7 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/brand"
+	"github.com/inspr-at/paimos/backend/brand"
 )
 
 // defaultBrandingJSON is served when no branding.json file is found in DATA_DIR.

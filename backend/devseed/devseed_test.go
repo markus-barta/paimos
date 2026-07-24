@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/devseed"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/devseed"
 )
 
 // TestRun_Idempotency pins the PAI-267 contract: re-running dev-seed

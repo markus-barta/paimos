@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func openChangesTestDB(t *testing.T) {

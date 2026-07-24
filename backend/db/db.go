@@ -28,7 +28,7 @@ import (
 
 	"modernc.org/sqlite"
 
-	"github.com/markus-barta/paimos/backend/brand"
+	"github.com/inspr-at/paimos/backend/brand"
 )
 
 var perConnectionPragmas = []string{

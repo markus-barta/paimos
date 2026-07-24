@@ -43,10 +43,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
-	"github.com/markus-barta/paimos/backend/sse"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/sse"
 )
 
 // autoWatchRow is the JSON shape returned by the list endpoint and

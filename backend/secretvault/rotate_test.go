@@ -31,7 +31,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/markus-barta/paimos/backend/secretvault"
+	"github.com/inspr-at/paimos/backend/secretvault"
 )
 
 // rotateTestDB stands up an in-memory SQLite with just the two tables

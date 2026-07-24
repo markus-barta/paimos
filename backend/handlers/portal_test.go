@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // readBody returns the response body as a string. Used by CSV-export

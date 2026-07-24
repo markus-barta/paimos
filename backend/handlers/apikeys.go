@@ -28,9 +28,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/brand"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/brand"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // generateAPIKey returns a full key (shown once) and its prefix + hash for storage.

@@ -10,7 +10,7 @@ A new release lands on every `v*` git tag (PAI-99); the
 ## macOS — one-liner (recommended)
 
 ```bash
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos
 ```
 
@@ -18,7 +18,7 @@ Or, pinned to a version:
 
 ```bash
 VER=5.0.0
-curl -fL https://github.com/markus-barta/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos
 ```
 
@@ -40,7 +40,7 @@ spctl --assess -vv /usr/local/bin/paimos
 For `paimos-mcp` (the MCP server), substitute `paimos-mcp` everywhere:
 
 ```bash
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos-mcp_darwin_universal.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos-mcp_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos-mcp
 ```
 
@@ -52,7 +52,7 @@ Same shape, no signing (Linux has no Gatekeeper-equivalent):
 
 ```bash
 ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_linux_${ARCH}.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos_linux_${ARCH}.tar.gz \
   | tar xz -C /usr/local/bin paimos
 ```
 
@@ -64,8 +64,8 @@ Every release ships a `sha256sums.txt` next to the tarballs:
 
 ```bash
 VER=5.0.0
-curl -fLO https://github.com/markus-barta/paimos/releases/download/v$VER/sha256sums.txt
-curl -fLO https://github.com/markus-barta/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz
+curl -fLO https://github.com/inspr-at/paimos/releases/download/v$VER/sha256sums.txt
+curl -fLO https://github.com/inspr-at/paimos/releases/download/v$VER/paimos_${VER}_darwin_universal.tar.gz
 shasum -a 256 -c sha256sums.txt --ignore-missing
 ```
 
@@ -77,8 +77,8 @@ If you have Go 1.25+ and don't need the signed binary (e.g., on a
 Linux server, in CI, or for a contribution):
 
 ```bash
-go install github.com/markus-barta/paimos/backend/cmd/paimos@latest
-go install github.com/markus-barta/paimos/backend/cmd/paimos-mcp@latest
+go install github.com/inspr-at/paimos/backend/cmd/paimos@latest
+go install github.com/inspr-at/paimos/backend/cmd/paimos-mcp@latest
 ```
 
 The Nix flake at [`pkgs/paimos-cli`](https://github.com/markus-barta/nixcfg)

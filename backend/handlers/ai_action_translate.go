@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/ai"
 )
 
 func init() {

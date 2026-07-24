@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 func main() {

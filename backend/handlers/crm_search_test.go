@@ -27,8 +27,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers/crm"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers/crm"
 )
 
 // fakeSearchProvider is a minimal Searcher used only in handler tests.

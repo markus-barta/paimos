@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func TestRegression_SuperAdminRole_001_AdminCannotGrantSuperAdmin(t *testing.T) {

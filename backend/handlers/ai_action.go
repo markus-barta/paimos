@@ -44,9 +44,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/ai"
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // actionRequest is the wire body. `Params` is action-specific JSON

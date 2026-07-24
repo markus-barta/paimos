@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ghcr-prune.sh — periodic hygiene for ghcr.io/markus-barta/paimos.
+# ghcr-prune.sh — periodic hygiene for ghcr.io/inspr-at/paimos.
 #
 # Built after the v3.7.7 incident (2026-05-26) where ~2,000 accumulated
 # manifest versions (multi-arch sub-manifests + cosign .sig/.att/bare
@@ -16,7 +16,7 @@
 #   --execute            Actually call DELETE. Without this, prints the plan only.
 #   --keep-recent-sha=N  Keep the N most recent `sha-XXXXXXX`-only versions
 #                        for rollback safety. Default: 20.
-#   --owner=NAME         GHCR package owner. Default: markus-barta.
+#   --owner=NAME         GHCR package owner. Default: inspr-at.
 #   --package=NAME       Package name. Default: paimos.
 #
 # What it preserves:
@@ -37,7 +37,7 @@ set -euo pipefail
 
 DRY_RUN=1
 KEEP_RECENT_SHA=20
-OWNER="markus-barta"
+OWNER="inspr-at"
 PACKAGE="paimos"
 SLEEP_BETWEEN=0.3
 
