@@ -288,7 +288,7 @@ ls -lt $BACKUP_ROOT | head -5
 gzip -t $BACKUP_ROOT/$(ls -t $BACKUP_ROOT | head -1)/data.tar.gz && echo "backup integrity OK"
 
 # 6 · Provider verifiability
-cosign verify ghcr.io/markus-barta/paimos:$(docker compose exec paimos cat /app/VERSION) \
+cosign verify ghcr.io/inspr-at/paimos:$(docker compose exec paimos cat /app/VERSION) \
   --certificate-identity-regexp '^https://github.com/inspr-at/paimos/.+' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 # Expect: signature verified

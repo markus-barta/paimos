@@ -8,10 +8,10 @@
 #   scripts/release.sh                             # dump commits since last release tag, exit
 #
 # After this succeeds, CI publishes (see .github/workflows/ci-v2.yml):
-#   ghcr.io/markus-barta/paimos:<x.y.z>       (immutable, use for deploys)
-#   ghcr.io/markus-barta/paimos:<x>.<y>       (moving)
-#   ghcr.io/markus-barta/paimos:<x>           (moving)
-#   ghcr.io/markus-barta/paimos:sha-<short>   (immutable, per-commit)
+#   ghcr.io/inspr-at/paimos:<x.y.z>       (immutable, use for deploys)
+#   ghcr.io/inspr-at/paimos:<x>.<y>       (moving)
+#   ghcr.io/inspr-at/paimos:<x>           (moving)
+#   ghcr.io/inspr-at/paimos:sha-<short>   (immutable, per-commit)
 
 set -euo pipefail
 
@@ -197,22 +197,22 @@ git push origin main
 git push origin "$NEW_TAG"
 
 echo
-echo "Pushed $NEW_TAG. Waiting for CI to publish ghcr.io/markus-barta/paimos:$NEW"
+echo "Pushed $NEW_TAG. Waiting for CI to publish ghcr.io/inspr-at/paimos:$NEW"
 # Public registry — works without local docker (curl-fallback in
 # ghcr::image_exists from _deploy-lib.sh).
 # shellcheck disable=SC1091
 source "$(dirname "$0")/_deploy-lib.sh"
 for _ in $(seq 1 60); do
-  if ghcr::image_exists "ghcr.io/markus-barta/paimos:$NEW"; then
-    echo "✔ ghcr.io/markus-barta/paimos:$NEW is live."
+  if ghcr::image_exists "ghcr.io/inspr-at/paimos:$NEW"; then
+    echo "✔ ghcr.io/inspr-at/paimos:$NEW is live."
     break
   fi
   sleep 10
 done
 
-if ! ghcr::image_exists "ghcr.io/markus-barta/paimos:$NEW"; then
+if ! ghcr::image_exists "ghcr.io/inspr-at/paimos:$NEW"; then
   echo "warning: still not visible after 10m. Check GitHub Actions:" >&2
-  echo "  gh run list --repo markus-barta/paimos --event push --branch $NEW_TAG" >&2
+  echo "  gh run list --repo inspr-at/paimos --event push --branch $NEW_TAG" >&2
   exit 2
 fi
 

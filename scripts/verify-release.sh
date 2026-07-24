@@ -9,7 +9,7 @@ if [[ -z "$TAG" ]]; then
 fi
 
 TAG="${TAG#v}"
-IMAGE="ghcr.io/markus-barta/paimos:$TAG"
+IMAGE="ghcr.io/inspr-at/paimos:$TAG"
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 for cmd in cosign gh jq; do
@@ -61,7 +61,7 @@ fi
 
 echo
 echo "[3/4] SLSA build provenance"
-if gh attestation verify "oci://$IMAGE" --owner markus-barta >/dev/null 2>&1; then
+if gh attestation verify "oci://$IMAGE" --owner inspr-at >/dev/null 2>&1; then
   echo "  ok verified build provenance attestation"
 else
   echo "  failed provenance verification" >&2

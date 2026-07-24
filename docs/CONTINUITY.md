@@ -26,8 +26,8 @@ The single best fact about a solo-maintained FOSS project is that **most of the 
 
 | Artefact | Where it lives | Survives loss of maintainer? |
 |---|---|---|
-| Source code | GitHub `markus-barta/paimos` + `markus-barta/paimos-site` (and every clone, fork, and CI runner cache) | ✓ AGPL-3.0-only; cannot be retracted. |
-| Release artefacts | `ghcr.io/markus-barta/paimos:<x.y.z>` (immutable per tag) + GitHub Releases page (SBOMs, signatures) | ✓ Immutable on registry; survives indefinitely unless the registry itself goes dark. See §3.6. |
+| Source code | GitHub `inspr-at/paimos` + `inspr-at/paimos-site` (and every clone, fork, and CI runner cache) | ✓ AGPL-3.0-only; cannot be retracted. |
+| Release artefacts | `ghcr.io/inspr-at/paimos:<x.y.z>` (immutable per tag) + GitHub Releases page (SBOMs, signatures) | ✓ Immutable on registry; survives indefinitely unless the registry itself goes dark. See §3.6. |
 | User data | Each operator's own `$DATA_DIR/paimos.db` + their MinIO/S3 bucket if attachments | ✓ Always — self-hosted; the maintainer never had a copy. |
 | Documentation | In the same repo as the code, including this document. | ✓ Travels with the code. |
 | Disclosure history | GitHub Security Advisories (per release tag) + CHANGELOG entries with `SEC-YYYY-NN` identifiers | ✓ Public, durable. |
@@ -51,7 +51,7 @@ The information below has to be findable from this document, this repo, or the m
 |---|---|
 | App code | `https://github.com/inspr-at/paimos` |
 | Site code | `https://github.com/inspr-at/paimos-site` |
-| Release images | `ghcr.io/markus-barta/paimos:<tag>` |
+| Release images | `ghcr.io/inspr-at/paimos:<tag>` |
 | Reference deployment | `pm.barta.cm` (ppm), runs the maintainer's primary instance |
 | Secondary reference deployment | retired second-operator instance — decommissioned June 2026 (see [REFERENCE_DEPLOYMENTS.md](REFERENCE_DEPLOYMENTS.md) §2.2) |
 | Public website | `paimos.com` (Caddy server on `cs1.barta.cm`, rsync deploys per [paimos-site/README.md](https://github.com/inspr-at/paimos-site/blob/main/README.md)) |

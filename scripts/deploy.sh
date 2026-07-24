@@ -88,7 +88,7 @@ source "$CONF"
 source "$ROOT/scripts/deploy-target.sh"
 deploy_target::resolve "$TAG"
 TAG="$DEPLOY_TARGET_TAG"
-IMAGE="ghcr.io/markus-barta/paimos:$TAG"
+IMAGE="ghcr.io/inspr-at/paimos:$TAG"
 
 # shellcheck disable=SC1091
 source "$ROOT/scripts/_deploy-lib.sh"
