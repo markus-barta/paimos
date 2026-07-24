@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 func createTestProject(t *testing.T, ts *testServer, name, key string) int64 {

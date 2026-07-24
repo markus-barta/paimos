@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func userID(t *testing.T, username string) int64 {

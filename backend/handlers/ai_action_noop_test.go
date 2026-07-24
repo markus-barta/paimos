@@ -26,8 +26,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/ai"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/db"
 
 	_ "modernc.org/sqlite"
 )

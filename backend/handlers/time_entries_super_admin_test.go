@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // promoteToSuperAdmin sets is_super_admin=1 for the given username.

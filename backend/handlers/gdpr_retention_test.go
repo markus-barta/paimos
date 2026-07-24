@@ -18,7 +18,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // TestRetentionSweepAccessAudit guards the access_audit retention sweep, which

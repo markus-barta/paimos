@@ -40,7 +40,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // StaleMemoryProposal is the on-the-wire shape returned by the

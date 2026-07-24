@@ -50,7 +50,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/auth"
 )
 
 const (
@@ -385,7 +385,7 @@ func fetchOpenRouterModels(ctx context.Context) ([]orModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("HTTP-Referer", "https://github.com/markus-barta/paimos")
+	req.Header.Set("HTTP-Referer", "https://github.com/inspr-at/paimos")
 	req.Header.Set("X-Title", "PAIMOS")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -412,7 +412,7 @@ func fetchFrontendFind(ctx context.Context, order string) ([]orModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("HTTP-Referer", "https://github.com/markus-barta/paimos")
+	req.Header.Set("HTTP-Referer", "https://github.com/inspr-at/paimos")
 	req.Header.Set("X-Title", "PAIMOS")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

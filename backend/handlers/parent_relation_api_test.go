@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // TestParentRelationAPI covers PAI-584 P4: the public relation API exposes the

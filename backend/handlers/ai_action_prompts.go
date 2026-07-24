@@ -40,7 +40,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // ─── Built-in action default prompts ─────────────────────────────

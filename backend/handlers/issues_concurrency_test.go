@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-231 — optimistic concurrency: GET returns a strong per-row ETag; PUT

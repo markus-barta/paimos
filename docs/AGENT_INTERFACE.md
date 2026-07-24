@@ -59,11 +59,11 @@ The CLI today covers issue-CRUD, cross-project issue move (`issue move`), free-t
 
 ```sh
 # paimos CLI
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos
 
 # paimos-mcp (MCP server for Claude Desktop etc.)
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos-mcp_darwin_universal.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos-mcp_darwin_universal.tar.gz \
   | tar xz -C /usr/local/bin paimos-mcp
 ```
 
@@ -73,17 +73,17 @@ The binary is codesigned under "Developer ID Application: Markus Barta (P66J39QV
 
 ```sh
 ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos_linux_${ARCH}.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos_linux_${ARCH}.tar.gz \
   | tar xz -C /usr/local/bin paimos
-curl -fL https://github.com/markus-barta/paimos/releases/latest/download/paimos-mcp_linux_${ARCH}.tar.gz \
+curl -fL https://github.com/inspr-at/paimos/releases/latest/download/paimos-mcp_linux_${ARCH}.tar.gz \
   | tar xz -C /usr/local/bin paimos-mcp
 ```
 
 **Build from source (Go 1.25+ required, no signed binary needed):**
 
 ```sh
-go install github.com/markus-barta/paimos/backend/cmd/paimos@latest
-go install github.com/markus-barta/paimos/backend/cmd/paimos-mcp@latest
+go install github.com/inspr-at/paimos/backend/cmd/paimos@latest
+go install github.com/inspr-at/paimos/backend/cmd/paimos-mcp@latest
 ```
 
 Both binaries end up in `$GOBIN` (default `$HOME/go/bin`). Add it to `PATH` if you haven't.
@@ -407,7 +407,7 @@ $ go test ./...
 # 3. Commit + open PR (gh, not paimos — complementary tools).
 $ git commit -m "feat(relations): follows_from, blocks, related (PAI-89)"
 $ gh pr create --title "..." --body "..."
-# https://github.com/markus-barta/paimos/pull/15
+# https://github.com/inspr-at/paimos/pull/15
 
 # 4. CI runs; PR merges; docker image publishes; deploy.
 $ ssh user@deploy-host "cd ~/docker && just deploy"

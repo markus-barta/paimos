@@ -18,9 +18,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 func TestResolveAIActionOptionsDefaults(t *testing.T) {

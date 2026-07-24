@@ -50,7 +50,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/handlers/knowledge"
+	"github.com/inspr-at/paimos/backend/handlers/knowledge"
 )
 
 // proposedStatus is the status discriminator a knowledge entry gets

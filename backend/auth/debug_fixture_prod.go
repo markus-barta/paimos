@@ -9,7 +9,7 @@
 
 package auth
 
-import "github.com/markus-barta/paimos/backend/models"
+import "github.com/inspr-at/paimos/backend/models"
 
 func SuppressSecurityNags(user *models.User) bool {
 	return false

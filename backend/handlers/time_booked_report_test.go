@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-579 / PAI-580 / PAI-581: end-to-end money-path coverage for the

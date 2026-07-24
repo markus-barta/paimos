@@ -45,7 +45,7 @@ Each row is a thing the project commits to do on a cadence. The owner column nam
 | **Trademark check** — TMview / DPMA / EUIPO search for PAIMOS or near-names | every 6 months | maintainer | [`docs/brand/BRAND.md`](brand/BRAND.md) §Re-run trademark checks |
 | **External technical review** — framework documented; engagement awaits the right trigger (sponsor, Phase 3, scale, regulator) | not yet committed; framework documented | maintainer (engagement) + reviewer (delivery) | [`EXTERNAL_REVIEW.md`](EXTERNAL_REVIEW.md) |
 
-The pattern: **most controls are 6-monthly**, a few are release-triggered (claim matrix, doc-sync), and a couple are quarterly (provider credential rotation per deployment). Annual cadence is reserved for things where 6 months is overkill (trademark, brand framework as a whole). External review is honestly named as "not yet committed" — see [`PAI-139`](https://github.com/markus-barta/paimos/issues/139).
+The pattern: **most controls are 6-monthly**, a few are release-triggered (claim matrix, doc-sync), and a couple are quarterly (provider credential rotation per deployment). Annual cadence is reserved for things where 6 months is overkill (trademark, brand framework as a whole). External review is honestly named as "not yet committed" — see [`PAI-139`](https://github.com/inspr-at/paimos/issues/139).
 
 ---
 

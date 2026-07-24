@@ -19,9 +19,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // POST /api/users/me/recent-projects — record a project visit for the current user.

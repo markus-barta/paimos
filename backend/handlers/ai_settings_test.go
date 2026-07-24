@@ -33,9 +33,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers"
-	"github.com/markus-barta/paimos/backend/secretvault"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/secretvault"
 )
 
 func Test_AISettings_ReadsPlaintextLegacy(t *testing.T) {

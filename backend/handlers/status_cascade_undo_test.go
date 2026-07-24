@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func seedStatusCascadeUndoPair(t *testing.T) (int64, int64) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func seedListV2Issue(t *testing.T, projectID int64, num int, title string, status string) int64 {

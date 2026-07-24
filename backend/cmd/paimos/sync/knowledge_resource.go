@@ -44,7 +44,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters"
 )
 
 // KnowledgeEntry is the canonical shape the server's knowledge

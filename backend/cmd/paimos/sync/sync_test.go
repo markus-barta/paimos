@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters"
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters/claudecode"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters/claudecode"
 )
 
 // fakeClient is a minimal SyncClient implementation backed by a route

@@ -31,7 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers"
 )
 
 // TestPublishKnowledgeChanged_DeliversAllFiveKinds opens one SSE

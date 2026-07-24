@@ -47,9 +47,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/markus-barta/paimos/backend/ai"
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/ai"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // promptRow mirrors the wire shape served to the SPA.

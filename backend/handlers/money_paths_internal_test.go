@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // Money-path regression suite (PAI-582) — internal package half.

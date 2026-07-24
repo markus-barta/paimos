@@ -23,8 +23,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 // formatInt64 is a package-local alias for strconv.FormatInt. Named

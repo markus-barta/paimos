@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/contracts"
+	"github.com/inspr-at/paimos/backend/contracts"
 )
 
 func TestSchemaAlignmentFixture_RawHTTP(t *testing.T) {

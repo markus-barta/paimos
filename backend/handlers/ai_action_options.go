@@ -10,7 +10,7 @@ package handlers
 import (
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 type aiExecutionProfile struct {

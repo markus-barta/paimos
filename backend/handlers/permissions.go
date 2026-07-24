@@ -18,7 +18,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/markus-barta/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/auth"
 )
 
 // GetPermissionsMatrix returns the list of capabilities and which access

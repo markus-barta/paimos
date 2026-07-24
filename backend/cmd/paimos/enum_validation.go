@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/contracts"
+	"github.com/inspr-at/paimos/backend/contracts"
 )
 
 func normalizeEnumValue(binding, raw string) (string, error) {

@@ -29,20 +29,20 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/brand"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/devseed"
-	"github.com/markus-barta/paimos/backend/handlers"
-	"github.com/markus-barta/paimos/backend/handlers/crm"
-	"github.com/markus-barta/paimos/backend/handlers/knowledge"
-	"github.com/markus-barta/paimos/backend/storage"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/brand"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/devseed"
+	"github.com/inspr-at/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers/crm"
+	"github.com/inspr-at/paimos/backend/handlers/knowledge"
+	"github.com/inspr-at/paimos/backend/storage"
 
 	// CRM provider plugins. Blank-import each provider so its init()
 	// registers it with the crm package's registry. Adding a new
 	// provider = one line here + one new subpackage under crm/.
-	_ "github.com/markus-barta/paimos/backend/handlers/crm/http"
-	_ "github.com/markus-barta/paimos/backend/handlers/crm/hubspot"
+	_ "github.com/inspr-at/paimos/backend/handlers/crm/http"
+	_ "github.com/inspr-at/paimos/backend/handlers/crm/hubspot"
 )
 
 func main() {

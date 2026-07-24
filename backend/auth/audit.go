@@ -20,7 +20,7 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // Access-audit action names. Kept in one place so callers cannot typo them.

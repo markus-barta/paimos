@@ -21,8 +21,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/secretvault"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/secretvault"
 )
 
 // crmSecretDomain is the HKDF info string used by the secretvault

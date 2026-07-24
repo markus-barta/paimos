@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // TestPerf_ListIssues measures the response time for listing issues at various

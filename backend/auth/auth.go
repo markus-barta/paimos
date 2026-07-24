@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/brand"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/brand"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/models"
 	"golang.org/x/crypto/bcrypt"
 )
 

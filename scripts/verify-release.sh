@@ -19,7 +19,7 @@ for cmd in cosign gh jq; do
   fi
 done
 
-ID_RE='^https://github.com/markus-barta/paimos/.+'
+ID_RE='^https://github.com/inspr-at/paimos/.+'
 OIDC='https://token.actions.githubusercontent.com'
 
 echo "[verify] $IMAGE"

@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // TestNewRelationTypes covers PAI-89: follows_from / blocks / related

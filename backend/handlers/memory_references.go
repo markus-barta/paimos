@@ -42,7 +42,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // memoryReferenceBumpRequest is the on-the-wire shape for the

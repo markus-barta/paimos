@@ -41,8 +41,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters"
-	"github.com/markus-barta/paimos/backend/cmd/paimos/adapters/claudecode"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters"
+	"github.com/inspr-at/paimos/backend/cmd/paimos/adapters/claudecode"
 )
 
 // builtInAdaptersFn is the package-level hook tests use to swap in a

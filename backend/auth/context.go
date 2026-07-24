@@ -18,7 +18,7 @@ package auth
 import (
 	"net/http"
 
-	"github.com/markus-barta/paimos/backend/models"
+	"github.com/inspr-at/paimos/backend/models"
 )
 
 func GetUser(r *http.Request) *models.User {

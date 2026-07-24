@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // parentEdgeSources returns the source_ids of every 'parent' edge that points

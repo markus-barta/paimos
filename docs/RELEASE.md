@@ -81,7 +81,7 @@ for inspection.
 Verify the signature (replace `<x.y.z>` with the tag you're pulling):
 
     cosign verify ghcr.io/markus-barta/paimos:<x.y.z> \
-      --certificate-identity-regexp '^https://github.com/markus-barta/paimos/.+' \
+      --certificate-identity-regexp '^https://github.com/inspr-at/paimos/.+' \
       --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 
 Pull the SBOM attestation:
@@ -109,7 +109,7 @@ Barta (P66J39QV6V)` followed by Apple's intermediate and root CAs.
 
 Verify the SHA-256 against the published sums file:
 
-    curl -fLO https://github.com/markus-barta/paimos/releases/download/v<x.y.z>/sha256sums.txt
+    curl -fLO https://github.com/inspr-at/paimos/releases/download/v<x.y.z>/sha256sums.txt
     shasum -a 256 -c sha256sums.txt --ignore-missing
 
 ## Generating SBOMs locally

@@ -1,4 +1,4 @@
-module github.com/markus-barta/paimos/backend
+module github.com/inspr-at/paimos/backend
 
 go 1.25.0
 

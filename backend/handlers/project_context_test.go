@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 func Test_ProjectContextEndpoints(t *testing.T) {

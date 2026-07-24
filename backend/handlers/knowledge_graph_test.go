@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // PAI-350: GET /api/projects/{id}/knowledge/graph returns knowledge entries +

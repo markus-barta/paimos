@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/secretvault"
+	"github.com/inspr-at/paimos/backend/secretvault"
 )
 
 // helper: set a known 32-byte key in PAIMOS_SECRET_KEY and reset

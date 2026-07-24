@@ -31,10 +31,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/markus-barta/paimos/backend/auth"
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/handlers"
-	"github.com/markus-barta/paimos/backend/handlers/knowledge"
+	"github.com/inspr-at/paimos/backend/auth"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/handlers"
+	"github.com/inspr-at/paimos/backend/handlers/knowledge"
 
 	_ "modernc.org/sqlite"
 )

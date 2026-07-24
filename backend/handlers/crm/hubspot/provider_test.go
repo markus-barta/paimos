@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/handlers/crm"
-	"github.com/markus-barta/paimos/backend/handlers/crm/contracttest"
+	"github.com/inspr-at/paimos/backend/handlers/crm"
+	"github.com/inspr-at/paimos/backend/handlers/crm/contracttest"
 )
 
 func TestProviderSharedContract(t *testing.T) {

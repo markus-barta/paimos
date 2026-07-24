@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/markus-barta/paimos/backend/db"
-	"github.com/markus-barta/paimos/backend/sse"
+	"github.com/inspr-at/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/sse"
 )
 
 // TestProjectRunnersAndImplementPublish covers PAI-607: the runner registry

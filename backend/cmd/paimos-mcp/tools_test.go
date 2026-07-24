@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/markus-barta/paimos/backend/cmd/paimos-mcp/mcpclient"
+	"github.com/inspr-at/paimos/backend/cmd/paimos-mcp/mcpclient"
 )
 
 func TestToolsCallRoundTripRetrieveAndBlastRadius(t *testing.T) {

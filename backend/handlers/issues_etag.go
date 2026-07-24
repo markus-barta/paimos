@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/markus-barta/paimos/backend/db"
+	"github.com/inspr-at/paimos/backend/db"
 )
 
 // issueETag is the strong per-row ETag for optimistic concurrency (PAI-231).
