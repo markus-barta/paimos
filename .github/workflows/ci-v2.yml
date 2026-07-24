@@ -168,17 +168,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # PAI-128: full history needed for gitleaks to scan past commits.
-          # Without fetch-depth: 0 the secret-scan only sees the most
-          # recent commit, which defeats the point of secret scanning.
+          # PAI-128 / PAI-700: full history is required because the gitleaks
+          # step below scans every commit, not just the tip. Before PAI-700
+          # this comment was aspirational — the deep checkout was paid for
+          # and then discarded by a `--log-opts=-1` scan. It is now accurate.
           fetch-depth: 0
 
-      # PAI-128: secret scanning. BLOCKING. Repo verified clean as of
-      # 2026-04-26 (1 finding was a documentation example matching the
-      # short-prefix pattern in `paimos_<n-hex>`; allowlisted in
-      # .gitleaks.toml because real PAIMOS keys are 64 hex chars).
+      # PAI-128 / PAI-700: secret scanning. BLOCKING, over FULL HISTORY.
+      #
       # The custom paimos-api-key rule in .gitleaks.toml is the targeted
       # defence named in INCIDENT_RESPONSE.md § 3.1 (compromised API key).
+      # Known-benign historical matches are forgiven by fingerprint in
+      # .gitleaksignore — see that file for the triage record.
       #
       # Runs the gitleaks binary instead of gitleaks/gitleaks-action.
       # The Action is free for personal accounts but requires a paid
@@ -190,31 +191,21 @@ jobs:
       # --exit-code defaults to 1, so findings still fail the job.
       # --redact keeps candidate secret values out of the CI log.
       #
-      # Scope is deliberately unchanged from the Action's effective
-      # behaviour, so this stays a licence workaround and nothing more.
-      # The Action ran `--log-opts=-1` on push (tip commit only) and the
-      # PR commit range on pull_request. A full-history scan is strictly
-      # better and surfaces 4 pre-existing findings in *_test.go fixtures
-      # that CI has never scanned — tracked separately, not widened here.
+      # No --log-opts: gitleaks walks every commit. Until PAI-700 this ran
+      # with --log-opts=-1 (tip commit only), so a secret that was committed
+      # and then superseded was never scanned. Scanning the full history
+      # costs ~0.4s for ~800 commits, so there is no reason to narrow it.
       - name: gitleaks (secret scanning)
         env:
           GITLEAKS_VERSION: 8.30.1
           GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           curl -sSfL -o /tmp/gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            LOG_OPTS="${BASE_SHA}..HEAD"
-          else
-            LOG_OPTS="-1"
-          fi
-          echo "scanning range: ${LOG_OPTS}"
-          /tmp/gitleaks git . --config .gitleaks.toml --redact --no-banner \
-            --verbose --log-opts="${LOG_OPTS}"
+          /tmp/gitleaks git . --config .gitleaks.toml --redact --no-banner --verbose
 
       - uses: actions/setup-go@v6
         with:
