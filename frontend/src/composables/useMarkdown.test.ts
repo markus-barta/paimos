@@ -15,6 +15,20 @@
  * License along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// @vitest-environment jsdom
+//
+// PAI-701: this file runs under jsdom, not the suite-wide happy-dom.
+//
+// happy-dom (checked through 20.11.1, the latest at time of writing) is
+// incompatible with DOMPurify >= 3.4.12: sanitize() drops the ROOT element
+// of the fragment. `<img class="md-img">` returns "", and `<p><img></p>`
+// returns just the `<img>` with the `<p>` gone. Under jsdom — and in real
+// browsers — both survive intact with `removed: []`.
+//
+// That makes it a test-environment defect, not a DOMPurify behaviour change
+// and not a bug in useMarkdown, which uses no DOMPurify hooks at all. Pinning
+// dompurify below 3.4.12 to keep happy-dom happy would have left a published
+// advisory unpatched in production to satisfy a fake DOM.
 import { describe, it, expect } from 'vitest'
 import { ref } from 'vue'
 import { useMarkdown } from './useMarkdown'
